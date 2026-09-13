@@ -45,10 +45,17 @@ public sealed record ClientReport(
 /// a report *about*, rather than states in which it produces no report.
 /// </para>
 /// <para>
-/// <b>It reads, it does not compile.</b> Resolving a document's configuration is the one thing here
-/// that touches the disk, and it is what the editor already does on every keystroke. Nothing asks
-/// <see cref="DocumentSemantics"/> for a compilation: a status request must not become the thing
-/// that starts protoc on a workspace the user is reporting as stuck.
+/// <b>It reads, it does not compile.</b> Nothing here asks <see cref="DocumentSemantics"/> for a
+/// compilation: a status request must not become the thing that starts a build of a workspace the
+/// user is reporting as stuck.
+/// </para>
+/// <para>
+/// <b>It does leave the process, three times, and the caller has to know that.</b> Settling a document's
+/// configuration reads a <c>protolang.config.xml</c>; building a loader stats the directories beside
+/// protoc; and asking that protoc its version starts it. None is avoidable -- they are the three
+/// facts a support report exists to carry -- so what follows instead is that this must never be
+/// called on the connection's reading worker. <c>LanguageServerHost</c> registers the status request
+/// as concurrent for exactly this reason, and says so.
 /// </para>
 /// </remarks>
 public sealed class StatusReporter
@@ -79,7 +86,27 @@ public sealed class StatusReporter
     public required Func<ServerState> State { get; init; }
 
     /// <inheritdoc cref="ClientReport"/>
-    public ClientReport Client { get; set; } = ClientReport.Unknown;
+    /// <remarks>
+    /// Written only through <see cref="Told"/>, which says why it needs a lock. Volatile so that a
+    /// concurrent report reads a whole <see cref="ClientReport"/> rather than a reference in the
+    /// middle of being replaced.
+    /// </remarks>
+    public ClientReport Client
+    {
+        get => Volatile.Read(ref _client);
+        private set => Volatile.Write(ref _client, value);
+    }
+
+    /// <inheritdoc cref="Client"/>
+    private ClientReport _client = ClientReport.Unknown;
+
+    /// <summary>
+    /// What <see cref="Told"/> holds while it merges. Its own object rather than
+    /// <see cref="_client"/>, which is replaced inside the very section it would be guarding -- so
+    /// the next caller would take a lock on a different object and the two would not exclude each
+    /// other at all.
+    /// </summary>
+    private readonly Lock _clientGate = new();
 
     /// <summary>The version of the assembly <paramref name="type"/> is in.</summary>
     /// <remarks>
@@ -104,17 +131,41 @@ public sealed class StatusReporter
     /// </param>
     public ServerStatus Report(DocumentUri? document)
     {
+        // Settled once and handed to both sections that want it. Resolution reads a
+        // protolang.config.xml off disk, so resolving twice is both wasted work and a way for one
+        // report to contradict itself: the protoc section and the configuration section would be
+        // describing two resolutions taken a moment apart, and the moment in between is exactly when
+        // somebody editing that file would be looking.
+        var resolved = document is null ? null : Resolve(document);
+
         List<StatusSection> sections =
         [
             Versions(),
             Health(),
-            Protoc(document),
-            ConfigurationFor(document),
+            Protoc(resolved),
+            ConfigurationFor(document, resolved),
             Cache(),
             Trust(),
         ];
 
         return new ServerStatus(sections, LatencyRows());
+    }
+
+    /// <summary>Takes what the client said about itself, keeping whatever it did not mention.</summary>
+    /// <remarks>
+    /// Merged under a lock because the two callers no longer share a thread: <c>initialize</c> runs on
+    /// the reading worker and the status request is answered concurrently, so an unguarded
+    /// read-modify-write here could drop the editor's name on the floor the first time a client asked
+    /// for a report while still initializing -- which is the case this whole feature is for.
+    /// </remarks>
+    public void Told(Func<ClientReport, ClientReport> update)
+    {
+        ArgumentNullException.ThrowIfNull(update);
+
+        lock (_clientGate)
+        {
+            Client = update(Client);
+        }
     }
 
     // ------------------------------------------------------- sections
@@ -169,17 +220,17 @@ public sealed class StatusReporter
     /// directories were discovered beside the executable, and their absence is a confusing enough
     /// failure that #58 asks for them by name.
     /// </remarks>
-    private StatusSection Protoc(DocumentUri? document)
+    private StatusSection Protoc(DocumentConfiguration? resolved)
     {
-        var stated = document is null ? null : Resolve(document)?.ProtocPath;
+        var stated = resolved?.ProtocPath;
 
-        if (!Loaders.TryGet(stated, out var loader, out var failure) || loader is null)
+        if (!TryGetLoader(stated, out var loader, out var why) || loader is null)
         {
             return new StatusSection(
                 "protoc",
                 [new StatusFact("path", stated ?? "(none found)", stated is null ? "nothing named one" : "named by a setting")],
                 "**No protoc could be used, so nothing in this workspace compiles.** "
-                    + (failure?.Message ?? "The reason was not recorded."));
+                    + (why ?? "The reason was not recorded."));
         }
 
         List<StatusFact> facts =
@@ -198,7 +249,7 @@ public sealed class StatusReporter
     }
 
     /// <summary>Every resolved value for one document, each saying which layer produced it.</summary>
-    private StatusSection ConfigurationFor(DocumentUri? document)
+    private StatusSection ConfigurationFor(DocumentUri? document, DocumentConfiguration? resolved)
     {
         if (document is null)
         {
@@ -209,7 +260,7 @@ public sealed class StatusReporter
                     + "with a `.protolang` file open to see the include paths and policy it compiles under.");
         }
 
-        if (Resolve(document) is not { } resolved)
+        if (resolved is null)
         {
             return new StatusSection(
                 "Configuration",
@@ -303,6 +354,35 @@ public sealed class StatusReporter
     /// must not be what stops the report existing. Caught here rather than around the whole report so
     /// that one unreadable document does not empty the sections about the server itself.
     /// </remarks>
+    /// <summary>The loader for a protoc, or the reason there is not one, never raising either.</summary>
+    /// <remarks>
+    /// <see cref="LoaderPool.TryGet"/> already turns the expected failure into a message. What it
+    /// does not cover is building a loader over a path the file system will not answer questions
+    /// about -- it stats the directories beside the executable looking for the well-known schemas,
+    /// and a path that existed when the setting was resolved may not by the time this runs. The
+    /// section this feeds is the one a user opens when protoc is what they suspect, so it has to
+    /// survive that rather than be the thing that fails.
+    /// </remarks>
+    private bool TryGetLoader(string? protocPath, out DescriptorLoader? loader, out string? why)
+    {
+        try
+        {
+            var got = Loaders.TryGet(protocPath, out loader, out var failure);
+
+            why = failure?.Message;
+            return got;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException
+            or ArgumentException or NotSupportedException)
+        {
+            Log.Error($"Could not build a loader for '{protocPath}' while building a status report.", ex);
+
+            loader = null;
+            why = ex.Message;
+            return false;
+        }
+    }
+
     private DocumentConfiguration? Resolve(DocumentUri document)
     {
         try

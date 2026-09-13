@@ -1,5 +1,6 @@
 using System.Text.Json;
 using ProtoLang.Binding;
+using ProtoLang.Tests.Harness;
 using ProtoLang.LanguageServer.Hosting;
 using ProtoLang.LanguageServer.Protocol;
 using ProtoLang.LanguageServer.Protocol.Lsp;
@@ -565,6 +566,62 @@ public class ServerStatusTests
 
         Assert.Equal(ServerState.NotInitialized.ToString(), Fact(status, "state"));
         Assert.Contains("ProtoLang language server status", status.Markdown, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A status request does not stop the server reading its messages while it is being answered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This handler leaves the process three times -- it settles a configuration off disk, stats the
+    /// directories beside protoc, and starts that protoc to ask its version -- so answered in order it
+    /// would hold the connection's one reading worker for as long as all of that took. A protoc that
+    /// hangs would then stop <c>didChange</c>, <c>didClose</c> and the <c>$/cancelRequest</c> that
+    /// would have shortened it: a diagnostic command that freezes the editor it is diagnosing.
+    /// </para>
+    /// <para>
+    /// Driven with a protoc that sleeps, because a real one answers in milliseconds and a test built
+    /// on it would pass whether the handler were concurrent or not. The second request is sent after
+    /// the status request and asserted to be answered <em>first</em>, which is a claim about ordering
+    /// rather than about elapsed time -- so nothing here is a deadline that a slow machine can fail.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AStatusRequestDoesNotHoldUpTheMessagesBehindIt()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        var uri = new Uri(Path.Combine(directory, "source.protolang")).AbsoluteUri;
+        var sleeping = StandInProtoc.Sleeping();
+
+        await using var client = await LanguageServerClient.StartAsync(
+            folders: [directory],
+            settings: parameters => parameters.Items
+                .Select(_ => new Dictionary<string, object?> { ["protocPath"] = sleeping })
+                .ToList());
+
+        // Sent without waiting, so that it is outstanding while the next message is handled. It names
+        // the document, because only a document's resolved configuration carries the setting naming
+        // the protoc that will be asked -- a report about no document in particular asks whichever
+        // protoc the locator finds, and that one answers immediately.
+        var status = client.Ask(Methods.Status, new StatusParams(new TextDocumentIdentifier { Uri = uri }));
+        var shutdown = client.Ask(Methods.Shutdown, null);
+
+        // Which answer comes back first, and nothing about how long either took. The connection reads
+        // in order, so the status request is always dequeued first: if it is answered in order it
+        // holds the worker until its protoc gives up, and its own answer is therefore the one that
+        // arrives first. Answered concurrently, shutdown overtakes it. A wall-clock assertion would
+        // say the same thing and flake on a loaded machine, which is why this counts messages.
+        var first = await client.WaitForAsync(
+            message => message.IsResponse && message.Id?.Number is { } id && (id == status || id == shutdown),
+            "an answer to either the status request or the shutdown behind it");
+
+        Assert.Equal(shutdown, first.Id?.Number);
+
+        // And the report still arrives, carrying the reason rather than an exception.
+        var answered = (await client.AnswerToAsync(status)).Result.Deserialize<StatusResult>(LspJson.Options)!;
+
+        Assert.Equal(sleeping, Fact(answered, "path"));
+        Assert.Contains("did not answer", Fact(answered, "version"), StringComparison.Ordinal);
     }
 
     /// <summary>The status request is answered after shutdown, too.</summary>

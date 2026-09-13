@@ -177,6 +177,9 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | What a descriptor load produced | `DescriptorBundle`, `SchemaFile` | [Binding/DescriptorBundle.cs](src/ProtoLang.Core/Binding/DescriptorBundle.cs) |
 | What decides a load, and keys it | `DescriptorRequest` | [Binding/DescriptorRequest.cs](src/ProtoLang.Core/Binding/DescriptorRequest.cs) |
 | Whether a load can be reused | `DescriptorCache`, `SchemaClosure` | [Binding/DescriptorCache.cs](src/ProtoLang.Core/Binding/DescriptorCache.cs) |
+| Which `protoc` runs, why that one, and what it is | `ProtocSelection`, `ProtocSource`, `ProtocVersion` | [Binding/ProtocSelection.cs](src/ProtoLang.Core/Binding/ProtocSelection.cs) |
+| What the server says about itself when asked | `StatusReporter`, `ServerStatus`, `StatusFact` | [Hosting/StatusReporter.cs](src/ProtoLang.LanguageServer/Hosting/StatusReporter.cs), [Hosting/ServerStatus.cs](src/ProtoLang.LanguageServer/Hosting/ServerStatus.cs) |
+| How long an answer may take, and how long they have been taking | `PerformanceBudgets`, `RequestTimings`, `LatencySample` | [Hosting/PerformanceBudgets.cs](src/ProtoLang.LanguageServer/Hosting/PerformanceBudgets.cs), [Hosting/RequestTimings.cs](src/ProtoLang.LanguageServer/Hosting/RequestTimings.cs) |
 | Which way a load failed | `DescriptorLoadFailureKind`, `SchemaLoadFailure` | [Binding/DescriptorLoadFailureKind.cs](src/ProtoLang.Core/Binding/DescriptorLoadFailureKind.cs) |
 | When a document is compiled, and whether the answer still counts | `CompileScheduler` | [Hosting/CompileScheduler.cs](src/ProtoLang.LanguageServer/Hosting/CompileScheduler.cs) |
 | What `protoc` said, and about where | `ProtocDiagnostic`, `SchemaLoadFailure` | [Binding/ProtocDiagnostic.cs](src/ProtoLang.Core/Binding/ProtocDiagnostic.cs), [SchemaLoadFailure.cs](src/ProtoLang.Core/SchemaLoadFailure.cs) |
@@ -272,10 +275,17 @@ return is four things, all of them easy to get wrong:
   request: it sits inside the same cleanup as the walk, so a request that ends while waiting is still
   retired, and gives back only a slot it actually took.
 
-Every request an editor sends arrives on the same terms and splits two ways. The outline lexes and
+**`concurrent: true` is necessary and is not sufficient.** The dispatcher hands such a handler's task
+to `Detach` instead of awaiting it — but it has to *call* the handler to get that task, so a handler
+with no `await` in it runs to completion first and the flag changes nothing at all. Whatever blocks
+has to be on the far side of a yield. Every provider gets this for free by awaiting the answer gate;
+the status report is the one handler that had to be given a yield deliberately, and says so.
+
+Every request an editor sends arrives on the same terms and splits three ways. The outline lexes and
 parses and stops, so it alone still answers on the ordered worker, never waits on protoc, and
 survives a file that does not parse — which is the point of it, since an outline that vanishes while
-you type is worse than a stale one. Everything else can only be answered by the binder, so each
+you type is worse than a stale one. The status report is about the server rather than about a buffer,
+and is described below. Everything else can only be answered by the binder, so each
 compiles through `DocumentSemantics` and each is concurrent, and everything the architecture above
 demands of a concurrent handler is stated once in
 [`DeferredAnswers`](src/ProtoLang.LanguageServer/Hosting/DeferredAnswers.cs) rather than once per
@@ -339,6 +349,34 @@ interval and the concurrency limit were #57's to pin and both stand: a whole-buf
 at p95, so the quarter-second debounce is almost all of the delay a reader feels, and four concurrent
 cold loads cost roughly two pool threads each — measured on sixteen processors, which is the best
 case rather than the typical one.
+
+`protolang/status` is the server answering for itself, and is this server's own method rather than
+one of LSP's. [`StatusReporter`](src/ProtoLang.LanguageServer/Hosting/StatusReporter.cs) assembles
+which `protoc` was chosen **and by which probe**, what it says its version is, every setting resolved
+for the active document **with the layer that supplied it**, what the descriptor cache has done and
+how many bytes it is holding, the last error with a timestamp, and what recent requests have cost
+against the #57 budgets. The report is data first and one Markdown rendering second, so a client may
+draw a panel instead, and the note about file paths is inside the report rather than in a client's
+chrome — a warning only one of the two editors remembered to draw is a warning half the users never
+see.
+
+Three things about it are deliberate. It is **answered in every lifecycle state**, including before
+`initialize` and after `shutdown`, where every other request is refused: a server that never finished
+starting is exactly the one somebody runs this against, and a diagnostic that requires a healthy
+system diagnoses nothing. It **never throws and never compiles** — a missing executable, a refused
+policy file and a document that will not compile each have to produce a report *about* that rather
+than an empty one. And it is **concurrent with a real yield**, because it settles a configuration off
+disk, stats the directories beside `protoc`, and starts `protoc` to ask its version; answered in
+order, a wedged executable would freeze the editor the command exists to diagnose.
+
+The latency budgets live here rather than beside the benchmark that first wrote them, in
+[`PerformanceBudgets`](src/ProtoLang.LanguageServer/Hosting/PerformanceBudgets.cs), with the
+nearest-rank percentile beside them in `RequestTimings`. Two readers want both now — the benchmark,
+and this report — and a status figure whose p95 meant something subtly different from the documented
+one would be a number somebody compares and is misled by. Timings are always on: one stopwatch and
+one array write per answer, in a fifty-deep ring, and **only answers are recorded**, since a request
+refused for staleness produced no answer and folding those in would make a server look faster the
+more work it was abandoning.
 
 Diagnostics are published *per file* and produced *per compilation*, and the two stop lining up as
 soon as a `.proto` can be blamed, so
@@ -465,5 +503,11 @@ reached Core once, additively: the reference index already held every name a fil
 and had no way to hand over the whole sequence at once. #51 answered the other direction — who uses
 this, what else is this name, what does this call expect next — and reached Core only for renderings
 and lookups over what was already there: the method behind an identity, and where each parameter sits
-inside the signature line a hover already shows. Everything from here should be additive: new
-types, new projects. Rewriting the binder is the signal to stop and re-scope.
+inside the signature line a hover already shows. #57 gave interactive latency written budgets and
+measured them, finding one to two orders of magnitude of headroom on four of the five, and reached
+Core only through remarks. #58 made the server able to answer for itself, and reached Core three
+times, each additively and each because a fact the server knew could not be asked for: the locator
+walks its probes and now says which one answered, a loader can report what its `protoc` says it is,
+and the descriptor cache states the bytes it holds and the last entry to go stale. Everything from
+here should be additive: new types, new projects. Rewriting the binder is the signal to stop and
+re-scope.

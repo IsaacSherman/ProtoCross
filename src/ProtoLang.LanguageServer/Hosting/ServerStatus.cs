@@ -66,11 +66,14 @@ public sealed record ServerStatus(IReadOnlyList<StatusSection> Sections, IReadOn
         + "names. Nothing here is sent anywhere: it is text for you to paste where you choose. "
         + "Read it before you paste it somewhere public.";
 
-    /// <summary>The value of one labelled fact, or null when the report has no such line.</summary>
+    /// <summary>The first fact with that label, or null when the report has none.</summary>
     /// <remarks>
     /// For a test, and for a client that wants one value rather than the document -- a status bar
-    /// showing which protoc is in effect, say. Searched across sections rather than within one,
-    /// because a label is unique in a report a person is expected to read.
+    /// showing which protoc is in effect, say. <b>The first, not the only one:</b> a label that
+    /// names a list repeats deliberately, since a report with three include paths has three lines
+    /// saying "include path" and each carries its own origin. Use it for the labels that are
+    /// singular -- <c>path</c>, <c>version</c>, <c>state</c> -- and walk
+    /// <see cref="StatusSection.Facts"/> for the ones that are not.
     /// </remarks>
     public StatusFact? Fact(string label)
         => Sections.SelectMany(section => section.Facts)

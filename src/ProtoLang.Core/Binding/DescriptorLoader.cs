@@ -80,6 +80,10 @@ public sealed class DescriptorLoader
     /// <inheritdoc cref="Version"/>
     private readonly Lazy<ProtocVersion> _version;
 
+    /// <summary>How long protoc gets to say what it is.</summary>
+    /// <inheritdoc cref="AskVersion" path="/remarks/para[3]"/>
+    private static TimeSpan VersionBudget => TimeSpan.FromSeconds(5);
+
     public DescriptorLoader(string protocPath)
         : this(protocPath, new DescriptorLoaderOptions())
     {
@@ -584,10 +588,13 @@ public sealed class DescriptorLoader
     /// change the answer to a question about caching.
     /// </para>
     /// <para>
-    /// Supervised with <see cref="DescriptorLoaderOptions.Timeout"/>, the same budget a real load
-    /// gets. A second number would be a second thing to tune, and the budget is a backstop against a
-    /// wedged executable either way -- a protoc that answers <c>--version</c> at all answers it in
-    /// milliseconds.
+    /// <b>Given far less time than a load, which is the one place a second number is warranted.</b>
+    /// <see cref="DescriptorLoaderOptions.Timeout"/> is thirty seconds because a real compilation of
+    /// a large schema tree may legitimately take that long; a protoc that answers <c>--version</c> at
+    /// all answers it in milliseconds, and the only caller here is a person waiting on a status
+    /// command. Waiting thirty seconds to print "protoc did not answer" would make the report slower
+    /// than the problem it is reporting. It is still clamped to the loader's own budget, so a caller
+    /// who set a shorter one gets it.
     /// </para>
     /// </remarks>
     private ProtocVersion AskVersion()
@@ -623,7 +630,7 @@ public sealed class DescriptorLoader
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
 
-        using var expiry = Expiry();
+        using var expiry = Expiry(VersionBudget);
 
         try
         {
@@ -635,9 +642,11 @@ public sealed class DescriptorLoader
             Drain(stdoutTask);
             Drain(stderrTask);
 
+            var allowed = VersionBudget < Options.Timeout ? VersionBudget : Options.Timeout;
+
             return new ProtocVersion(
                 null,
-                $"protoc did not answer within {Options.Timeout.TotalSeconds:0.###} seconds");
+                $"protoc did not answer within {allowed.TotalSeconds:0.###} seconds");
         }
 
         var reported = stdoutTask.GetAwaiter().GetResult().Trim();
@@ -666,17 +675,25 @@ public sealed class DescriptorLoader
     /// less than none. Zero is cancelled outright rather than scheduled for zero milliseconds, so
     /// that "do not wait" is an answer rather than a race between a timer and a quick protoc.
     /// </remarks>
-    private CancellationTokenSource Expiry()
+    private CancellationTokenSource Expiry() => Expiry(Options.Timeout);
+
+    /// <param name="budget">
+    /// How long to allow. Never more than <see cref="DescriptorLoaderOptions.Timeout"/>: a caller who
+    /// deliberately set a short budget, or none at all, meant it for everything this loader starts.
+    /// </param>
+    /// <inheritdoc cref="Expiry()"/>
+    private CancellationTokenSource Expiry(TimeSpan budget)
     {
         var expiry = new CancellationTokenSource();
+        var allowed = budget < Options.Timeout ? budget : Options.Timeout;
 
-        if (Options.Timeout <= TimeSpan.Zero)
+        if (allowed <= TimeSpan.Zero)
         {
             expiry.Cancel();
         }
         else
         {
-            expiry.CancelAfter((int)Math.Min(Options.Timeout.TotalMilliseconds, int.MaxValue));
+            expiry.CancelAfter((int)Math.Min(allowed.TotalMilliseconds, int.MaxValue));
         }
 
         return expiry;

@@ -240,7 +240,7 @@ public sealed class LanguageServerHost : IDisposable
     {
         _connection.OnRequest(Methods.Initialize, (parameters, _) => Initialize(parameters));
         _connection.OnRequest(Methods.Shutdown, (_, _) => Shutdown());
-        _connection.OnRequest(Methods.Status, (parameters, _) => Status(parameters));
+        _connection.OnRequest(Methods.Status, (parameters, _) => Status(parameters), concurrent: true);
         _connection.OnRequest(
             Methods.SemanticTokensFull,
             (parameters, token) => Timed(SemanticTokens, () => Classify(parameters, token)),
@@ -316,13 +316,32 @@ public sealed class LanguageServerHost : IDisposable
     /// a health requirement.
     /// </para>
     /// <para>
-    /// It runs on the reading worker rather than concurrently. Assembling the report reads counters
-    /// and resolves one document's settings; it starts no process and waits on nothing, so the queue
-    /// is held for about as long as a hover -- and running it in order means the report describes a
-    /// server that is not moving underneath it.
+    /// <b>Concurrent, because this handler leaves the process three times.</b> It settles one
+    /// document's configuration, which reads a <c>protolang.config.xml</c>; it builds a loader, which
+    /// stats the directories beside protoc; and it asks that protoc its version, which starts it.
+    /// Answered in order, all of that would be paid while holding the reading worker -- so a wedged
+    /// protoc would stop <c>didChange</c>, <c>didClose</c> and the <c>$/cancelRequest</c> that would
+    /// have shortened it, for as long as the version probe's budget. That is the exact failure
+    /// <see cref="JsonRpcConnection.OnRequest"/> warns about, and a diagnostic command that freezes
+    /// the editor it is diagnosing would be an unusually bad one.
+    /// </para>
+    /// <para>
+    /// <b>Registering it as concurrent is necessary and was not sufficient.</b> The dispatcher hands a
+    /// concurrent handler's task to <c>Detach</c> rather than awaiting it -- but it calls the handler
+    /// to get that task, and a handler with no <c>await</c> in it runs to completion before it returns
+    /// one. This method assembled the whole report synchronously at first, so the flag changed nothing
+    /// at all and the worker was held exactly as long as before. The report is built on the pool for
+    /// that reason: the yield is what the flag is describing, and without it the annotation is a
+    /// comment. Everything before the yield is arithmetic on the request itself and stays in order.
+    /// </para>
+    /// <para>
+    /// What a concurrent handler ordinarily owes is the staleness rule (spec 26.1), and this one owes
+    /// nothing under it: a report is a statement about the server at the moment it was taken rather
+    /// than an answer about a buffer at a version, so a server that moves on afterwards has not made
+    /// the report wrong.
     /// </para>
     /// </remarks>
-    private Task<object?> Status(JsonElement? parameters)
+    private async Task<object?> Status(JsonElement? parameters)
     {
         // A status request with no parameters at all is legitimate: a client asking the simplest
         // possible question of a server it suspects is not answering. Read leniently for the same
@@ -331,21 +350,23 @@ public sealed class LanguageServerHost : IDisposable
 
         if (message?.Client is { } client)
         {
-            _status.Client = _status.Client with
+            _status.Told(known => known with
             {
-                ExtensionName = client.ExtensionName ?? _status.Client.ExtensionName,
-                ExtensionVersion = client.ExtensionVersion ?? _status.Client.ExtensionVersion,
-                Restarts = client.Restarts ?? _status.Client.Restarts,
-            };
+                ExtensionName = client.ExtensionName ?? known.ExtensionName,
+                ExtensionVersion = client.ExtensionVersion ?? known.ExtensionVersion,
+                Restarts = client.Restarts ?? known.Restarts,
+            });
         }
 
         var document = message?.TextDocument?.Uri is { } uri && DocumentUri.TryParse(uri, out var parsed)
             ? parsed
             : null;
 
-        var status = _status.Report(document);
+        // The yield. Settling a configuration, stating a directory and starting protoc all block, and
+        // all of them would block the dispatcher if they ran before this method returned its task.
+        var status = await Task.Run(() => _status.Report(document)).ConfigureAwait(false);
 
-        return Task.FromResult<object?>(new StatusResult(
+        return new StatusResult(
             status.Render(),
             ServerStatus.PrivacyNote,
             [.. status.Sections.Select(section => new StatusSectionResult(
@@ -359,7 +380,7 @@ public sealed class LanguageServerHost : IDisposable
                 Reportable(row.Samples.P95),
                 Reportable(row.Samples.Max),
                 row.Budget?.Milliseconds,
-                row.IsOverBudget))]));
+                row.IsOverBudget))]);
     }
 
     /// <summary>A measurement as JSON, where "there was none" is null rather than NaN.</summary>
@@ -509,11 +530,11 @@ public sealed class LanguageServerHost : IDisposable
         // behave differently because of which editor is driving it -- that is what "one server, two
         // editors" means -- but a defect report that does not say which editor it came from is one
         // that starts with a question.
-        _status.Client = _status.Client with
+        _status.Told(known => known with
         {
             Name = message.ClientInfo?.Name,
             Version = message.ClientInfo?.Version,
-        };
+        });
 
         ReadExtensionInfo(message.InitializationOptions);
 
@@ -917,11 +938,11 @@ public sealed class LanguageServerHost : IDisposable
 
         try
         {
-            _status.Client = _status.Client with
+            _status.Told(known => known with
             {
-                ExtensionName = Text(element, "extensionName"),
-                ExtensionVersion = Text(element, "extensionVersion"),
-            };
+                ExtensionName = Text(element, "extensionName") ?? known.ExtensionName,
+                ExtensionVersion = Text(element, "extensionVersion") ?? known.ExtensionVersion,
+            });
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
