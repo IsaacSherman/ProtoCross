@@ -13,6 +13,31 @@ namespace ProtoLang.Binding;
 /// <param name="Evictions">Entries dropped to stay within capacity.</param>
 public readonly record struct DescriptorCacheStatistics(int Hits, int Misses, int Invalidations, int Evictions);
 
+/// <summary>The last time an entry was dropped because the schemas behind it had changed.</summary>
+/// <param name="When">When it was noticed, which is the next compile after the edit rather than the edit.</param>
+/// <param name="ProtoFiles">The files that entry had been loaded for.</param>
+/// <remarks>
+/// <para>
+/// <b>Which entry rather than why.</b> This cache invalidates for exactly one reason -- a closure
+/// that no longer matches what is on disk -- so a reason field would carry a constant. What varies,
+/// and what a reader needs, is which schemas keep going stale: an entry invalidating on every
+/// keystroke means a generated <c>.proto</c> is being rewritten by something else on the machine,
+/// and that is invisible from inside the editor.
+/// </para>
+/// <para>
+/// The last one, not a history. A report is read after the fact and the useful question is "is this
+/// still happening, and to what"; keeping a log would make the cache own a growing list to answer a
+/// question its counters already answer in aggregate.
+/// </para>
+/// </remarks>
+public sealed record DescriptorCacheInvalidation(DateTimeOffset When, IReadOnlyList<string> ProtoFiles)
+{
+    /// <summary>Which schemas went stale, as one line for a report.</summary>
+    public string Describe() => ProtoFiles.Count == 0
+        ? "a load that named no schemas"
+        : string.Join(", ", ProtoFiles);
+}
+
 /// <summary>
 /// Keeps descriptor loads, so that a second compilation over unchanged schemas does not shell out to
 /// protoc again.
@@ -102,6 +127,9 @@ public sealed class DescriptorCache
     private int _invalidations;
     private int _evictions;
 
+    /// <inheritdoc cref="LastInvalidation"/>
+    private DescriptorCacheInvalidation? _lastInvalidation;
+
     public DescriptorCache(int capacity = DefaultCapacity)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 1);
@@ -130,6 +158,44 @@ public sealed class DescriptorCache
         Volatile.Read(ref _misses),
         Volatile.Read(ref _invalidations),
         Volatile.Read(ref _evictions));
+
+    /// <inheritdoc cref="DescriptorCacheInvalidation"/>
+    public DescriptorCacheInvalidation? LastInvalidation => Volatile.Read(ref _lastInvalidation);
+
+    /// <summary>
+    /// How many bytes of descriptors the entries this cache holds were built from, skipping any load
+    /// still in flight.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not this cache's memory footprint.</b> It sums <see cref="DescriptorBundle.DescriptorBytes"/>,
+    /// which is a wire size rather than a managed one, and that property says why at length. It is
+    /// published because a bound nobody can observe is a bound nobody can check, and "sixteen entries"
+    /// tells a user reporting memory pressure nothing about whether those sixteen are two messages or
+    /// a schema tree with a thousand files in it.
+    /// </para>
+    /// <para>
+    /// Loads still running are skipped rather than waited for. A status report must not block on
+    /// protoc -- it is read while protoc is the thing suspected -- and an in-flight load has no
+    /// bundle to measure yet in any case.
+    /// </para>
+    /// </remarks>
+    public long DescriptorBytes
+    {
+        get
+        {
+            Entry[] entries;
+
+            lock (_gate)
+            {
+                entries = [.. _order];
+            }
+
+            return entries
+                .Where(entry => entry.Bundle is { IsCompletedSuccessfully: true })
+                .Sum(entry => (long)entry.Bundle.Result.DescriptorBytes);
+        }
+    }
 
     /// <summary>
     /// The bundle for <paramref name="request"/>, from the cache when one is there and still valid, and
@@ -199,6 +265,12 @@ public sealed class DescriptorCache
             }
 
             Interlocked.Increment(ref _invalidations);
+
+            // Beside the counter rather than inside Drop: Drop also clears failed and superseded
+            // entries, and neither of those is a schema that changed on disk. Recording there would
+            // make the report name whichever entry was tidied up last.
+            Volatile.Write(ref _lastInvalidation, new DescriptorCacheInvalidation(DateTimeOffset.Now, request.ProtoFiles));
+
             Drop(node);
         }
 

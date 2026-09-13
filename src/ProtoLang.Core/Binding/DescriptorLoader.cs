@@ -77,21 +77,39 @@ public sealed class DescriptorLoader
 
     private int _protocInvocations;
 
+    /// <inheritdoc cref="Version"/>
+    private readonly Lazy<ProtocVersion> _version;
+
     public DescriptorLoader(string protocPath)
         : this(protocPath, new DescriptorLoaderOptions())
     {
     }
 
     public DescriptorLoader(string protocPath, DescriptorLoaderOptions options)
+        : this(ProtocLocator.Select(protocPath), options)
+    {
+    }
+
+    /// <param name="selection">
+    /// The executable and what chose it. Its path must not be null: a loader with no protoc cannot
+    /// load anything, and <see cref="CreateDefault(DescriptorLoaderOptions)"/> is where that case is
+    /// turned into the message naming everywhere it looked.
+    /// </param>
+    /// <inheritdoc cref="DescriptorLoader(string, DescriptorLoaderOptions)"/>
+    private DescriptorLoader(ProtocSelection selection, DescriptorLoaderOptions options)
     {
         ArgumentNullException.ThrowIfNull(options);
 
         // Resolved once, so that the executable this loader reports, measures, looks for bundled
         // schemas beside, and finally runs are all the same file. A caller naming a bare 'protoc'
         // otherwise leaves each of those asking a different question of a different thing.
-        _protocPath = ProtocLocator.Resolve(protocPath);
+        _protocPath = selection.Path
+            ?? throw new ArgumentException("A loader needs a protoc to run.", nameof(selection));
+
+        Selection = selection;
         Options = options;
         ImplicitIncludePaths = ProtocLocator.FindWellKnownTypeIncludePaths(_protocPath);
+        _version = new Lazy<ProtocVersion>(AskVersion, LazyThreadSafetyMode.ExecutionAndPublication);
     }
 
     /// <summary>The protoc this loader runs.</summary>
@@ -101,6 +119,20 @@ public sealed class DescriptorLoader
     /// the protoc it thinks would be located rather than on the one that ran.
     /// </remarks>
     public string ProtocPath => _protocPath;
+
+    /// <summary>That protoc, and what made it the one.</summary>
+    /// <remarks>
+    /// The other half of the same question, and the half a user cannot work out for themselves. "It
+    /// is running <c>C:\tools\protoc.exe</c>" leaves them to guess whether that came from their
+    /// setting, from their <c>PATH</c>, or from a package cache they did not know existed -- and the
+    /// guess is wrong precisely when something is misconfigured, which is the only time anybody
+    /// looks.
+    /// </remarks>
+    public ProtocSelection Selection { get; }
+
+    /// <summary>What that protoc says it is, asked the first time somebody wants to know.</summary>
+    /// <inheritdoc cref="ProtocVersion" path="/remarks"/>
+    public ProtocVersion Version => _version.Value;
 
     /// <inheritdoc cref="DescriptorLoaderOptions"/>
     public DescriptorLoaderOptions Options { get; }
@@ -115,6 +147,8 @@ public sealed class DescriptorLoader
     /// would produce identical descriptors and pass every other assertion that could be written about
     /// it. Counted at the point the process is started, so a protoc that fails to start still counts
     /// -- the question is whether this loader reached for the executable, not whether it succeeded.
+    /// <see cref="AskVersion"/> is the one protoc this loader starts that is deliberately not counted,
+    /// and says why.
     /// </remarks>
     public int ProtocInvocations => Volatile.Read(ref _protocInvocations);
 
@@ -139,9 +173,12 @@ public sealed class DescriptorLoader
     /// <inheritdoc cref="CreateDefault()"/>
     public static DescriptorLoader CreateDefault(DescriptorLoaderOptions options)
     {
-        var protoc = ProtocLocator.Locate();
+        // The selection rather than the path, so that a loader built by probing reports the probe
+        // that answered. Building it from the path alone would say a setting named it, which is the
+        // one thing nobody stated.
+        var selection = ProtocLocator.Select();
 
-        if (protoc is null)
+        if (!selection.IsFound)
         {
             var searched = string.Join(", ", ProtocLocator.GetNuGetPackageRoots());
             throw new DescriptorLoadException(
@@ -151,7 +188,7 @@ public sealed class DescriptorLoader
                 + $"Searched PATH and these package roots: {searched}");
         }
 
-        return new DescriptorLoader(protoc, options);
+        return new DescriptorLoader(selection, options);
     }
 
     /// <summary>
@@ -530,6 +567,93 @@ public sealed class DescriptorLoader
                 ProtocDiagnostic.Parse(stderr),
                 stderr);
         }
+    }
+
+    /// <summary>Asks protoc what it is, and reports the failure rather than raising it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Nothing here throws, and that is the requirement rather than caution.</b> The only caller
+    /// is a status report, which is read precisely when something is wrong -- so a protoc that will
+    /// not start must produce a line saying so beside the path that would not start, not an exception
+    /// that empties the report of the very section a user opened it for.
+    /// </para>
+    /// <para>
+    /// It does not count towards <see cref="ProtocInvocations"/>. That counter answers "did this
+    /// compilation shell out to protoc", which is what every cache assertion in the suite is written
+    /// against; a version probe is not a compilation, and counting it would make a status request
+    /// change the answer to a question about caching.
+    /// </para>
+    /// <para>
+    /// Supervised with <see cref="DescriptorLoaderOptions.Timeout"/>, the same budget a real load
+    /// gets. A second number would be a second thing to tune, and the budget is a backstop against a
+    /// wedged executable either way -- a protoc that answers <c>--version</c> at all answers it in
+    /// milliseconds.
+    /// </para>
+    /// </remarks>
+    private ProtocVersion AskVersion()
+    {
+        var startInfo = new ProcessStartInfo(_protocPath)
+        {
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false,
+        };
+
+        startInfo.ArgumentList.Add("--version");
+
+        Process? started;
+        try
+        {
+            started = Process.Start(startInfo);
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            return new ProtocVersion(null, $"'{_protocPath}' would not start: {ex.Message}");
+        }
+
+        if (started is null)
+        {
+            return new ProtocVersion(null, $"'{_protocPath}' would not start");
+        }
+
+        using var process = started;
+
+        // Drained before the wait, for the reason RunProtoc gives at length: a child that fills a
+        // pipe nobody is reading never exits, so a budget on the exit would never be reached.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        using var expiry = Expiry();
+
+        try
+        {
+            process.WaitForExitAsync(expiry.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            Terminate(process);
+            Drain(stdoutTask);
+            Drain(stderrTask);
+
+            return new ProtocVersion(
+                null,
+                $"protoc did not answer within {Options.Timeout.TotalSeconds:0.###} seconds");
+        }
+
+        var reported = stdoutTask.GetAwaiter().GetResult().Trim();
+        var complained = stderrTask.GetAwaiter().GetResult().Trim();
+
+        if (process.ExitCode != 0)
+        {
+            var detail = complained.Length == 0 ? string.Empty : $": {complained}";
+            return new ProtocVersion(null, $"protoc --version exited with code {process.ExitCode}{detail}");
+        }
+
+        // An exit code of zero and nothing on stdout is not a version. Reporting the empty string
+        // would render as a blank cell, which reads as a report that forgot to ask.
+        return reported.Length == 0
+            ? new ProtocVersion(null, "protoc --version printed nothing")
+            : new ProtocVersion(reported, null);
     }
 
     /// <summary>A source that fires when protoc has had all the time it is going to get.</summary>

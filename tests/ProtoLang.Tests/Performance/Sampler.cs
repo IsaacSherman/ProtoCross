@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Globalization;
 using System.Text;
+using ProtoLang.LanguageServer.Hosting;
 
 namespace ProtoLang.Tests.Performance;
 
@@ -9,33 +10,24 @@ namespace ProtoLang.Tests.Performance;
 /// <param name="Milliseconds">Every sample, in the order taken.</param>
 internal sealed record Sample(string Operation, string Corpus, string Warmth, IReadOnlyList<double> Milliseconds)
 {
-    public double Median => Percentile(50);
-
-    public double P95 => Percentile(95);
-
-    public double Min => Milliseconds.Count == 0 ? double.NaN : Milliseconds.Min();
-
-    public double Max => Milliseconds.Count == 0 ? double.NaN : Milliseconds.Max();
-
+    /// <summary>The statistics, computed the one way this repository computes them.</summary>
     /// <remarks>
-    /// Nearest-rank on the sorted samples: no interpolation, so every figure reported is a run that
-    /// actually happened rather than an average of two that did. With twenty samples the 95th is the
-    /// second slowest, which is the intent -- one outlier does not set the number, and two do.
+    /// The arithmetic used to live here and now lives in <see cref="LatencySample"/>, because the
+    /// running server reports its own p95 in the status command and two nearest-rank implementations
+    /// would eventually stop agreeing -- leaving a user comparing a status report against the
+    /// measured results in <c>docs/performance.md</c> with two numbers that do not mean the same
+    /// thing. What stays here is what the benchmark adds: which operation, which corpus, and whether
+    /// it was warm.
     /// </remarks>
-    private double Percentile(int percentile)
-    {
-        // A sample with no runs in it is a measurement that did not happen, and reporting 0.00 ms for
-        // it would read as the fastest row in the table.
-        if (Milliseconds.Count == 0)
-        {
-            return double.NaN;
-        }
+    private LatencySample Latencies => new(Milliseconds);
 
-        var sorted = Milliseconds.Order().ToArray();
-        var rank = (int)Math.Ceiling(percentile / 100.0 * sorted.Length) - 1;
+    public double Median => Latencies.Median;
 
-        return sorted[Math.Clamp(rank, 0, sorted.Length - 1)];
-    }
+    public double P95 => Latencies.P95;
+
+    public double Min => Latencies.Min;
+
+    public double Max => Latencies.Max;
 }
 
 /// <summary>
@@ -203,7 +195,7 @@ internal sealed class PerformanceReport
 
         foreach (var sample in _samples)
         {
-            var budget = PerformanceBudgets.All.SingleOrDefault(entry => entry.Operation == sample.Operation);
+            var budget = PerformanceBudgets.Find(sample.Operation);
             var ceiling = budget is null ? "-" : Milliseconds(budget.Milliseconds);
             var verdict = budget is null
                 ? "measured"
