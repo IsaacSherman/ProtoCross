@@ -131,6 +131,11 @@ p95 moved by 5 ms between runs that changed nothing. The figures are good enough
 question this issue asks — is anything near its budget — and they are **not** good enough to detect a
 20% regression, which is one reason regressions are caught as counted work instead.
 
+[#97](https://github.com/IsaacSherman/ProtoLang/issues/97) is where that would be improved, by
+handing these five rows to BenchmarkDotNet for its statistics and its allocation counts. It is low
+priority and blocks nothing. If it is closed without being done, this paragraph is the part that has
+to survive: the limitation is real whether or not anybody is planning to fix it.
+
 **Four of the five have one to two orders of magnitude of headroom, and that is the finding.** #57
 exists partly to inform design — whether scope data is cached, whether occurrence highlighting can
 consult the reference index directly, whether completion can resolve documentation eagerly. The
