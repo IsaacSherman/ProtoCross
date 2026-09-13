@@ -93,17 +93,65 @@ internal sealed class PerformanceWorkspace
     public int After(string marker) => EditorFixture.After(Text, marker);
 
     /// <summary>
-    /// Compiles once so that every later question is answered from a held compilation.
+    /// Compiles once so that every later question is answered from a held compilation, and refuses
+    /// to call a workspace warm that did not compile.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is what "warm" means in the budget table, and it is the state an editor is in for all
     /// but the first keystroke: the descriptors are loaded, the buffer has been compiled, and the
     /// model the next answer reads was built by the keystroke before it. Measuring without it
     /// measures protoc, which is the cold row and is reported separately.
+    /// </para>
+    /// <para>
+    /// <b>The result is checked, because an error path is faster than the path being budgeted.</b>
+    /// A compilation that was refused outright leaves no model at all, and one that produced
+    /// diagnostics leaves a partial one -- so every provider afterwards returns early, and the
+    /// measurement reports a hover at a fraction of the real cost with nothing in the table saying
+    /// the reading is about a broken buffer. That is worse than a failure: it is a fast number, and
+    /// fast numbers are what this whole file exists to produce.
+    /// </para>
+    /// <para>
+    /// <b>Checked here rather than only against the corpus on disk</b>, which
+    /// <c>PerformanceCorpusTests.EveryCorpusFileCompilesWithoutDiagnostics</c> already covers. That
+    /// guard compiles the repository's file; this one compiles <em>this workspace's buffer under this
+    /// workspace's configuration</em>, and the two part company the moment a measurement edits the
+    /// document or a configuration file lands in the temporary directory beside it.
+    /// </para>
+    /// <para>
+    /// Throwing rather than collecting a diagnostic, which is the house rule inverted on purpose: a
+    /// fixture that will not compile is programmer error in the measurement, not bad input to the
+    /// compiler.
+    /// </para>
     /// </remarks>
     public PerformanceWorkspace Warm()
     {
-        Semantics.For(Document, Configuration, CancellationToken.None);
+        var compiled = Semantics.For(Document, Configuration, CancellationToken.None);
+
+        if (compiled.LoaderFailure is { } failure)
+        {
+            throw new InvalidOperationException(
+                $"The {Which} measurement workspace could not load its schemas, so nothing measured "
+                    + $"against it would be measuring the path under budget: {failure.Message}");
+        }
+
+        if (compiled.Result is not { } result)
+        {
+            throw new InvalidOperationException(
+                $"The {Which} measurement workspace was refused a compilation, so every provider "
+                    + "asked about it would return early and report a fraction of the real cost.");
+        }
+
+        if (!result.Success)
+        {
+            throw new InvalidOperationException(
+                $"The {Which} measurement workspace does not compile clean, so a reading taken "
+                    + "against it is a reading of an error path:\n  "
+                    + string.Join(
+                        "\n  ",
+                        result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+        }
+
         return this;
     }
 }

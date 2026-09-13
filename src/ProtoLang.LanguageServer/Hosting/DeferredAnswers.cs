@@ -56,9 +56,24 @@ public sealed class DeferredAnswers
 {
     /// <summary>How many of one kind of request may be leaving the process at once.</summary>
     /// <remarks>
+    /// <para>
     /// The same figure and the same reasoning as <see cref="CompileScheduler.DefaultConcurrency"/>:
-    /// ten open documents must not mean ten simultaneous walks of an include root. #57 pins it, and
-    /// <see cref="PeakInFlight"/> is what shows whether whatever it is pinned to is honoured.
+    /// ten open documents must not mean ten of whatever the request does at once.
+    /// </para>
+    /// <para>
+    /// <b>Which is compiling, for six of the seven providers behind this.</b> An earlier version of
+    /// this remark said "ten simultaneous walks of an include root", which is import completion and
+    /// is the only one that walks -- everything else asks <c>DocumentSemantics.For</c>, so what this
+    /// number actually bounds is concurrent compilations, which is a considerably larger claim. That
+    /// wording made it into <c>docs/performance.md</c> as well before anybody noticed, which is the
+    /// argument for saying what a bound holds back rather than what its first caller does.
+    /// </para>
+    /// <para>
+    /// #57 did not measure it -- every reading it took asked one provider at a time, so nothing
+    /// there ever reached the limit -- and <c>docs/performance.md</c> lists it among the bounds that
+    /// are still chosen rather than measured. <see cref="PeakInFlight"/> is what shows whether it is
+    /// being honoured.
+    /// </para>
     /// </remarks>
     public const int DefaultConcurrency = 4;
 

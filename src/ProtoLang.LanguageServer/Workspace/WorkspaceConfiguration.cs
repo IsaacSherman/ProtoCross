@@ -52,9 +52,12 @@ namespace ProtoLang.LanguageServer.Workspace;
 /// Resolution is recomputed per request rather than cached per document. The expensive part of it is
 /// reading a <c>protolang.config.xml</c>, which is one small file; caching that would need its own
 /// invalidation on a file write, which is a second cache with a second way to serve a stale answer.
-/// #57 measures whether this needs revisiting. A caller that does not need the policy asks
-/// <see cref="ResolveImportRoots"/> and does not pay for it at all, which is what keeps a request
-/// running per keystroke off that file.
+/// #57 did not separate this out: <c>DocumentSemantics.For</c> resolves before it checks what it
+/// holds -- deliberately, since the resolution is half of what decides whether the held entry still
+/// answers -- so this is paid on every hover, every highlight and every caret move, and is already
+/// inside every warm figure in <c>docs/performance.md</c> rather than absent from them. What bounds
+/// it from above is that those totals are one to two orders of magnitude under budget. A caller that
+/// does not need the policy asks <see cref="ResolveImportRoots"/> and does not pay for it at all.
 /// </para>
 /// </remarks>
 public sealed record WorkspaceConfiguration

@@ -178,15 +178,31 @@ Every bound above was measured. These were not, and saying so is the point — a
 to tell "measured and confirmed" from "nobody has looked", and the code comments at each site now
 distinguish the two rather than all pointing here.
 
-| Bound | Where | Why it was not measured |
-|---|---|---|
-| the include-root walk budget, in entries examined | `SchemaCatalog` | it bounds a directory walk against a vendored tree or a network mount, and a measurement taken against this repository's own directories would say nothing about either |
-| the answer concurrency limit of 4 | `DeferredAnswers` | it bounds simultaneous directory walks, not compiles, so the cold-load measurement above does not reach it |
-| the scheduler's yield interval | `CompileScheduler` | it affects fairness under sustained editing, which the soak exercises and the budget table does not |
-| whether configuration resolution needs revisiting | `WorkspaceConfiguration` | it is per document and per generation, and never appeared in any measurement here |
+| Bound | Where | Why it was not measured | On a keystroke path? |
+|---|---|---|---|
+| the include-root walk budget, in entries examined | `SchemaCatalog` | it bounds a directory walk against a vendored tree or a network mount, and a measurement taken against this repository's own directories would say nothing about either | only for import completion, which is the one request that walks |
+| the answer concurrency limit of 4 | `DeferredAnswers` | every measurement here asked one provider at a time, so nothing taken above ever reached the limit | **yes** |
+| the scheduler's yield interval | `CompileScheduler` | it affects fairness under sustained editing, which the soak exercises and the budget table does not | yes, under sustained typing |
+| whether configuration resolution needs revisiting | `WorkspaceConfiguration` | it is inside every warm figure above and was never separated out from them | **yes** |
 
-None of them is on a per-keystroke path, which is why none of them is urgent. All of them are still
-numbers somebody chose.
+**Two of those are on the per-keystroke path, and an earlier draft of this file said none of them
+were.** The correction is worth keeping rather than quietly fixing, because both errors were the same
+mistake — describing a bound by the first caller that came to mind:
+
+- **`DeferredAnswers` bounds compilations, not only directory walks.** Its own remark reaches for the
+  import-completion case, and that is one of seven providers; the other six compile inside the gate.
+  So the limit of four is what stops ten open documents becoming ten simultaneous compiles, which is
+  a much larger claim than the one the comment makes. Nothing here measured it, because every reading
+  above asked one provider at a time.
+- **Configuration resolution runs on every `DocumentSemantics.For` call, including cache hits.** It is
+  resolved before the held entry is checked, deliberately — it is half of what decides whether the
+  entry still answers. So it is paid on every hover, every highlight, every caret move, and it is
+  already inside all ten warm figures in the table above rather than absent from them. What has not
+  been done is separating its cost out from the answer's.
+
+Neither is urgent — the totals they sit inside are one to two orders of magnitude under budget, which
+bounds them from above. But "not urgent because it is small" is a different claim from "not on the
+path", and only the first one is true.
 
 ## What this does not cover
 

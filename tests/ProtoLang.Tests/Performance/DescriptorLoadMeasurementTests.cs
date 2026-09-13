@@ -29,6 +29,9 @@ namespace ProtoLang.Tests.Performance;
 [Collection("Timing-sensitive regressions")]
 public class DescriptorLoadMeasurementTests
 {
+    /// <summary>Lets a regression observe and retire the measurement's monitor after a failed load.</summary>
+    internal Action<Task, Action>? ObserveMonitor { get; init; }
+
     /// <summary>How long one cold load takes, and how much a warm one saves.</summary>
     [Fact]
     public void ADescriptorLoadIsMeasuredColdAndWarm()
@@ -116,15 +119,29 @@ public class DescriptorLoadMeasurementTests
                 }
             });
 
+            ObserveMonitor?.Invoke(watcher, () => Volatile.Write(ref watching, false));
+
             var clock = Stopwatch.StartNew();
 
-            await Task.WhenAll(
-                directories.Select(directory => Task.Run(
-                    () => loader.LoadBundle(["invoice.proto"], [directory]))));
+            // The monitor is retired in a finally, because the thing being measured is the thing
+            // most likely to throw. A load that fails -- no protoc, a schema that will not parse, a
+            // budget that fired -- would otherwise leave this spinning on Thread.Sleep(2) for the
+            // rest of the process, sampling a thread count nobody reads and competing for the pool
+            // with every measurement after it. A leaked monitor does not fail the run that leaked
+            // it; it quietly inflates the next one.
+            try
+            {
+                await Task.WhenAll(
+                    directories.Select(directory => Task.Run(
+                        () => loader.LoadBundle(["invoice.proto"], [directory]))));
 
-            clock.Stop();
-            Volatile.Write(ref watching, false);
-            await watcher;
+                clock.Stop();
+            }
+            finally
+            {
+                Volatile.Write(ref watching, false);
+                await watcher;
+            }
 
             report.Add(new Sample(
                 $"{concurrent} concurrent cold load(s)",
