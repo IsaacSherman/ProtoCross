@@ -39,6 +39,17 @@ public class PerformanceBudgetTests
             Assert.Skip("Set PROTOLANG_BENCH=1 to measure the budgets. See docs/performance.md.");
         }
 
+        // Refused rather than skipped, because a skip is what somebody sees when they forgot a switch
+        // and a refusal is what they need to see when the numbers they are about to read are wrong.
+        // `dotnet test` is Debug unless told otherwise, which is how the first published figures for
+        // this issue came out of an unoptimized build -- and the row nearest its budget was the one
+        // the optimizer moved most.
+        Assert.True(
+            Sampler.Optimized,
+            "A Debug build is not a measurement. Run `dotnet test ProtoLang.slnx -c Release "
+                + "--filter \"FullyQualifiedName~Performance\"` with PROTOLANG_BENCH=1; see "
+                + "docs/performance.md for why the difference is not a constant factor.");
+
         var report = new PerformanceReport();
 
         foreach (var corpus in new[] { PerformanceCorpus.Normal, PerformanceCorpus.Stress })

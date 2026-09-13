@@ -68,8 +68,15 @@ To raise it, change `StressCorpus.Steps` and rewrite the committed file from the
 ## How to measure
 
 ```bash
-PROTOLANG_BENCH=1 dotnet test ProtoLang.slnx --filter "FullyQualifiedName~Performance"
+PROTOLANG_BENCH=1 dotnet test ProtoLang.slnx -c Release --filter "FullyQualifiedName~Performance"
 ```
+
+**`-c Release` is not optional, and the benchmark refuses to run without it.** `dotnet test` builds
+Debug unless told otherwise, and a Debug reading is not a Release reading with a constant factor
+missing: measured here it was 1.0x on some rows and 1.8x on others, and the rows it moved most were
+the ones on the larger corpus — which is to say, the rows the budgets are defined against. The first
+figures published for this file came out of a Debug build, and the row nearest its budget was the one
+the optimizer moved most. Every report now states the configuration it was taken on.
 
 In PowerShell the variable is set separately — `$env:PROTOLANG_BENCH = 1` — and stays set for the
 rest of the session, so clear it with `$env:PROTOLANG_BENCH = $null`.
@@ -104,20 +111,25 @@ fails and says by how much — so it is a check rather than a printout.
 
 ## What the measurements found
 
-Measured 2026-09-12 on a 16-processor desktop, .NET 10.0.11. Reproduce with the command above; the
-numbers below are a snapshot and the report is the authority.
+Measured 2026-09-13 on a 16-processor desktop, .NET 10.0.11, **Release**. Reproduce with the command
+above; the numbers below are a snapshot and the report is the authority.
 
 | Operation | Normal p95 | Stress p95 | Budget |
 |---|---:|---:|---:|
-| hover | 0.5 ms | 0.9 ms | 50 ms |
-| occurrence highlighting | 0.7 ms | 1.2–1.7 ms | 20 ms |
-| go-to-definition | 0.7 ms | 1.2–1.5 ms | 100 ms |
-| diagnostics after edit | 1.0 ms | 29–33 ms | 400 ms |
-| completion | 1.9 ms | 41–48 ms | 50 ms |
+| hover | 0.5–1.0 ms | 0.8–2.3 ms | 50 ms |
+| occurrence highlighting | 0.7–1.0 ms | 1.4–1.5 ms | 20 ms |
+| go-to-definition | 0.7–1.2 ms | 0.9–1.1 ms | 100 ms |
+| diagnostics after edit | 1.4–2.0 ms | 18–23 ms | 400 ms |
+| completion | 2.7–3.1 ms | 29–34 ms | 50 ms |
 
-Ranges where repeated runs on the same machine disagreed by more than rounding. That spread is
-itself a result: a single figure would imply a precision these measurements do not have, and the
-operation whose spread matters is the one closest to its ceiling.
+Ranges across four runs on one machine, minutes apart, where they disagreed by more than rounding.
+
+**That spread is itself a result, and not a flattering one.** These are nearest-rank percentiles over
+twenty samples with a fixed warm-up, which is the naive estimator: it has no outlier handling, no
+confidence interval, and no way to tell a genuinely bimodal operation from a noisy one. Completion's
+p95 moved by 5 ms between runs that changed nothing. The figures are good enough to answer the
+question this issue asks — is anything near its budget — and they are **not** good enough to detect a
+20% regression, which is one reason regressions are caught as counted work instead.
 
 **Four of the five have one to two orders of magnitude of headroom, and that is the finding.** #57
 exists partly to inform design — whether scope data is cached, whether occurrence highlighting can
@@ -126,11 +138,17 @@ answers are: **no caching is warranted**, **yes it can**, and the reference inde
 20 ms budget on a file ten times normal size is not something to optimise. Anything built on top of
 those paths to make them faster would be paying complexity for latency nobody can perceive.
 
-**Completion on the stress corpus is the one operation near its budget** — 37 ms median and 48 ms at
-p95 against 50 ms on the slowest run observed, and it did not clear 41 ms on the fastest. It is
-within budget and it is the row that will not stay within budget by accident. It is the row a new
-feature should be measured against before it is added, and `ScopeSearch` — the linear scan it leans
-on hardest — is the first place to look if it ever goes over.
+**Completion on the stress corpus is still the closest row to its budget**, at 29–34 ms against 50 ms
+— by a wide margin the closest, since the next nearest is diagnostics at 23 ms against 400 ms. It is
+the row a new feature should be measured against before it is added, and `ScopeSearch` — the linear
+scan it leans on hardest — is the first place to look if it ever goes over.
+
+An earlier version of this file said it was at 48 ms and "will not stay within budget by accident".
+That was a Debug measurement, and the correction is left visible rather than quietly applied: the
+conclusion it supported — that completion was nearly out of headroom — was wrong, and it was wrong in
+the direction that would have prompted somebody to optimise a path that did not need it. Which is
+exactly the kind of decision #57 exists to prevent being made on a feeling, made on a bad number
+instead.
 
 The budget was **not** tightened to match the other four, and that is deliberate: a budget is a
 threshold a person can feel, not a ratchet against the last measurement. Tightening hover to 2 ms

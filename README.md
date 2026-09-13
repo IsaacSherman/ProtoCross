@@ -154,11 +154,13 @@ for:
 ```bash
 PROTOLANG_SWEEP=1 dotnet test ProtoLang.slnx   # every completion item, at every caret, over the whole corpus
 PROTOLANG_SOAK=1 dotnet test ProtoLang.slnx    # a long editing session, watched for leaked work
-PROTOLANG_BENCH=1 dotnet test ProtoLang.slnx   # the latency budgets, measured against a fixed corpus
+PROTOLANG_BENCH=1 dotnet test ProtoLang.slnx -c Release   # the latency budgets, against a fixed corpus
 ```
 
 The first two are switched on by CI. The third is not, and deliberately: it measures wall-clock
-latency, which on a shared runner flakes until the threshold stops describing anything. What CI
+latency, which on a shared runner flakes until the threshold stops describing anything. It also
+requires `-c Release` and refuses to run without it, because a Debug reading is not a Release reading
+with a constant factor missing. What CI
 checks of that work instead is counted work -- compilations per caret move, protoc invocations --
 which is deterministic and runs unconditionally. [`docs/performance.md`](docs/performance.md) has the
 budgets, the corpus, the procedure and the measured results, and a benchmark run writes

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Reflection;
 using System.Globalization;
 using System.Text;
 
@@ -59,6 +60,35 @@ internal static class Sampler
     /// <summary>Whether the measurement suite was asked for.</summary>
     public static bool Requested
         => Environment.GetEnvironmentVariable("PROTOLANG_BENCH") is { Length: > 0 };
+
+    /// <summary>Whether the code being measured was compiled with the JIT optimizer on.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A Debug build is not slower by a constant, so a Debug reading is not a Release reading with
+    /// a factor missing.</b> It was 1.0x on some rows here and 1.8x on others, and the rows it moved
+    /// most were the ones on the larger corpus -- which is to say, the rows the budgets are defined
+    /// against. Measuring one and publishing it as the other is how "completion is at 48 ms against a
+    /// 50 ms budget and will not stay there by accident" got written about an operation that runs at
+    /// 29 ms.
+    /// </para>
+    /// <para>
+    /// Asked of the assembly under measurement rather than of this one. They are built together
+    /// today, so the two answers agree -- but the question is about the code being timed, and
+    /// phrasing it that way means it stays right if that ever stops being true.
+    /// </para>
+    /// <para>
+    /// This is the check BenchmarkDotNet makes by refusing to run at all on a non-optimized assembly.
+    /// It is worth having whether or not that library is ever adopted, and
+    /// <c>PerformanceMeasurementTests.TheOptimizerCheckAgreesWithTheBuildConfiguration</c> pins that
+    /// the detection itself works.
+    /// </para>
+    /// </remarks>
+    public static bool Optimized
+        => typeof(ProtoLang.Compilation).Assembly
+            .GetCustomAttribute<System.Diagnostics.DebuggableAttribute>() is not { IsJITOptimizerDisabled: true };
+
+    /// <summary>What the report says the measurement was taken on.</summary>
+    public static string Configuration => Optimized ? "Release" : "Debug (not a measurement)";
 
     /// <summary>Runs <paramref name="operation"/> and reports what it cost.</summary>
     public static Sample Time(
@@ -160,14 +190,7 @@ internal sealed class PerformanceReport
 
         if (_first)
         {
-            report.Append("# Performance measurement\n\n");
-            report.Append($"Taken {DateTime.Now:yyyy-MM-dd HH:mm} on {Environment.MachineName}, ");
-            report.Append($"{Environment.ProcessorCount} processors, {RuntimeName()}.\n\n");
-            report.Append("Normal corpus is `examples/simpleScript.protolang` at ");
-            report.Append(PerformanceCorpus.Lines(PerformanceCorpus.Normal).ToString(CultureInfo.InvariantCulture));
-            report.Append(" lines; stress is `tests/perf/corpus/wide.protolang` at ");
-            report.Append(PerformanceCorpus.Lines(PerformanceCorpus.Stress).ToString(CultureInfo.InvariantCulture));
-            report.Append(" lines.\n\n");
+            report.Append(Heading());
         }
 
         // A section with only notes gets no table. An empty one with a header row reads as a
@@ -202,6 +225,31 @@ internal sealed class PerformanceReport
         }
 
         return report.ToString();
+    }
+
+    /// <summary>What every report opens with: where the numbers came from, and off what build.</summary>
+    /// <remarks>
+    /// Its own method so that it can be asserted on without writing a file, which is how
+    /// <c>PerformanceMeasurementTests</c> pins that the configuration is stated at all. That is not a
+    /// cosmetic property: a table of milliseconds carrying no build configuration is a table somebody
+    /// pastes into a document, and the figures in this repository's own documentation were pasted
+    /// from exactly such a table, off a Debug build.
+    /// </remarks>
+    public static string Heading()
+    {
+        var heading = new StringBuilder();
+
+        heading.Append("# Performance measurement\n\n");
+        heading.Append($"Taken {DateTime.Now:yyyy-MM-dd HH:mm} on {Environment.MachineName}, ");
+        heading.Append($"{Environment.ProcessorCount} processors, {RuntimeName()}, ");
+        heading.Append($"**{Sampler.Configuration}**.\n\n");
+        heading.Append("Normal corpus is `examples/simpleScript.protolang` at ");
+        heading.Append(PerformanceCorpus.Lines(PerformanceCorpus.Normal).ToString(CultureInfo.InvariantCulture));
+        heading.Append(" lines; stress is `tests/perf/corpus/wide.protolang` at ");
+        heading.Append(PerformanceCorpus.Lines(PerformanceCorpus.Stress).ToString(CultureInfo.InvariantCulture));
+        heading.Append(" lines.\n\n");
+
+        return heading.ToString();
     }
 
     private static string Milliseconds(double value)
