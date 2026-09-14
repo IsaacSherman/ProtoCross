@@ -32,6 +32,9 @@ public static class Methods
     public const string DidChangeConfiguration = "workspace/didChangeConfiguration";
     public const string DidChangeWorkspaceFolders = "workspace/didChangeWorkspaceFolders";
     public const string Configuration = "workspace/configuration";
+    public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
+
+    public const string RegisterCapability = "client/registerCapability";
 
     public const string LogMessage = "window/logMessage";
     public const string ShowMessage = "window/showMessage";

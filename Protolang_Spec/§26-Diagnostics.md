@@ -89,9 +89,22 @@ Normative Requirements:
   compiler's numbering and inventing one would be ProtoLang asserting a taxonomy for another tool's
   output.
 - Where `protoc`'s output was parsed into positions, it **replaces** the `PL0003` that carries the
-  same text as prose rather than being published beside it. A `protoc` that could not be found at all
-  produces no such output, and `PL0003` -- which then names everywhere the compiler looked -- is
-  published unchanged.
+  same text as prose rather than being published beside it.
+- **A `protoc` that could not be found at all is reported in the editor's words, not the command
+  line's.** `PL0003` keeps its code, its title and its place, and its message says that no `protoc`
+  was found, where the host looked -- `PROTOLANG_PROTOC`, `PATH` and the NuGet package cache, root by
+  root -- where protoc is published, and that it can then go on `PATH` or be named by
+  `protolang.protocPath`. The command line's message is unchanged: it is written for somebody building
+  a repository, and suggests restoring a package rather than installing a compiler. The host's
+  one-time message and its status report carry the same sentence, so the three cannot disagree about
+  where it looked. Nothing is bundled to fall back on, because a user may need a particular `protoc`
+  and one that arrived inside an extension would be found ahead of or behind theirs in a way nobody
+  could predict.
+- **Relative `PATH` entries are mentioned only when some were removed.** A client removes them before
+  starting the host, since each resolves against the working directory, and reports which ones as
+  `removedPathEntries` in its initialization options. The account names them when there are any, so a
+  `protoc` that lived in one is explained, and says nothing otherwise: a note about entries the user
+  never had describes a defence to everybody and helps nobody.
 - **A file's diagnostics survive while any open document still reports them.** Two documents
   importing one broken schema both report it, identical reports are published once, and closing one
   of them does not withdraw the other's.
@@ -143,6 +156,17 @@ Normative Requirements:
   reintroducing at its own layer precisely what the layer below refuses. What that costs is a load
   per question while the workspace is broken. What it costs otherwise is very little: no descriptors
   means no module, no types and no scope, so the answer being declined had almost nothing in it.
+- **A change on disk to a file a compilation rests on republishes the open documents**, with no edit
+  in any of them. The rule above keeps a question from being answered out of date; it does not ask
+  one, and diagnostics are published when a compile runs. Saving an imported `.proto` in another tab,
+  or repairing a refused `protolang.config.xml`, is not a keystroke in the ProtoLang buffer, so without
+  this the errors on screen go on describing the file as it was. A host that can ask its client to
+  watch files asks for `**/*.proto` and `**/protolang.config.xml` once initialized, and on any change
+  to such a file recompiles every open document; each compile answers from what it holds wherever the
+  schemas and policy it read still stand. Every document rather than only the importers, because the
+  document that most needs recompiling is the one whose load failed and so recorded nothing. A change
+  to any other file recompiles nothing. A schema outside every workspace folder is outside what a
+  client watches, and is seen on the next edit.
 - **Closing a document withdraws what it published and abandons what is outstanding for it.** Work
   already under way may finish, since some of it is shared and cannot be recalled, but nothing it
   produces is published, and **work not yet started is not started**. The second half is not a

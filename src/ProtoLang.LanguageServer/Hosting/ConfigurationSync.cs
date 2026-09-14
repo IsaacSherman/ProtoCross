@@ -375,7 +375,7 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
 
         if (stated is not null)
         {
-            log.Level = TraceLevel.Parse(stated);
+            log.Level = TraceLevel.Parse(stated, whenOff: log.StartingLevel);
         }
     }
 
@@ -407,11 +407,26 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
 /// <summary>The three values LSP's trace setting takes, as a log level.</summary>
 public static class TraceLevel
 {
-    public static LogLevel Parse(string? value) => value switch
+    /// <summary>The log level a trace value asks for, where <c>off</c> means the level the server started at.</summary>
+    /// <param name="whenOff">What <c>off</c> leaves the log at: the level the process was started with.</param>
+    /// <remarks>
+    /// <para>
+    /// <b><c>off</c> is not a request for less logging.</b> LSP's trace setting governs whether the protocol
+    /// traffic itself is traced, and a client that is not tracing messages says <c>off</c> -- which VS
+    /// Code's language client does in every <c>initialize</c>, and again as <c>$/setTrace</c> after
+    /// <em>every</em> change to any setting at all. Read as "errors only", it undid <c>--log-level</c> the
+    /// moment a session began, and again each time the user touched a setting, so the one knob somebody
+    /// debugging a broken session reaches for could never stay turned.
+    /// </para>
+    /// <para>
+    /// <c>messages</c> and <c>verbose</c> are a client asking for more, and still get it.
+    /// </para>
+    /// </remarks>
+    public static LogLevel Parse(string? value, LogLevel whenOff) => value switch
     {
         "verbose" => LogLevel.Trace,
         "messages" => LogLevel.Info,
-        "off" => LogLevel.Error,
+        "off" => whenOff,
         _ => LogLevel.Info,
     };
 }

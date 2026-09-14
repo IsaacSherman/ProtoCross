@@ -415,6 +415,15 @@ Normative Requirements:
   wrote themselves. The clients this project ships always say. **A client whose editor has no trust
   model reports untrusted**, which is Visual Studio's posture: there, a workspace-supplied executable
   path is never honoured.
+- **A client starts the host so that nothing the host looks up can resolve into the workspace.** A
+  bare `protoc`, a relative `PATH` entry and a relative `PROTOLANG_PROTOC` or `NUGET_PACKAGES` all
+  resolve against the host's working directory, and withholding settings cannot withhold a working
+  directory. So the host is started by absolute path, in a working directory the client owns rather
+  than the workspace or any folder in it, with every empty and relative `PATH` entry removed and
+  `PROTOLANG_PROTOC` and `NUGET_PACKAGES` passed on only when absolute. Absolute `PATH` entries are kept,
+  so a `protoc` the user installed is still found. The client reports the relative entries it removed
+  as `removedPathEntries`, which is what lets the host explain a `protoc` that lived in one
+  ([26.1](./§26-Diagnostics.md#261-diagnostics-in-an-editor)).
 - **What is withheld is said once, and never nagged about.** A host tells the user the first time a
   setting is withheld in a session. It names each setting and its value, says what is used instead and
   that everything else keeps working, and says that trusting the workspace applies them. The status

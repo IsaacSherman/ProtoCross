@@ -1,0 +1,5 @@
+syntax = "proto3";
+
+message Shape {
+  int64 height = 1;
+}

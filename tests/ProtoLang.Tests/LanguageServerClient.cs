@@ -50,13 +50,14 @@ public sealed class LanguageServerClient : IAsyncDisposable
     private Exception? _fatal;
     private int _nextId;
 
-    private LanguageServerClient(TimeSpan debounce, Func<ConfigurationParams, object?> configuration)
+    private LanguageServerClient(TimeSpan debounce, Func<ConfigurationParams, object?> configuration, LogLevel startingLevel)
     {
         _configuration = configuration;
         _transcript = TextWriter.Synchronized(_log);
         _reader = new MessageReader(_fromServer);
 
-        Host = new LanguageServerHost(_toServer, _fromServer, new ServerLog { Mirror = _transcript }, debounce);
+        Log = new ServerLog { Mirror = _transcript, StartingLevel = startingLevel };
+        Host = new LanguageServerHost(_toServer, _fromServer, Log, debounce);
 
         _serving = Host.RunAsync();
         _receiving = ReceiveAsync();
@@ -64,6 +65,9 @@ public sealed class LanguageServerClient : IAsyncDisposable
 
     /// <summary>The server under test, for the few facts that are not on the wire.</summary>
     public LanguageServerHost Host { get; }
+
+    /// <summary>The log the server under test writes to, for what level it is writing at.</summary>
+    public ServerLog Log { get; }
 
     /// <summary>Starts a server and completes the opening handshake.</summary>
     /// <param name="settings">
@@ -79,9 +83,10 @@ public sealed class LanguageServerClient : IAsyncDisposable
         ClientCapabilities? capabilities = null,
         IEnumerable<string>? folders = null,
         Func<ConfigurationParams, object?>? settings = null,
-        object? initializationOptions = null)
+        object? initializationOptions = null,
+        LogLevel startingLevel = LogLevel.Info)
     {
-        var client = Create(debounce, settings);
+        var client = Create(debounce, settings, startingLevel);
 
         await client.InitializeAsync(capabilities ?? FullCapabilities, folders, initializationOptions).ConfigureAwait(false);
 
@@ -91,10 +96,12 @@ public sealed class LanguageServerClient : IAsyncDisposable
     /// <summary>A connected server that has not been initialized, for the tests about that.</summary>
     public static LanguageServerClient Create(
         TimeSpan? debounce = null,
-        Func<ConfigurationParams, object?>? settings = null)
+        Func<ConfigurationParams, object?>? settings = null,
+        LogLevel startingLevel = LogLevel.Info)
         => new(
             debounce ?? TimeSpan.FromMilliseconds(10),
-            settings ?? (parameters => parameters.Items.Select(_ => new Dictionary<string, object?>()).ToList()));
+            settings ?? (parameters => parameters.Items.Select(_ => new Dictionary<string, object?>()).ToList()),
+            startingLevel);
 
     /// <summary>A client that declares everything this server looks for.</summary>
     public static ClientCapabilities FullCapabilities => new()
@@ -229,6 +236,21 @@ public sealed class LanguageServerClient : IAsyncDisposable
             $"The server never sent {describe}. State {Host.State}, {Host.Compilations} compilations"
                 + (_fatal is null ? "." : $"; this client stopped reading because of {_fatal}.")
                 + Environment.NewLine + "The server said:" + Environment.NewLine + _log);
+    }
+
+    /// <summary>Whether a message satisfying <paramref name="wanted"/> has already arrived, without waiting.</summary>
+    /// <remarks>
+    /// For a property about something the server did <em>not</em> send, asked after a request whose
+    /// answer is a barrier: anything the server was going to send before that answer has been read.
+    /// </remarks>
+    public bool HasReceived(Func<IncomingMessage, bool> wanted)
+    {
+        while (_inbox.Reader.TryRead(out var message))
+        {
+            _seen.Add(message);
+        }
+
+        return _seen.Any(wanted);
     }
 
     /// <summary>The next notification of one method.</summary>
@@ -385,8 +407,8 @@ public sealed class LanguageServerClient : IAsyncDisposable
     }
 
     /// <remarks>
-    /// Server-to-client requests are answered here rather than queued, so that a handler awaiting an
-    /// answer gets one. Everything else goes to the inbox for a test to find.
+    /// Server-to-client requests are answered here rather than waiting on a test, so that a handler
+    /// awaiting an answer gets one. Everything, requests included, goes to the inbox for a test to find.
     /// </remarks>
     private async Task ReceiveAsync()
     {
@@ -427,10 +449,11 @@ public sealed class LanguageServerClient : IAsyncDisposable
                 continue;
             }
 
+            // A request is answered at once and still delivered, so a test can ask what the server asked
+            // for -- a registration, say -- without anything waiting on the test to reply.
             if (message.IsRequest)
             {
                 Answer(message);
-                continue;
             }
 
             _inbox.Writer.TryWrite(message);

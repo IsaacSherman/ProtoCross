@@ -40,6 +40,14 @@ public sealed record WorkspaceClientCapabilities
     public bool? WorkspaceFolders { get; init; }
 
     public DynamicRegistrationCapability? DidChangeConfiguration { get; init; }
+
+    /// <summary>Whether the client will watch files on the server's behalf when asked to.</summary>
+    /// <remarks>
+    /// Only dynamic registration is consulted. A client can be told what to watch only by being asked,
+    /// and a client that watches on its own initiative sends the notification whether or not this was
+    /// declared -- which the server handles all the same.
+    /// </remarks>
+    public DynamicRegistrationCapability? DidChangeWatchedFiles { get; init; }
 }
 
 /// <inheritdoc cref="ClientCapabilities"/>

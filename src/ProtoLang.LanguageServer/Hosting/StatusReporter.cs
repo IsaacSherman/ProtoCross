@@ -398,7 +398,7 @@ public sealed class StatusReporter
         {
             var got = Loaders.TryGet(protocPath, out loader, out var failure);
 
-            why = failure?.Message;
+            why = failure is null ? null : Loaders.Explain(protocPath, failure);
             return got;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException

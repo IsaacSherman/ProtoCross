@@ -37,11 +37,49 @@ public sealed class LoaderPool(ServerLog log)
     /// <summary>Told once, the first time no protoc can be found at all.</summary>
     /// <remarks>
     /// Once, because the retry policy above means this is discovered again on every compile, and a
-    /// notification per keystroke is not a notification. The message is
-    /// <c>ProtocLocator</c>'s, which names everywhere it looked -- the thing a user actually needs in
-    /// order to fix it.
+    /// notification per keystroke is not a notification. The message is <see cref="Missing"/>'s, which
+    /// names everywhere the server looked and where protoc can be had -- the things a user actually
+    /// needs in order to fix it.
     /// </remarks>
     public Action<string>? OnProtocMissing { get; init; }
+
+    /// <summary>What a user is told when discovery finds no protoc.</summary>
+    /// <remarks>
+    /// Settable because half of it is the client's to supply and arrives at <c>initialize</c>, after
+    /// this pool exists: which <c>PATH</c> entries it removed before starting the server. Volatile
+    /// because it is written on the worker that reads the wire and read by whichever compile or status
+    /// report discovers the absence.
+    /// </remarks>
+    public MissingProtoc Missing
+    {
+        get => Volatile.Read(ref _missing);
+        set => Volatile.Write(ref _missing, value ?? throw new ArgumentNullException(nameof(value)));
+    }
+
+    private MissingProtoc _missing = MissingProtoc.NothingRemoved;
+
+    /// <summary>How a loader is built when nothing names a protoc.</summary>
+    /// <remarks>
+    /// The seam <see cref="DocumentSemantics.Compile"/> is for the compile. Whether a protoc can be
+    /// found is a fact about the machine, and on a developer's machine the answer is nearly always yes:
+    /// the package cache the repository itself restores holds one, and on Windows the profile directory
+    /// that cache lives under cannot be redirected by an environment variable. A test of what a user with
+    /// no protoc is told has nowhere else to stand.
+    /// </remarks>
+    public Func<DescriptorLoaderOptions, DescriptorLoader> Locate { get; set; } = DescriptorLoader.CreateDefault;
+
+    /// <summary>Why no loader could be built for <paramref name="protocPath"/>, as a user should read it.</summary>
+    /// <remarks>
+    /// Only discovery gets the editor's account. A protoc a setting named and that could not be prepared
+    /// is a different failure with a different remedy, and its own message says what went wrong with
+    /// that file.
+    /// </remarks>
+    public string Explain(string? protocPath, DescriptorLoadException failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+
+        return protocPath is null ? Missing.Describe() : failure.Message;
+    }
 
     /// <summary>
     /// One cache for the whole server, so two documents importing one schema load it once.
@@ -87,7 +125,7 @@ public sealed class LoaderPool(ServerLog log)
             var options = Options with { Cache = Cache };
 
             loader = protocPath is null
-                ? DescriptorLoader.CreateDefault(options)
+                ? Locate(options)
                 : new DescriptorLoader(protocPath, options);
 
             log.Info($"Compiling schemas with '{loader.ProtocPath}'.");
@@ -100,7 +138,7 @@ public sealed class LoaderPool(ServerLog log)
             if (Interlocked.Exchange(ref _reportedMissing, 1) == 0)
             {
                 log.Warning(ex.Message);
-                OnProtocMissing?.Invoke(ex.Message);
+                OnProtocMissing?.Invoke(Explain(protocPath, ex));
             }
             else
             {

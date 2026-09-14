@@ -72,6 +72,10 @@ public sealed class LanguageServerHost : IDisposable
     /// <inheritdoc cref="SymbolInformation" path="/remarks"/>
     private volatile bool _outlineNests;
 
+    /// <summary>Whether this client will watch files when asked to.</summary>
+    /// <remarks>Negotiated in <c>initialize</c> and acted on in <c>initialized</c>, on the same worker.</remarks>
+    private bool _clientWatchesFiles;
+
     private volatile ServerState _state = ServerState.NotInitialized;
 
     public LanguageServerHost(Stream input, Stream output, ServerLog? log = null, TimeSpan? debounce = null)
@@ -188,6 +192,10 @@ public sealed class LanguageServerHost : IDisposable
     /// published and the only way to tell a cache that is working from one that silently is not.
     /// </remarks>
     public DocumentSemantics Semantics => _semantics;
+
+    /// <summary>Where protoc comes from, for a test and for #58.</summary>
+    /// <inheritdoc cref="LoaderPool.Locate" path="/remarks"/>
+    public LoaderPool Loaders => _loaders;
 
     /// <summary>What the requests this server has answered cost, for a test and for #58.</summary>
     /// <inheritdoc cref="Completion" path="/remarks"/>
@@ -306,6 +314,10 @@ public sealed class LanguageServerHost : IDisposable
         _connection.OnNotification(
             Methods.DidChangeWorkspaceTrust,
             (parameters, _) => Act<WorkspaceTrustParams>(parameters, TrustChanged));
+
+        _connection.OnNotification(
+            Methods.DidChangeWatchedFiles,
+            (parameters, _) => Act<DidChangeWatchedFilesParams>(parameters, WatchedFilesChanged));
     }
 
     /// <summary>Answers the status request, whatever state the server is in.</summary>
@@ -541,6 +553,7 @@ public sealed class LanguageServerHost : IDisposable
         });
 
         ReadExtensionInfo(message.InitializationOptions);
+        _loaders.Missing = new MissingProtoc(ReadRemovedPathEntries(message.InitializationOptions));
 
         // Before the folders, and long before the settings are pulled in initialized: a client that
         // reports an untrusted workspace must not have that workspace's protoc resolved even once in the
@@ -549,10 +562,11 @@ public sealed class LanguageServerHost : IDisposable
 
         // Only when the client says something. A client that omits trace has stated no preference, and
         // taking the default here would quietly undo a --log-level given on the command line -- which
-        // is the one thing somebody debugging a broken session has reached for.
+        // is the one thing somebody debugging a broken session has reached for. A client that says
+        // "off" goes back to that level for the same reason; TraceLevel says why.
         if (message.Trace is { Length: > 0 } trace)
         {
-            _log.Level = TraceLevel.Parse(trace);
+            _log.Level = TraceLevel.Parse(trace, whenOff: _log.StartingLevel);
         }
 
         // Asked once and used twice below -- what is retained and what is advertised are two halves of
@@ -566,6 +580,7 @@ public sealed class LanguageServerHost : IDisposable
         _classification.Client = ClientLegend.Of(capabilities?.TextDocument?.SemanticTokens);
         _classification.Deltas = deltas;
         _outlineNests = capabilities?.TextDocument?.DocumentSymbol?.HierarchicalDocumentSymbolSupport is true;
+        _clientWatchesFiles = capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration is true;
 
         _configuration.Negotiate(capabilities);
         _configuration.SetFolders(FoldersOf(message));
@@ -693,7 +708,52 @@ public sealed class LanguageServerHost : IDisposable
 
         await _configuration.PullAsync(cancellationToken).ConfigureAwait(false);
 
+        WatchFiles();
+
         _log.Info($"protolang-server {Version} is ready.");
+    }
+
+    /// <summary>Asks the client to report changes to the files a compilation rests on.</summary>
+    /// <remarks>
+    /// <para>
+    /// Only of a client that said it can be asked, and only after <c>initialized</c>, which is the first
+    /// moment the protocol lets a server send a request. <see cref="WatchedFiles"/> says why the server
+    /// needs to know at all.
+    /// </para>
+    /// <para>
+    /// <b>Sent and not awaited.</b> Nothing waits on the answer -- the client's watchers start whenever
+    /// it gets round to them -- and a client that never answered would otherwise hold the worker that
+    /// every <c>didOpen</c> is queued behind. A refusal is logged, because a client that declared the
+    /// capability and then refused it has a defect somebody will want to find.
+    /// </para>
+    /// </remarks>
+    private void WatchFiles()
+    {
+        if (!_clientWatchesFiles)
+        {
+            return;
+        }
+
+        _ = RegisterAsync();
+
+        async Task RegisterAsync()
+        {
+            var registration = new Registration(
+                WatchedFiles.RegistrationId,
+                Methods.DidChangeWatchedFiles,
+                new DidChangeWatchedFilesRegistrationOptions(WatchedFiles.Watchers));
+
+            try
+            {
+                await _connection
+                    .RequestAsync<JsonElement?>(Methods.RegisterCapability, new RegistrationParams([registration]), CancellationToken.None)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is JsonRpcException or OperationCanceledException or IOException or ObjectDisposedException)
+            {
+                _log.Warning("The client did not agree to watch schema and policy files, so a change to one is seen on the next edit.", ex);
+            }
+        }
     }
 
     private Task<object?> Shutdown()
@@ -730,7 +790,7 @@ public sealed class LanguageServerHost : IDisposable
     {
         if (LspJson.Read<SetTraceParams>(parameters) is { } message)
         {
-            _log.Level = TraceLevel.Parse(message.Value);
+            _log.Level = TraceLevel.Parse(message.Value, whenOff: _log.StartingLevel);
         }
 
         return Task.CompletedTask;
@@ -939,6 +999,23 @@ public sealed class LanguageServerHost : IDisposable
         return Task.CompletedTask;
     }
 
+    /// <summary>Files changed on disk; recompile if any of them is one a compilation can rest on.</summary>
+    /// <remarks>
+    /// Nothing is invalidated here, because nothing needs to be. The compile each document is given asks
+    /// <see cref="DocumentSemantics"/>, which already declines to answer from a compilation whose schemas
+    /// or policy file have moved; what was missing was a reason to ask. See <see cref="WatchedFiles"/>.
+    /// </remarks>
+    private Task WatchedFilesChanged(DidChangeWatchedFilesParams message)
+    {
+        if (WatchedFiles.MoveAnyCompilation(message.Changes))
+        {
+            _log.Trace($"{message.Changes.Count} watched file(s) changed on disk; recompiling open documents.");
+            _scheduler.ScheduleAll();
+        }
+
+        return Task.CompletedTask;
+    }
+
     // ------------------------------------------------------- talking to the client
 
     private void Publish(LogLevel level, string message)
@@ -1004,6 +1081,37 @@ public sealed class LanguageServerHost : IDisposable
             => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.String
                 ? value.GetString()
                 : null;
+    }
+
+    /// <summary>The <c>PATH</c> entries the client removed before starting this server.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>removedPathEntries</c> in the initialization options: an array of strings. Only the client can
+    /// report them, since the environment this process inherited no longer holds them -- removing them is
+    /// the point, because a relative entry resolves against the working directory and a protoc committed
+    /// to a repository could be found that way. <see cref="MissingProtoc"/> is what reads them, and says
+    /// why they are mentioned only when there were some.
+    /// </para>
+    /// <para>
+    /// Read as leniently as <see cref="ReadExtensionInfo"/>: anything that is not an array of strings is
+    /// a client that did not say, and a non-string element is skipped rather than failing the rest.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<string> ReadRemovedPathEntries(JsonElement? options)
+    {
+        if (options is not { ValueKind: JsonValueKind.Object } element
+            || !element.TryGetProperty("removedPathEntries", out var stated)
+            || stated.ValueKind is not JsonValueKind.Array)
+        {
+            return [];
+        }
+
+        return
+        [
+            .. stated.EnumerateArray()
+                .Where(entry => entry.ValueKind is JsonValueKind.String)
+                .Select(entry => entry.GetString()!),
+        ];
     }
 
     /// <summary>Whether the client said the workspace it opened is trusted.</summary>
