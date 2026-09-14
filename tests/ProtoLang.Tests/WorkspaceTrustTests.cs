@@ -252,6 +252,23 @@ public class WorkspaceTrustTests
         Assert.Equal(ConfigurationSource.FolderSetting, withheld.Source);
     }
 
+    /// <summary>
+    /// A document's resolved protoc says a setting was withheld, rather than that nothing named one.
+    /// </summary>
+    /// <remarks>
+    /// The configuration section of a status report is read from this, and "not stated" beside a
+    /// setting the user can see in their own settings file tells them it does not exist.
+    /// </remarks>
+    [Fact]
+    public void AWithheldProtocIsNotDescribedAsNeverStated()
+    {
+        var (configuration, document) = Folder(new ProtoLangSettings { ProtocPath = FileNamedProtoc() }, WorkspaceTrust.Untrusted);
+
+        var protoc = Assert.Single(configuration.Resolve(document).Describe(), fact => fact.Setting == "protoc");
+
+        Assert.Contains("withheld", protoc.Value, StringComparison.Ordinal);
+    }
+
     /// <summary>Nothing is reported withheld from a workspace the user trusts.</summary>
     [Fact]
     public void NothingIsWithheldFromATrustedWorkspace()
@@ -530,6 +547,27 @@ public class WorkspaceTrustTests
         var status = await Status(client);
 
         Assert.Equal(expected.Describe(), Assert.Single(Facts(status, "workspace trust")).Value);
+    }
+
+    /// <summary>A trust notification that does not say which way trust went changes nothing.</summary>
+    /// <remarks>
+    /// Started trusted, so the failure being guarded against -- a missing member read as
+    /// <c>false</c> -- is the one that would show. The status request is the sync point: it is read
+    /// after the notification, which is handled in order.
+    /// </remarks>
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"isTrusted\": false}")]
+    [InlineData("{\"trusted\": null}")]
+    public async Task ATrustNotificationThatSaysNothingLeavesTrustAsItWas(string parameters)
+    {
+        await using var client = await LanguageServerClient.StartAsync(initializationOptions: new { workspaceTrusted = true });
+
+        client.Notify(Methods.DidChangeWorkspaceTrust, JsonDocument.Parse(parameters).RootElement.Clone());
+
+        var status = await Status(client);
+
+        Assert.Equal(WorkspaceTrust.Trusted.Describe(), Assert.Single(Facts(status, "workspace trust")).Value);
     }
 
     /// <summary>The status report names what trust is withholding, and what trust would permit.</summary>

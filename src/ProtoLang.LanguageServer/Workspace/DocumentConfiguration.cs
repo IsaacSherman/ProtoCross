@@ -296,7 +296,7 @@ public sealed record DocumentConfiguration
     {
         var facts = new List<ConfigurationFact>
         {
-            new("protoc", ProtocPath ?? "(located when needed)", ProtocPathSource),
+            new("protoc", ProtocPath ?? DescribeLocated(), ProtocPathSource),
 
             // A refused file is named, not summarized as "(defaults)". Reporting the defaults beside
             // the file that was rejected would say the file supplied them, when in truth no policy is
@@ -309,6 +309,17 @@ public sealed record DocumentConfiguration
 
         return facts;
     }
+
+    /// <remarks>
+    /// The source beside this still says nothing stated a protoc, and for resolution that is true: the
+    /// walk reached discovery. The value is where the rest of the truth goes, because a user who wrote
+    /// the setting and reads "not stated" has been told their setting does not exist, one section above
+    /// the one that says it was withheld.
+    /// </remarks>
+    private string DescribeLocated()
+        => Withheld.Any(setting => setting.Key == ProtoLangSettings.ProtocPathKey)
+            ? "(located when needed: the protoc a setting names is withheld until the workspace is trusted)"
+            : "(located when needed)";
 
     private string DescribePolicy()
     {

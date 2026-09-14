@@ -408,7 +408,8 @@ Normative Requirements:
   and nothing else that speaks the protocol.
 - **Trust is the client's to report and the host's to apply.** A client states it as a boolean
   `workspaceTrusted` in its initialization options and reports a change with the
-  `protolang/didChangeWorkspaceTrust` notification, whose `trusted` member says which way it changed.
+  `protolang/didChangeWorkspaceTrust` notification, whose `trusted` member says which way it changed;
+  one without a boolean `trusted` changes nothing, rather than being read as a withdrawal.
   A client that states nothing, or states something other than a boolean, is treated as trusted:
   the clients that say nothing are the ones with no trust model to report, whose settings their users
   wrote themselves. The clients this project ships always say. **A client whose editor has no trust

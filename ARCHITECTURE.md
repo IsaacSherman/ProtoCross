@@ -154,6 +154,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | A document, to an editor and to the compiler | `DocumentUri` | [Workspace/DocumentUri.cs](src/ProtoLang.LanguageServer/Workspace/DocumentUri.cs) |
 | What an editor may configure, and where it wins | `WorkspaceConfiguration`, `ProtoLangSettings` | [Workspace/WorkspaceConfiguration.cs](src/ProtoLang.LanguageServer/Workspace/WorkspaceConfiguration.cs) |
 | What one document compiles under | `DocumentConfiguration`, `ConfigurationSource` | [Workspace/DocumentConfiguration.cs](src/ProtoLang.LanguageServer/Workspace/DocumentConfiguration.cs) |
+| Which settings an untrusted workspace may not state, and what it stated anyway | `SettingDefinition`, `SettingTrust`, `WorkspaceTrust`, `WithheldSetting` | [Workspace/SettingDefinition.cs](src/ProtoLang.LanguageServer/Workspace/SettingDefinition.cs), [Workspace/WorkspaceTrust.cs](src/ProtoLang.LanguageServer/Workspace/WorkspaceTrust.cs) |
 | One JSON-RPC conversation | `JsonRpcConnection`, `MessageReader` | [Protocol/JsonRpcConnection.cs](src/ProtoLang.LanguageServer/Protocol/JsonRpcConnection.cs) |
 | The server itself | `LanguageServerHost` | [Hosting/LanguageServerHost.cs](src/ProtoLang.LanguageServer/Hosting/LanguageServerHost.cs) |
 | Who is told what is wrong with which file | `DiagnosticRouter`, `DiagnosticContribution` | [Hosting/DiagnosticRouter.cs](src/ProtoLang.LanguageServer/Hosting/DiagnosticRouter.cs) |
@@ -232,6 +233,22 @@ and may not restate what is in one — and **every setting that is not being use
 (`PL2106`), rather than being reported as having supplied the defaults it did not supply.
 `DocumentUri` and `PathIdentity` are between them the only places a URI becomes a path and two paths
 are compared, which is what makes one file one document and one cache entry however it is spelled.
+
+**Trust** (spec 10.4.1) is the one thing that removes a setting from that order rather than ranking it.
+The client reports whether the user trusts the workspace — `workspaceTrusted` at `initialize`,
+`protolang/didChangeWorkspaceTrust` afterwards, silence meaning trusted — and while it is untrusted,
+every setting that could make the machine run a program is withheld from folder and workspace scope
+before the walk begins. Today that is `protolang.protocPath` alone. Which settings require trust is not
+a list beside the settings but part of declaring one:
+[`ProtoLangSettings.Definitions`](src/ProtoLang.LanguageServer/Workspace/ProtoLangSettings.cs) is the
+only list of settings there is, and a row cannot be written without its classification. Trust is
+applied in one place, as `WorkspaceConfiguration` admits each scope, so compilation, import completion
+and the status report cannot disagree about what was withheld. Two consequences are easy to
+miss. `workspace/configuration` answers with scopes already merged, so a user-scope protoc path is
+withheld too, and protoc is located instead. And nothing withheld is discarded, so granting trust is a
+new generation and a recompile like any other change. What was withheld is said once per process as a
+message, and listed in the status report — never as a diagnostic, since nothing about the document or
+the setting needs editing.
 
 ### Serving an editor
 
@@ -433,7 +450,7 @@ One project, [tests/ProtoLang.Tests](tests/ProtoLang.Tests), roughly organized b
 `SourceSpanTests`, `CompilationTests`, `InMemoryCompilationTests`, `PartialBindingTests`,
 `SymbolIdentityTests`, `PositionQueryTests`, `ReferenceIndexTests`, `ScopeQueryTests`,
 `DescriptorCacheTests`, `SchemaDeclarationTests`, `ProcessSupervisionTests`, `CompileSupervisionTests`,
-`WorkspaceConfigurationTests`, `LanguageServerTests`, `SemanticTokenTests`,
+`WorkspaceConfigurationTests`, `WorkspaceTrustTests`, `ServerStatusTests`, `LanguageServerTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
@@ -508,6 +525,10 @@ measured them, finding one to two orders of magnitude of headroom on four of the
 Core only through remarks. #58 made the server able to answer for itself, and reached Core three
 times, each additively and each because a fact the server knew could not be asked for: the locator
 walks its probes and now says which one answered, a loader can report what its `protoc` says it is,
-and the descriptor cache states the bytes it holds and the last entry to go stale. Everything from
+and the descriptor cache states the bytes it holds and the last entry to go stale. #55 opened the
+fourth wave, the one that ships to people, by deciding what a repository nobody has trusted may make
+the server do: withhold the one setting that names an executable, keep serving everything else, and
+say so once. It did not reach Core, and it made the settings a table so that classifying a new one
+is part of adding it. Everything from
 here should be additive: new types, new projects. Rewriting the binder is the signal to stop and
 re-scope.

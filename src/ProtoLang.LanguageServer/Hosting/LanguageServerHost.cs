@@ -923,7 +923,15 @@ public sealed class LanguageServerHost : IDisposable
     /// </remarks>
     private Task TrustChanged(WorkspaceTrustParams message)
     {
-        if (_configuration.SetTrust(message.Trusted ? WorkspaceTrust.Trusted : WorkspaceTrust.Untrusted))
+        if (message.Trusted is not { } trusted)
+        {
+            _log.Warning(
+                $"A {Methods.DidChangeWorkspaceTrust} notification carried no boolean 'trusted', so the "
+                    + "workspace stays as it was.");
+            return Task.CompletedTask;
+        }
+
+        if (_configuration.SetTrust(trusted ? WorkspaceTrust.Trusted : WorkspaceTrust.Untrusted))
         {
             _scheduler.ScheduleAll();
         }
