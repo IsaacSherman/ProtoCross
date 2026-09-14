@@ -80,7 +80,7 @@ public sealed class LanguageServerHost : IDisposable
         _connection = new JsonRpcConnection(input, output, _log);
         _log.Sink = Publish;
 
-        _configuration = new ConfigurationSync(_connection, _log);
+        _configuration = new ConfigurationSync(_connection, _log) { OnSettingsWithheld = ShowWithheld };
         _loaders = new LoaderPool(_log) { OnProtocMissing = ShowProblem };
         _router = new DiagnosticRouter(
             parameters => _connection.NotifyAsync(Methods.PublishDiagnostics, parameters),
@@ -302,6 +302,10 @@ public sealed class LanguageServerHost : IDisposable
         _connection.OnNotification(
             Methods.DidChangeWorkspaceFolders,
             (parameters, token) => Act<DidChangeWorkspaceFoldersParams>(parameters, message => FoldersChanged(message, token)));
+
+        _connection.OnNotification(
+            Methods.DidChangeWorkspaceTrust,
+            (parameters, _) => Act<WorkspaceTrustParams>(parameters, TrustChanged));
     }
 
     /// <summary>Answers the status request, whatever state the server is in.</summary>
@@ -537,6 +541,11 @@ public sealed class LanguageServerHost : IDisposable
         });
 
         ReadExtensionInfo(message.InitializationOptions);
+
+        // Before the folders, and long before the settings are pulled in initialized: a client that
+        // reports an untrusted workspace must not have that workspace's protoc resolved even once in the
+        // gap between being told about the folder and being told what it may do there.
+        _configuration.SetTrust(ReadWorkspaceTrust(message.InitializationOptions));
 
         // Only when the client says something. A client that omits trace has stated no preference, and
         // taking the default here would quietly undo a --log-level given on the command line -- which
@@ -898,6 +907,38 @@ public sealed class LanguageServerHost : IDisposable
         _scheduler.ScheduleAll();
     }
 
+    /// <summary>The user trusted the workspace, or stopped trusting it.</summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing is pulled: the server never discarded what it was withholding, so the settings it needs
+    /// are the ones it already holds, and granting trust is a new generation and a recompile like any
+    /// other change. That is what makes the transition need no reload and no second round trip. A
+    /// client whose own settings change on a grant -- VS Code, which stops hiding a restricted setting --
+    /// sends <c>didChangeConfiguration</c> as well, and that is handled as it always was.
+    /// </para>
+    /// <para>
+    /// A report of the state already in force recompiles nothing, because nothing about any answer
+    /// could differ.
+    /// </para>
+    /// </remarks>
+    private Task TrustChanged(WorkspaceTrustParams message)
+    {
+        if (message.Trusted is not { } trusted)
+        {
+            _log.Warning(
+                $"A {Methods.DidChangeWorkspaceTrust} notification carried no boolean 'trusted', so the "
+                    + "workspace stays as it was.");
+            return Task.CompletedTask;
+        }
+
+        if (_configuration.SetTrust(trusted ? WorkspaceTrust.Trusted : WorkspaceTrust.Untrusted))
+        {
+            _scheduler.ScheduleAll();
+        }
+
+        return Task.CompletedTask;
+    }
+
     // ------------------------------------------------------- talking to the client
 
     private void Publish(LogLevel level, string message)
@@ -908,8 +949,18 @@ public sealed class LanguageServerHost : IDisposable
     /// protoc missing means nothing in the workspace can be compiled at all, and the diagnostics that
     /// would have said so are the ones that are not being produced.
     /// </remarks>
-    private void ShowProblem(string message)
-        => _ = _connection.NotifyAsync(Methods.ShowMessage, new ShowMessageParams((int)LogLevel.Error, message));
+    private void ShowProblem(string message) => Show(LogLevel.Error, message);
+
+    /// <remarks>
+    /// A warning rather than an error: the workspace is working, with less than it asked for. It is a
+    /// message box at all because a withheld protoc changes which executable compiles every schema, and
+    /// the diagnostics that result can differ from the ones a trusted session would show without any of
+    /// them saying why. <see cref="ConfigurationSync.OnSettingsWithheld"/> is what keeps it to once.
+    /// </remarks>
+    private void ShowWithheld(string message) => Show(LogLevel.Warning, message);
+
+    private void Show(LogLevel level, string message)
+        => _ = _connection.NotifyAsync(Methods.ShowMessage, new ShowMessageParams((int)level, message));
 
     /// <summary>
     /// Takes the extension's name and version out of the client's initialization options.
@@ -953,6 +1004,38 @@ public sealed class LanguageServerHost : IDisposable
             => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.String
                 ? value.GetString()
                 : null;
+    }
+
+    /// <summary>Whether the client said the workspace it opened is trusted.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>workspaceTrusted</c> in the initialization options: <c>true</c> or <c>false</c>, and anything
+    /// else -- absent, a string, a number -- is the client not having said, which spec 10.4.1 treats as
+    /// trusted for the reason <see cref="WorkspaceTrust.NotReported"/> gives.
+    /// </para>
+    /// <para>
+    /// Read as leniently as <see cref="ReadExtensionInfo"/> and for the same reason, with one
+    /// difference worth stating: a malformed value here lands on the permissive state rather than the
+    /// restrictive one. That is deliberate rather than careless. Both of this project's clients send a
+    /// boolean they compute, so a malformed one comes from a hand-configured client whose settings its
+    /// user wrote -- and refusing a setting to that user over the spelling of an option they may not know
+    /// exists is a failure with no security value.
+    /// </para>
+    /// </remarks>
+    private static WorkspaceTrust ReadWorkspaceTrust(JsonElement? options)
+    {
+        if (options is not { ValueKind: JsonValueKind.Object } element
+            || !element.TryGetProperty("workspaceTrusted", out var stated))
+        {
+            return WorkspaceTrust.NotReported;
+        }
+
+        return stated.ValueKind switch
+        {
+            JsonValueKind.True => WorkspaceTrust.Trusted,
+            JsonValueKind.False => WorkspaceTrust.Untrusted,
+            _ => WorkspaceTrust.NotReported,
+        };
     }
 
     /// <inheritdoc cref="StatusReporter.VersionOf"/>

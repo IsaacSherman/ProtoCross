@@ -45,4 +45,11 @@ public static class Methods
     /// question.
     /// </remarks>
     public const string Status = "protolang/status";
+
+    /// <summary>The client telling the server that the user has changed whether they trust the workspace.</summary>
+    /// <remarks>
+    /// This server's own notification, prefixed for the reason <see cref="Status"/> is. LSP has no
+    /// notion of workspace trust, so there is no standard method to prefer.
+    /// </remarks>
+    public const string DidChangeWorkspaceTrust = "protolang/didChangeWorkspaceTrust";
 }

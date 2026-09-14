@@ -1,4 +1,5 @@
 using System.Text.Json;
+using ProtoLang.Binding;
 using ProtoLang.Diagnostics;
 using ProtoLang.LanguageServer.Protocol;
 using ProtoLang.LanguageServer.Protocol.Lsp;
@@ -28,6 +29,16 @@ namespace ProtoLang.LanguageServer.Hosting;
 /// that only pushes sends its settings tree on <c>workspace/didChangeConfiguration</c>, and refusing
 /// that would leave a whole class of clients unable to change a setting at all.
 /// </para>
+/// <para>
+/// <b>The same merge decides what trust costs.</b> In an untrusted workspace a setting that requires
+/// trust is withheld from folder and workspace scope, and those two scopes are where every value from
+/// the wire lands -- including a user's own, which the client merged in before answering. So a
+/// <c>protolang.protocPath</c> written at user scope is withheld too, and the server locates protoc
+/// instead. That is the conservative reading of an answer that cannot be taken apart, and the
+/// alternative -- believing the client stripped workspace values first -- would hold for VS Code, which
+/// does so for a declared restricted setting, and for nothing else that speaks LSP. The announcement
+/// says the setting is not in use rather than claiming to know which file it came from.
+/// </para>
 /// </remarks>
 public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog log)
 {
@@ -48,6 +59,23 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
     private WorkspaceConfiguration _configuration = WorkspaceConfiguration.Empty;
     private IReadOnlyList<Diagnostic> _settingsDiagnostics = [];
     private bool _clientAnswersConfiguration;
+    private int _announcedWithheld;
+
+    /// <summary>Told once, the first time a setting is withheld because the workspace is untrusted.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Once per process.</b> Settings are applied again on every change and every folder added, and
+    /// an untrusted workspace withholds the same setting every time; a message each time would be the
+    /// nagging #55 rules out, and would teach the user to dismiss it unread. The log records every
+    /// application, and the status report always has the current answer, so nothing after the first
+    /// is lost -- it is only not interrupted for.
+    /// </para>
+    /// <para>
+    /// <b>Only when something is withheld</b>, not whenever the workspace is untrusted. A workspace that
+    /// names no protoc has lost nothing, and being told otherwise is a warning about nothing.
+    /// </para>
+    /// </remarks>
+    public Action<string>? OnSettingsWithheld { get; init; }
 
     /// <summary>What the server currently believes about the workspace.</summary>
     public WorkspaceConfiguration Current
@@ -89,6 +117,30 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
     /// <summary>Reads what the client can do, so nothing is assumed of it later.</summary>
     public void Negotiate(ClientCapabilities? capabilities)
         => _clientAnswersConfiguration = capabilities?.Workspace?.Configuration is true;
+
+    /// <summary>Takes what the client said about trust.</summary>
+    /// <returns>
+    /// Whether anything changed, so a caller recompiles only when it did. A client restating the state
+    /// it already reported has changed nothing, and recompiling every open document for it would be
+    /// work that produces the same answers.
+    /// </returns>
+    public bool SetTrust(WorkspaceTrust trust)
+    {
+        lock (_gate)
+        {
+            if (_configuration.Trust == trust)
+            {
+                return false;
+            }
+
+            _configuration = _configuration.WithTrust(trust);
+        }
+
+        log.Info($"The client reports this workspace as {trust.Describe()}.");
+        Announce();
+
+        return true;
+    }
 
     /// <summary>Replaces the open folders with the ones the client named.</summary>
     public void SetFolders(IEnumerable<LspFolder>? folders)
@@ -186,6 +238,7 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
         }
 
         Report(diagnostics);
+        Announce();
     }
 
     private void Apply(IReadOnlyList<Workspace.WorkspaceFolder> folders, IReadOnlyList<JsonElement> answers)
@@ -210,6 +263,7 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
         }
 
         Report(diagnostics);
+        Announce();
     }
 
     private void Report(DiagnosticBag diagnostics)
@@ -218,6 +272,45 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
         {
             log.Warning($"{diagnostic.Code}: {diagnostic.Message}");
         }
+    }
+
+    /// <summary>Says what trust is withholding: in the log every time, and to the user the first time.</summary>
+    /// <inheritdoc cref="OnSettingsWithheld" path="/remarks"/>
+    private void Announce()
+    {
+        var withheld = Current.WithheldSettings();
+
+        if (withheld.Count == 0)
+        {
+            return;
+        }
+
+        var message = Withholding(withheld);
+
+        log.Warning(message);
+
+        if (Interlocked.Exchange(ref _announcedWithheld, 1) == 0)
+        {
+            OnSettingsWithheld?.Invoke(message);
+        }
+    }
+
+    /// <remarks>
+    /// Says what the user gets instead, and how to get what they asked for. A message that only says a
+    /// setting was ignored leaves the question of whether anything works at all; and a message that
+    /// does not say how to stop it being ignored is one somebody has to search for.
+    /// </remarks>
+    private static string Withholding(IReadOnlyList<WithheldSetting> withheld)
+    {
+        var instead = withheld.Any(setting => setting.Key == ProtoLangSettings.ProtocPathKey)
+            ? $" protoc is located instead, from {ProtocLocator.OverrideEnvironmentVariable}, then PATH, then "
+                + "the NuGet package cache."
+            : string.Empty;
+
+        return "This workspace is not trusted, so settings that could make this machine run a program are "
+            + $"not being used: {string.Join("; ", withheld.Select(setting => setting.Describe()))}. "
+            + $"Everything else keeps working.{instead} Trust the workspace in the editor to use these "
+            + "settings; nothing needs restarting.";
     }
 
     /// <summary>Reads one scope's settings out of the JSON a client sent for it.</summary>

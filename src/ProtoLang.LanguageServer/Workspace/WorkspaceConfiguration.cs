@@ -59,6 +59,16 @@ namespace ProtoLang.LanguageServer.Workspace;
 /// it from above is that those totals are one to two orders of magnitude under budget. A caller that
 /// does not need the policy asks <see cref="ResolveImportRoots"/> and does not pay for it at all.
 /// </para>
+/// <para>
+/// <b>Trust withholds from the order; it does not reorder it.</b> While the workspace is
+/// <see cref="WorkspaceTrust.Untrusted"/>, every setting in <see cref="ProtoLangSettings.RestrictedKeys"/>
+/// is removed from the scopes a repository can write -- folder and workspace -- before the walk
+/// begins, and the walk then goes on exactly as written: to user scope, to the environment, to
+/// discovery. #55 asked whether user scope should instead win outright for executables. It does not
+/// need to: once no workspace-written executable is a candidate, the next source in the ordinary order
+/// already is the user's, and a second precedence order for a subset of settings is a second thing
+/// for spec 10.4.1 and this resolver to disagree about.
+/// </para>
 /// </remarks>
 public sealed record WorkspaceConfiguration
 {
@@ -94,6 +104,10 @@ public sealed record WorkspaceConfiguration
     /// </remarks>
     public string? WorkspaceDirectory { get; init; }
 
+    /// <summary>What the client has said about whether this workspace is trusted.</summary>
+    /// <inheritdoc cref="WorkspaceTrust"/>
+    public WorkspaceTrust Trust { get; init; } = WorkspaceTrust.NotReported;
+
     /// <summary>Reads an environment variable. Replaceable so a test does not have to set one.</summary>
     public Func<string, string?> ReadEnvironmentVariable { get; init; } = Environment.GetEnvironmentVariable;
 
@@ -124,6 +138,37 @@ public sealed record WorkspaceConfiguration
             WorkspaceDirectory = workspaceDirectory ?? WorkspaceDirectory,
             Generation = Generation + 1,
         };
+    }
+
+    /// <summary>The same configuration under a different trust state.</summary>
+    /// <remarks>
+    /// A new generation like any other change, which is the whole of what "granting trust takes effect
+    /// without a reload" needed: work begun under the old state is discarded when it finishes, and the
+    /// next resolution sees the settings that were being withheld. Nothing withheld was ever thrown
+    /// away -- the scopes keep what the client sent, and only resolution declines to use it.
+    /// </remarks>
+    public WorkspaceConfiguration WithTrust(WorkspaceTrust trust)
+        => this with { Trust = trust, Generation = Generation + 1 };
+
+    /// <summary>
+    /// Every setting being withheld because the workspace is untrusted, across the workspace and every
+    /// open folder; empty when the workspace is trusted or states nothing that requires trust.
+    /// </summary>
+    /// <remarks>
+    /// Not per document, because what it answers is not about a document: it is whether to tell the user
+    /// something, once, and a user with three files open in one untrusted folder has been denied one
+    /// setting, not three. <see cref="DocumentConfiguration.Withheld"/> is the per-document answer, and
+    /// both come from the same <see cref="Admit"/>, so they cannot disagree about what was withheld.
+    /// </remarks>
+    public IReadOnlyList<WithheldSetting> WithheldSettings()
+    {
+        List<Scope> scopes =
+        [
+            .. Folders.Select(folder => Admit(ConfigurationSource.FolderSetting, folder.Settings, folder.Path)),
+            Admit(ConfigurationSource.WorkspaceSetting, Workspace, WorkspaceBaseDirectory),
+        ];
+
+        return Withheld(scopes);
     }
 
     /// <summary>
@@ -193,6 +238,7 @@ public sealed record WorkspaceConfiguration
             ConfigSource = configSource,
             ConfigPath = configPath,
             Diagnostics = [.. diagnostics],
+            Withheld = Withheld(scopes),
         };
     }
 
@@ -230,13 +276,23 @@ public sealed record WorkspaceConfiguration
     }
 
     /// <summary>One place a setting can be written, and what a relative path there means.</summary>
-    private sealed record Scope(ConfigurationSource Source, ProtoLangSettings Settings, string? BaseDirectory);
+    /// <param name="Withheld">
+    /// What this scope stated and is not being allowed to state, because the workspace is untrusted.
+    /// <see cref="Settings"/> is already without it.
+    /// </param>
+    private sealed record Scope(
+        ConfigurationSource Source,
+        ProtoLangSettings Settings,
+        string? BaseDirectory,
+        IReadOnlyList<SettingValue> Withheld);
 
     /// <summary>The scopes that apply to a document, most specific first.</summary>
     /// <remarks>
     /// A document outside every folder, and an untitled buffer in a multi-root workspace, simply have
     /// no folder scope -- the list is shorter and nothing else about resolution changes. That is why
-    /// the awkward cases the issue names need no branches of their own further down.
+    /// the awkward cases the issue names need no branches of their own further down, and why trust
+    /// needs none either: it is settled as each scope is admitted, and every resolver below reads a
+    /// scope that already says only what it is allowed to.
     /// </remarks>
     private List<Scope> ScopesFor(WorkspaceFolder? folder)
     {
@@ -244,14 +300,36 @@ public sealed record WorkspaceConfiguration
 
         if (folder is not null)
         {
-            scopes.Add(new Scope(ConfigurationSource.FolderSetting, folder.Settings, folder.Path));
+            scopes.Add(Admit(ConfigurationSource.FolderSetting, folder.Settings, folder.Path));
         }
 
-        scopes.Add(new Scope(ConfigurationSource.WorkspaceSetting, Workspace, WorkspaceBaseDirectory));
-        scopes.Add(new Scope(ConfigurationSource.UserSetting, User, null));
+        scopes.Add(Admit(ConfigurationSource.WorkspaceSetting, Workspace, WorkspaceBaseDirectory));
+        scopes.Add(Admit(ConfigurationSource.UserSetting, User, null));
 
         return scopes;
     }
+
+    /// <summary>A scope, with what it may not state removed if a repository could have written it.</summary>
+    /// <remarks>
+    /// The one place trust is applied. <see cref="Resolve"/>, <see cref="ResolveImportRoots"/> and
+    /// <see cref="WithheldSettings"/> all admit scopes through here, so a setting cannot be withheld
+    /// from compilation and still reach import completion, or be used and still be reported as
+    /// withheld.
+    /// </remarks>
+    private Scope Admit(ConfigurationSource source, ProtoLangSettings settings, string? baseDirectory)
+    {
+        if (Trust.PermitsRestrictedSettings() || !source.IsWrittenByTheWorkspace())
+        {
+            return new Scope(source, settings, baseDirectory, []);
+        }
+
+        var admitted = settings.WithoutRestricted(out var withheld);
+
+        return new Scope(source, admitted, baseDirectory, withheld);
+    }
+
+    private static List<WithheldSetting> Withheld(IEnumerable<Scope> scopes)
+        => [.. scopes.SelectMany(scope => scope.Withheld.Select(value => new WithheldSetting(value.Key, value.Values, scope.Source)))];
 
     /// <inheritdoc cref="WorkspaceDirectory"/>
     private string? WorkspaceBaseDirectory
@@ -282,7 +360,7 @@ public sealed record WorkspaceConfiguration
 
         if (!string.IsNullOrWhiteSpace(fromEnvironment))
         {
-            var environment = new Scope(ConfigurationSource.Environment, ProtoLangSettings.None, null);
+            var environment = new Scope(ConfigurationSource.Environment, ProtoLangSettings.None, null, []);
 
             if (TryUseProtoc(fromEnvironment, environment, variable, diagnostics, out var located))
             {

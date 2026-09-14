@@ -82,4 +82,14 @@ public static class ConfigurationSources
         => source is ConfigurationSource.FolderSetting
             or ConfigurationSource.WorkspaceSetting
             or ConfigurationSource.UserSetting;
+
+    /// <summary>Whether a repository can write this source, by committing an editor's settings file.</summary>
+    /// <remarks>
+    /// Folder and workspace scope, and not user scope: a <c>.vscode/settings.json</c> travels with a
+    /// clone, and a user's own settings do not. This is the line spec 10.4.1 draws for trust, and the
+    /// environment and a discovered <c>protolang.config.xml</c> are on the far side of it for different
+    /// reasons -- the first is the machine's, and the second states policy and names no executable.
+    /// </remarks>
+    public static bool IsWrittenByTheWorkspace(this ConfigurationSource source)
+        => source is ConfigurationSource.FolderSetting or ConfigurationSource.WorkspaceSetting;
 }
