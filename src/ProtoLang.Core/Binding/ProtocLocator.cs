@@ -15,22 +15,47 @@ public static class ProtocLocator
     /// the system PATH, and finally a Grpc.Tools package in the local NuGet cache.
     /// </summary>
     /// <returns>The full path to protoc, or null if none was found.</returns>
-    public static string? Locate()
+    public static string? Locate() => Select().Path;
+
+    /// <inheritdoc cref="Locate"/>
+    /// <returns>The executable and the probe that produced it.</returns>
+    /// <remarks>
+    /// The same walk as <see cref="Locate"/>, saying which step answered. It is the walk itself
+    /// rather than a second one, and <see cref="Locate"/> is its projection, because a probe order
+    /// stated twice is one that will be wrong in one of the two places -- and the place it would be
+    /// wrong is the report a user reads when the executable is not the one they expected.
+    /// </remarks>
+    public static ProtocSelection Select()
     {
         var overridePath = Environment.GetEnvironmentVariable(OverrideEnvironmentVariable);
         if (!string.IsNullOrWhiteSpace(overridePath) && File.Exists(overridePath))
         {
-            return overridePath;
+            return new ProtocSelection(overridePath, ProtocSource.EnvironmentVariable);
         }
 
-        var onPath = FindOnSystemPath(ExecutableName);
-        if (onPath is not null)
+        if (FindOnSystemPath(ExecutableName) is { } onPath)
         {
-            return onPath;
+            return new ProtocSelection(onPath, ProtocSource.SystemPath);
         }
 
-        return FindBundledProtoc();
+        if (FindBundledProtoc() is { } bundled)
+        {
+            return new ProtocSelection(bundled, ProtocSource.NuGetPackage);
+        }
+
+        return ProtocSelection.None;
     }
+
+    /// <summary>What a caller-supplied protoc path settles to, and that a caller supplied it.</summary>
+    /// <remarks>
+    /// <see cref="Resolve"/> with the provenance attached. The source is
+    /// <see cref="ProtocSource.Stated"/> however the path was written -- a bare name that
+    /// <see cref="Resolve"/> then finds on <c>PATH</c> is still a setting's answer rather than the
+    /// probe's, and reporting it as <see cref="ProtocSource.SystemPath"/> would tell a user their
+    /// setting had been ignored when it had been honoured.
+    /// </remarks>
+    public static ProtocSelection Select(string protocPath)
+        => new(Resolve(protocPath), ProtocSource.Stated);
 
     /// <summary>
     /// The concrete executable a caller-supplied protoc path will actually run, as a full path where

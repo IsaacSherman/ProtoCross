@@ -28,11 +28,17 @@ nineteen fast hovers. Warm means the descriptors are loaded and the buffer has b
 is the state an editor is in for every keystroke after the first.
 
 These figures live in exactly one place a machine reads:
-[`PerformanceBudgets.cs`](../tests/ProtoLang.Tests/Performance/PerformanceBudgets.cs). The table
+[`PerformanceBudgets.cs`](../src/ProtoLang.LanguageServer/Hosting/PerformanceBudgets.cs). The table
 above is the copy for people, and
 `PerformanceBudgetTests.TheDocumentedBudgetsAreTheEnforcedOnes` fails if the two disagree — because a
 rule written twice disagrees eventually, and the copy that would quietly stop being true is the one
 people read.
+
+They sit in the server rather than beside the benchmark, which is where #57 first put them. Two
+readers want them now: the benchmark, which checks a measurement against them, and the status command
+from #58, which reports what a running server's own requests have cost against them. A second copy in
+the server would be a third place for this table to disagree with itself, and the copy a user reads
+off a status report is the one nobody would think to check.
 
 ## What "a normal file" means
 
@@ -87,8 +93,15 @@ question after "too slow" is always "by how much, and was it always?".
 
 The measurement drives the providers directly rather than going over the wire. Framing, the reader
 loop and the worker handoff are real costs, but they are not what a design decision moves, and
-reporting them as the cost of a hover would be misleading. End-to-end is
-[#58](https://github.com/IsaacSherman/ProtoLang/issues/58)'s to show.
+reporting them as the cost of a hover would be misleading.
+
+[#58](https://github.com/IsaacSherman/ProtoLang/issues/58) measures the same operations on a running
+server, from inside the dispatch table, and reports them in the status command against these same
+budgets — which is why the budgets and the percentile rule live in `ProtoLang.LanguageServer` rather
+than beside the benchmark. That measurement starts one step further out than this one: it includes
+deserializing the request's parameters, the lifecycle check and the wait for a slot on the answer
+gate. It still stops short of the framing and of the time a request spends queued behind a
+`didChange`, so neither file measures those. See *What this does not cover*.
 
 ## How regressions are caught
 
@@ -229,8 +242,19 @@ path", and only the first one is true.
 
 ## What this does not cover
 
-Nothing here measures the wire: framing, dispatch, and the ordered worker are #58's to surface, and a
-user reporting slowness should produce numbers from the server itself rather than from this file.
+**Nothing measures the framing or the queue.** #58 narrowed this rather than closing it. The status
+command reports what a real server's own requests cost, from the dispatch table outwards, so a user
+reporting slowness now produces numbers instead of adjectives — but the clock starts when the handler
+is entered. What is still unmeasured is the header parse, the JSON envelope, and the time a request
+waits behind an earlier message on the ordered worker.
+
+The queue wait is the interesting one of the three, because it is the only one that can be large: it
+is exactly what the reading worker was restructured to keep short in #50 and #51. It is deliberately
+left out of the status figures rather than overlooked — folding it in would make a hover row depend
+on unrelated traffic, and stop it meaning the same thing as the hover row in the table above, which
+is the one property that lets the two be compared at all. `CompileScheduler.Pending` and the
+in-flight counts on `DeferredAnswers` are what a stuck server shows instead, and the status report
+prints both.
 
 `DocumentSemantics` does not serialize two concurrent misses for one buffer, so a classification
 request overlapping the debounced compile can compile the same text twice. It is a known cost, it is

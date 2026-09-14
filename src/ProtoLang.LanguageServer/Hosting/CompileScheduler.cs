@@ -115,6 +115,22 @@ public sealed class CompileScheduler
         _concurrency = new SemaphoreSlim(concurrency, concurrency);
     }
 
+    /// <summary>Where a compile reports what it cost, or null when nobody is measuring.</summary>
+    /// <remarks>
+    /// <para>
+    /// Optional so that a scheduler built on its own -- which several tests do -- needs nothing extra
+    /// to work; a host shares the one its requests report through, so that the status report's
+    /// diagnostics row and its hover row are measured by the same apparatus.
+    /// </para>
+    /// <para>
+    /// <b>The budget is defined after the debounce, so this is where the clock belongs.</b> Timing
+    /// from the keystroke would measure the 250 ms wait that exists on purpose, and report a
+    /// deliberately delayed compile as a slow one. See <see cref="PerformanceBudgets.Diagnostics"/>,
+    /// which says what the number means.
+    /// </para>
+    /// </remarks>
+    public RequestTimings? Timings { get; init; }
+
     /// <summary>How many compilations have actually run. For tests and for #58.</summary>
     /// <remarks>
     /// Coalescing is otherwise unverifiable: a scheduler that ignored the debounce entirely would
@@ -313,7 +329,14 @@ public sealed class CompileScheduler
         var configuration = _configuration.Current;
         var mapper = _mapper();
 
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         var contribution = Diagnose(document, configuration, mapper, cancellationToken);
+
+        // Before the staleness check and after the compile: what was measured is a compilation that
+        // finished, whether or not anybody still wants its diagnostics. Recording after the check
+        // would drop exactly the compiles a fast typist supersedes, which are neither faster nor
+        // slower than the ones that survive.
+        Timings?.Record(PerformanceBudgets.Diagnostics, clock.Elapsed.TotalMilliseconds);
 
         cancellationToken.ThrowIfCancellationRequested();
 

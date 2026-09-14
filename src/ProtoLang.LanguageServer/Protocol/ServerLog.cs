@@ -12,6 +12,11 @@ public enum LogLevel
     Trace = 4,
 }
 
+/// <summary>Something the server logged as an error, and when.</summary>
+/// <param name="When">Local time, because it is read beside an editor's own clock.</param>
+/// <param name="Message">The line as it was logged, exception text and all.</param>
+public sealed record LoggedError(DateTimeOffset When, string Message);
+
 /// <summary>
 /// Where the server says what it is doing, at a level the user can raise when reporting a problem.
 /// </summary>
@@ -40,6 +45,30 @@ public sealed class ServerLog
     /// <summary>Where lines are mirrored regardless of the client. Never standard output.</summary>
     public TextWriter Mirror { get; init; } = Console.Error;
 
+    /// <summary>The last thing that went wrong, or null if nothing has.</summary>
+    /// <remarks>
+    /// <para>
+    /// Kept because a status report is opened after something went wrong, and by then the interesting
+    /// line has scrolled out of an output channel the user may never have opened. A report that says
+    /// "an exception at 14:02, here it is" turns "the extension is broken" into a defect report.
+    /// </para>
+    /// <para>
+    /// <b>Errors only, and not warnings.</b> A warning here is routinely a setting being ignored,
+    /// which is normal in a workspace that states nothing -- so the last warning would almost always
+    /// be something harmless, and it would sit where a reader is looking for the failure. Those
+    /// appear in the report anyway, against the document they are about, with the setting that caused
+    /// them.
+    /// </para>
+    /// <para>
+    /// Kept regardless of <see cref="Level"/>, for the same reason <see cref="Mirror"/> is written
+    /// regardless of it: the level is a preference about what to show while working, and this is the
+    /// record kept for a defect report.
+    /// </para>
+    /// </remarks>
+    public LoggedError? LastError => Volatile.Read(ref _lastError);
+
+    private LoggedError? _lastError;
+
     public void Error(string message, Exception? exception = null) => Write(LogLevel.Error, message, exception);
 
     public void Warning(string message, Exception? exception = null) => Write(LogLevel.Warning, message, exception);
@@ -56,6 +85,11 @@ public sealed class ServerLog
     public void Write(LogLevel level, string message, Exception? exception = null)
     {
         var text = exception is null ? message : $"{message}{Environment.NewLine}{exception}";
+
+        if (level is LogLevel.Error)
+        {
+            Volatile.Write(ref _lastError, new LoggedError(DateTimeOffset.Now, text));
+        }
 
         try
         {

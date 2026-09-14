@@ -35,4 +35,14 @@ public static class Methods
 
     public const string LogMessage = "window/logMessage";
     public const string ShowMessage = "window/showMessage";
+
+    /// <summary>The status report, which is this server's own method rather than one of LSP's.</summary>
+    /// <remarks>
+    /// Prefixed with the language name, as the protocol asks of an extension: <c>$/</c> is reserved
+    /// for the protocol itself, and an unprefixed name risks colliding with a method LSP may define
+    /// later. A custom request rather than a command, because <c>workspace/executeCommand</c> is for
+    /// the server asking the client to change something, and this changes nothing -- it is a
+    /// question.
+    /// </remarks>
+    public const string Status = "protolang/status";
 }

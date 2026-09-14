@@ -1,10 +1,10 @@
-namespace ProtoLang.Tests.Performance;
+namespace ProtoLang.LanguageServer.Hosting;
 
 /// <summary>One operation an editor performs, and how long it may take.</summary>
 /// <param name="Operation">The name used in the budget table, the report, and the documentation.</param>
 /// <param name="Milliseconds">The ceiling, at the 95th percentile over the stress corpus.</param>
 /// <param name="Because">Why the number is what it is, which outlasts the number.</param>
-internal sealed record Budget(string Operation, double Milliseconds, string Because);
+public sealed record PerformanceBudget(string Operation, double Milliseconds, string Because);
 
 /// <summary>
 /// The latency budgets, as numbers a test can check rather than as adjectives.
@@ -16,6 +16,15 @@ internal sealed record Budget(string Operation, double Milliseconds, string Beca
 /// disagree -- because a rule written twice disagrees eventually, and the copy people read is the
 /// one that would quietly stop being true. The documentation holds what cannot go in a constant:
 /// the corpus, the procedure, the dated results, and the argument.
+/// </para>
+/// <para>
+/// <b>In the server rather than in the test project, which is where #57 first put them.</b> Two
+/// readers want these numbers now: the benchmark, which checks a measurement against them, and
+/// <c>ServerStatus</c>, which reports what the running server's own requests have cost against them.
+/// A copy in the server would be a third place for the table to disagree with itself, and the one
+/// that a user reads off a status report is the copy nobody would think to check. Nothing here
+/// depends on the server; it is a table of names and numbers, and it lives next to the requests it
+/// describes.
 /// </para>
 /// <para>
 /// <b>Measured at the 95th percentile over the stress corpus, not the median over the normal one.</b>
@@ -30,7 +39,7 @@ internal sealed record Budget(string Operation, double Milliseconds, string Beca
 /// than budgeted, for the reason #57 gives: the budget on a cold load is that it happens once.
 /// </para>
 /// </remarks>
-internal static class PerformanceBudgets
+public static class PerformanceBudgets
 {
     public const string Diagnostics = "diagnostics after edit";
     public const string Completion = "completion";
@@ -39,7 +48,7 @@ internal static class PerformanceBudgets
     public const string Definition = "go-to-definition";
 
     /// <summary>Every budget, in the order the documentation lists them.</summary>
-    public static IReadOnlyList<Budget> All { get; } =
+    public static IReadOnlyList<PerformanceBudget> All { get; } =
     [
         new(
             Diagnostics,
@@ -68,7 +77,18 @@ internal static class PerformanceBudgets
     ];
 
     /// <summary>The budget for one operation.</summary>
-    public static Budget Of(string operation)
-        => All.SingleOrDefault(budget => budget.Operation == operation)
+    /// <exception cref="ArgumentOutOfRangeException">Nothing budgets that operation.</exception>
+    public static PerformanceBudget Of(string operation)
+        => Find(operation)
             ?? throw new ArgumentOutOfRangeException(nameof(operation), operation, "no budget for that");
+
+    /// <summary>The budget for one operation, or null where there is none.</summary>
+    /// <remarks>
+    /// A report measures more than it budgets -- a cold descriptor load is reported and deliberately
+    /// not budgeted -- so asking about an unbudgeted operation is an ordinary question with an
+    /// ordinary answer rather than a mistake. <see cref="Of"/> stays for the callers that are naming
+    /// a constant from this class and would want to hear about a typo.
+    /// </remarks>
+    public static PerformanceBudget? Find(string operation)
+        => All.SingleOrDefault(budget => budget.Operation == operation);
 }

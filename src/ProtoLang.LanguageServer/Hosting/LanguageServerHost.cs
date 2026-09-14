@@ -59,6 +59,8 @@ public sealed class LanguageServerHost : IDisposable
     private readonly ReferenceProvider _references;
     private readonly HighlightProvider _highlights;
     private readonly SignatureHelpProvider _signatures;
+    private readonly RequestTimings _timings = new();
+    private readonly StatusReporter _status;
 
     private DiagnosticMapper _mapper = new(relatedInformationSupported: false);
 
@@ -98,7 +100,10 @@ public sealed class LanguageServerHost : IDisposable
             () => _mapper,
             _log,
             debounce,
-            semantics: _semantics);
+            semantics: _semantics)
+        {
+            Timings = _timings,
+        };
 
         _completion = new CompletionProvider(
             _documents, _configuration, _loaders, semantics: _semantics);
@@ -111,6 +116,18 @@ public sealed class LanguageServerHost : IDisposable
         _highlights = new HighlightProvider(_documents, _configuration, _loaders, semantics: _semantics);
         _signatures = new SignatureHelpProvider(
             _documents, _configuration, _loaders, semantics: _semantics);
+
+        _status = new StatusReporter
+        {
+            Documents = _documents,
+            Configuration = _configuration,
+            Loaders = _loaders,
+            Scheduler = _scheduler,
+            Semantics = _semantics,
+            Timings = _timings,
+            Log = _log,
+            State = () => _state,
+        };
 
         Register();
     }
@@ -172,6 +189,10 @@ public sealed class LanguageServerHost : IDisposable
     /// </remarks>
     public DocumentSemantics Semantics => _semantics;
 
+    /// <summary>What the requests this server has answered cost, for a test and for #58.</summary>
+    /// <inheritdoc cref="Completion" path="/remarks"/>
+    public RequestTimings Timings => _timings;
+
     /// <summary>Serves until the client goes away or <c>exit</c> arrives.</summary>
     public Task RunAsync(CancellationToken cancellationToken = default)
         => _connection.RunAsync(cancellationToken);
@@ -180,32 +201,89 @@ public sealed class LanguageServerHost : IDisposable
 
     // ------------------------------------------------------- wiring
 
+    /// <summary>
+    /// What the requests without a budget are called in a status report.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than beside <see cref="PerformanceBudgets"/>, which is a table of ceilings pinned
+    /// against <c>docs/performance.md</c> -- an operation with no ceiling has no row there, and
+    /// adding one would mean documenting a budget that does not exist. #57 budgeted the five
+    /// operations a user can feel; these four are measured because measuring them is free once the
+    /// dispatch table is being wrapped, and because "the outline request is the slow one" is a fact
+    /// nobody could otherwise discover from a support request.
+    /// </remarks>
+    private const string SemanticTokens = "semantic tokens";
+
+    /// <inheritdoc cref="SemanticTokens"/>
+    private const string SemanticTokenDeltas = "semantic tokens (delta)";
+
+    /// <inheritdoc cref="SemanticTokens"/>
+    private const string DocumentSymbols = "document symbols";
+
+    /// <inheritdoc cref="SemanticTokens"/>
+    private const string FindReferencesOperation = "find references";
+
+    /// <inheritdoc cref="SemanticTokens"/>
+    private const string SignatureHelpOperation = "signature help";
+
+    /// <summary>Records what one answer cost, and answers with it.</summary>
+    /// <remarks>
+    /// Wrapped around the handler in the dispatch table rather than inside each provider, because
+    /// what is being measured is what the client waited for -- the deserialization, the lifecycle
+    /// gate, and the wait on the answer gate included. A clock started inside a provider would report
+    /// the part of a slow hover that was never the slow part.
+    /// </remarks>
+    private Task<object?> Timed(string operation, Func<Task<object?>> answer)
+        => _timings.MeasureAsync(operation, answer);
+
     private void Register()
     {
         _connection.OnRequest(Methods.Initialize, (parameters, _) => Initialize(parameters));
         _connection.OnRequest(Methods.Shutdown, (_, _) => Shutdown());
-        _connection.OnRequest(Methods.SemanticTokensFull, Classify, concurrent: true);
-        _connection.OnRequest(Methods.SemanticTokensFullDelta, ClassifyDelta, concurrent: true);
-        _connection.OnRequest(Methods.Completion, Complete, concurrent: true);
+        _connection.OnRequest(Methods.Status, (parameters, _) => Status(parameters), concurrent: true);
+        _connection.OnRequest(
+            Methods.SemanticTokensFull,
+            (parameters, token) => Timed(SemanticTokens, () => Classify(parameters, token)),
+            concurrent: true);
+        _connection.OnRequest(
+            Methods.SemanticTokensFullDelta,
+            (parameters, token) => Timed(SemanticTokenDeltas, () => ClassifyDelta(parameters, token)),
+            concurrent: true);
+        _connection.OnRequest(
+            Methods.Completion,
+            (parameters, token) => Timed(PerformanceBudgets.Completion, () => Complete(parameters, token)),
+            concurrent: true);
         _connection.OnRequest(
             Methods.Hover,
-            (parameters, token) => AtPosition(parameters, _hover.Read, _hover.AnswerAsync, token),
+            (parameters, token) => Timed(
+                PerformanceBudgets.Hover,
+                () => AtPosition(parameters, _hover.Read, _hover.AnswerAsync, token)),
             concurrent: true);
 
         _connection.OnRequest(
             Methods.Definition,
-            (parameters, token) => AtPosition(parameters, _definition.Read, _definition.AnswerAsync, token),
+            (parameters, token) => Timed(
+                PerformanceBudgets.Definition,
+                () => AtPosition(parameters, _definition.Read, _definition.AnswerAsync, token)),
             concurrent: true);
         _connection.OnRequest(
-            Methods.DocumentSymbol, (parameters, _) => Answer<DocumentSymbolParams>(parameters, Outline));
-        _connection.OnRequest(Methods.References, FindReferences, concurrent: true);
+            Methods.DocumentSymbol,
+            (parameters, _) => Timed(DocumentSymbols, () => Answer<DocumentSymbolParams>(parameters, Outline)));
+        _connection.OnRequest(
+            Methods.References,
+            (parameters, token) => Timed(FindReferencesOperation, () => FindReferences(parameters, token)),
+            concurrent: true);
         _connection.OnRequest(
             Methods.DocumentHighlight,
-            (parameters, token) => AtPosition(parameters, _highlights.Read, _highlights.AnswerAsync, token),
+            (parameters, token) => Timed(
+                PerformanceBudgets.Highlighting,
+                () => AtPosition(parameters, _highlights.Read, _highlights.AnswerAsync, token)),
             concurrent: true);
         _connection.OnRequest(
             Methods.SignatureHelp,
-            (parameters, token) => AtPosition(parameters, _signatures.Read, _signatures.AnswerAsync, token),
+            (parameters, token) => Timed(
+                SignatureHelpOperation,
+                () => AtPosition(parameters, _signatures.Read, _signatures.AnswerAsync, token)),
             concurrent: true);
 
         _connection.OnNotification(Methods.Initialized, (_, token) => Initialized(token));
@@ -225,6 +303,93 @@ public sealed class LanguageServerHost : IDisposable
             Methods.DidChangeWorkspaceFolders,
             (parameters, token) => Act<DidChangeWorkspaceFoldersParams>(parameters, message => FoldersChanged(message, token)));
     }
+
+    /// <summary>Answers the status request, whatever state the server is in.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>No <see cref="RequireRunning"/>, and that is the whole point of it.</b> Every other request
+    /// here is refused before <c>initialize</c> and after <c>shutdown</c>, because answering one
+    /// would be answering about a document store the client has not populated. This request is about
+    /// the server, and a server that never finished initializing is precisely the server somebody is
+    /// running this command to ask about. A diagnostic tool that requires a healthy system diagnoses
+    /// nothing -- #58 says so in those words, and the lifecycle gate is the nearest thing in here to
+    /// a health requirement.
+    /// </para>
+    /// <para>
+    /// <b>Concurrent, because this handler leaves the process three times.</b> It settles one
+    /// document's configuration, which reads a <c>protolang.config.xml</c>; it builds a loader, which
+    /// stats the directories beside protoc; and it asks that protoc its version, which starts it.
+    /// Answered in order, all of that would be paid while holding the reading worker -- so a wedged
+    /// protoc would stop <c>didChange</c>, <c>didClose</c> and the <c>$/cancelRequest</c> that would
+    /// have shortened it, for as long as the version probe's budget. That is the exact failure
+    /// <see cref="JsonRpcConnection.OnRequest"/> warns about, and a diagnostic command that freezes
+    /// the editor it is diagnosing would be an unusually bad one.
+    /// </para>
+    /// <para>
+    /// <b>Registering it as concurrent is necessary and was not sufficient.</b> The dispatcher hands a
+    /// concurrent handler's task to <c>Detach</c> rather than awaiting it -- but it calls the handler
+    /// to get that task, and a handler with no <c>await</c> in it runs to completion before it returns
+    /// one. This method assembled the whole report synchronously at first, so the flag changed nothing
+    /// at all and the worker was held exactly as long as before. The report is built on the pool for
+    /// that reason: the yield is what the flag is describing, and without it the annotation is a
+    /// comment. Everything before the yield is arithmetic on the request itself and stays in order.
+    /// </para>
+    /// <para>
+    /// What a concurrent handler ordinarily owes is the staleness rule (spec 26.1), and this one owes
+    /// nothing under it: a report is a statement about the server at the moment it was taken rather
+    /// than an answer about a buffer at a version, so a server that moves on afterwards has not made
+    /// the report wrong.
+    /// </para>
+    /// </remarks>
+    private async Task<object?> Status(JsonElement? parameters)
+    {
+        // A status request with no parameters at all is legitimate: a client asking the simplest
+        // possible question of a server it suspects is not answering. Read leniently for the same
+        // reason nothing here checks the lifecycle.
+        var message = LspJson.Read<StatusParams>(parameters);
+
+        if (message?.Client is { } client)
+        {
+            _status.Told(known => known with
+            {
+                ExtensionName = client.ExtensionName ?? known.ExtensionName,
+                ExtensionVersion = client.ExtensionVersion ?? known.ExtensionVersion,
+                Restarts = client.Restarts ?? known.Restarts,
+            });
+        }
+
+        var document = message?.TextDocument?.Uri is { } uri && DocumentUri.TryParse(uri, out var parsed)
+            ? parsed
+            : null;
+
+        // The yield. Settling a configuration, stating a directory and starting protoc all block, and
+        // all of them would block the dispatcher if they ran before this method returned its task.
+        var status = await Task.Run(() => _status.Report(document)).ConfigureAwait(false);
+
+        return new StatusResult(
+            status.Render(),
+            ServerStatus.PrivacyNote,
+            [.. status.Sections.Select(section => new StatusSectionResult(
+                section.Title,
+                [.. section.Facts.Select(fact => new StatusFactResult(fact.Label, fact.Value, fact.Source))],
+                section.Note))],
+            [.. status.Timings.Select(row => new StatusTimingResult(
+                row.Operation,
+                row.Samples.Count,
+                Reportable(row.Samples.Median),
+                Reportable(row.Samples.P95),
+                Reportable(row.Samples.Max),
+                row.Budget?.Milliseconds,
+                row.IsOverBudget))]);
+    }
+
+    /// <summary>A measurement as JSON, where "there was none" is null rather than NaN.</summary>
+    /// <remarks>
+    /// <see cref="double.NaN"/> is not representable in JSON, and a serializer that emitted it would
+    /// produce a document the client cannot parse -- turning "no requests have been answered yet"
+    /// into a failed status request, which is the state this whole feature exists to report on.
+    /// </remarks>
+    private static double? Reportable(double value) => double.IsNaN(value) ? null : value;
 
     /// <summary>Runs a request handler, once the lifecycle allows one to run at all.</summary>
     /// <exception cref="InvalidOperationException">
@@ -360,6 +525,18 @@ public sealed class LanguageServerHost : IDisposable
         var capabilities = message.Capabilities;
 
         _mapper = new DiagnosticMapper(capabilities?.TextDocument?.PublishDiagnostics?.RelatedInformation is true);
+
+        // Kept for the status report, which is the only thing that reads it. A server does not
+        // behave differently because of which editor is driving it -- that is what "one server, two
+        // editors" means -- but a defect report that does not say which editor it came from is one
+        // that starts with a question.
+        _status.Told(known => known with
+        {
+            Name = message.ClientInfo?.Name,
+            Version = message.ClientInfo?.Version,
+        });
+
+        ReadExtensionInfo(message.InitializationOptions);
 
         // Only when the client says something. A client that omits trace has stated no preference, and
         // taking the default here would quietly undo a --log-level given on the command line -- which
@@ -734,7 +911,50 @@ public sealed class LanguageServerHost : IDisposable
     private void ShowProblem(string message)
         => _ = _connection.NotifyAsync(Methods.ShowMessage, new ShowMessageParams((int)LogLevel.Error, message));
 
-    private static string Version { get; } =
-        typeof(LanguageServerHost).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? "0.0.0";
+    /// <summary>
+    /// Takes the extension's name and version out of the client's initialization options.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the only way the server can learn them.</b> LSP's <c>clientInfo</c> names the
+    /// editor -- "Visual Studio Code" -- and #52 coordinates three versions of which that is not one.
+    /// The extension is a separate thing that ships on its own schedule, and a mismatch between it
+    /// and the server it launched is exactly the failure a status report has to be able to show.
+    /// </para>
+    /// <para>
+    /// Read defensively and silently. The options are an arbitrary JSON value the client chose the
+    /// shape of, so anything unexpected in them means the client did not send this -- which is the
+    /// ordinary case for a client that predates it, and which the report already renders as "not
+    /// reported". Failing <c>initialize</c> over the shape of an optional field would make a
+    /// diagnostic aid into a reason the server does not start.
+    /// </para>
+    /// </remarks>
+    private void ReadExtensionInfo(JsonElement? options)
+    {
+        if (options is not { ValueKind: JsonValueKind.Object } element)
+        {
+            return;
+        }
+
+        try
+        {
+            _status.Told(known => known with
+            {
+                ExtensionName = Text(element, "extensionName") ?? known.ExtensionName,
+                ExtensionVersion = Text(element, "extensionVersion") ?? known.ExtensionVersion,
+            });
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            _log.Trace($"The client's initialization options carried no readable extension info: {ex.Message}");
+        }
+
+        static string? Text(JsonElement element, string property)
+            => element.TryGetProperty(property, out var value) && value.ValueKind is JsonValueKind.String
+                ? value.GetString()
+                : null;
+    }
+
+    /// <inheritdoc cref="StatusReporter.VersionOf"/>
+    private static string Version { get; } = StatusReporter.VersionOf(typeof(LanguageServerHost));
 }

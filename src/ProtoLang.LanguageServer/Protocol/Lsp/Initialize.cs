@@ -284,6 +284,14 @@ public sealed record InitializeParams
 {
     public int? ProcessId { get; init; }
 
+    /// <summary>Which editor this is, where the client says.</summary>
+    /// <remarks>
+    /// The mirror image of <see cref="ServerInfo"/>, which this server has always sent. Read for the
+    /// status report: "one server, two editors" means a defect report that does not say which editor
+    /// is missing the first thing anybody would ask.
+    /// </remarks>
+    public ClientInfo? ClientInfo { get; init; }
+
     public string? RootUri { get; init; }
 
     public ClientCapabilities? Capabilities { get; init; }
@@ -414,6 +422,13 @@ public sealed record ServerCapabilities
 
 /// <summary>Who the server is, for a client's log and about box.</summary>
 public sealed record ServerInfo(string Name, string Version);
+
+/// <summary>What the client calls itself.</summary>
+/// <remarks>
+/// The version is optional in the protocol, so it is optional here. A client that names itself and
+/// not its version is still worth more in a report than no name at all.
+/// </remarks>
+public sealed record ClientInfo(string Name, string? Version = null);
 
 /// <summary>The server's half of the opening exchange.</summary>
 public sealed record InitializeResult

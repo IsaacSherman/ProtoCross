@@ -1,3 +1,4 @@
+using ProtoLang.LanguageServer.Hosting;
 using ProtoLang.LanguageServer.Protocol.Lsp;
 using Xunit;
 
@@ -63,7 +64,7 @@ public class PerformanceBudgetTests
 
         var over = report.Samples
             .Where(sample => sample.Corpus == PerformanceCorpus.Stress)
-            .Select(sample => (sample, budget: PerformanceBudgets.All.SingleOrDefault(b => b.Operation == sample.Operation)))
+            .Select(sample => (sample, budget: PerformanceBudgets.Find(sample.Operation)))
             // Negated rather than `>`, so that a sample which produced no runs at all -- p95 of NaN,
             // which compares false against everything -- fails here instead of passing silently. The
             // report renders the same condition as "over", and the two must not disagree.

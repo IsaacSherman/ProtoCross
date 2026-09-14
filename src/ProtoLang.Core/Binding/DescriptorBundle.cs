@@ -105,7 +105,28 @@ public sealed class DescriptorBundle
         }
 
         _declaring = new Lazy<Dictionary<SymbolId, string>>(DeclaringSchemas);
+        DescriptorBytes = set.CalculateSize();
     }
+
+    /// <summary>How many bytes the descriptors this bundle was built from serialize to.</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not the memory this bundle occupies, and the difference is large.</b> This is the wire size
+    /// of the <see cref="FileDescriptorSet"/>; the retained managed graph built from it -- descriptor
+    /// objects, three dictionaries, and whatever source indexes have been asked for -- was measured
+    /// at roughly 28 KiB per bundle for the examples' closure, which is several times this. #57 has
+    /// the measurement and <c>docs/performance.md</c> has the caveat. What this number is good for is
+    /// comparing entries with each other and noticing a closure that is far larger than expected,
+    /// which is the question a status report is being asked.
+    /// </para>
+    /// <para>
+    /// Computed in the constructor rather than on demand. It walks the set once, immediately after a
+    /// protoc run that took orders of magnitude longer, and settling it here means it is a readonly
+    /// field on an object shared across every compile worker -- where a memo would need a lock or a
+    /// <see cref="Lazy{T}"/> to avoid a torn read for a number nobody would wait for anyway.
+    /// </para>
+    /// </remarks>
+    public int DescriptorBytes { get; }
 
     /// <summary>A load that named no schemas, which is what a source with no imports produces.</summary>
     /// <remarks>
