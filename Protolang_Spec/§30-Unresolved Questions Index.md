@@ -24,6 +24,9 @@ This section should be maintained as the authoritative list of open decisions.
   no version check in the compiler ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)).
 - ~~Whether arithmetic behavior is selectable per project.~~ Decided: `protolang.config.xml`,
   with the file winning over command-line flags ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
+- ~~What a repository may configure in an untrusted workspace.~~ Decided: a host withholds every
+  setting that could run a program, today `protolang.protocPath`, from workspace and folder scope until
+  the user trusts the workspace, and keeps serving everything else ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)).
 - ~~Boolean operator spelling.~~ Decided: both word and symbolic forms are accepted ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - ~~Assignment expression vs statement.~~ Decided: assignment is statement-only ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - Evaluation order details for non-short-circuit binary operators.

@@ -29,6 +29,24 @@ public sealed record ResolvedIncludePath(string Path, string AsWritten, Configur
     }
 }
 
+/// <summary>A setting a scope stated and was not allowed to, because the workspace is untrusted.</summary>
+/// <param name="Key">The setting, prefix included.</param>
+/// <param name="AsWritten">What the scope stated, which is what the user will recognize.</param>
+/// <param name="Source">The scope that stated it -- always one a repository can write.</param>
+/// <remarks>
+/// Reported rather than dropped, for spec 10.4.1's reason: a setting ignored in silence leaves a user
+/// unable to tell a typo from a refusal from a defect. It is deliberately <em>not</em> a diagnostic.
+/// Nothing is wrong with the setting or the document, and nothing about either needs editing; the
+/// workspace is in a state one gesture changes. A warning in every open file's problem list would be
+/// the nagging #55 rules out, so the host says it once, and the status report says it whenever asked.
+/// </remarks>
+public sealed record WithheldSetting(string Key, IReadOnlyList<string> AsWritten, ConfigurationSource Source)
+{
+    /// <summary>One line naming the setting, its value and where it was written.</summary>
+    public string Describe()
+        => $"{Key} = {string.Join(", ", AsWritten.Select(value => $"'{value}'"))} ({Source.Describe()})";
+}
+
 /// <summary>
 /// Where an <c>import proto</c> path resolves for one document, and nothing else about it.
 /// </summary>
@@ -171,6 +189,12 @@ public sealed record DocumentConfiguration
     /// knows which it was.
     /// </remarks>
     public IReadOnlyList<Diagnostic> Diagnostics { get; init; } = [];
+
+    /// <summary>
+    /// The settings that applied to this document and were withheld because the workspace is untrusted.
+    /// </summary>
+    /// <inheritdoc cref="WithheldSetting" path="/remarks"/>
+    public IReadOnlyList<WithheldSetting> Withheld { get; init; } = [];
 
     /// <summary>Whether a compilation may run under this configuration.</summary>
     public bool IsUsable => Config is not null;

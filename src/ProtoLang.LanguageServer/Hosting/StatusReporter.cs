@@ -324,21 +324,50 @@ public sealed class StatusReporter
         return new StatusSection("Descriptor cache", facts);
     }
 
-    /// <summary>What the server is doing about untrusted workspaces, which today is nothing.</summary>
+    /// <summary>Whether the workspace is trusted, what that restricts, and what it is withholding now.</summary>
     /// <remarks>
-    /// <b>A section that says "not yet" rather than no section at all.</b> #58 asks for trust state
-    /// and #55 is what will produce it; a report that simply omitted the row would read as a server
-    /// that had considered trust and found nothing to say, which is the opposite of true. Saying it
-    /// plainly is also the honest answer to the question a user is really asking, which is whether
-    /// this repository's settings can make their machine run something.
+    /// <para>
+    /// The question a user is really asking of this section is whether this repository's settings can
+    /// make their machine run something, and #58 asks for "whether any settings are being ignored
+    /// because of it" by name. Both are answered from the workspace rather than from the document
+    /// named, because trust is a property of the workspace, and a withheld setting in a folder the
+    /// user is not looking at is still one they were told about.
+    /// </para>
+    /// <para>
+    /// The restricted set is listed even when nothing is withheld. A user deciding whether to trust a
+    /// repository is asking what trusting it would permit, and that is the answer.
+    /// </para>
     /// </remarks>
-    private StatusSection Trust() => new(
-        "Workspace trust",
-        [new StatusFact("trust model", "not implemented", "#55")],
-        "This server does not yet distinguish a trusted workspace from an untrusted one, so every "
-            + "setting listed above is honoured wherever it came from -- including a `protoc` path "
-            + "committed to a repository. #55 is the issue that changes this, and it gates shipping "
-            + "the extension.");
+    private StatusSection Trust()
+    {
+        var configuration = Configuration.Current;
+        var withheld = configuration.WithheldSettings();
+
+        List<StatusFact> facts =
+        [
+            new("workspace trust", configuration.Trust.Describe()),
+            .. ProtoLangSettings.Definitions
+                .Where(definition => definition.Trust is SettingTrust.RequiresTrust)
+                .Select(definition => new StatusFact("requires trust", definition.Key, definition.Because)),
+            .. withheld.Select(setting => new StatusFact("withheld", setting.Describe(), "until the workspace is trusted")),
+        ];
+
+        return new StatusSection("Workspace trust", facts, TrustNote(configuration.Trust, withheld.Count));
+    }
+
+    private static string? TrustNote(WorkspaceTrust trust, int withheld) => trust switch
+    {
+        WorkspaceTrust.Untrusted when withheld > 0 =>
+            "**Settings are being withheld.** Everything above is what the server is using without them; "
+                + "trusting the workspace in the editor applies them without a restart.",
+        WorkspaceTrust.Untrusted =>
+            "Nothing is being withheld: this workspace states none of the settings that require trust.",
+        WorkspaceTrust.NotReported =>
+            "The client did not say whether this workspace is trusted, so every setting is honoured "
+                + "wherever it was written. Both ProtoLang extensions report it; a client configured by "
+                + "hand may not.",
+        _ => null,
+    };
 
     // ------------------------------------------------------- the rest
 

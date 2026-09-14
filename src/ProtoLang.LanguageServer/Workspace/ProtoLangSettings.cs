@@ -64,8 +64,63 @@ public sealed record ProtoLangSettings
     /// <summary>A scope that states nothing.</summary>
     public static ProtoLangSettings None { get; } = new();
 
+    /// <summary>
+    /// Every setting this server reads, in the order they are documented, each declaring whether a
+    /// workspace nobody has trusted may state it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the named set spec 10.4.1 asks for, and it is the only list of settings there is.</b>
+    /// <see cref="Keys"/>, <see cref="RestrictedKeys"/>, reading a scope and withholding from one are
+    /// all derived from it, so a setting cannot be readable without having been classified: adding one
+    /// means adding a row here, and a row cannot be written without a <see cref="SettingTrust"/> and a
+    /// reason. That is the failure the issue names -- a future setting classified by omission -- made
+    /// unwritable rather than discouraged.
+    /// </para>
+    /// <para>
+    /// <b>The test for requiring trust is whether the setting can make this machine run something.</b>
+    /// Only <see cref="ProtocPathKey"/> can. The other two direct reads and run nothing, and neither
+    /// reaches anywhere a document cannot already reach without them: a <c>.protolang</c> file may
+    /// import a schema by a path relative to its own directory, and discovers its own
+    /// <c>protolang.config.xml</c> by walking upward. Withholding them would buy nothing and cost an
+    /// untrusted repository that relies on an include path every diagnostic it has, which is the
+    /// degraded experience the issue asks to keep usable.
+    /// </para>
+    /// <para>
+    /// An executable the <em>extension</em> reads -- where the server itself lives, which runtime
+    /// starts it -- never reaches this server, and belongs in the extension manifest's own restricted
+    /// list beside this one. #45 carries that.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<SettingDefinition> Definitions { get; } =
+    [
+        new(
+            ProtocPathKey,
+            SettingTrust.RequiresTrust,
+            "names an executable this server starts",
+            settings => settings.ProtocPath is { } path ? [path] : [],
+            (settings, values) => settings with { ProtocPath = values.FirstOrDefault(value => Stated(value) is not null) }),
+        new(
+            IncludePathsKey,
+            SettingTrust.Honoured,
+            "directs where schemas are read from and starts nothing",
+            settings => settings.IncludePaths,
+            (settings, values) => settings with { IncludePaths = values }),
+        new(
+            ConfigPathKey,
+            SettingTrust.Honoured,
+            "names a policy file that is read and never run",
+            settings => settings.ConfigPath is { } path ? [path] : [],
+            (settings, values) => settings with { ConfigPath = values.FirstOrDefault(value => Stated(value) is not null) }),
+    ];
+
     /// <summary>Every key this server understands, in the order they are documented.</summary>
-    public static IReadOnlyList<string> Keys { get; } = [ProtocPathKey, IncludePathsKey, ConfigPathKey];
+    public static IReadOnlyList<string> Keys { get; } = [.. Definitions.Select(definition => definition.Key)];
+
+    /// <summary>The keys withheld from workspace and folder scope until the workspace is trusted.</summary>
+    /// <inheritdoc cref="Definitions" path="/remarks"/>
+    public static IReadOnlyList<string> RestrictedKeys { get; } =
+        [.. Definitions.Where(definition => definition.Trust is SettingTrust.RequiresTrust).Select(definition => definition.Key)];
 
     /// <inheritdoc cref="ProtocPathKey"/>
     public string? ProtocPath
@@ -119,6 +174,54 @@ public sealed record ProtoLangSettings
     /// <summary>Whether this scope states anything at all.</summary>
     public bool StatesNothing => ProtocPath is null && ConfigPath is null && IncludePaths.Count == 0;
 
+    /// <summary>What this scope states under <paramref name="key"/>, as written; empty when nothing.</summary>
+    /// <remarks>
+    /// Accepts a key with or without the <c>protolang.</c> prefix, as <see cref="Read"/> does. A key
+    /// this server does not read states nothing rather than throwing, because nothing is what a scope
+    /// says about a setting that does not exist.
+    /// </remarks>
+    public IReadOnlyList<string> ValuesOf(string key)
+    {
+        ArgumentNullException.ThrowIfNull(key);
+
+        return Find(key)?.StatedIn(this) ?? [];
+    }
+
+    /// <summary>
+    /// This scope without the settings that require trust, and which of them it had stated.
+    /// </summary>
+    /// <param name="withheld">
+    /// Each restricted setting this scope actually stated, as written. Empty when it stated none, which
+    /// is what lets a caller tell "nothing was withheld" from "the workspace is untrusted", and tell the
+    /// user only about the first.
+    /// </param>
+    /// <remarks>
+    /// Which scopes this applies to is not decided here. A scope does not know whether a repository
+    /// could have written it -- <c>WorkspaceConfiguration</c> does, and asks this only of the scopes a
+    /// repository can write.
+    /// </remarks>
+    public ProtoLangSettings WithoutRestricted(out IReadOnlyList<SettingValue> withheld)
+    {
+        var kept = this;
+        var removed = new List<SettingValue>();
+
+        foreach (var definition in Definitions.Where(definition => definition.Trust is SettingTrust.RequiresTrust))
+        {
+            var stated = definition.StatedIn(this);
+
+            if (stated.Count == 0)
+            {
+                continue;
+            }
+
+            removed.Add(new SettingValue(definition.Key, stated));
+            kept = definition.With(kept, []);
+        }
+
+        withheld = removed;
+        return kept;
+    }
+
     /// <summary>
     /// Reads what a client sent for one scope, reporting every entry that will not be used.
     /// </summary>
@@ -137,28 +240,28 @@ public sealed record ProtoLangSettings
 
         foreach (var value in values)
         {
-            switch (NameOf(value.Key)?.ToLowerInvariant())
+            if (Find(value.Key) is { } definition)
             {
-                case "protocpath":
-                    settings = settings with { ProtocPath = value.Stated };
-                    break;
-
-                case "includepaths":
-                    settings = settings with { IncludePaths = value.Values };
-                    break;
-
-                case "configpath":
-                    settings = settings with { ConfigPath = value.Stated };
-                    break;
-
-                default:
-                    Refuse(value, scope, diagnostics);
-                    break;
+                settings = definition.With(settings, value.Values);
+            }
+            else
+            {
+                Refuse(value, scope, diagnostics);
             }
         }
 
         return settings;
     }
+
+    /// <summary>The setting <paramref name="key"/> names, or null when this server reads no such setting.</summary>
+    /// <remarks>
+    /// Case-insensitive on the name after the prefix, which is what <see cref="Read"/> accepted before
+    /// the settings were a table.
+    /// </remarks>
+    private static SettingDefinition? Find(string key)
+        => NameOf(key) is { } name
+            ? Definitions.FirstOrDefault(definition => string.Equals(definition.Name, name, StringComparison.OrdinalIgnoreCase))
+            : null;
 
     /// <remarks>
     /// A key stating language policy is told where that policy lives; anything else is told what this

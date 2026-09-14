@@ -70,15 +70,20 @@ public sealed class LanguageServerClient : IAsyncDisposable
     /// What the client answers <c>workspace/configuration</c> with, given the scopes it was asked
     /// about. Null answers every scope with an empty object, which is a workspace that states nothing.
     /// </param>
+    /// <param name="initializationOptions">
+    /// What the client sends as <c>initializationOptions</c>, serialized as-is. Null sends none, which is
+    /// a client that states nothing about itself.
+    /// </param>
     public static async Task<LanguageServerClient> StartAsync(
         TimeSpan? debounce = null,
         ClientCapabilities? capabilities = null,
         IEnumerable<string>? folders = null,
-        Func<ConfigurationParams, object?>? settings = null)
+        Func<ConfigurationParams, object?>? settings = null,
+        object? initializationOptions = null)
     {
         var client = Create(debounce, settings);
 
-        await client.InitializeAsync(capabilities ?? FullCapabilities, folders).ConfigureAwait(false);
+        await client.InitializeAsync(capabilities ?? FullCapabilities, folders, initializationOptions).ConfigureAwait(false);
 
         return client;
     }
@@ -124,13 +129,19 @@ public sealed class LanguageServerClient : IAsyncDisposable
 
     // ------------------------------------------------------- the opening exchange
 
-    public async Task<InitializeResult> InitializeAsync(ClientCapabilities capabilities, IEnumerable<string>? folders)
+    public async Task<InitializeResult> InitializeAsync(
+        ClientCapabilities capabilities,
+        IEnumerable<string>? folders,
+        object? initializationOptions = null)
     {
         var result = await RequestAsync(
                 Methods.Initialize,
                 new InitializeParams
                 {
                     Capabilities = capabilities,
+                    InitializationOptions = initializationOptions is null
+                        ? null
+                        : JsonSerializer.SerializeToElement(initializationOptions, LspJson.Options),
                     WorkspaceFolders =
                     [
                         .. folders?.Select(path => new WorkspaceFolder

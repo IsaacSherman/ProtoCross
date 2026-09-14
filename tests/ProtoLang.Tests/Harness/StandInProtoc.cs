@@ -92,6 +92,25 @@ public static class StandInProtoc
             windows: ["@echo off", "exit /b 0"],
             posix: ["#!/bin/sh", "exit 0"]);
 
+    /// <summary>A protoc that leaves <paramref name="marker"/> behind whenever anything starts it, then fails.</summary>
+    /// <remarks>
+    /// <para>
+    /// For the properties that are about a program <em>not</em> running. The file is the evidence,
+    /// and it is written before anything else so that every way of starting this -- a compilation, a
+    /// version probe, a descriptor load that is later abandoned -- leaves it. Asserting on a diagnostic
+    /// instead would be asserting on what the server made of the run, and a server that ran this and
+    /// then threw the result away would pass.
+    /// </para>
+    /// <para>
+    /// The marker is outside the directory the script is written to, so the test names a path it
+    /// chose rather than one it has to find.
+    /// </para>
+    /// </remarks>
+    public static string Tattletale(string marker)
+        => Write(
+            windows: ["@echo off", $"echo ran> \"{marker}\"", "exit /b 1"],
+            posix: ["#!/bin/sh", $"echo ran > '{marker}'", "exit 1"]);
+
     /// <summary>Undoes what <see cref="Obstructive"/> did, so the next delete can succeed.</summary>
     public static void Unlock(string temporaryDirectory)
     {

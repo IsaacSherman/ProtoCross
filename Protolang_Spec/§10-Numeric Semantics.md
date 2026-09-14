@@ -380,6 +380,51 @@ Normative Requirements:
 - The resolved configuration for a document, with the source each value came from, must be
   retrievable.
 
+**Decided: in a workspace the user has not trusted, a host withholds every setting that could make
+the machine run a program, from the scopes a repository can write, and goes on serving.**
+
+Opening a repository to read it is something people do constantly and reasonably, and a committed
+editor settings file travels with the clone. A host that honoured every setting in it would run the
+repository's choice of executable the moment a file was opened.
+
+Normative Requirements:
+
+- **Every setting a host reads declares whether it requires trust**, as part of declaring the setting
+  at all, so that a new one is classified deliberately rather than by omission. A setting requires
+  trust when it can make the machine run something. Today that is `protolang.protocPath` alone.
+  `protolang.includePaths` and `protolang.configPath` are honoured in every workspace: they direct
+  reads and start nothing, and neither reaches anywhere a document cannot already reach without them,
+  since a document imports schemas by paths relative to its own directory and discovers its own
+  `protolang.config.xml` by walking upward.
+- **A setting that requires trust is withheld from folder and workspace scope** while the workspace is
+  untrusted. User scope, the `PROTOLANG_PROTOC` environment variable and discovery are not withheld
+  from, because a repository can write none of them.
+- **Withholding removes a candidate and leaves the precedence order alone.** The value used is the one
+  the ordinary order reaches next. There is no second order for a subset of settings.
+- Where a client delivers settings with its scopes already merged, as `workspace/configuration` does,
+  the merged answer counts as the most specific scope it was asked about. A value the user wrote at
+  user scope that arrives merged is therefore withheld as well. A host cannot take the merge apart,
+  and the alternative, believing that a client removed workspace values first, holds for one client
+  and nothing else that speaks the protocol.
+- **Trust is the client's to report and the host's to apply.** A client states it as a boolean
+  `workspaceTrusted` in its initialization options and reports a change with the
+  `protolang/didChangeWorkspaceTrust` notification, whose `trusted` member says which way it changed.
+  A client that states nothing, or states something other than a boolean, is treated as trusted:
+  the clients that say nothing are the ones with no trust model to report, whose settings their users
+  wrote themselves. The clients this project ships always say. **A client whose editor has no trust
+  model reports untrusted**, which is Visual Studio's posture: there, a workspace-supplied executable
+  path is never honoured.
+- **What is withheld is said once, and never nagged about.** A host tells the user the first time a
+  setting is withheld in a session. It names each setting and its value, says what is used instead and
+  that everything else keeps working, and says that trusting the workspace applies them. The status
+  report lists what is withheld whenever it is asked. It is deliberately not a diagnostic: nothing
+  about the document or the setting needs editing, and a warning in every open file's problem list is
+  the nagging this rule exists to prevent. A workspace that states nothing requiring trust is told
+  nothing.
+- **Granting trust takes effect on the next compilation, without a restart or a reload**, as every
+  other change to configuration does. Nothing withheld is discarded, so nothing has to be asked for
+  again.
+
 Implementation Note:
 
 - `WorkspaceConfiguration` in `ProtoLang.LanguageServer` is the model, and `Resolve` is the only
@@ -393,8 +438,9 @@ Implementation Note:
   editor that went dark over a stale path in a settings file would take away the diagnostics the
   user is trying to read. A file that exists and cannot be *read* still stops the document, exactly
   as 10.4 requires.
-
-Open Question:
-
-- What a repository is allowed to configure in an untrusted workspace, which is a trust question
-  rather than a precedence one.
+- `ProtoLangSettings.Definitions` is the named set: every setting the server reads is a row there, and
+  a row cannot be written without its trust classification. `WorkspaceConfiguration` applies trust in
+  one place, as each scope is admitted, so compilation, import completion and the status report cannot
+  disagree about what was withheld.
+- An executable the *extension* reads, such as where the server lives, never reaches the server. It
+  belongs in the extension manifest's own list of restricted settings, beside this one.
