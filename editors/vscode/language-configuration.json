@@ -32,5 +32,8 @@
       "end": "^\\s*//\\s*#?endregion\\b"
     }
   },
-  "wordPattern": "[\\p{L}_][\\p{L}\\p{Nd}_]*|\\p{Nd}+(?:\\.\\p{Nd}+)?"
+  "wordPattern": {
+    "pattern": "[\\p{L}_][\\p{L}\\p{Nd}_]*|\\p{Nd}+(?:\\.\\p{Nd}+)?",
+    "flags": "u"
+  }
 }

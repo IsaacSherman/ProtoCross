@@ -185,13 +185,24 @@ export function parseRuntimes(listing: string): string[] {
   return versions;
 }
 
-/** Whether any of `versions` can run the server, which rolls forward to any newer major. */
+/**
+ * Whether any of `versions` can run the server, which rolls forward to any newer major.
+ *
+ * A prerelease of any major is not one of them. Roll-forward from a release version considers only
+ * release versions unless DOTNET_ROLL_FORWARD_TO_PRERELEASE says otherwise, so the preview is not
+ * the runtime the server would be given -- whether it is a preview of the minimum major or of one
+ * above it. Saying so before the launch is what turns a process that starts and immediately exits,
+ * for a reason the host wrote to a stream nobody is reading, into the offer to install .NET that
+ * every other too-old machine gets.
+ */
 export function hasSupportedRuntime(versions: readonly string[]): boolean {
   return versions.some((version) => {
+    if (version.includes('-')) {
+      return false;
+    }
+
     const major = Number.parseInt(version.split('.')[0], 10);
-    // A preview of the minimum major is not accepted: roll-forward does not select prereleases
-    // unless asked to, so the server would refuse to start on it.
-    return Number.isFinite(major) && major >= minimumDotnetMajor && !(major === minimumDotnetMajor && version.includes('-'));
+    return Number.isFinite(major) && major >= minimumDotnetMajor;
   });
 }
 

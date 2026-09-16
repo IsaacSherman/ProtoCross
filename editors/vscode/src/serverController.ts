@@ -79,6 +79,7 @@ export class ServerController implements vscode.Disposable {
   private queue: Promise<void> = Promise.resolve();
   private current: ServerState = { kind: 'stopped' };
   private launched = false;
+  private startingUp = false;
   private restartCount = 0;
   private crashes: number[] = [];
   private facts: LaunchFacts | undefined;
@@ -95,7 +96,7 @@ export class ServerController implements vscode.Disposable {
   ) {
     this.subscriptions.push(
       this.stateChanged,
-      vscode.workspace.onDidGrantWorkspaceTrust(() => this.reportTrustGranted()),
+      vscode.workspace.onDidGrantWorkspaceTrust(() => this.reportTrust()),
       vscode.workspace.onDidChangeConfiguration((change) => {
         if (launchSettings.some((setting) => change.affectsConfiguration(`${section}.${setting}`))) {
           void this.restart('the settings that start the server changed');
@@ -182,7 +183,17 @@ export class ServerController implements vscode.Disposable {
       const { facts, env } = await this.plan();
       this.facts = facts;
       this.client = this.createClient(facts, env);
-      await this.client.start();
+
+      // Flagged for as long as this owns the outcome, so that a server dying mid-handshake is reported
+      // here, once, with the reason start() rejects with, rather than also by the crash recovery that
+      // would otherwise restart a client this is about to throw away.
+      this.startingUp = true;
+      try {
+        await this.client.start();
+      } finally {
+        this.startingUp = false;
+      }
+
       this.transition({ kind: 'running', processId: this.process?.pid });
     } catch (error) {
       await this.fail(error);
@@ -363,7 +374,7 @@ export class ServerController implements vscode.Disposable {
       },
     };
 
-    const client = new LanguageClient(
+    const client = new QuietLanguageClient(
       'protolang',
       'ProtoLang Language Server',
       () => this.spawnServer(command.command, command.args, facts.workingDirectory, env),
@@ -371,10 +382,38 @@ export class ServerController implements vscode.Disposable {
     );
 
     // The client restarts a crashed server by itself, without this controller's launch, so its own
-    // notion of running is what says the restart worked.
+    // notion of running is what says the restart worked -- and its own notion of stopped is what says
+    // it did not. A restart whose start fails has nothing to report to: launch() returned when the
+    // first start succeeded, so without this the controller would go on saying 'starting' for as long
+    // as the window stayed open, and the status report would go on telling the user to ask again in a
+    // moment.
     client.onDidChangeState(({ newState }) => {
-      if (newState === State.Running && this.client === client) {
+      if (this.client !== client) {
+        // A client this controller has already let go of, still winding down.
+        return;
+      }
+
+      if (newState === State.Running) {
         this.transition({ kind: 'running', processId: this.process?.pid });
+        this.reportTrust();
+        return;
+      }
+
+      if (this.startingUp) {
+        return;
+      }
+
+      // A stop nobody asked for. Both of this controller's own teardowns let go of the client before
+      // stopping it, and a crash on its way to being recovered from has already moved the state to
+      // starting, so anything left is the server gone without a restart coming.
+      if (newState === State.StartFailed || (newState === State.Stopped && this.current.kind === 'running')) {
+        void this.fail(
+          new LaunchProblem(
+            'The language server stopped and was not started again.',
+            'The log says what it was doing.',
+            'none',
+          ),
+        );
       }
     });
 
@@ -413,6 +452,13 @@ export class ServerController implements vscode.Disposable {
    * be restarted for as long as the window is open.
    */
   private closed(): { action: CloseAction; handled: boolean } {
+    // A server that dies during its first handshake is launch()'s to report. Restarting here would
+    // start a second process against a client launch() is already unwinding, and the survivor would be
+    // a server nothing is connected to.
+    if (this.startingUp) {
+      return { action: CloseAction.DoNotRestart, handled: true };
+    }
+
     const now = Date.now();
     this.crashes = [...this.crashes.filter((when) => now - when < crashWindowMs), now];
 
@@ -433,11 +479,16 @@ export class ServerController implements vscode.Disposable {
 
   private async fail(error: unknown): Promise<void> {
     const client = this.client;
+    const child = this.process;
     this.client = undefined;
     this.process = undefined;
 
     if (client !== undefined) {
-      await client.dispose(2000).catch(() => undefined);
+      // Killed when the client could not stop it, exactly as a deliberate stop does. The client only
+      // terminates a server it spawned itself, and this extension spawns its own, so a process that
+      // started and then failed the handshake is holding a pipe nobody reads and would sit there for
+      // as long as the window is open -- with the next launch's server beside it.
+      await client.dispose(2000).catch(() => child?.kill());
     }
 
     const problem =
@@ -513,11 +564,40 @@ export class ServerController implements vscode.Disposable {
     await client.dispose().catch(() => undefined);
   }
 
-  /** The workspace was trusted: say so, so a withheld protoc path takes effect without a restart. */
-  private reportTrustGranted(): void {
+  /**
+   * The workspace is trusted: say so, so a withheld protoc path takes effect without a restart.
+   *
+   * Said when trust is granted, and again whenever a client reaches running while the workspace is
+   * trusted. Trust granted while the server was starting falls between the two otherwise -- the
+   * initialize that carried it had already been sent saying untrusted, and there was no running client
+   * to notify when the event arrived -- and the setting would sit withheld until something else
+   * restarted the server. The server ignores a notice that tells it nothing it was not told at
+   * initialize, so the repetition costs a message and no behaviour.
+   */
+  private reportTrust(): void {
+    if (!vscode.workspace.isTrusted) {
+      return;
+    }
+
     void this.languageClient
       ?.sendNotification('protolang/didChangeWorkspaceTrust', { trusted: true })
       .catch((error: unknown) => this.log.warn(`Could not tell the server the workspace is trusted: ${String(error)}`));
+  }
+}
+
+/**
+ * A {@link LanguageClient} that logs what it would otherwise open a notification about.
+ *
+ * The client forces a message of its own whenever a connection cannot be created or a restart fails --
+ * 'force' meaning it ignores `revealOutputChannelOn`, which is how the rest of this extension keeps
+ * its output channel to itself. Every one of those failures also reaches {@link ServerController.fail},
+ * which says the same thing in the user's terms and offers something to do about it, so leaving both
+ * in place opens two notifications for one failure, the uninformative one first. Forcing is downgraded
+ * rather than silenced: the text still goes to the log, where the report tells the user to look.
+ */
+class QuietLanguageClient extends LanguageClient {
+  override error(message: string, data?: unknown, showNotification: boolean | 'force' = true): void {
+    super.error(message, data, showNotification === 'force' ? false : showNotification);
   }
 }
 

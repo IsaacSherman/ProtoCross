@@ -139,22 +139,82 @@ public class VsCodeExtensionTests
     public static TheoryData<string> Sources()
     {
         var data = new TheoryData<string> { "(awkward shapes)" };
+        var sources = SourcesUnder(TestPaths.RepositoryRoot);
 
-        foreach (var file in Directory.EnumerateFiles(TestPaths.RepositoryRoot, "*.protolang", SearchOption.AllDirectories))
+        // A walk that tolerates what it cannot read can come back empty, and an empty sweep passes and
+        // goes on passing. This repository has ProtoLang sources in it, so nothing found is a broken
+        // walk rather than a clean bill of health.
+        Assert.NotEmpty(sources);
+
+        foreach (var file in sources)
         {
-            var relative = Path.GetRelativePath(TestPaths.RepositoryRoot, file);
-            var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-
-            // Build output, installed packages, and anything under a dot-directory -- which is where tools
-            // keep whole working copies of this repository, whose sources are someone else's branch.
-            if (!segments.Any(segment => segment.StartsWith('.') || segment is "bin" or "obj" or "node_modules" or "artifacts"))
-            {
-                data.Add(relative);
-            }
+            data.Add(Path.GetRelativePath(TestPaths.RepositoryRoot, file));
         }
 
         return data;
     }
+
+    /// <summary>
+    /// Every <c>*.protolang</c> this repository maintains, in a stable order, descending only into
+    /// directories one of them could be in.
+    /// </summary>
+    /// <remarks>
+    /// The exclusions decide what to descend into rather than which results to keep, and the difference
+    /// is the whole reason this is written out. A recursive <c>EnumerateFiles</c> walks every directory
+    /// before a caller sees the first name, and its <c>SearchOption</c> overload enumerates with
+    /// <c>IgnoreInaccessible = false</c>, so one directory this process cannot read throws and takes the
+    /// sweep with it. The end-to-end suite leaves VS Code's agent host socket under
+    /// <c>editors/vscode/.vscode-test</c>, which meant that running the editor tests and then the suite
+    /// failed this theory on a path that was going to be filtered out anyway -- an order of two commands
+    /// deciding whether the grammar got checked at all.
+    ///
+    /// Unreadable directories are still tolerated below, because the excluded names are what this
+    /// repository happens to know about today and a sweep of the sources is not the place to discover
+    /// what else a machine will not open.
+    /// </remarks>
+    private static List<string> SourcesUnder(string root)
+    {
+        var found = new List<string>();
+        var pending = new Stack<string>([root]);
+
+        while (pending.Count > 0)
+        {
+            var directory = pending.Pop();
+
+            try
+            {
+                found.AddRange(Directory.EnumerateFiles(directory, "*.protolang"));
+
+                foreach (var child in Directory.EnumerateDirectories(directory))
+                {
+                    if (!IsSwept(Path.GetFileName(child)))
+                    {
+                        continue;
+                    }
+
+                    pending.Push(child);
+                }
+            }
+            catch (Exception error) when (error is UnauthorizedAccessException or IOException)
+            {
+                // Nothing this repository maintains is behind a directory it cannot open.
+            }
+        }
+
+        // The stack hands directories back in whatever order the file system listed them, and a theory
+        // whose cases are named by their file should not reorder itself between two runs.
+        found.Sort(StringComparer.Ordinal);
+        return found;
+    }
+
+    /// <summary>Whether a directory of this name holds sources this repository maintains.</summary>
+    /// <remarks>
+    /// Build output and installed packages hold copies of sources that are checked where they came from,
+    /// and a dot-directory is where tools keep whole working copies of this repository -- whose sources
+    /// are someone else's branch, and are not this change's to pass or fail.
+    /// </remarks>
+    private static bool IsSwept(string name)
+        => !name.StartsWith('.') && name is not ("bin" or "obj" or "node_modules" or "artifacts");
 
     /// <summary>
     /// Wherever the server's lexical layer classifies a token, the grammar gives every character of it

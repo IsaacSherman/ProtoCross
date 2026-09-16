@@ -62,6 +62,20 @@ describe('the extension, installed', () => {
     assert.equal(document.languageId, 'protolang');
   });
 
+  // The word pattern is what double-click selects and what a completion replaces, and VS Code compiles
+  // a pattern given as a plain string with no flags at all -- which turns every \p{...} in it into a
+  // literal 'p' and leaves a lexer that accepts any letter paired with an editor that finds no word.
+  it('treats a name with letters from outside ASCII as one word', async () => {
+    const name = 'ünïcödé_1';
+    const document = await vscode.workspace.openTextDocument({ language: 'protolang', content: `var ${name} = 2;\n` });
+    const inside = document.positionAt(document.getText().indexOf(name) + 3);
+
+    const word = document.getWordRangeAtPosition(inside);
+
+    assert.ok(word !== undefined, `nothing in '${name}' is a word to the editor`);
+    assert.equal(document.getText(word), name);
+  });
+
   it('starts the server with no configuration and publishes live diagnostics', async () => {
     await running(await api());
 

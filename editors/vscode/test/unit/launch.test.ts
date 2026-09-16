@@ -160,6 +160,11 @@ describe('which runtimes can run the server', () => {
   it(`does not accept a preview of ${minimumDotnetMajor}, which roll-forward will not choose`, () => {
     assert.equal(hasSupportedRuntime([`${minimumDotnetMajor}.0.0-rc.2.25502.107`]), false);
   });
+
+  it('does not accept a preview of a newer major either, for the same reason', () => {
+    assert.equal(hasSupportedRuntime([`${minimumDotnetMajor + 1}.0.0-preview.1.25080.5`]), false);
+    assert.equal(hasSupportedRuntime([`${minimumDotnetMajor + 1}.0.0-preview.1.25080.5`, `${minimumDotnetMajor}.0.4`]), true);
+  });
 });
 
 describe('the command that starts the server', () => {

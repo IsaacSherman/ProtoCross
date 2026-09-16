@@ -108,7 +108,9 @@ platform, and are tested on all three.
   whether the server is running, and the *protoc* section says which `protoc` it found, or why it found
   none.
 - **"needs .NET 10 or newer":** install a .NET 10 or newer runtime, or point `protolang.dotnetPath` at
-  one.
+  one. A preview does not count, whichever version it is a preview of: .NET only rolls forward onto a
+  prerelease when it is told to, so the server would not be given one. The message lists the runtimes
+  it did find.
 - **Errors that do not match your build:** check the *Configuration* section of the status report for
   which `protolang.config.xml` and include paths each file is using.
 
