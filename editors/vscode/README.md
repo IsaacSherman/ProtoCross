@@ -138,7 +138,8 @@ npm test
 ```
 
 `npm run stage` publishes the server from `src/ProtoLang.LanguageServer` into `server/`. `npm test`
-checks types, runs the unit tests, and then starts VS Code to run the end-to-end suite. The first time,
-it downloads a copy of VS Code into `.vscode-test/`. `npm run test:server` starts the staged server
+checks types, runs the unit tests, and then starts VS Code to run the end-to-end suite. It runs the
+release named in `test/e2e/vscode-version.json`, downloaded into `.vscode-test/` the first time and
+again only when that version changes. Moving the version is how a new VS Code gets tested. `npm run test:server` starts the staged server
 under the extension's launch rules and checks what it can find. `npm run package` builds
 `dist/protolang.vsix`.

@@ -541,7 +541,9 @@ and the scaffolding and smoke suites.
 - **The extension** has three suites of its own, run from `editors/vscode`. `npm run test:unit` covers
   the launch rules and the settings filter. `npm run test:server` starts the staged server under those
   rules, pairing each defence with the same launch made without it. `npm run test:e2e` runs VS Code with
-  the extension loaded and a fixture workspace open.
+  the extension loaded and a fixture workspace open. The VS Code release is pinned in
+  `test/e2e/vscode-version.json`, so a release that breaks the extension turns the suite red in the
+  commit that moves that number rather than on the day it ships.
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same
 suite, with both gated switches thrown, on every pull request to `main`. It also runs the extension's

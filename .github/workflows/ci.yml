@@ -185,6 +185,19 @@ jobs:
         working-directory: .
         run: dotnet restore tests/ProtoLang.Tests/ProtoLang.Tests.csproj
 
+      # The VS Code the end-to-end suite runs in: about 324 MB downloaded and a gigabyte unpacked, per
+      # platform, per run, for a build that only changes when test/e2e/vscode-version.json does. Keyed
+      # on that file and nothing else, and with no restore-keys -- an older release is a different
+      # directory the suite would never open, so starting from one would only carry it along.
+      #
+      # Only the install is kept. The user-data directory beside it is created by the run, and the
+      # suite's claim to start from a clean profile is only true if nothing carries it into the next.
+      - name: Cache VS Code for the end-to-end tests
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test/vscode-*
+          key: ${{ runner.os }}-${{ runner.arch }}-vscode-${{ hashFiles('editors/vscode/test/e2e/vscode-version.json') }}
+
       - name: End-to-end tests in VS Code (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a npm run test:e2e
