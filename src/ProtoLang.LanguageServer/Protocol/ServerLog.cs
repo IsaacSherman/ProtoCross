@@ -39,6 +39,24 @@ public sealed class ServerLog
     /// <summary>The least important level that is written. Raised by <c>$/setTrace</c>.</summary>
     public LogLevel Level { get; set; } = LogLevel.Info;
 
+    /// <summary>The level the process was started with, which a client's <c>off</c> returns to.</summary>
+    /// <remarks>
+    /// Kept apart from <see cref="Level"/> because a client moves that one, and "go back to what I was
+    /// started with" needs the answer from before it moved. <c>TraceLevel</c> says why <c>off</c> means
+    /// this rather than errors only.
+    /// </remarks>
+    public LogLevel StartingLevel
+    {
+        get => _startingLevel;
+        init
+        {
+            _startingLevel = value;
+            Level = value;
+        }
+    }
+
+    private readonly LogLevel _startingLevel = LogLevel.Info;
+
     /// <summary>Publishes to the client. Null until there is a connection to publish over.</summary>
     public Action<LogLevel, string>? Sink { get; set; }
 

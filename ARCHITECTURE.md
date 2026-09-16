@@ -29,6 +29,9 @@ Dependencies run one way. Backends, the CLI and the language server reference Co
 references nothing in the repo**. That is what lets a language server consume the compiler without
 dragging the CLI along, and it is worth preserving.
 
+Outside the solution, [editors/vscode](editors/vscode) is the VS Code extension: TypeScript, built with
+npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
+
 ## The pipeline
 
 Driven by [`Compilation`](src/ProtoLang.Core/Compilation.cs). Three doors into it: the constructor
@@ -183,6 +186,8 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | How long an answer may take, and how long they have been taking | `PerformanceBudgets`, `RequestTimings`, `LatencySample` | [Hosting/PerformanceBudgets.cs](src/ProtoLang.LanguageServer/Hosting/PerformanceBudgets.cs), [Hosting/RequestTimings.cs](src/ProtoLang.LanguageServer/Hosting/RequestTimings.cs) |
 | Which way a load failed | `DescriptorLoadFailureKind`, `SchemaLoadFailure` | [Binding/DescriptorLoadFailureKind.cs](src/ProtoLang.Core/Binding/DescriptorLoadFailureKind.cs) |
 | When a document is compiled, and whether the answer still counts | `CompileScheduler` | [Hosting/CompileScheduler.cs](src/ProtoLang.LanguageServer/Hosting/CompileScheduler.cs) |
+| Which files on disk move a compilation, and what the client is asked to watch | `WatchedFiles` | [Hosting/WatchedFiles.cs](src/ProtoLang.LanguageServer/Hosting/WatchedFiles.cs) |
+| What an editor user with no protoc is told | `MissingProtoc` | [Hosting/MissingProtoc.cs](src/ProtoLang.LanguageServer/Hosting/MissingProtoc.cs) |
 | What `protoc` said, and about where | `ProtocDiagnostic`, `SchemaLoadFailure` | [Binding/ProtocDiagnostic.cs](src/ProtoLang.Core/Binding/ProtocDiagnostic.cs), [SchemaLoadFailure.cs](src/ProtoLang.Core/SchemaLoadFailure.cs) |
 | Offset ↔ line/column | `LineMap` | [Diagnostics/LineMap.cs](src/ProtoLang.Core/Diagnostics/LineMap.cs) |
 | Messages | `Diagnostic`, `DiagnosticBag` | [Diagnostics/Diagnostic.cs](src/ProtoLang.Core/Diagnostics/Diagnostic.cs) |
@@ -395,6 +400,29 @@ one array write per answer, in a fifty-deep ring, and **only answers are recorde
 refused for staleness produced no answer and folding those in would make a server look faster the
 more work it was abandoning.
 
+A compilation rests on two kinds of file the editor does not hold, the schemas it imports and the
+policy file it discovers, and a kept compilation already refuses to answer once either has moved. What
+nothing did was *ask*: diagnostics are published when a compile runs, and saving a `.proto` in another
+tab is not a keystroke in this one. So once initialized the server asks a client that can watch files
+to report `**/*.proto` and `**/protolang.config.xml`
+([`WatchedFiles`](src/ProtoLang.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
+reschedules every open document. Each compile asks `DocumentSemantics` first, so a document whose schemas
+still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
+an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
+
+When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
+restoring a NuGet package. [`MissingProtoc`](src/ProtoLang.LanguageServer/Hosting/MissingProtoc.cs)
+says where the server looked, where protoc is published and which setting names one, and the same
+sentence goes on the import line, in the one-time message and in the status report. The client reports
+the relative `PATH` entries it removed before starting the server, and they are named only when there
+were some. A schema failure with no loader behind it is how a missing protoc is recognized, read off the
+compilation rather than probed again.
+
+A client's trace value of `off` returns the log to the level the process was started with
+(`ServerLog.StartingLevel`), rather than lowering it to errors. VS Code's client says `off` in every
+`initialize` and again after every settings change, so reading it as a request for less logging made
+`--log-level` impossible to keep turned up.
+
 Diagnostics are published *per file* and produced *per compilation*, and the two stop lining up as
 soon as a `.proto` can be blamed, so
 [`DiagnosticRouter`](src/ProtoLang.LanguageServer/Hosting/DiagnosticRouter.cs) publishes the union of
@@ -436,6 +464,46 @@ request that can go stale between reading the buffer and answering, so it re-che
 refuses with `ContentModified` rather than inserting text at an offset that has stopped meaning what
 it meant.
 
+### The VS Code extension
+
+[editors/vscode](editors/vscode) is a thin client over the server, and it deliberately brings no
+toolchain. The server ships inside it framework-dependent and without an app host, so one package
+serves every platform and runs on the user's own .NET 10 or newer. `protoc` is whichever one the server
+already finds. A user who does not want .NET at all keeps the grammar, the brackets and the comments, and
+is told once. Its README is the user-facing account; what follows is the shape.
+
+- **[`launch.ts`](editors/vscode/src/launch.ts) decides how the server starts, with no VS Code in it**,
+  so every rule is a Node test. The rules exist so that nothing the server looks up resolves into the
+  workspace. The server is started by absolute path, through a `dotnet` also found by absolute path. It
+  runs in the extension's global storage directory, with relative and empty `PATH` entries removed and
+  `PROTOLANG_PROTOC` and `NUGET_PACKAGES` passed only when absolute. Spec 10.4.1 states it as the
+  client's obligation.
+- **[`serverController.ts`](editors/vscode/src/serverController.ts) owns the process**: launches
+  serialized through one queue, crash restarts bounded at four in three minutes, a counted restart for
+  the status report, and every reason not to start turned into a named failure with one offer of what to
+  do about it. The client's own view of itself is what the state follows, so a restart that fails to
+  start says so rather than leaving a report that says "starting" until the window closes. It reports
+  trust at `initialize`, when trust is granted, and again whenever the client reaches running while the
+  workspace is trusted -- a grant during a start lands between the other two.
+- **The extension's own settings never reach the server.** `logLevel`, `server.*` and `dotnetPath`
+  live under `protolang` beside the settings the server reads, and the server reports anything in that
+  section it does not understand, which is how a typo gets noticed. A `workspace/configuration`
+  middleware takes the extension's keys out of each answer. The list is in
+  [`contract.json`](editors/vscode/src/contract.json), with the privacy note a report the extension
+  writes itself must share with the server's.
+- **[`status.ts`](editors/vscode/src/status.ts) asks the server for its report and writes one when it
+  cannot**, whether the server failed to start or did not answer in time. The report is copied only
+  after the privacy note has been shown.
+- **The grammar colours every token the server's lexical layer classifies with the TextMate scope VS
+  Code maps that classification to.** When semantic tokens arrive, the only change a reader sees is the
+  server's refinement.
+
+What the two sides must agree on is checked from the server's suite in `VsCodeExtensionTests`, since
+nothing at build time connects a C# constant to a JSON file: the manifest declares every server setting
+and restricts exactly what the server withholds, the contract lists every other setting, the privacy
+note matches, and the grammar is swept against `SemanticTokenEncoder` over every ProtoLang source in the
+repository.
+
 ### Backends
 
 Per spec 23 a backend consumes only the typed IR, never the AST, and rejects what it cannot support
@@ -450,7 +518,8 @@ One project, [tests/ProtoLang.Tests](tests/ProtoLang.Tests), roughly organized b
 `SourceSpanTests`, `CompilationTests`, `InMemoryCompilationTests`, `PartialBindingTests`,
 `SymbolIdentityTests`, `PositionQueryTests`, `ReferenceIndexTests`, `ScopeQueryTests`,
 `DescriptorCacheTests`, `SchemaDeclarationTests`, `ProcessSupervisionTests`, `CompileSupervisionTests`,
-`WorkspaceConfigurationTests`, `WorkspaceTrustTests`, `ServerStatusTests`, `LanguageServerTests`, `SemanticTokenTests`,
+`WorkspaceConfigurationTests`, `WorkspaceTrustTests`, `ServerStatusTests`, `LanguageServerTests`,
+`WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
@@ -469,7 +538,14 @@ and the scaffolding and smoke suites.
   speaks framed JSON-RPC at a real host over a pair of in-memory streams, so the framing, the
   lifecycle gate and the dispatch order are under test rather than bypassed.
 
-There is **no CI**. `dotnet test` locally is the gate.
+- **The extension** has three suites of its own, run from `editors/vscode`. `npm run test:unit` covers
+  the launch rules and the settings filter. `npm run test:server` starts the staged server under those
+  rules, pairing each defence with the same launch made without it. `npm run test:e2e` runs VS Code with
+  the extension loaded and a fixture workspace open.
+
+`dotnet test` locally is the gate. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same
+suite, with both gated switches thrown, on every pull request to `main`. It also runs the extension's
+three suites on Windows, Linux and macOS, before and after a `protoc` is installed.
 
 ## Invariants that constrain a change
 
@@ -529,6 +605,9 @@ and the descriptor cache states the bytes it holds and the last entry to go stal
 fourth wave, the one that ships to people, by deciding what a repository nobody has trusted may make
 the server do: withhold the one setting that names an executable, keep serving everything else, and
 say so once. It did not reach Core, and it made the settings a table so that classifying a new one
-is part of adding it. Everything from
+is part of adding it. #45 put the server in front of people as a VS Code extension that brings no
+toolchain of its own. It did not reach Core. It gave the server three things a real client turned out to
+need: watching the files a compilation rests on, an editor's account of a missing protoc, and a trace
+`off` that no longer silences the log. Everything from
 here should be additive: new types, new projects. Rewriting the binder is the signal to stop and
 re-scope.

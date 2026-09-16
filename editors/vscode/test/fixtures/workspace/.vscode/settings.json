@@ -1,0 +1,4 @@
+{
+  "protolang.logLevel": "trace",
+  "protolang.server.enabled": true
+}

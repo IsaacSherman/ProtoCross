@@ -1,0 +1,11 @@
+# Everything is left out except what the installed extension runs or shows. The language client is
+# bundled into dist/extension.js, so node_modules is not needed at all.
+**
+!package.json
+!README.md
+!LICENSE
+!language-configuration.json
+!dist/extension.js
+!syntaxes/**
+!images/**
+!server/**

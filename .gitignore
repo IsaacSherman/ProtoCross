@@ -436,3 +436,11 @@ vcpkg_installed/
 
 # A locally installed .NET CLI. A toolchain, not project content.
 .dotnet-cli/
+
+# The VS Code extension's build output, staged server, downloaded test editor and copied licence.
+# All of them are produced by its npm scripts from what is checked in.
+editors/vscode/dist/
+editors/vscode/out/
+editors/vscode/server/
+editors/vscode/.vscode-test/
+editors/vscode/LICENSE

@@ -78,6 +78,7 @@ public sealed class CompileScheduler
     private readonly DocumentStore _documents;
     private readonly ConfigurationSync _configuration;
     private readonly DocumentSemantics _semantics;
+    private readonly LoaderPool _loaders;
     private readonly DiagnosticRouter _router;
     private readonly Func<DiagnosticMapper> _mapper;
     private readonly ServerLog _log;
@@ -97,8 +98,7 @@ public sealed class CompileScheduler
         int concurrency = DefaultConcurrency,
         DocumentSemantics? semantics = null)
     {
-        ArgumentNullException.ThrowIfNull(loaders);
-
+        _loaders = loaders ?? throw new ArgumentNullException(nameof(loaders));
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
 
@@ -425,11 +425,22 @@ public sealed class CompileScheduler
         var resolvePaths = SchemaCatalog.RootsFor(result.SearchPaths, compiled.Loader);
 
         return WithConfiguration(
-            CompilationDiagnostics.Build(result, uri, resolvePaths, mapper),
+            CompilationDiagnostics.Build(result, uri, resolvePaths, mapper, MissingProtocIn(compiled)),
             uri,
             settings,
             mapper);
     }
+
+    /// <summary>The account of a missing protoc when this compilation had none to run, or null.</summary>
+    /// <remarks>
+    /// Read off the compilation rather than off a second probe. A schema failure with no loader behind
+    /// it can only be discovery having found nothing: a named protoc that could not be prepared stops the
+    /// document before it compiles, and a compilation that located one keeps it as its loader. Probing
+    /// again here could find a protoc installed a moment ago and describe a rejected schema as a missing
+    /// compiler.
+    /// </remarks>
+    private string? MissingProtocIn(DocumentCompilation compiled)
+        => compiled is { Loader: null, Result.SchemaFailure: not null } ? _loaders.Missing.Describe() : null;
 
     /// <summary>Says in the log that protoc was stopped, and which protoc it was.</summary>
     /// <remarks>

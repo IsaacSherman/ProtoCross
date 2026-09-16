@@ -25,7 +25,7 @@ public static class Program
         // discouraged.
         Console.SetOut(Console.Error);
 
-        var log = new ServerLog { Level = LevelFrom(args) };
+        var log = new ServerLog { StartingLevel = LevelFrom(args) };
 
         return await RunAsync(input, output, log, CancellationToken.None).ConfigureAwait(false);
     }

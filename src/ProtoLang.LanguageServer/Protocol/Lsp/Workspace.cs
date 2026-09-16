@@ -45,3 +45,46 @@ public sealed record DidChangeWorkspaceFoldersParams
 {
     public WorkspaceFoldersChangeEvent Event { get; init; } = new();
 }
+
+/// <summary>What happened to a watched file.</summary>
+/// <remarks>
+/// Carried and not branched on. A schema that was created, changed or deleted moves a compilation that
+/// rests on it equally, so which of the three it was decides nothing here; it is kept so a log line can
+/// say what the client reported.
+/// </remarks>
+public enum FileChangeType
+{
+    Created = 1,
+    Changed = 2,
+    Deleted = 3,
+}
+
+/// <summary>One file the client saw change on disk.</summary>
+public sealed record FileEvent
+{
+    public string Uri { get; init; } = string.Empty;
+
+    public FileChangeType Type { get; init; }
+}
+
+/// <summary>Files changed on disk, as the client's watchers saw them.</summary>
+public sealed record DidChangeWatchedFilesParams
+{
+    public IReadOnlyList<FileEvent> Changes { get; init; } = [];
+}
+
+/// <summary>One pattern the client is asked to watch.</summary>
+/// <remarks>
+/// A glob string rather than LSP's relative pattern, which is the only shape every version of the
+/// protocol accepts. <c>Kind</c> is left out, which means create, change and delete alike.
+/// </remarks>
+public sealed record FileSystemWatcher(string GlobPattern);
+
+/// <summary>What <c>workspace/didChangeWatchedFiles</c> is registered for.</summary>
+public sealed record DidChangeWatchedFilesRegistrationOptions(IReadOnlyList<FileSystemWatcher> Watchers);
+
+/// <summary>One capability the server asks the client to turn on now rather than at initialization.</summary>
+public sealed record Registration(string Id, string Method, object? RegisterOptions);
+
+/// <inheritdoc cref="Registration"/>
+public sealed record RegistrationParams(IReadOnlyList<Registration> Registrations);

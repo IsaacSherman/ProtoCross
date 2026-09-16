@@ -4,6 +4,13 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>ProtoLang.LanguageServer</RootNamespace>
     <AssemblyName>protolang-server</AssemblyName>
+
+    <!--
+      Runs on the oldest .NET it was built for or any newer major the machine has. The editor
+      extensions run it with the user's own dotnet rather than one they bring, so a user who has only
+      moved on to the next release should not be told to install an older one to use it.
+    -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
 
   <!--

@@ -23,9 +23,15 @@ namespace ProtoLang.LanguageServer.Hosting;
 /// <para>
 /// <b>PL0003 is replaced, not supplemented, when protoc said anything structured.</b> Its message is
 /// the whole of standard error, so publishing it beside the per-line diagnostics parsed from that same
-/// text would say everything twice. When protoc could not be found at all there is no structured
-/// output, and PL0003 -- which then carries <c>ProtocLocator</c>'s account of everywhere it looked --
-/// is published exactly as the command line prints it.
+/// text would say everything twice.
+/// </para>
+/// <para>
+/// <b>When protoc could not be found at all, PL0003 keeps its code and its place and says what an editor
+/// user can do.</b> The command line's message suggests restoring a NuGet package and gives no address,
+/// which is advice for somebody building the repository rather than somebody who installed an
+/// extension. <see cref="MissingProtoc"/> is the editor's account, and it is the same sentence the
+/// one-time message and the status report carry, so the three cannot disagree about where the server
+/// looked.
 /// </para>
 /// </remarks>
 public static class CompilationDiagnostics
@@ -46,11 +52,17 @@ public static class CompilationDiagnostics
     /// the loader's implicit ones, in that order. It must be the list the compilation used, or a
     /// well-known schema resolves here to a different file than the one protoc read.
     /// </param>
+    /// <param name="missingProtoc">
+    /// What to say in place of PL0003's message when the compilation found no protoc to run, or null
+    /// when it found one. The caller knows which, because only it holds the loader the compilation
+    /// ended up with.
+    /// </param>
     public static DiagnosticContribution Build(
         CompilationResult result,
         DocumentUri owner,
         IReadOnlyList<string> resolvePaths,
-        DiagnosticMapper mapper)
+        DiagnosticMapper mapper,
+        string? missingProtoc = null)
     {
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(owner);
@@ -66,12 +78,18 @@ public static class CompilationDiagnostics
 
         foreach (var diagnostic in result.Diagnostics)
         {
-            if (protoc is not null && string.Equals(diagnostic.Code, SchemaLoadFailed, StringComparison.Ordinal))
+            var isSchemaLoadFailure = string.Equals(diagnostic.Code, SchemaLoadFailed, StringComparison.Ordinal);
+
+            if (protoc is not null && isSchemaLoadFailure)
             {
                 continue;
             }
 
-            contribution.Add(owner, mapper.Map(diagnostic, owner.Text));
+            var published = missingProtoc is not null && isSchemaLoadFailure
+                ? diagnostic with { Message = missingProtoc }
+                : diagnostic;
+
+            contribution.Add(owner, mapper.Map(published, owner.Text));
         }
 
         if (protoc is not null)
