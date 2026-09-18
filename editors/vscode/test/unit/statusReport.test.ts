@@ -7,7 +7,7 @@ describe("the extension's own status report", () => {
   it('opens with the title and the privacy note, before any fact', () => {
     const report = renderReport(privacyNote, [{ title: 'Server', facts: [{ label: 'state', value: 'failed' }] }]);
 
-    assert.ok(report.startsWith(`# ProtoLang language server status\n\n${privacyNote}\n`));
+    assert.ok(report.startsWith(`# ProtoCross language server status\n\n${privacyNote}\n`));
     assert.ok(report.indexOf(privacyNote) < report.indexOf('failed'));
   });
 

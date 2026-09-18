@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protocross.target;
+
+option csharp_namespace = "ProtoCross.Target";
+
+message Target {
+  int64 value = 1;
+}

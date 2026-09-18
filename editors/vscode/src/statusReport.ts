@@ -29,7 +29,7 @@ export interface StatusReport {
 
 /** Renders `sections` the way the server renders its own report. */
 export function renderReport(privacy: string, sections: readonly Section[]): string {
-  let report = `# ProtoLang language server status\n\n${privacy}\n`;
+  let report = `# ProtoCross language server status\n\n${privacy}\n`;
 
   for (const section of sections) {
     report += `\n## ${section.title}\n\n`;

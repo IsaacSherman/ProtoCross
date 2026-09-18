@@ -1,18 +1,18 @@
 {
-  "name": "protolang",
-  "displayName": "ProtoLang",
-  "description": "Language support for ProtoLang: live diagnostics, completion, hover and navigation, driven by the ProtoLang compiler.",
+  "name": "protocross",
+  "displayName": "ProtoCross",
+  "description": "Language support for ProtoCross: live diagnostics, completion, hover and navigation, driven by the ProtoCross compiler.",
   "version": "0.1.0",
   "publisher": "isaacsherman",
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/IsaacSherman/ProtoLang.git",
+    "url": "https://github.com/IsaacSherman/ProtoCross.git",
     "directory": "editors/vscode"
   },
   "bugs": {
-    "url": "https://github.com/IsaacSherman/ProtoLang/issues"
+    "url": "https://github.com/IsaacSherman/ProtoCross/issues"
   },
   "engines": {
     "vscode": "^1.91.0"
@@ -21,7 +21,7 @@
     "Programming Languages"
   ],
   "keywords": [
-    "protolang",
+    "protocross",
     "protobuf",
     "protocol buffers"
   ],
@@ -30,28 +30,28 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "In a workspace you have not trusted, ProtoLang keeps every feature but does not run a protoc named by the workspace's own settings. protoc is located from PROTOLANG_PROTOC, PATH and the NuGet package cache instead.",
+      "description": "In a workspace you have not trusted, ProtoCross keeps every feature but does not run a protoc named by the workspace's own settings. protoc is located from PROTOCROSS_PROTOC, PATH and the NuGet package cache instead.",
       "restrictedConfigurations": [
-        "protolang.protocPath",
-        "protolang.server.path",
-        "protolang.dotnetPath"
+        "protocross.protocPath",
+        "protocross.server.path",
+        "protocross.dotnetPath"
       ]
     },
     "virtualWorkspaces": {
       "supported": false,
-      "description": "The ProtoLang compiler reads schemas from disk and starts protoc, so it needs files on this machine."
+      "description": "The ProtoCross compiler reads schemas from disk and starts protoc, so it needs files on this machine."
     }
   },
   "contributes": {
     "languages": [
       {
-        "id": "protolang",
+        "id": "protocross",
         "aliases": [
-          "ProtoLang",
-          "protolang"
+          "ProtoCross",
+          "protocross"
         ],
         "extensions": [
-          ".protolang"
+          ".pcross"
         ],
         "configuration": "./language-configuration.json",
         "icon": {
@@ -62,47 +62,47 @@
     ],
     "grammars": [
       {
-        "language": "protolang",
-        "scopeName": "source.protolang",
-        "path": "./syntaxes/protolang.tmLanguage.json"
+        "language": "protocross",
+        "scopeName": "source.pcross",
+        "path": "./syntaxes/protocross.tmLanguage.json"
       }
     ],
     "commands": [
       {
-        "command": "protolang.restartServer",
+        "command": "protocross.restartServer",
         "title": "Restart Language Server",
-        "category": "ProtoLang"
+        "category": "ProtoCross"
       },
       {
-        "command": "protolang.showStatus",
+        "command": "protocross.showStatus",
         "title": "Show Language Server Status",
-        "category": "ProtoLang"
+        "category": "ProtoCross"
       },
       {
-        "command": "protolang.copyStatus",
+        "command": "protocross.copyStatus",
         "title": "Copy Language Server Status",
-        "category": "ProtoLang",
+        "category": "ProtoCross",
         "icon": "$(copy)"
       },
       {
-        "command": "protolang.showLog",
+        "command": "protocross.showLog",
         "title": "Show Language Server Log",
-        "category": "ProtoLang"
+        "category": "ProtoCross"
       }
     ],
     "menus": {
       "editor/title": [
         {
-          "command": "protolang.copyStatus",
-          "when": "resourceScheme == protolang-status",
+          "command": "protocross.copyStatus",
+          "when": "resourceScheme == protocross-status",
           "group": "navigation"
         }
       ]
     },
     "configuration": {
-      "title": "ProtoLang",
+      "title": "ProtoCross",
       "properties": {
-        "protolang.includePaths": {
+        "protocross.includePaths": {
           "type": "array",
           "items": {
             "type": "string"
@@ -111,19 +111,19 @@
           "scope": "resource",
           "markdownDescription": "Directories searched for imported `.proto` schemas, after the directory of the file doing the importing. The editor's answer to the compiler's `-I`. A relative path resolves against the workspace folder that states it."
         },
-        "protolang.protocPath": {
+        "protocross.protocPath": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "The `protoc` to run, as a full path. The editor's answer to `PROTOLANG_PROTOC`. When empty, `protoc` is located from `PROTOLANG_PROTOC`, then `PATH`, then the NuGet package cache. Not used in a workspace you have not trusted."
+          "markdownDescription": "The `protoc` to run, as a full path. The editor's answer to `PROTOCROSS_PROTOC`. When empty, `protoc` is located from `PROTOCROSS_PROTOC`, then `PATH`, then the NuGet package cache. Not used in a workspace you have not trusted."
         },
-        "protolang.configPath": {
+        "protocross.configPath": {
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "A `protolang.config.xml` to use instead of searching upward from each file. The editor's answer to the compiler's `--config`."
+          "markdownDescription": "A `protocross.config.xml` to use instead of searching upward from each file. The editor's answer to the compiler's `--config`."
         },
-        "protolang.logLevel": {
+        "protocross.logLevel": {
           "type": "string",
           "enum": [
             "error",
@@ -133,21 +133,21 @@
           ],
           "default": "info",
           "scope": "window",
-          "markdownDescription": "How much the language server writes to its log, which is shown by **ProtoLang: Show Language Server Log**. Changing it restarts the server."
+          "markdownDescription": "How much the language server writes to its log, which is shown by **ProtoCross: Show Language Server Log**. Changing it restarts the server."
         },
-        "protolang.server.enabled": {
+        "protocross.server.enabled": {
           "type": "boolean",
           "default": true,
           "scope": "window",
-          "markdownDescription": "Run the language server. When off, `.protolang` files still get syntax colouring, bracket matching and comment toggling, and nothing needs .NET."
+          "markdownDescription": "Run the language server. When off, `.pcross` files still get syntax colouring, bracket matching and comment toggling, and nothing needs .NET."
         },
-        "protolang.server.path": {
+        "protocross.server.path": {
           "type": "string",
           "default": "",
           "scope": "machine",
-          "markdownDescription": "A language server to run instead of the one inside this extension, as a full path: either `protolang-server.dll`, run with .NET, or an executable. Leave empty unless you are developing the server."
+          "markdownDescription": "A language server to run instead of the one inside this extension, as a full path: either `protocross-server.dll`, run with .NET, or an executable. Leave empty unless you are developing the server."
         },
-        "protolang.dotnetPath": {
+        "protocross.dotnetPath": {
           "type": "string",
           "default": "",
           "scope": "machine",
@@ -161,7 +161,7 @@
     "watch": "node scripts/build.mjs --watch",
     "typecheck": "tsc --noEmit -p .",
     "stage": "node scripts/stage.mjs",
-    "package": "npm run build && npm run stage && vsce package --no-dependencies --out dist/protolang.vsix",
+    "package": "npm run build && npm run stage && vsce package --no-dependencies --out dist/protocross.vsix",
     "test:unit": "node scripts/build.mjs --tests && node --test \"out/test/unit/**/*.test.js\"",
     "test:server": "node scripts/build.mjs --tests && node --test --test-concurrency=1 \"out/test/server/**/*.test.js\"",
     "test:e2e": "node scripts/build.mjs --tests && node out/test/e2e/run.js",

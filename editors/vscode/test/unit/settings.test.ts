@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { extensionOwnedSettings, withoutExtensionSettings } from '../../src/settings';
 
-describe('what the server is sent of the protolang section', () => {
+describe('what the server is sent of the protocross section', () => {
   it("takes out every setting that is the extension's own", () => {
     const answer = {
       includePaths: ['protos'],

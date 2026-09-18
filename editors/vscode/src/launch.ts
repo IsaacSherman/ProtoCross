@@ -6,7 +6,7 @@ import * as path from 'node:path';
  *
  * The rules come from spec 10.4.1 and #45, and they all serve one purpose: nothing the server looks
  * up may resolve into the workspace. A bare `protoc`, a relative `PATH` entry and a relative
- * `PROTOLANG_PROTOC` or `NUGET_PACKAGES` all resolve against the server's working directory, so a
+ * `PROTOCROSS_PROTOC` or `NUGET_PACKAGES` all resolve against the server's working directory, so a
  * server started inside a repository could find a `protoc` committed to it and run it before anybody
  * trusted that repository. Workspace trust withholds the settings a repository writes; it cannot
  * withhold a working directory.
@@ -16,7 +16,7 @@ import * as path from 'node:path';
 export const minimumDotnetMajor = 10;
 
 /** Environment variables naming a directory or file the server reads, which must not be relative. */
-export const pathVariables = ['PROTOLANG_PROTOC', 'NUGET_PACKAGES'] as const;
+export const pathVariables = ['PROTOCROSS_PROTOC', 'NUGET_PACKAGES'] as const;
 
 /** What the server is started with once the environment has been made safe. */
 export interface LaunchEnvironment {

@@ -5,7 +5,7 @@ import { privacyNote } from './settings';
 import { renderReport, type Section, type StatusReport } from './statusReport';
 
 /** The scheme the report is shown under, so the copy button appears on it and nowhere else. */
-export const statusScheme = 'protolang-status';
+export const statusScheme = 'protocross-status';
 
 /** How long the server gets to answer before the extension reports that it did not. */
 const patienceMs = 15_000;
@@ -52,7 +52,7 @@ export class StatusCommand implements vscode.TextDocumentContentProvider, vscode
     const report = await this.collect();
     this.latest = report;
 
-    const uri = vscode.Uri.from({ scheme: statusScheme, path: '/ProtoLang Status.md' });
+    const uri = vscode.Uri.from({ scheme: statusScheme, path: '/ProtoCross Status.md' });
     this.changed.fire(uri);
 
     const document = await vscode.workspace.openTextDocument(uri);
@@ -60,7 +60,7 @@ export class StatusCommand implements vscode.TextDocumentContentProvider, vscode
     await vscode.window.showTextDocument(document, { preview: true, viewColumn: vscode.ViewColumn.Beside });
 
     void vscode.window
-      .showInformationMessage('ProtoLang: the language server status report is open.', 'Copy Report')
+      .showInformationMessage('ProtoCross: the language server status report is open.', 'Copy Report')
       .then((choice) => (choice === 'Copy Report' ? this.copy() : undefined));
 
     return report;
@@ -96,9 +96,9 @@ export class StatusCommand implements vscode.TextDocumentContentProvider, vscode
 
     try {
       const result = await client.sendRequest<ServerStatusResult>(
-        'protolang/status',
+        'protocross/status',
         {
-          textDocument: activeProtoLangDocument(),
+          textDocument: activeProtoCrossDocument(),
           client: {
             extensionName: this.context.extension.id,
             extensionVersion: this.version,
@@ -174,14 +174,14 @@ function describeState(state: ServerState, unanswered: string | undefined): stri
 function noteFor(state: ServerState, unanswered: string | undefined): string {
   if (unanswered !== undefined) {
     return `**The server is running but ${unanswered}.** Its log may say what it was doing; ` +
-      'ProtoLang: Restart Language Server starts a fresh one.';
+      'ProtoCross: Restart Language Server starts a fresh one.';
   }
 
   switch (state.kind) {
     case 'failed':
       return `**${state.summary}** ${state.detail}`;
     case 'disabled':
-      return 'protolang.server.enabled is off, so only syntax colouring is active.';
+      return 'protocross.server.enabled is off, so only syntax colouring is active.';
     case 'starting':
       return 'The server is still starting. Run this again in a moment for its own report.';
     default:
@@ -189,8 +189,8 @@ function noteFor(state: ServerState, unanswered: string | undefined): string {
   }
 }
 
-/** The ProtoLang document the user is looking at, if they are looking at one. */
-function activeProtoLangDocument(): { uri: string } | undefined {
+/** The ProtoCross document the user is looking at, if they are looking at one. */
+function activeProtoCrossDocument(): { uri: string } | undefined {
   const document = vscode.window.activeTextEditor?.document;
-  return document?.languageId === 'protolang' ? { uri: document.uri.toString() } : undefined;
+  return document?.languageId === 'protocross' ? { uri: document.uri.toString() } : undefined;
 }

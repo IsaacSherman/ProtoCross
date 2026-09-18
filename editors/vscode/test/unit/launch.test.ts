@@ -75,24 +75,24 @@ describe('the environment the server is started with', () => {
     assert.deepEqual(removedPathEntries, ['.']);
   });
 
-  it('drops a relative PROTOLANG_PROTOC and NUGET_PACKAGES, and says which', () => {
+  it('drops a relative PROTOCROSS_PROTOC and NUGET_PACKAGES, and says which', () => {
     const { env, removedVariables } = sanitizeEnvironment(
-      { PROTOLANG_PROTOC: 'tools/protoc', NUGET_PACKAGES: '.nuget', PATH: '/usr/bin' },
+      { PROTOCROSS_PROTOC: 'tools/protoc', NUGET_PACKAGES: '.nuget', PATH: '/usr/bin' },
       'linux',
     );
 
-    assert.equal(env.PROTOLANG_PROTOC, undefined);
+    assert.equal(env.PROTOCROSS_PROTOC, undefined);
     assert.equal(env.NUGET_PACKAGES, undefined);
-    assert.deepEqual([...removedVariables].sort(), ['NUGET_PACKAGES', 'PROTOLANG_PROTOC']);
+    assert.deepEqual([...removedVariables].sort(), ['NUGET_PACKAGES', 'PROTOCROSS_PROTOC']);
   });
 
-  it('forwards an absolute PROTOLANG_PROTOC and NUGET_PACKAGES untouched', () => {
+  it('forwards an absolute PROTOCROSS_PROTOC and NUGET_PACKAGES untouched', () => {
     const { env, removedVariables } = sanitizeEnvironment(
-      { PROTOLANG_PROTOC: 'C:\\protoc\\bin\\protoc.exe', nuget_packages: 'D:\\packages' },
+      { PROTOCROSS_PROTOC: 'C:\\protoc\\bin\\protoc.exe', nuget_packages: 'D:\\packages' },
       'win32',
     );
 
-    assert.equal(env.PROTOLANG_PROTOC, 'C:\\protoc\\bin\\protoc.exe');
+    assert.equal(env.PROTOCROSS_PROTOC, 'C:\\protoc\\bin\\protoc.exe');
     assert.equal(env.nuget_packages, 'D:\\packages');
     assert.deepEqual(removedVariables, []);
   });
@@ -169,27 +169,27 @@ describe('which runtimes can run the server', () => {
 
 describe('the command that starts the server', () => {
   it('runs an assembly through dotnet, by the paths it was given', () => {
-    assert.deepEqual(serverCommand('/ext/server/protolang-server.dll', '/usr/bin/dotnet', 'trace'), {
+    assert.deepEqual(serverCommand('/ext/server/protocross-server.dll', '/usr/bin/dotnet', 'trace'), {
       command: '/usr/bin/dotnet',
-      args: ['/ext/server/protolang-server.dll', '--log-level=trace'],
+      args: ['/ext/server/protocross-server.dll', '--log-level=trace'],
     });
   });
 
   it('starts an executable directly', () => {
-    assert.deepEqual(serverCommand('/opt/protolang/protolang-server', undefined, 'info'), {
-      command: '/opt/protolang/protolang-server',
+    assert.deepEqual(serverCommand('/opt/protocross/protocross-server', undefined, 'info'), {
+      command: '/opt/protocross/protocross-server',
       args: ['--log-level=info'],
     });
   });
 
   it('refuses to run an assembly with no dotnet rather than searching for one', () => {
-    assert.throws(() => serverCommand('/ext/server/protolang-server.dll', undefined, 'info'));
+    assert.throws(() => serverCommand('/ext/server/protocross-server.dll', undefined, 'info'));
   });
 });
 
 describe('what the server is told at initialize', () => {
   it('always states whether the workspace is trusted, including when it is not', () => {
-    const options = initializationOptions('isaacsherman.protolang', '0.1.0', false, []);
+    const options = initializationOptions('isaacsherman.protocross', '0.1.0', false, []);
 
     assert.equal(Object.hasOwn(options, 'workspaceTrusted'), true);
     assert.equal(options.workspaceTrusted, false);

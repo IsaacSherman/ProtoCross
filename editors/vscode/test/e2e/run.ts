@@ -17,7 +17,7 @@ import pinned from './vscode-version.json';
 
 async function main(): Promise<void> {
   const extensionRoot = path.resolve(__dirname, '..', '..', '..');
-  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'protolang-e2e-'));
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'protocross-e2e-'));
 
   fs.cpSync(path.join(extensionRoot, 'test', 'fixtures', 'workspace'), workspace, { recursive: true });
 

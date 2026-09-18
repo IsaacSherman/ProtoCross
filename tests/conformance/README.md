@@ -1,30 +1,30 @@
-# ProtoLang Conformance Vectors
+# ProtoCross Conformance Vectors
 
 This directory is the answer to the question in spec 25.2: does every backend produce the *same*
 answer for the same input?
 
 Golden tests over emitted source only say that a backend emits what it emitted last time, and they
 say it one language at a time. The vectors here are compiled by every backend, built with a real
-compiler, and executed. Each one declares its expectation once, in ProtoLang, and every backend has
+compiler, and executed. Each one declares its expectation once, in ProtoCross, and every backend has
 to agree with it.
 
 ```text
 tests/conformance/
   protos/conformance.proto     one schema, shared by every vector
-  vectors/*.protolang          the vectors themselves
+  vectors/*.pcross          the vectors themselves
   vectors/<policy>/            vectors compiled under a non-default language policy
-    protolang.config.xml       what makes them non-default
-    *.protolang
+    protocross.config.xml       what makes them non-default
+    *.pcross
 ```
 
-The harness lives in [`tests/ProtoLang.Tests/Conformance/`](../ProtoLang.Tests/Conformance) and runs
+The harness lives in [`tests/ProtoCross.Tests/Conformance/`](../ProtoCross.Tests/Conformance) and runs
 as part of `dotnet test`.
 
 ## Vector format
 
-A vector is a ProtoLang source file whose `test` declarations (spec 25.3) are the vectors:
+A vector is a ProtoCross source file whose `test` declarations (spec 25.3) are the vectors:
 
-```protolang
+```protocross
 test DivisionCase.quotient "truncates a negative quotient toward zero" {
     receiver {
         numerator = -7;
@@ -38,7 +38,7 @@ test DivisionCase.quotient "truncates a negative quotient toward zero" {
 Spec 25.2 sketched a separate YAML format. This repository uses the `test` declaration instead,
 because it is already bound and type-checked against protobuf descriptors: a fixture field that does
 not exist, or an expectation whose type does not match the method's return type, is a compile error
-rather than something discovered when a generated test fails to build. Expectations are ProtoLang
+rather than something discovered when a generated test fails to build. Expectations are ProtoCross
 literals bound to the method's return type, which makes them language-independent without needing a
 serialization format of their own.
 
@@ -48,12 +48,12 @@ serialization format of their own.
    vector is compiled into a single C# assembly, and the C# backend names its extension class after
    the receiver, so two vectors extending the same message would emit that class twice.
    `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this.
-2. Drop a `.protolang` file into `vectors/`. It is discovered automatically; nothing needs
+2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
-3. Run `dotnet test ProtoLang.slnx`.
+3. Run `dotnet test ProtoCross.slnx`.
 
 To pin behavior under a non-default language policy, put the vector in a subdirectory with its own
-`protolang.config.xml`. Config discovery walks up from the source file and stops at the nearest
+`protocross.config.xml`. Config discovery walks up from the source file and stops at the nearest
 match, so the file governs that directory and nothing else -- which means the corpus exercises real
 discovery rather than a hook that exists only for tests. `vectors/checked/` and
 `vectors/saturating/` are the two that do this today. Vectors compiled under different policies
@@ -63,12 +63,12 @@ carry every policy and are therefore identical whichever one was selected.
 Two constraints are worth knowing before writing one:
 
 - **Take divisors from fixture fields, not literals.** A non-zero literal divisor is proof that an
-  `on_zero` clause is unreachable, and the compiler warns about it (PL0056). A field-supplied
+  `on_zero` clause is unreachable, and the compiler warns about it (PC0056). A field-supplied
   divisor keeps both the zero and non-zero paths live.
 - **Some values have no literal form.** `int64` MIN cannot be written directly, because its
   magnitude does not fit in a positive 64-bit literal; write it as `-9223372036854775807 - 1`, the
   way `<climits>` does. There is no `inf` or `NaN` literal either, so floating-point edge cases are
-  written as `bool`-returning predicates. `floating_point.protolang` shows the pattern.
+  written as `bool`-returning predicates. `floating_point.pcross` shows the pattern.
 
 ## What the harness checks
 
@@ -110,7 +110,7 @@ The harness is written so a third backend is a small addition, not a third copy:
 1. Implement `ITestBackend`, as `CSharpBackend` and `CppBackend` do.
 2. Report each test by `IrTest.Identity`, so the agreement check can see it. The C# backend uses it
    as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> ...`.
-3. Add a workspace type under `tests/ProtoLang.Tests/Harness/` that writes the generated files,
+3. Add a workspace type under `tests/ProtoCross.Tests/Harness/` that writes the generated files,
    runs protoc for that language, builds, and executes. `ProcessRunner` and `Toolchain` already
    handle process plumbing and tool discovery.
 4. Add a `ConformanceRun` for it in `ConformanceFixture` and a fact in `ConformanceTests`.
@@ -118,16 +118,16 @@ The harness is written so a third backend is a small addition, not a third copy:
 ## Not covered yet
 
 - **`uint64` literals above `int64` MAX**, and `int64` MIN and `int32` MIN, have no direct literal
-  form. Nor do infinities, NaN, or any float needing an exponent: ProtoLang has no exponent syntax,
-  so `casts.protolang` builds large doubles by multiplication and checks an infinity by the property
+  form. Nor do infinities, NaN, or any float needing an exponent: ProtoCross has no exponent syntax,
+  so `casts.pcross` builds large doubles by multiplication and checks an infinity by the property
   that identifies one rather than comparing against a literal.
 - **Enum values with no declared name.** proto3 enums are open, so a field can hold a number the
   schema does not name, but a fixture can only set a value that exists. What happens to an unknown
   value is undecided (spec 12), so there is nothing to pin.
 - **Maps, oneof, mutation, and virtual methods** are not implemented in the language, so there is
   nothing to write a vector against.
-- **The compiler's refusals** are not here and cannot be: a vector has to compile. `PL0078`,
-  `PL0079`, and `PL0080` are covered by `PresenceTests`, and the configuration diagnostics by
+- **The compiler's refusals** are not here and cannot be: a vector has to compile. `PC0078`,
+  `PC0079`, and `PC0080` are covered by `PresenceTests`, and the configuration diagnostics by
   `ProjectConfigTests`.
 - **The negative case for `expect fail` is not in the suite.** That a passing `expect fail` really
   does detect a method returning normally was verified by hand, by pointing such a test at a

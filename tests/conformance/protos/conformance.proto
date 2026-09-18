@@ -1,20 +1,20 @@
 syntax = "proto3";
 
-package protolang.conformance;
+package protocross.conformance;
 
-// Schema for the ProtoLang conformance vectors (spec 25.2).
+// Schema for the ProtoCross conformance vectors (spec 25.2).
 //
 // Every vector file shares this one schema so protoc runs once per language and the C++ link
 // reuses a single conformance.pb object file. Each vector gets its OWN message: the C# backend
 // names its extension class after the receiver, so two vector files extending the same message
 // would emit duplicate class declarations into the one assembly the C# vectors are built as.
 
-// well_known.protolang -- protobuf's own vocabulary as ordinary field types. Nothing names where
+// well_known.pcross -- protobuf's own vocabulary as ordinary field types. Nothing names where
 // these live: both protoc runs are expected to find them on their own.
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
-// integer_overflow.protolang -- wrapping arithmetic (spec 10.1).
+// integer_overflow.pcross -- wrapping arithmetic (spec 10.1).
 message OverflowCase {
   int32 i32_left = 1;
   int32 i32_right = 2;
@@ -26,13 +26,13 @@ message OverflowCase {
   uint64 u64_right = 8;
 }
 
-// integer_division.protolang -- truncation, on_zero, and the MIN / -1 pair (spec 10.2, 10.2.1).
+// integer_division.pcross -- truncation, on_zero, and the MIN / -1 pair (spec 10.2, 10.2.1).
 message DivisionCase {
   int64 numerator = 1;
   int64 divisor = 2;
 }
 
-// floating_point.protolang -- IEEE 754 division, including by zero.
+// floating_point.pcross -- IEEE 754 division, including by zero.
 message FloatCase {
   double numerator = 1;
   double denominator = 2;
@@ -40,7 +40,7 @@ message FloatCase {
   float narrow_denominator = 4;
 }
 
-// casts.protolang -- explicit numeric conversions (spec 10.3).
+// casts.pcross -- explicit numeric conversions (spec 10.3).
 message CastCase {
   int32 i32 = 1;
   int64 i64 = 2;
@@ -53,19 +53,19 @@ message CastCase {
   double zero = 7;
 }
 
-// control_flow.protolang -- if / else if / else, while, break, continue, for-in (spec 15).
+// control_flow.pcross -- if / else if / else, while, break, continue, for-in (spec 15).
 message ControlFlowCase {
   repeated int64 values = 1;
   int64 threshold = 2;
 }
 
-// strings.protolang -- string equality and string returns (spec 11).
+// strings.pcross -- string equality and string returns (spec 11).
 message StringCase {
   string left = 1;
   string right = 2;
 }
 
-// enum_types.protolang -- enum types and named enum values.
+// enum_types.pcross -- enum types and named enum values.
 //
 // A top-level enum as well as a nested one, because the two are named differently in C++: protoc
 // prefixes a nested enum's values with the flattened enum name and leaves a top-level enum's bare.
@@ -87,7 +87,7 @@ message EnumCase {
   ConformanceStatus status = 4;
 }
 
-// whimsy_math.protolang -- mixed protobuf objects, numeric conversions, and compound control flow.
+// whimsy_math.pcross -- mixed protobuf objects, numeric conversions, and compound control flow.
 message WhimsyIngredient {
   int64 sparkle = 1;
   int32 fizz = 2;
@@ -109,7 +109,7 @@ message WhimsyCauldronCase {
   int32 gate = 7;
 }
 
-// well_known.protolang -- reading through message-typed fields that neither backend generates,
+// well_known.pcross -- reading through message-typed fields that neither backend generates,
 // because the protobuf runtime already carries them.
 message WellKnownCase {
   google.protobuf.Timestamp starts_at = 1;
@@ -118,7 +118,7 @@ message WellKnownCase {
   int64 nanos_per_second = 4;
 }
 
-// presence.protolang -- field presence and the guard rule (spec 8.4, 13.1).
+// presence.pcross -- field presence and the guard rule (spec 8.4, 13.1).
 //
 // Deliberately mixes the three presence kinds a proto3 schema can have, because they are not the
 // same question. A singular message field has presence without asking for it; a scalar declared
@@ -143,7 +143,7 @@ message PresenceInner {
   int64 weight = 2;
 }
 
-// grouping.protolang -- parentheses around expressions (spec 7.1).
+// grouping.pcross -- parentheses around expressions (spec 7.1).
 //
 // Two message fields deep, so a chain of receivers can keep going past the parenthesized link rather
 // than ending at it, and both presence kinds a guard can ask about so the vectors can pin that a
@@ -165,7 +165,7 @@ message GroupingLeaf {
   int64 depth = 1;
 }
 
-// checked/checked_arithmetic.protolang -- the checked overflow policy (spec 10.4).
+// checked/checked_arithmetic.pcross -- the checked overflow policy (spec 10.4).
 message CheckedOverflowCase {
   int32 i32_left = 1;
   int32 i32_right = 2;
@@ -177,7 +177,7 @@ message CheckedOverflowCase {
   uint64 u64_right = 8;
 }
 
-// saturating/saturating_arithmetic.protolang -- the saturating overflow policy (spec 10.4).
+// saturating/saturating_arithmetic.pcross -- the saturating overflow policy (spec 10.4).
 message SaturatingOverflowCase {
   int32 i32_left = 1;
   int32 i32_right = 2;

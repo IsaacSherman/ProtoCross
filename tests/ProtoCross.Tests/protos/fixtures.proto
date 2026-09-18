@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package protocross.tests;
+
+option csharp_namespace = "ProtoCross.Tests";
+
+// Test fixtures for name mapping and literal emission. Deliberately exercises the shapes that
+// naive backends get wrong: nested enums, repeated enums, and float vs double fields.
+
+enum TopLevelStatus {
+  TOP_LEVEL_STATUS_UNKNOWN = 0;
+  TOP_LEVEL_STATUS_OK = 1;
+
+  // The two cases protoc's C# prefix stripping does not apply. A value that does not carry the
+  // enum name keeps all of it, and one where stripping would leave a leading digit gains an
+  // underscore instead.
+  OTHER_RESULT = 2;
+  TOP_LEVEL_STATUS_2 = 3;
+}
+
+message Outer {
+  enum Nested {
+    NESTED_NONE = 0;
+    NESTED_SOME = 1;
+  }
+
+  message Inner {
+    enum Deep {
+      DEEP_NONE = 0;
+    }
+
+    Deep deep = 1;
+  }
+
+  TopLevelStatus status = 1;
+  Nested nested = 2;
+  Inner inner = 3;
+  repeated Nested nested_values = 4;
+  string label = 5;
+  float ratio = 6;
+  double amount = 7;
+  int64 count = 8;
+
+  // Narrower than count, so an expression mixing the two needs an explicit conversion.
+  int32 small_count = 9;
+  uint32 tally = 10;
+  uint64 big_tally = 11;
+
+  // Explicit presence, so 'has' has something to answer. Without 'optional' a proto3 scalar
+  // cannot distinguish unset from its default, which is what PC0079 reports.
+  optional int64 optional_count = 12;
+  optional string optional_label = 13;
+
+  // A second message field, so a guard over two of them is a real test rather than one field
+  // and a scalar that never needed guarding.
+  Inner other_inner = 14;
+}
+
+// A message of its own rather than a field on Outer, so that adding the language's one unsupported
+// field kind cannot reach a test that was not asking about it. Reading a map is PC0038, so this is
+// what says a name that would be refused is never offered.
+message Mapped {
+  map<string, int64> tags = 1;
+  int64 count = 2;
+}

@@ -19,12 +19,12 @@ import {
 
 const installationPage = 'https://protobuf.dev/installation/';
 
-/** A workspace holding one ProtoLang file that imports one schema. */
+/** A workspace holding one ProtoCross file that imports one schema. */
 function workspace(): { folder: string; source: string } {
   const folder = temporaryDirectory('workspace');
   fs.writeFileSync(path.join(folder, 'shape.proto'), 'syntax = "proto3";\nmessage Shape { int64 width = 1; }\n');
 
-  const source = path.join(folder, 'source.protolang');
+  const source = path.join(folder, 'source.pcross');
   fs.writeFileSync(
     source,
     'import proto "shape.proto";\n\nextend Shape {\n    fn doubled() -> int64 {\n        return width * 2;\n    }\n}\n',
@@ -38,7 +38,7 @@ function environmentWithPath(...entries: string[]): NodeJS.ProcessEnv {
   const env = { ...process.env };
   const key = Object.keys(env).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
   env[key] = [...entries, env[key] ?? ''].join(pathSeparator);
-  delete env.PROTOLANG_PROTOC;
+  delete env.PROTOCROSS_PROTOC;
   return env;
 }
 
@@ -137,7 +137,7 @@ describe('an untrusted workspace, under the extension', { timeout: 120_000 }, ()
       assert.equal(fs.existsSync(marker), false, 'a protoc named by an untrusted workspace ran before trust was granted');
 
       // The same session, one notification later: the file appearing is what shows its absence meant something.
-      await server.connection.sendNotification('protolang/didChangeWorkspaceTrust', { trusted: true });
+      await server.connection.sendNotification('protocross/didChangeWorkspaceTrust', { trusted: true });
       await server.until(() => fs.existsSync(marker), 'the named protoc run once the workspace was trusted');
     } finally {
       await server.stop();
@@ -163,7 +163,7 @@ describe('a machine with no protoc', { timeout: 120_000 }, () => {
       HOME: nowhere,
       USERPROFILE: nowhere,
     };
-    delete machine.PROTOLANG_PROTOC;
+    delete machine.PROTOCROSS_PROTOC;
     const key = Object.keys(machine).find((name) => name.toUpperCase() === 'PATH') ?? 'PATH';
     machine[key] = ['.', 'tools', nowhere].join(pathSeparator);
 
@@ -179,7 +179,7 @@ describe('a machine with no protoc', { timeout: 120_000 }, () => {
       const note = (await server.protoc()).note ?? '';
 
       assert.ok(note.includes(installationPage), `the note does not say where protoc is published: ${note}`);
-      assert.ok(note.includes('protolang.protocPath'), `the note does not name the setting: ${note}`);
+      assert.ok(note.includes('protocross.protocPath'), `the note does not name the setting: ${note}`);
       assert.ok(note.includes("'.'") && note.includes("'tools'"), `the note does not name the skipped entries: ${note}`);
     } finally {
       await server.stop();
