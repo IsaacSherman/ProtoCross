@@ -3,12 +3,12 @@
 // The remainder is the one a truncating division leaves: x - trunc(x / y) * y, computed exactly,
 // so it carries the sign of the dividend. Like floating-point division it cannot fail, so no
 // on_zero clause is allowed; a zero divisor or an infinite dividend yields NaN, and an infinite
-// divisor leaves the dividend unchanged.
+// divisor leaves the dividend unchanged. A NaN operand yields NaN.
 //
-// There is no literal for an infinity, so the methods that need one build it as a division by zero,
-// which floating_point.pcross pins separately. NaN and negative zero are checked through the
-// properties that identify them, as floating_point.pcross does: a NaN is unequal to itself, and a
-// zero is negative when dividing by it yields a negative infinity.
+// There is no literal for an infinity or a NaN, so the methods that need one divide by the zero
+// field, as casts.pcross does; floating_point.pcross pins that division separately. NaN and negative
+// zero are checked through the properties that identify them: a NaN is unequal to itself, and a zero
+// is negative when dividing by it yields a negative infinity.
 
 import proto "conformance.proto";
 
@@ -32,14 +32,25 @@ extend RemainderCase {
     }
 
     fn infinite_dividend_is_nan() -> bool {
-        var infinity: double = 1.0 / 0.0;
+        var infinity: double = 1.0 / zero;
         var r: double = infinity % divisor;
         return r != r;
     }
 
     fn infinite_divisor_leaves_dividend() -> bool {
-        var infinity: double = 1.0 / 0.0;
+        var infinity: double = 1.0 / zero;
         return dividend % infinity == dividend;
+    }
+
+    fn negative_infinite_divisor_leaves_dividend() -> bool {
+        var infinity: double = -1.0 / zero;
+        return dividend % infinity == dividend;
+    }
+
+    fn nan_dividend_is_nan() -> bool {
+        var nan: double = zero / zero;
+        var r: double = nan % divisor;
+        return r != r;
     }
 }
 
@@ -111,6 +122,7 @@ test RemainderCase.is_nan "an ordinary remainder is not NaN" {
 test RemainderCase.infinite_dividend_is_nan "the remainder of an infinity is NaN" {
     receiver {
         divisor = 2.0;
+        zero = 0.0;
     }
 
     expect return true;
@@ -119,6 +131,25 @@ test RemainderCase.infinite_dividend_is_nan "the remainder of an infinity is NaN
 test RemainderCase.infinite_divisor_leaves_dividend "the remainder by an infinity is the dividend" {
     receiver {
         dividend = -7.5;
+        zero = 0.0;
+    }
+
+    expect return true;
+}
+
+test RemainderCase.negative_infinite_divisor_leaves_dividend "the sign of an infinite divisor does not matter" {
+    receiver {
+        dividend = 7.5;
+        zero = 0.0;
+    }
+
+    expect return true;
+}
+
+test RemainderCase.nan_dividend_is_nan "the remainder of a NaN is NaN" {
+    receiver {
+        divisor = 2.0;
+        zero = 0.0;
     }
 
     expect return true;

@@ -73,6 +73,11 @@ Defined behavior:
 - Integer division truncates toward zero.
 - Floating-point division follows IEEE 754: `x / 0.0` is `±inf`, `0.0 / 0.0` is `NaN`. No
   declaration is required, because the operation cannot fail.
+- Floating-point `%` is the remainder of a truncating division, `x - trunc(x / y) * y`, computed
+  exactly rather than through a rounded quotient. It carries the sign of the dividend, so
+  `-7.5 % 2.0` is `-1.5` and `7.5 % -2.0` is `1.5`, and an exact negative multiple leaves `-0.0`.
+  `x % 0.0`, `±inf % y`, and any `NaN` operand yield `NaN`; `x % ±inf` is `x`. Like division, it
+  cannot fail, so no declaration is required and an `on_zero` clause is `PC0015`.
 - Signed division overflow (`MIN / -1`, `MIN % -1`) wraps per 10.1: the results are `MIN` and `0`.
 - **Integer division by zero is not left to the target. The author must state what happens.**
 

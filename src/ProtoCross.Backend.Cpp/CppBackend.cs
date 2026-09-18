@@ -4,6 +4,7 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -462,6 +463,12 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine($"#ifndef {guard}");
         writer.WriteLine($"#define {guard}");
         writer.WriteLine();
+
+        if (UsesFloatingRemainder(module))
+        {
+            writer.WriteLine("#include <cmath>");
+        }
+
         writer.WriteLine("#include <cstdint>");
         writer.WriteLine("#include <limits>");
         writer.WriteLine("#include <string>");
@@ -661,8 +668,40 @@ public sealed class CppBackend : ITestProjectScaffold
                 + $"({left}, {right})";
         }
 
+        if (IsFloatingRemainder(binary))
+        {
+            return $"::std::fmod({left}, {right})";
+        }
+
         return $"({left} {OperatorText(binary.Operator)} {right})";
     }
+
+    /// <summary>
+    /// Whether <paramref name="binary"/> is <c>%</c> on <c>float</c> or <c>double</c> operands, which
+    /// C++ spells <c>std::fmod</c> rather than <c>%</c>.
+    /// </summary>
+    /// <remarks>
+    /// C++ defines the built-in <c>%</c> on integers only, so a bare operator here does not compile.
+    /// <c>std::fmod</c> computes exactly the remainder spec 10.2 states -- truncated, exact, carrying
+    /// the sign of the dividend -- and it is fully specified by the C standard, so no runtime helper
+    /// is needed the way the undefined integer and conversion cases need one. The emitter and
+    /// <see cref="UsesFloatingRemainder"/> both ask this, so the <c>&lt;cmath&gt;</c> include can never
+    /// fall out of step with the calls that need it.
+    /// </remarks>
+    private static bool IsFloatingRemainder(IrBinary binary)
+        => binary.Operator == IrBinaryOperator.Modulo
+            && binary.ResultType is ScalarType { IsFloatingPoint: true };
+
+    /// <summary>
+    /// Whether anything in <paramref name="module"/> is a floating-point remainder, and so needs
+    /// <c>&lt;cmath&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// The include is conditional rather than unconditional so that a header for a module with no
+    /// floating remainder stays byte-for-byte what it was before this construct compiled at all.
+    /// </remarks>
+    private static bool UsesFloatingRemainder(IrModule module)
+        => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFloatingRemainder);
 
     private static string EmitIntegerDivision(IrIntegerDivision division)
     {
