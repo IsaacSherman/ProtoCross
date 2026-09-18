@@ -1,0 +1,8 @@
+import proto "shape.proto";
+
+// 'width' is not in shape.proto until a test adds it.
+extend Shape {
+    fn doubled() -> int64 {
+        return width * 2;
+    }
+}

@@ -1,9 +1,11 @@
 syntax = "proto3";
 
-package protolang.examples;
+package protocross.examples;
 
-// Minimal message used by the ProtoLang examples.
-// Behavior for this message lives in simpleScript.protolang.
+option csharp_namespace = "ProtoCross.Examples";
+
+// Minimal message used by the ProtoCross examples.
+// Behavior for this message lives in simpleScript.pcross.
 message InvoiceItem {
   // Items in the invoice
   int64 quantity = 1;

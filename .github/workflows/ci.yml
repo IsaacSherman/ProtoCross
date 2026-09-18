@@ -53,8 +53,8 @@ jobs:
         os: [windows-latest]
 
     env:
-      PROTOLANG_SWEEP: 1
-      PROTOLANG_SOAK: 1
+      PROTOCROSS_SWEEP: 1
+      PROTOCROSS_SOAK: 1
       DOTNET_NOLOGO: 1
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
@@ -93,14 +93,14 @@ jobs:
       # references Grpc.Tools for exactly that reason, so a restore that failed would otherwise show
       # up as several dozen tests quietly declining to run.
       - name: Restore
-        run: dotnet restore ProtoLang.slnx
+        run: dotnet restore ProtoCross.slnx
 
       - name: Build
-        run: dotnet build ProtoLang.slnx --no-restore
+        run: dotnet build ProtoCross.slnx --no-restore
 
       - name: Test
         run: >
-          dotnet test ProtoLang.slnx --no-build
+          dotnet test ProtoCross.slnx --no-build
           --logger "trx;LogFileName=results.trx"
           --results-directory artifacts/test
 
@@ -118,3 +118,101 @@ jobs:
           name: test-results-${{ matrix.os }}
           path: artifacts/test
           if-no-files-found: warn
+
+  # The VS Code extension, on every platform it claims. The .NET job above runs the server's own suite on
+  # Windows; this is where "Windows, macOS and Linux" stops being a claim, because the extension starts
+  # the server through the user's own dotnet, searches PATH by platform rules, and runs in a real editor.
+  vscode:
+    name: vscode extension (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    defaults:
+      run:
+        working-directory: editors/vscode
+
+    env:
+      DOTNET_NOLOGO: 1
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      # Publishes only the server and the compiler, which restores no Grpc.Tools -- so at this point the
+      # machine has no protoc anywhere the server looks, which is the clean machine #45 asks to be tested.
+      - name: Stage the server
+        run: npm run stage
+
+      - name: The server under the extension's launch rules, on a machine with no protoc
+        run: npm run test:server
+
+      # A protoc, got the way a user of each platform would get one, for the editor tests that need
+      # schemas to load.
+      - name: Install protoc (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: Install protoc (macOS)
+        if: runner.os == 'macOS'
+        run: brew install protobuf
+
+      - name: Install protoc (Windows)
+        if: runner.os == 'Windows'
+        working-directory: .
+        run: dotnet restore tests/ProtoCross.Tests/ProtoCross.Tests.csproj
+
+      # The VS Code the end-to-end suite runs in: about 324 MB downloaded and a gigabyte unpacked, per
+      # platform, per run, for a build that only changes when test/e2e/vscode-version.json does. Keyed
+      # on that file and nothing else, and with no restore-keys -- an older release is a different
+      # directory the suite would never open, so starting from one would only carry it along.
+      #
+      # Only the install is kept. The user-data directory beside it is created by the run, and the
+      # suite's claim to start from a clean profile is only true if nothing carries it into the next.
+      - name: Cache VS Code for the end-to-end tests
+        uses: actions/cache@v4
+        with:
+          path: editors/vscode/.vscode-test/vscode-*
+          key: ${{ runner.os }}-${{ runner.arch }}-vscode-${{ hashFiles('editors/vscode/test/e2e/vscode-version.json') }}
+
+      - name: End-to-end tests in VS Code (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+
+      - name: End-to-end tests in VS Code
+        if: runner.os != 'Linux'
+        run: npm run test:e2e
+
+      - name: Package
+        run: npm run package
+
+      - name: Keep the package
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocross-vsix
+          path: editors/vscode/dist/protocross.vsix
+          if-no-files-found: error

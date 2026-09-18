@@ -1,30 +1,40 @@
 # Working in this repository
 
-ProtoLang compiles methods written against protobuf messages into equivalent C# and C++.
+ProtoCross compiles methods written against protobuf messages into equivalent C# and C++.
 
-Read [ARCHITECTURE.md](ARCHITECTURE.md) for the lay of the land, [Protolang_Spec/](Protolang_Spec/README.md)
+Read [ARCHITECTURE.md](ARCHITECTURE.md) for the lay of the land, [ProtoCross_Spec/](ProtoCross_Spec/README.md)
 for the language, and [docs/epic-47-workflow.md](docs/epic-47-workflow.md) for the per-issue process
 of the editor-support epic.
 
 ## Commands
 
 ```bash
-dotnet build ProtoLang.slnx
+dotnet build ProtoCross.slnx
 ```
 
 ```bash
-dotnet test ProtoLang.slnx
+dotnet test ProtoCross.slnx
 ```
 
 The full suite takes about two minutes because it builds and runs real generated projects. Filter
 while iterating (`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered run is the gate.
 `protoc`, the .NET SDK, and a C++ toolchain must be on the machine.
 
-Two checks are switched off by default, because neither is what a person mid-iteration wants to wait
-for: `PROTOLANG_SWEEP=1` runs the whole-corpus completion sweep, and `PROTOLANG_SOAK=1` runs the long
-editing soak. `.github/workflows/ci.yml` turns both on for every pull request to `main`, so what a
-local run skips is still checked before anything merges — and `report.ps1` fails the job when a gated
-test is skipped there, since a gate that quietly stays shut looks exactly like a green build.
+Three checks are switched off by default, because none is what a person mid-iteration wants to wait
+for: `PROTOCROSS_SWEEP=1` runs the whole-corpus completion sweep, `PROTOCROSS_SOAK=1` runs the long
+editing soak, and `PROTOCROSS_BENCH=1` measures the latency budgets (which also needs `-c Release`,
+and refuses to run without it).
+`.github/workflows/ci.yml` turns the first two on for every pull request to `main`, so what a local
+run skips is still checked before anything merges — and `report.ps1` fails the job when one of those
+is skipped there, since a gate that quietly stays shut looks exactly like a green build.
+
+`PROTOCROSS_BENCH` is deliberately not one of them. A wall-clock deadline on a shared runner flakes
+until somebody loosens it past the point of describing anything, so CI checks counted work instead —
+compilations per caret move, protoc invocations, answers in flight — which is deterministic and runs
+unconditionally. The budgets, the corpus and the measured results are in
+[docs/performance.md](docs/performance.md); **read it before optimising anything**, because four of
+the five budgeted operations have one to two orders of magnitude of headroom and the measurement is
+what says so.
 
 ## How to write code here
 
@@ -103,7 +113,7 @@ A test that cannot fail is worse than no test: it costs a run and buys confidenc
 
 ## Keep the spec current
 
-[Protolang_Spec/](Protolang_Spec/README.md) is the language, not a description of it. Anything that
+[ProtoCross_Spec/](ProtoCross_Spec/README.md) is the language, not a description of it. Anything that
 changes what an author can write, what it means, or what the compiler tells them about it changes
 the spec too, and that edit belongs in the **same commit as the code**. A spec that lags is still
 consulted, and being trusted is exactly what makes a stale one expensive.
@@ -135,7 +145,7 @@ omission reads as a decision rather than an oversight.
 - Move generated output or rendered diagnostics without saying so explicitly and diffing to prove
   the scope of the move.
 - Let a backend see the AST, or branch on policy. Emission comes from IR behavior annotations.
-- Add a CLI, editor, or file-system dependency to `ProtoLang.Core`.
+- Add a CLI, editor, or file-system dependency to `ProtoCross.Core`.
 - Bake one-file-per-compilation into a new API (#27 is coming).
 - Add docs, changelogs, formatting passes, or coverage the task did not ask for. The spec is the
   exception, and only where the change actually reached the language; see above.

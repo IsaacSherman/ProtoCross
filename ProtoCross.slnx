@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ProtoCross.Backend.Cpp/ProtoCross.Backend.Cpp.csproj" />
+    <Project Path="src/ProtoCross.Backend.CSharp/ProtoCross.Backend.CSharp.csproj" />
+    <Project Path="src/ProtoCross.Cli/ProtoCross.Cli.csproj" />
+    <Project Path="src/ProtoCross.Core/ProtoCross.Core.csproj" />
+    <Project Path="src/ProtoCross.LanguageServer/ProtoCross.LanguageServer.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ProtoCross.Tests/ProtoCross.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,18 +1,18 @@
-# ProtoLang
+# ProtoCross
 
-ProtoLang is an experimental language for defining portable behavior over Protocol Buffer messages.
+ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages.
 
 Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams often reimplement the same methods in every target language and hope the implementations stay semantically identical.
 
-ProtoLang is an attempt to fill that gap without turning protobuf into a full programming platform.
+ProtoCross is an attempt to fill that gap without turning protobuf into a full programming platform.
 
 ## Vision
 
 The goal is simple: define behavior once, then transpile it into the languages where the protobuf messages are used.
 
-ProtoLang should let a team write small, explicit methods against protobuf message types:
+ProtoCross should let a team write small, explicit methods against protobuf message types:
 
-```protolang
+```protocross
 extend InvoiceItem {
     fn line_total_cents() -> int64 {
         return quantity * unit_price_cents;
@@ -26,7 +26,7 @@ This is not meant to be a clever language. It is meant to be deliberately plain:
 
 ## Scope
 
-ProtoLang is built around a small semantic core:
+ProtoCross is built around a small semantic core:
 
 - Protocol Buffer messages and fields are the foundation of the type system.
 - Methods are attached to protobuf message types.
@@ -45,7 +45,7 @@ Other languages may be possible later if the core semantics remain small enough.
 
 ## Non-Goals
 
-ProtoLang is intentionally not a general-purpose programming language.
+ProtoCross is intentionally not a general-purpose programming language.
 
 It does not aim to support:
 
@@ -60,15 +60,15 @@ It does not aim to support:
 - Reflection-dependent behavior
 - A replacement for `.proto` schemas
 
-These omissions are part of the design. The more ProtoLang depends on target-language-specific features, the harder it becomes to guarantee equivalent behavior across C#, C++, Python, and future backends.
+These omissions are part of the design. The more ProtoCross depends on target-language-specific features, the harder it becomes to guarantee equivalent behavior across C#, C++, Python, and future backends.
 
 ## Virtual Behavior
 
 One open design area is overridable behavior.
 
-There is a useful distinction between supporting overridable methods and supporting inheritance. ProtoLang may eventually allow a method to be marked as `virtual`, meaning a backend can expose an appropriate override mechanism for that target language.
+There is a useful distinction between supporting overridable methods and supporting inheritance. ProtoCross may eventually allow a method to be marked as `virtual`, meaning a backend can expose an appropriate override mechanism for that target language.
 
-That does not necessarily mean ProtoLang should define subclasses or assume generated protobuf classes are good inheritance targets. Some protobuf runtimes make inheritance awkward or unsafe. A portable design may need to express "this behavior can be replaced" without promising "subclass this generated message."
+That does not necessarily mean ProtoCross should define subclasses or assume generated protobuf classes are good inheritance targets. Some protobuf runtimes make inheritance awkward or unsafe. A portable design may need to express "this behavior can be replaced" without promising "subclass this generated message."
 
 This remains an active design question.
 
@@ -77,7 +77,7 @@ This remains an active design question.
 The intended architecture is:
 
 ```text
-ProtoLang source
+ProtoCross source
     -> parser
     -> protobuf descriptor binding
     -> type checking
@@ -92,7 +92,7 @@ The typed IR is important. It gives the project a place to define semantics once
 
 The current draft specification template is in:
 
-[Protolang_Spec/](Protolang_Spec/README.md), one file per numbered section
+[ProtoCross_Spec/](ProtoCross_Spec/README.md), one file per numbered section
 
 That document separates:
 
@@ -103,7 +103,7 @@ That document separates:
 The project is still early, so the spec intentionally captures unresolved decisions rather than pretending the language is finished.
 
 Alongside it, [docs/reference-semantics.md](docs/reference-semantics.md) collects the behavior of
-every operation the targets disagree about, in one table: what C# does, what ProtoLang guarantees,
+every operation the targets disagree about, in one table: what C# does, what ProtoCross guarantees,
 and what each other backend has to emit to match. C# is the reference, and the rows that depart from
 it say why. The spec stays normative; that file is the reference the spec's decisions are read out
 of.
@@ -111,7 +111,7 @@ of.
 ## Status
 
 There is now a working compiler for a small slice of the language. It takes the example in
-[examples/simpleScript.protolang](examples/simpleScript.protolang) all the way to C# and C++ source.
+[examples/simpleScript.pcross](examples/simpleScript.pcross) all the way to C# and C++ source.
 
 Implemented:
 
@@ -122,7 +122,7 @@ Implemented:
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
-- A compile-time policy file, `protolang.config.xml`, selecting wrapping, checked, or saturating
+- A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow
 - C# backend (extension methods) and C++ backend (header-only free functions)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
@@ -135,7 +135,7 @@ backend. Backends reject these rather than emitting something whose semantics di
 ### Building
 
 ```bash
-dotnet test ProtoLang.slnx
+dotnet test ProtoCross.slnx
 ```
 
 That is the whole gate, and it takes about two minutes because it builds and runs real generated
@@ -152,12 +152,22 @@ Two checks are switched off by default, because neither is what a person mid-ite
 for:
 
 ```bash
-PROTOLANG_SWEEP=1 dotnet test ProtoLang.slnx   # every completion item, at every caret, over the whole corpus
-PROTOLANG_SOAK=1 dotnet test ProtoLang.slnx    # a long editing session, watched for leaked work
+PROTOCROSS_SWEEP=1 dotnet test ProtoCross.slnx   # every completion item, at every caret, over the whole corpus
+PROTOCROSS_SOAK=1 dotnet test ProtoCross.slnx    # a long editing session, watched for leaked work
+PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release   # the latency budgets, against a fixed corpus
 ```
 
-In PowerShell the variable is set separately -- `$env:PROTOLANG_SWEEP = 1` -- and stays set for the
-rest of the session, so unset it with `$env:PROTOLANG_SWEEP = $null` when you want the short run back.
+The first two are switched on by CI. The third is not, and deliberately: it measures wall-clock
+latency, which on a shared runner flakes until the threshold stops describing anything. It also
+requires `-c Release` and refuses to run without it, because a Debug reading is not a Release reading
+with a constant factor missing. What CI
+checks of that work instead is counted work -- compilations per caret move, protoc invocations --
+which is deterministic and runs unconditionally. [`docs/performance.md`](docs/performance.md) has the
+budgets, the corpus, the procedure and the measured results, and a benchmark run writes
+`artifacts/perf/report.md` whether it passes or fails.
+
+In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- and stays set for the
+rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
 
 Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
 full suite, both switches thrown, for **every pull request to `main` and every commit landed on
@@ -173,13 +183,13 @@ run that did not perform them.
 ### Running the compiler
 
 ```bash
-dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -o generated
+dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -o generated
 ```
 
 That writes `generated/csharp/` and `generated/cpp/`. Pass `-t csharp` or `-t cpp` for one target.
 
 The compiler needs a `protoc` executable, because it consumes protobuf descriptors rather than
-reparsing `.proto` files itself (spec 21.1). It looks at `PROTOLANG_PROTOC`, then `PATH`, then a
+reparsing `.proto` files itself (spec 21.1). It looks at `PROTOCROSS_PROTOC`, then `PATH`, then a
 restored `Grpc.Tools` NuGet package, so a separate protoc install is usually unnecessary.
 
 The well-known schemas -- `google/protobuf/timestamp.proto`, `duration.proto`, and the rest -- are
@@ -190,13 +200,13 @@ them, so they never appear in an emitted project.
 ### Project Configuration
 
 Some questions have more than one defensible answer, and which one you want is a property of your
-project rather than of the language. Those answers live in `protolang.config.xml`, next to the code
+project rather than of the language. Those answers live in `protocross.config.xml`, next to the code
 they govern. The compiler looks for it in the source file's directory and every directory above it,
 nearest first -- the way `.editorconfig` is found -- so a repository states its policy once.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<ProtoLang>
+<ProtoCross>
   <Arithmetic>
     <Overflow>Wrapping</Overflow>             <!-- Wrapping | Checked | Saturating -->
     <Conversion>WrapOrSaturate</Conversion>
@@ -205,7 +215,7 @@ nearest first -- the way `.editorconfig` is found -- so a repository states its 
   <Presence>
     <UnsetMessageRead>RequireGuard</UnsetMessageRead>
   </Presence>
-</ProtoLang>
+</ProtoCross>
 ```
 
 Commit it. That is the point: the semantics of your generated code should travel with the
@@ -232,31 +242,31 @@ and spec 10.4 for the rules.
 
 ### Generation Commands
 
-The ProtoLang compiler generates behavior and test artifacts. Protobuf message classes are still
+The ProtoCross compiler generates behavior and test artifacts. Protobuf message classes are still
 generated by `protoc`.
 
 | Artifact | Command |
 |---|---|
-| C# and C++ ProtoLang behavior | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -o generated` |
-| C# ProtoLang behavior only | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t csharp -o generated` |
-| C++ ProtoLang behavior only | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t cpp -o generated` |
-| C# behavior plus generated xUnit tests | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t csharp -o generated --test-out generated/tests` |
-| C++ behavior plus generated standalone tests | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t cpp -o generated --test-out generated/tests` |
-| All current ProtoLang behavior and tests | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -o generated --test-out generated/tests` |
-| The same, plus build files that run the tests | `dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -o generated --test-out generated/tests --scaffold` |
+| C# and C++ ProtoCross behavior | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -o generated` |
+| C# ProtoCross behavior only | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t csharp -o generated` |
+| C++ ProtoCross behavior only | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t cpp -o generated` |
+| C# behavior plus generated xUnit tests | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t csharp -o generated --test-out generated/tests` |
+| C++ behavior plus generated standalone tests | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t cpp -o generated --test-out generated/tests` |
+| All current ProtoCross behavior and tests | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -o generated --test-out generated/tests` |
+| The same, plus build files that run the tests | `dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -o generated --test-out generated/tests --scaffold` |
 
 Output layout:
 
 | Path | Contents |
 |---|---|
-| `generated/csharp/ProtoLangArithmetic.g.cs` | C# runtime helpers for ProtoLang arithmetic semantics |
-| `generated/csharp/simpleScript.g.cs` | C# extension methods generated from ProtoLang behavior |
-| `generated/cpp/protolang_runtime.h` | C++ runtime helpers for ProtoLang arithmetic semantics |
-| `generated/cpp/simpleScript.pl.h` | C++ header-only free functions generated from ProtoLang behavior |
-| `generated/tests/csharp/simpleScript.tests.g.cs` | C# xUnit tests generated from ProtoLang `test` declarations |
-| `generated/tests/csharp/ProtoLangTestSupport.g.cs` | C# support for `expect fail` tests. Emitted only when the source has one |
-| `generated/tests/cpp/simpleScript.tests.cc` | C++ standalone test executable source generated from ProtoLang `test` declarations |
-| `generated/tests/csharp/ProtoLangTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold` |
+| `generated/csharp/ProtoCrossArithmetic.g.cs` | C# runtime helpers for ProtoCross arithmetic semantics |
+| `generated/csharp/simpleScript.g.cs` | C# extension methods generated from ProtoCross behavior |
+| `generated/cpp/protocross_runtime.h` | C++ runtime helpers for ProtoCross arithmetic semantics |
+| `generated/cpp/simpleScript.pc.h` | C++ header-only free functions generated from ProtoCross behavior |
+| `generated/tests/csharp/simpleScript.tests.g.cs` | C# xUnit tests generated from ProtoCross `test` declarations |
+| `generated/tests/csharp/ProtoCrossTestSupport.g.cs` | C# support for `expect fail` tests. Emitted only when the source has one |
+| `generated/tests/cpp/simpleScript.tests.cc` | C++ standalone test executable source generated from ProtoCross `test` declarations |
+| `generated/tests/csharp/ProtoCrossTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold` |
 | `generated/tests/cpp/CMakeLists.txt` | CMake project that builds and runs the C++ tests. Emitted only with `--scaffold` |
 
 The compiler options used in those commands are:
@@ -268,12 +278,12 @@ The compiler options used in those commands are:
 | `--test-out <dir>` | Root directory for generated test artifacts. Each test backend writes below `<dir>/<target>/`. |
 | `--scaffold` | Also write the build file that builds and runs the generated tests. Requires `--test-out`. |
 | `-t`, `--target <list>` | Comma-separated backend list: `csharp`, `cpp`. Defaults to all current backends. |
-| `--config <file>` | Use this `protolang.config.xml` instead of searching for one. |
+| `--config <file>` | Use this `protocross.config.xml` instead of searching for one. |
 | `--no-config` | Ignore any config file and use the built-in defaults. |
 | `--arithmetic-overflow <mode>` | `wrapping` (default), `checked`, or `saturating`. |
 | `--override-config` | Let a policy flag win over a setting the config file states. |
 
-To generate the protobuf message classes consumed by generated ProtoLang code, run `protoc`
+To generate the protobuf message classes consumed by generated ProtoCross code, run `protoc`
 separately. For example:
 
 ```bash
@@ -281,15 +291,15 @@ protoc -I examples/protos --csharp_out generated/protobuf/csharp examples/protos
 protoc -I examples/protos --cpp_out generated/protobuf/cpp examples/protos/invoice.proto
 ```
 
-The C# generated ProtoLang behavior and tests must compile in a project that also includes the
-C# protobuf output. The C++ generated ProtoLang behavior and tests must compile with the C++
+The C# generated ProtoCross behavior and tests must compile in a project that also includes the
+C# protobuf output. The C++ generated ProtoCross behavior and tests must compile with the C++
 protobuf output, protobuf headers, and protobuf libraries.
 
-### Generating ProtoLang Unit Tests
+### Generating ProtoCross Unit Tests
 
-ProtoLang source can include declarative test blocks. The example script includes an Invoice test:
+ProtoCross source can include declarative test blocks. The example script includes an Invoice test:
 
-```protolang
+```protocross
 test Invoice.total_cents "sums line totals" {
     receiver {
         items {
@@ -310,7 +320,7 @@ test Invoice.total_cents "sums line totals" {
 Generate C# behavior and xUnit test source with:
 
 ```bash
-dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t csharp -o generated --test-out generated/tests
+dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t csharp -o generated --test-out generated/tests
 ```
 
 That writes production C# to `generated/csharp/` and generated xUnit tests to
@@ -321,11 +331,11 @@ generated behavior and the protobuf message classes. Adding `--scaffold` writes 
 so there is nothing left to wire up by hand:
 
 ```bash
-dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t csharp -o generated --test-out generated/tests --scaffold
+dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t csharp -o generated --test-out generated/tests --scaffold
 ```
 
 ```bash
-dotnet test generated/tests/csharp/ProtoLangTests.csproj
+dotnet test generated/tests/csharp/ProtoCrossTests.csproj
 ```
 
 The emitted project pins the packages it needs, compiles the behavior directory, and generates the
@@ -333,14 +343,14 @@ protobuf C# types during the build through `Grpc.Tools`, so no separate `protoc`
 Visual Studio discovers the generated `[Fact]` tests from it normally.
 
 Without `--scaffold` the same result takes a hand-written SDK-style xUnit project referencing the
-generated protobuf C# types, the generated ProtoLang behavior source, `xunit.v3`, and
+generated protobuf C# types, the generated ProtoCross behavior source, `xunit.v3`, and
 `xunit.runner.visualstudio`.
 
 For C++, the same flags generate a small standalone test program and a CMake project that builds
 and runs it:
 
 ```bash
-dotnet run --project src/ProtoLang.Cli -- examples/simpleScript.protolang -I examples/protos -t cpp -o generated --test-out generated/tests --scaffold
+dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -t cpp -o generated --test-out generated/tests --scaffold
 ```
 
 ```bash
@@ -361,12 +371,12 @@ cmake --build generated/tests/cpp/build --config Debug
 ctest --test-dir generated/tests/cpp/build -C Debug --output-on-failure
 ```
 
-The executable prints one line per test and a summary, and returns `0` when all generated ProtoLang
+The executable prints one line per test and a summary, and returns `0` when all generated ProtoCross
 tests pass and non-zero otherwise:
 
 ```text
-[ok] protolang.examples.Invoice.total_cents: sums line totals
-protolang: 12 test(s), 0 failed
+[ok] protocross.examples.Invoice.total_cents: sums line totals
+protocross: 12 test(s), 0 failed
 ```
 
 Passing `--run <name>` runs a single test instead; that is how the driver observes a test that
@@ -376,7 +386,7 @@ expects the process to terminate, described next.
 
 `on_zero fail` says no substitute value is correct, so the program stops. A test can assert that:
 
-```protolang
+```protocross
 test InvoiceItem.strict_ratio "a zero divisor stops the program" {
     receiver {
         quantity = 0;
@@ -395,7 +405,7 @@ they hand the process to Windows Error Reporting and to whatever postmortem debu
 through `SIGABRT`, so it would not even guarantee the program stops.
 
 Nothing inside a process can observe the process ending, so both backends generate this as an
-out-of-process test. The C# backend emits an extra `ProtoLangTestSupport.g.cs` and a module
+out-of-process test. The C# backend emits an extra `ProtoCrossTestSupport.g.cs` and a module
 initializer that lets the test assembly be relaunched for one named test; the generated `[Fact]`
 starts that child and checks its exit code. The C++ driver reruns itself with `--run <name>` and
 does the same. Neither needs any wiring from you beyond building the generated files as usual.
@@ -403,7 +413,7 @@ does the same. Neither needs any wiring from you beyond building the generated f
 ### Conformance Suite
 
 The compiler's own cross-language test suite lives in
-[tests/conformance/](tests/conformance/README.md). Each vector is a `.protolang` file whose `test`
+[tests/conformance/](tests/conformance/README.md). Each vector is a `.pcross` file whose `test`
 declarations state an expected result once; every backend then compiles, builds, and executes them,
 and all backends must agree. It covers the cases where the targets natively disagree: integer
 overflow wrapping, `on_zero` and `on_zero fail`, `MIN / -1`, truncating integer division, and IEEE
@@ -413,14 +423,14 @@ It runs as part of `dotnet test`, and skips with a message naming the missing to
 C++ compiler, or a protobuf C++ install is not available.
 
 ```powershell
-dotnet test tests\ProtoLang.Tests\ProtoLang.Tests.csproj --filter "FullyQualifiedName~Conformance"
+dotnet test tests\ProtoCross.Tests\ProtoCross.Tests.csproj --filter "FullyQualifiedName~Conformance"
 ```
 
 ### Optional C++ Smoke Test Dependencies
 
 The test suite includes optional C++ smoke tests for generated code:
 
-- a syntax-only test that parses generated ProtoLang headers with generated protobuf headers
+- a syntax-only test that parses generated ProtoCross headers with generated protobuf headers
 - a link-and-run test that builds a tiny executable and verifies generated behavior
 
 They need:
@@ -446,7 +456,7 @@ When using vcpkg manifest mode from the repository root, the test looks under
 system install paths, and the explicit override:
 
 ```powershell
-$env:PROTOLANG_PROTOBUF_CPP_INCLUDE = "C:\path\to\protobuf\include"
+$env:PROTOCROSS_PROTOBUF_CPP_INCLUDE = "C:\path\to\protobuf\include"
 ```
 
 Point that at the `include` directory of a complete install rather than at a bare copy of the
@@ -457,13 +467,13 @@ which pieces were missing.
 To run only the C++ smoke tests:
 
 ```powershell
-dotnet test tests\ProtoLang.Tests\ProtoLang.Tests.csproj --filter "FullyQualifiedName~CppSyntaxSmokeTests" --logger "console;verbosity=normal"
+dotnet test tests\ProtoCross.Tests\ProtoCross.Tests.csproj --filter "FullyQualifiedName~CppSyntaxSmokeTests" --logger "console;verbosity=normal"
 ```
 
 To run the full suite, including the C++ smoke test when its native prerequisites are available:
 
 ```powershell
-dotnet test tests\ProtoLang.Tests\ProtoLang.Tests.csproj
+dotnet test tests\ProtoCross.Tests\ProtoCross.Tests.csproj
 ```
 
 On Windows, the test can find Visual Studio C++ Build Tools even when `cl.exe` is not already on
@@ -476,11 +486,11 @@ is skipped with a message. A fully active local run should report zero skipped t
 
 | Project | Role |
 |---|---|
-| `src/ProtoLang.Core` | Lexer, parser, descriptor binding, type checker, typed IR |
-| `src/ProtoLang.Backend.CSharp` | C# code generation |
-| `src/ProtoLang.Backend.Cpp` | C++ code generation |
-| `src/ProtoLang.Cli` | `protolangc` command-line driver |
-| `tests/ProtoLang.Tests` | Lexer, parser, binder, and backend tests, plus the conformance harness |
+| `src/ProtoCross.Core` | Lexer, parser, descriptor binding, type checker, typed IR |
+| `src/ProtoCross.Backend.CSharp` | C# code generation |
+| `src/ProtoCross.Backend.Cpp` | C++ code generation |
+| `src/ProtoCross.Cli` | `protocross` command-line driver |
+| `tests/ProtoCross.Tests` | Lexer, parser, binder, and backend tests, plus the conformance harness |
 | `tests/conformance` | Cross-language conformance vectors ([README](tests/conformance/README.md)) |
 
 Backends depend only on the IR, never on the AST.

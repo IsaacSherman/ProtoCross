@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ProtoCross.Backend.CSharp</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
+  </ItemGroup>
+
+</Project>
