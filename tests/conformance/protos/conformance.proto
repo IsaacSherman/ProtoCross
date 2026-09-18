@@ -46,6 +46,10 @@ message RemainderCase {
   double divisor = 2;
   float narrow_dividend = 3;
   float narrow_divisor = 4;
+
+  // Infinities and NaN have no literal form, so vectors that need one divide by this. A literal
+  // 0.0 divisor will not do: MSVC folds it into a compile error.
+  double zero = 5;
 }
 
 // casts.pcross -- explicit numeric conversions (spec 10.3).

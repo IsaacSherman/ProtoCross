@@ -41,7 +41,8 @@ Normative Requirements:
 
 - Both word and symbolic boolean operators are accepted: `and`/`&&`, `or`/`||`, and `not`/`!`.
 - Assignment is a statement only.
-- `%` is included and follows the same `on_zero` rule as integer `/`.
+- On integer operands, `%` follows the same `on_zero` rule as integer `/`. On floating-point
+  operands it is the truncated remainder of [10.2](./§10-Numeric%20Semantics.md#102-division), which cannot fail and takes no clause.
 
 ### 9.3 Evaluation Order
 

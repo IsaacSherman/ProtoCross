@@ -24,6 +24,7 @@ time rather than emitting something whose semantics differ.
 | Checked division (`on_zero`) | Yes | Yes | — | Runtime zero check in both; see 10.2.1. |
 | `on_zero fail` | Yes | Yes | — | `Environment.Exit(70)` / `std::_Exit(70)`, after a diagnostic on stderr ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). |
 | IEEE 754 float division | Yes | Yes | — | Native in both. Python will need a helper. |
+| Floating-point remainder | Yes | Yes | — | C# `%`; C++ `std::fmod`, since C++ defines `%` on integers only ([10.2](./§10-Numeric%20Semantics.md#102-division)). |
 | Repeated iteration | Yes | Yes | — | `foreach` / range-`for` over the protobuf container. |
 | Cross-message method calls | Yes | Yes | — | C++ emits all declarations before any definition. |
 | Local variables and assignment | Yes | Yes | — | Only locals can be assigned. |
