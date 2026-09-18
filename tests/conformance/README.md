@@ -94,6 +94,7 @@ failing. A fully equipped machine should report no skips.
 | `integer_overflow` | Two's complement wrapping for `int32`, `int64`, `uint32`, `uint64` addition, subtraction, multiplication, and negation (spec 10.1) |
 | `integer_division` | Truncation toward zero, `on_zero` fallbacks, `on_zero fail`, and `MIN / -1` and `MIN % -1` (spec 10.2, 10.2.1) |
 | `floating_point` | IEEE 754 division including by zero: infinities, NaN, and NaN comparison behavior |
+| `floating_remainder` | `%` on `float` and `double`: the sign of the dividend, exactness, negative zero, and a zero or infinite operand |
 | `control_flow` | `if` / `else if` / `else`, `while`, `while true` with `break`, `continue`, and `for`-`in` (spec 15) |
 | `strings` | String equality, string returns, and literals containing characters both backends must escape (spec 11) |
 | `enum_types` | Enum-typed locals, parameters, and returns, and named enum values in comparisons, returns, branches, and fixtures (spec 12) |
