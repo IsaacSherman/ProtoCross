@@ -3,8 +3,9 @@
 ProtoCross compiles methods written against protobuf messages into equivalent C# and C++.
 
 Read [ARCHITECTURE.md](ARCHITECTURE.md) for the lay of the land, [ProtoCross_Spec/](ProtoCross_Spec/README.md)
-for the language, and [docs/epic-47-workflow.md](docs/epic-47-workflow.md) for the per-issue process
-of the editor-support epic.
+for the language, and [docs/language-1-workflow.md](docs/language-1-workflow.md) for the per-issue
+process of the 1.0 language epic (#108), which builds on the editor-support epic's
+[docs/epic-47-workflow.md](docs/epic-47-workflow.md).
 
 ## Commands
 

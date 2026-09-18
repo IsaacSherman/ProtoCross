@@ -2,8 +2,9 @@
 
 A map for a cold start: what exists, where it lives, and which invariants constrain a change. The
 language itself is specified in [ProtoCross_Spec/](ProtoCross_Spec/README.md); how to write code here is in
-[CLAUDE.md](CLAUDE.md); the per-issue process for the editor-support epic is in
-[docs/epic-47-workflow.md](docs/epic-47-workflow.md); what the server is held to for latency, and
+[CLAUDE.md](CLAUDE.md); the per-issue process is in
+[docs/language-1-workflow.md](docs/language-1-workflow.md) for the 1.0 language epic and
+[docs/epic-47-workflow.md](docs/epic-47-workflow.md) for the editor-support epic; what the server is held to for latency, and
 what that was measured to be, is in [docs/performance.md](docs/performance.md).
 
 ProtoCross compiles small methods written against protobuf messages into equivalent C# and C++.
