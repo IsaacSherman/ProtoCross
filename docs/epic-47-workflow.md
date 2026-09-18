@@ -1,6 +1,6 @@
 # Implementing epic #47, one issue at a time
 
-[Epic #47](https://github.com/IsaacSherman/ProtoLang/issues/47) — first-class editor support — is 26
+[Epic #47](https://github.com/IsaacSherman/ProtoCross/issues/47) — first-class editor support — is 26
 sub-issues and counting. It is too large for one session, one branch, or one review. This file is the
 process we run for each of them, so that the process itself does not have to be re-derived every
 time context is cleared.
@@ -18,10 +18,10 @@ else should start until they are in.
 
 | | Issue | State |
 |---|---|---|
-| 1 | [#35](https://github.com/IsaacSherman/ProtoLang/issues/35) Compile from in-memory source text | done |
-| 2 | [#37](https://github.com/IsaacSherman/ProtoLang/issues/37) Give `SourceSpan` a real end position | done |
-| 3 | [#36](https://github.com/IsaacSherman/ProtoLang/issues/36) Bind through parse errors | done |
-| 4 | [#39](https://github.com/IsaacSherman/ProtoLang/issues/39) Preserve declaration sites and symbol identity; scope publication remains #49 | done |
+| 1 | [#35](https://github.com/IsaacSherman/ProtoCross/issues/35) Compile from in-memory source text | done |
+| 2 | [#37](https://github.com/IsaacSherman/ProtoCross/issues/37) Give `SourceSpan` a real end position | done |
+| 3 | [#36](https://github.com/IsaacSherman/ProtoCross/issues/36) Bind through parse errors | done |
+| 4 | [#39](https://github.com/IsaacSherman/ProtoCross/issues/39) Preserve declaration sites and symbol identity; scope publication remains #49 | done |
 
 **Then mostly issue order**, following each issue's own instructions about what comes next. A few
 ordering constraints from #47 are easy to miss and are not implied by the numbers:
@@ -50,7 +50,7 @@ than by picking up where anything left off.
 gh issue view 36
 ```
 
-Read the sub-issue **and** [#47](https://github.com/IsaacSherman/ProtoLang/issues/47), then
+Read the sub-issue **and** [#47](https://github.com/IsaacSherman/ProtoCross/issues/47), then
 [ARCHITECTURE.md](../ARCHITECTURE.md). Trace the actual call sites before planning — the issues are
 specific about scope ("constructed in only eleven places") and those claims are worth verifying, not
 assuming.
@@ -70,7 +70,7 @@ batch rather than one per issue. `epics/language-server` carried the foundations
 moving to a fifth means editing it here.
 
 This one was cut from the tip of `epics/language-server-3` rather than from `main`, because
-[#95](https://github.com/IsaacSherman/ProtoLang/pull/95) was still open when it was needed and #57
+[#95](https://github.com/IsaacSherman/ProtoCross/pull/95) was still open when it was needed and #57
 exists to measure precisely what that pull request contains. Once #95 merges the two are the same
 commit, and the rule above reads as written again.
 
@@ -87,7 +87,7 @@ checklist — the issues state requirements sentence by sentence and each one is
 
 ### 4. Update the spec, if the change reached the language
 
-[Protolang_Spec/](../Protolang_Spec/README.md) is the language rather than a description of it, so a change
+[ProtoCross_Spec/](../ProtoCross_Spec/README.md) is the language rather than a description of it, so a change
 to what an author can write, what it means, what the compiler reports, or what the IR promises to
 preserve is a change to the spec as much as to the code. Settle it here, before the commit, because
 [CLAUDE.md](../CLAUDE.md) asks for it in the **same commit as the code**: an edit deferred to the end
@@ -106,11 +106,11 @@ and the fix, `Closes #N. Part of #47.`
 ### 6. Test
 
 ```bash
-dotnet build ProtoLang.slnx
+dotnet build ProtoCross.slnx
 ```
 
 ```bash
-dotnet test ProtoLang.slnx
+dotnet test ProtoCross.slnx
 ```
 
 Both must be clean, warnings included. Then, whenever the change could have moved published output —

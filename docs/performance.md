@@ -1,6 +1,6 @@
 # Performance budgets and how they are measured
 
-Several issues in [#47](https://github.com/IsaacSherman/ProtoLang/issues/47) said "fast enough to
+Several issues in [#47](https://github.com/IsaacSherman/ProtoCross/issues/47) said "fast enough to
 feel instant" or "fast enough to run on caret movement". That is not a specification and it cannot
 fail a build. This file is the specification.
 
@@ -28,7 +28,7 @@ nineteen fast hovers. Warm means the descriptors are loaded and the buffer has b
 is the state an editor is in for every keystroke after the first.
 
 These figures live in exactly one place a machine reads:
-[`PerformanceBudgets.cs`](../src/ProtoLang.LanguageServer/Hosting/PerformanceBudgets.cs). The table
+[`PerformanceBudgets.cs`](../src/ProtoCross.LanguageServer/Hosting/PerformanceBudgets.cs). The table
 above is the copy for people, and
 `PerformanceBudgetTests.TheDocumentedBudgetsAreTheEnforcedOnes` fails if the two disagree — because a
 rule written twice disagrees eventually, and the copy that would quietly stop being true is the one
@@ -46,10 +46,10 @@ Stated rather than assumed, which is what #57 asks for.
 
 | | File | Lines |
 |---|---|---|
-| normal | [`examples/simpleScript.protolang`](../examples/simpleScript.protolang) | 274 |
-| stress | [`tests/perf/corpus/wide.protolang`](../tests/perf/corpus/wide.protolang) | 2,814 |
+| normal | [`examples/simpleScript.pcross`](../examples/simpleScript.pcross) | 274 |
+| stress | [`tests/perf/corpus/wide.pcross`](../tests/perf/corpus/wide.pcross) | 2,814 |
 
-**The normal case is a real file on purpose.** `simpleScript.protolang` is maintained for its own
+**The normal case is a real file on purpose.** `simpleScript.pcross` is maintained for its own
 reasons and goes on being edited by people who are not thinking about measurement, which is exactly
 what keeps it representative. A fixture written for a benchmark drifts towards whatever the benchmark
 finds convenient.
@@ -58,7 +58,7 @@ finds convenient.
 file generated at measurement time can be raised later but is a different file every time the
 generator is touched, so two runs a month apart would not be comparable — and comparability is the
 only reason to write numbers down. Committing the output settles it. The generator is
-[`StressCorpus`](../tests/ProtoLang.Tests/Performance/StressCorpus.cs), and
+[`StressCorpus`](../tests/ProtoCross.Tests/Performance/StressCorpus.cs), and
 `PerformanceCorpusTests.TheCommittedStressFileIsWhatTheGeneratorProduces` runs on every build, so the
 two cannot drift.
 
@@ -74,7 +74,7 @@ To raise it, change `StressCorpus.Steps` and rewrite the committed file from the
 ## How to measure
 
 ```bash
-PROTOLANG_BENCH=1 dotnet test ProtoLang.slnx -c Release --filter "FullyQualifiedName~Performance"
+PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release --filter "FullyQualifiedName~Performance"
 ```
 
 **`-c Release` is not optional, and the benchmark refuses to run without it.** `dotnet test` builds
@@ -84,8 +84,8 @@ the ones on the larger corpus — which is to say, the rows the budgets are defi
 figures published for this file came out of a Debug build, and the row nearest its budget was the one
 the optimizer moved most. Every report now states the configuration it was taken on.
 
-In PowerShell the variable is set separately — `$env:PROTOLANG_BENCH = 1` — and stays set for the
-rest of the session, so clear it with `$env:PROTOLANG_BENCH = $null`.
+In PowerShell the variable is set separately — `$env:PROTOCROSS_BENCH = 1` — and stays set for the
+rest of the session, so clear it with `$env:PROTOCROSS_BENCH = $null`.
 
 Every run writes `artifacts/perf/report.md`: every operation, both corpora, median, p95, min, max,
 and whether it was within budget. The report is written whether the run passes or fails, because the
@@ -95,9 +95,9 @@ The measurement drives the providers directly rather than going over the wire. F
 loop and the worker handoff are real costs, but they are not what a design decision moves, and
 reporting them as the cost of a hover would be misleading.
 
-[#58](https://github.com/IsaacSherman/ProtoLang/issues/58) measures the same operations on a running
+[#58](https://github.com/IsaacSherman/ProtoCross/issues/58) measures the same operations on a running
 server, from inside the dispatch table, and reports them in the status command against these same
-budgets — which is why the budgets and the percentile rule live in `ProtoLang.LanguageServer` rather
+budgets — which is why the budgets and the percentile rule live in `ProtoCross.LanguageServer` rather
 than beside the benchmark. That measurement starts one step further out than this one: it includes
 deserializing the request's parameters, the lifecycle check and the wait for a slot on the answer
 gate. It still stops short of the framing and of the time a request spends queued behind a
@@ -112,7 +112,7 @@ gate. It still stops short of the framing and of the time a request spends queue
   many times `protoc` is invoked, how deep the queue gets, how many answers are in flight. These are
   deterministic: they cannot flake, and they fail the moment somebody adds a compile to a path that
   did not have one. That is
-  [`PerformanceCostTests`](../tests/ProtoLang.Tests/Performance/PerformanceCostTests.cs).
+  [`PerformanceCostTests`](../tests/ProtoCross.Tests/Performance/PerformanceCostTests.cs).
 - **A person checks milliseconds, on a machine they chose.** Wall-clock deadlines on a shared runner
   are a coin toss with a build attached: they flake until somebody loosens them, and a threshold
   loose enough never to flake no longer describes the budget. This repository has already spent two
@@ -144,7 +144,7 @@ p95 moved by 5 ms between runs that changed nothing. The figures are good enough
 question this issue asks — is anything near its budget — and they are **not** good enough to detect a
 20% regression, which is one reason regressions are caught as counted work instead.
 
-[#97](https://github.com/IsaacSherman/ProtoLang/issues/97) is where that would be improved, by
+[#97](https://github.com/IsaacSherman/ProtoCross/issues/97) is where that would be improved, by
 handing these five rows to BenchmarkDotNet for its statistics and its allocation counts. It is low
 priority and blocks nothing. If it is closed without being done, this paragraph is the part that has
 to survive: the limitation is real whether or not anybody is planning to fix it.

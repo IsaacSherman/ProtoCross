@@ -1,4 +1,4 @@
 {
-  "protolang.logLevel": "trace",
-  "protolang.server.enabled": true
+  "protocross.logLevel": "trace",
+  "protocross.server.enabled": true
 }

@@ -10,8 +10,8 @@
   </PropertyGroup>
 
   <!--
-    ProtoLang's own compiler must never inherit the overflow behavior it is trying to
-    define. Emitted code states its arithmetic behavior explicitly; see Protolang_Spec.md.
+    ProtoCross's own compiler must never inherit the overflow behavior it is trying to
+    define. Emitted code states its arithmetic behavior explicitly; see ProtoCross_Spec.md.
   -->
   <PropertyGroup>
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>

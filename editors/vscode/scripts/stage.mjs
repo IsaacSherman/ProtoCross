@@ -21,7 +21,7 @@ execFileSync(
   'dotnet',
   [
     'publish',
-    join(repository, 'src', 'ProtoLang.LanguageServer', 'ProtoLang.LanguageServer.csproj'),
+    join(repository, 'src', 'ProtoCross.LanguageServer', 'ProtoCross.LanguageServer.csproj'),
     '--configuration', 'Release',
     '--output', output,
     '--no-self-contained',

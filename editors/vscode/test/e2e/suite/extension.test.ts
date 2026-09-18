@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import type { ProtoLangApi } from '../../../src/extension';
+import type { ProtoCrossApi } from '../../../src/extension';
 
 // Inside a real VS Code, with the fixture workspace open: what a person installing the extension would
 // see. The launch rules and trust are tested against the real server in test/server, where the
 // environment and the trust state can be controlled; VS Code's test instance runs with trust disabled.
 
-const extensionId = 'isaacsherman.protolang';
+const extensionId = 'isaacsherman.protocross';
 
 function workspaceFile(name: string): string {
   const folder = vscode.workspace.workspaceFolders?.[0];
@@ -30,15 +30,15 @@ async function until<T>(read: () => T | undefined, describe: string, patienceMs 
   }
 }
 
-async function api(): Promise<ProtoLangApi> {
-  const extension = vscode.extensions.getExtension<ProtoLangApi>(extensionId);
+async function api(): Promise<ProtoCrossApi> {
+  const extension = vscode.extensions.getExtension<ProtoCrossApi>(extensionId);
   assert.ok(extension !== undefined, `${extensionId} is not installed in the test instance`);
   return extension.activate();
 }
 
-async function running(protolang: ProtoLangApi): Promise<number | undefined> {
+async function running(protocross: ProtoCrossApi): Promise<number | undefined> {
   const state = await until(
-    () => (protolang.controller.state.kind === 'running' ? protolang.controller.state : undefined),
+    () => (protocross.controller.state.kind === 'running' ? protocross.controller.state : undefined),
     'the language server running',
   );
   return state.processId;
@@ -52,14 +52,14 @@ describe('the extension, installed', () => {
   let source: vscode.Uri;
 
   before(async () => {
-    source = vscode.Uri.file(workspaceFile('source.protolang'));
+    source = vscode.Uri.file(workspaceFile('source.pcross'));
     const document = await vscode.workspace.openTextDocument(source);
     await vscode.window.showTextDocument(document);
   });
 
-  it('registers .protolang as ProtoLang', async () => {
+  it('registers .pcross as ProtoCross', async () => {
     const document = await vscode.workspace.openTextDocument(source);
-    assert.equal(document.languageId, 'protolang');
+    assert.equal(document.languageId, 'protocross');
   });
 
   // The word pattern is what double-click selects and what a completion replaces, and VS Code compiles
@@ -67,7 +67,7 @@ describe('the extension, installed', () => {
   // literal 'p' and leaves a lexer that accepts any letter paired with an editor that finds no word.
   it('treats a name with letters from outside ASCII as one word', async () => {
     const name = 'ünïcödé_1';
-    const document = await vscode.workspace.openTextDocument({ language: 'protolang', content: `var ${name} = 2;\n` });
+    const document = await vscode.workspace.openTextDocument({ language: 'protocross', content: `var ${name} = 2;\n` });
     const inside = document.positionAt(document.getText().indexOf(name) + 3);
 
     const word = document.getWordRangeAtPosition(inside);
@@ -91,7 +91,7 @@ describe('the extension, installed', () => {
     await until(() => (problems(source).length > 0 ? true : undefined), 'diagnostics');
 
     assert.ok(
-      problems(source).every((problem) => String(typeof problem.code === 'object' ? problem.code.value : problem.code) !== 'PL2102'),
+      problems(source).every((problem) => String(typeof problem.code === 'object' ? problem.code.value : problem.code) !== 'PC2102'),
       `the extension's settings were reported as unknown: ${problems(source).map((problem) => problem.message).join(' | ')}`,
     );
   });
@@ -106,10 +106,10 @@ describe('the extension, installed', () => {
   });
 
   it('starts the server outside every workspace folder', async () => {
-    const protolang = await api();
-    await running(protolang);
+    const protocross = await api();
+    await running(protocross);
 
-    const directory = protolang.controller.lastLaunch?.workingDirectory;
+    const directory = protocross.controller.lastLaunch?.workingDirectory;
     assert.ok(directory !== undefined);
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
       const relative = path.relative(folder.uri.fsPath, directory);
@@ -118,10 +118,10 @@ describe('the extension, installed', () => {
   });
 
   it("reports the extension's version and this session's restarts in the status report", async () => {
-    const protolang = await api();
-    await running(protolang);
+    const protocross = await api();
+    await running(protocross);
 
-    const report = await protolang.collectStatus();
+    const report = await protocross.collectStatus();
 
     assert.equal(report.fromServer, true);
     const version = vscode.extensions.getExtension(extensionId)?.packageJSON.version as string;
@@ -131,35 +131,35 @@ describe('the extension, installed', () => {
   });
 
   it('recovers from the server crashing, without restarting the editor', async () => {
-    const protolang = await api();
-    const before = await running(protolang);
-    const restarts = protolang.controller.restarts;
+    const protocross = await api();
+    const before = await running(protocross);
+    const restarts = protocross.controller.restarts;
     assert.ok(before !== undefined, 'the server process must be known to be killed');
 
     process.kill(before);
 
     await until(
       () =>
-        protolang.controller.state.kind === 'running' && protolang.controller.state.processId !== before ? true : undefined,
+        protocross.controller.state.kind === 'running' && protocross.controller.state.processId !== before ? true : undefined,
       'a new server process',
     );
-    assert.equal(protolang.controller.restarts, restarts + 1);
+    assert.equal(protocross.controller.restarts, restarts + 1);
 
-    const report = await protolang.collectStatus();
+    const report = await protocross.collectStatus();
     assert.match(report.markdown, new RegExp(`\\| restarts this session \\| ${restarts + 1} \\|`));
   });
 
   it('still produces a report when the server cannot start, saying why', async () => {
-    const protolang = await api();
-    const missing = path.join(path.dirname(workspaceFile('source.protolang')), 'no-such-server.dll');
-    const configuration = vscode.workspace.getConfiguration('protolang');
+    const protocross = await api();
+    const missing = path.join(path.dirname(workspaceFile('source.pcross')), 'no-such-server.dll');
+    const configuration = vscode.workspace.getConfiguration('protocross');
 
     await configuration.update('server.path', missing, vscode.ConfigurationTarget.Global);
 
     try {
-      await until(() => (protolang.controller.state.kind === 'failed' ? true : undefined), 'the launch to fail');
+      await until(() => (protocross.controller.state.kind === 'failed' ? true : undefined), 'the launch to fail');
 
-      const report = await protolang.collectStatus();
+      const report = await protocross.collectStatus();
 
       assert.equal(report.fromServer, false);
       assert.match(report.markdown, /failed to start/);
@@ -169,6 +169,6 @@ describe('the extension, installed', () => {
       await configuration.update('server.path', undefined, vscode.ConfigurationTarget.Global);
     }
 
-    await running(protolang);
+    await running(protocross);
   });
 });

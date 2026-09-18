@@ -1,10 +1,10 @@
 import contract from './contract.json';
 
 /** The settings section, which the server also reads from. */
-export const section = 'protolang';
+export const section = 'protocross';
 
 /**
- * The top-level names under `protolang` that belong to this extension and mean nothing to the server:
+ * The top-level names under `protocross` that belong to this extension and mean nothing to the server:
  * how the server is started, and whether it is started at all.
  *
  * Kept in `contract.json` rather than here because the server's test suite reads the same file and
@@ -21,7 +21,7 @@ export const privacyNote: string = contract.privacyNote;
  * One `workspace/configuration` answer with this extension's own settings taken out.
  *
  * The server is strict about the section on purpose: a setting it does not read is reported, so a
- * user who writes `protolang.includePath` is told about the typo. Filtering here keeps that strictness
+ * user who writes `protocross.includePath` is told about the typo. Filtering here keeps that strictness
  * and keeps the server from being told about settings that are this extension's business. Anything that
  * is not a settings object is passed through untouched.
  */

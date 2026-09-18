@@ -12,7 +12,7 @@ import {
 import { dotnetCandidates, sanitizeEnvironment } from '../../src/launch';
 
 /**
- * Starts the server this extension ships -- the staged `server/protolang-server.dll`, through a real
+ * Starts the server this extension ships -- the staged `server/protocross-server.dll`, through a real
  * dotnet, as a real process -- and speaks LSP to it without VS Code.
  *
  * What the extension's launch decides is tested here against the process it produces, because the
@@ -23,13 +23,13 @@ import { dotnetCandidates, sanitizeEnvironment } from '../../src/launch';
 /** Where the extension lives, from the bundle this runs as (out/test/server). */
 export const extensionRoot = path.resolve(__dirname, '..', '..', '..');
 
-export const stagedServer = path.join(extensionRoot, 'server', 'protolang-server.dll');
+export const stagedServer = path.join(extensionRoot, 'server', 'protocross-server.dll');
 
 export const pathSeparator = process.platform === 'win32' ? ';' : ':';
 
 /** A fresh directory of this test's own. */
 export function temporaryDirectory(label: string): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), `protolang-${label}-`));
+  return fs.mkdtempSync(path.join(os.tmpdir(), `protocross-${label}-`));
 }
 
 /** The dotnet a user of this machine would get, by absolute path. */
@@ -134,7 +134,7 @@ export class Server {
 
   /** The server's status report, as sections. */
   async status(): Promise<StatusSection[]> {
-    const result = await this.connection.sendRequest<{ sections: StatusSection[] }>('protolang/status', {});
+    const result = await this.connection.sendRequest<{ sections: StatusSection[] }>('protocross/status', {});
     return result.sections;
   }
 
@@ -150,7 +150,7 @@ export class Server {
   async open(file: string): Promise<string> {
     const uri = pathToFileURL(file).href;
     await this.connection.sendNotification('textDocument/didOpen', {
-      textDocument: { uri, languageId: 'protolang', version: 1, text: fs.readFileSync(file, 'utf8') },
+      textDocument: { uri, languageId: 'protocross', version: 1, text: fs.readFileSync(file, 'utf8') },
     });
     return uri;
   }

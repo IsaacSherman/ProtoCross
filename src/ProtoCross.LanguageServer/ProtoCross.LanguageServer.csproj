@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>ProtoCross.LanguageServer</RootNamespace>
+    <AssemblyName>protocross-server</AssemblyName>
+
+    <!--
+      Runs on the oldest .NET it was built for or any newer major the machine has. The editor
+      extensions run it with the user's own dotnet rather than one they bring, so a user who has only
+      moved on to the next release should not be told to install an older one to use it.
+    -->
+    <RollForward>Major</RollForward>
+  </PropertyGroup>
+
+  <!--
+    No LSP framework, deliberately. What a framework supplies is transport and routing: Content-Length
+    framing, JSON-RPC correlation, a writer lock, and the message shapes this server uses. What it does
+    not supply is any of what #42 actually had to get right (the token legend, the diagnostic mapping,
+    the configuration pull, the staleness rule), so the choice was between owning three hundred lines
+    of transport and owning a dependency graph as well.
+
+    The graph is the part that does not fit here. OmniSharp.Extensions.LanguageServer last shipped in
+    2023 and brings MediatR, System.Reactive and the Microsoft.Extensions.* tree onto a net10.0 project
+    built with TreatWarningsAsErrors, where one NU warning on a transitive package fails the build.
+    This repository has five package references and every one of them is Google or Microsoft
+    first-party. Roslyn, rust-analyzer and gopls all own this layer for the same reason.
+
+    It is contained rather than pervasive: everything below Protocol/JsonRpcConnection.cs is transport,
+    and nothing above it knows how a message is framed. Swapping in StreamJsonRpc, whose
+    HeaderDelimitedMessageHandler already implements LSP framing, would touch that one file.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
+  </ItemGroup>
+
+</Project>

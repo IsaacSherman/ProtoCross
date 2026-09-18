@@ -168,7 +168,7 @@ export class ServerController implements vscode.Disposable {
 
   private async launch(): Promise<void> {
     if (!vscode.workspace.getConfiguration(section).get<boolean>('server.enabled', true)) {
-      this.log.info('The language server is turned off (protolang.server.enabled); colouring still works.');
+      this.log.info('The language server is turned off (protocross.server.enabled); colouring still works.');
       this.transition({ kind: 'disabled' });
       return;
     }
@@ -223,7 +223,7 @@ export class ServerController implements vscode.Disposable {
 
     if (dotnet !== undefined && !hasSupportedRuntime(runtimes)) {
       throw new LaunchProblem(
-        `ProtoLang's language server needs .NET ${minimumDotnetMajor} or newer.`,
+        `ProtoCross's language server needs .NET ${minimumDotnetMajor} or newer.`,
         runtimes.length === 0
           ? `'${dotnet}' reports no .NET runtime installed.`
           : `'${dotnet}' has ${runtimes.join(', ')}.`,
@@ -248,7 +248,7 @@ export class ServerController implements vscode.Disposable {
   }
 
   /**
-   * The server this extension ships, or the one `protolang.server.path` names.
+   * The server this extension ships, or the one `protocross.server.path` names.
    *
    * Only the user's own value of that setting is consulted. It is machine-scoped, so a workspace cannot
    * set it anyway, and it is restricted in the manifest -- but the rule #45 states is that the extension
@@ -259,11 +259,11 @@ export class ServerController implements vscode.Disposable {
     const configured = userValue('server.path');
 
     if (configured === undefined) {
-      const bundled = this.context.asAbsolutePath(path.join('server', 'protolang-server.dll'));
+      const bundled = this.context.asAbsolutePath(path.join('server', 'protocross-server.dll'));
       if (!fs.existsSync(bundled)) {
         throw new LaunchProblem(
-          'The ProtoLang language server is missing from this extension.',
-          `Nothing is at '${bundled}'. Reinstall the extension, or set protolang.server.path to a server you built.`,
+          'The ProtoCross language server is missing from this extension.',
+          `Nothing is at '${bundled}'. Reinstall the extension, or set protocross.server.path to a server you built.`,
           'chooseServer',
         );
       }
@@ -272,7 +272,7 @@ export class ServerController implements vscode.Disposable {
 
     if (!isAbsoluteLocation(configured, process.platform)) {
       throw new LaunchProblem(
-        'protolang.server.path must be a full path.',
+        'protocross.server.path must be a full path.',
         `'${configured}' is relative, and would be looked for somewhere nobody chose.`,
         'chooseServer',
       );
@@ -280,7 +280,7 @@ export class ServerController implements vscode.Disposable {
 
     if (!fs.existsSync(configured)) {
       throw new LaunchProblem(
-        'The language server named by protolang.server.path does not exist.',
+        'The language server named by protocross.server.path does not exist.',
         `Nothing is at '${configured}'.`,
         'chooseServer',
       );
@@ -298,7 +298,7 @@ export class ServerController implements vscode.Disposable {
         return configured;
       }
       throw new LaunchProblem(
-        'protolang.dotnetPath does not name a dotnet executable.',
+        'protocross.dotnetPath does not name a dotnet executable.',
         `'${configured}' is ${isAbsoluteLocation(configured, process.platform) ? 'not a file' : 'not a full path'}.`,
         'installDotnet',
       );
@@ -309,7 +309,7 @@ export class ServerController implements vscode.Disposable {
 
     if (found === undefined) {
       throw new LaunchProblem(
-        `ProtoLang's live features need .NET ${minimumDotnetMajor} or newer, and no dotnet was found.`,
+        `ProtoCross's live features need .NET ${minimumDotnetMajor} or newer, and no dotnet was found.`,
         `Looked in DOTNET_ROOT, on PATH, and in ${candidates.length} usual install locations. ` +
           'Syntax colouring works without it.',
         'installDotnet',
@@ -343,8 +343,8 @@ export class ServerController implements vscode.Disposable {
 
     const clientOptions: LanguageClientOptions = {
       documentSelector: [
-        { scheme: 'file', language: 'protolang' },
-        { scheme: 'untitled', language: 'protolang' },
+        { scheme: 'file', language: 'protocross' },
+        { scheme: 'untitled', language: 'protocross' },
       ],
       outputChannel: this.log,
       revealOutputChannelOn: RevealOutputChannelOn.Never,
@@ -375,8 +375,8 @@ export class ServerController implements vscode.Disposable {
     };
 
     const client = new QuietLanguageClient(
-      'protolang',
-      'ProtoLang Language Server',
+      'protocross',
+      'ProtoCross Language Server',
       () => this.spawnServer(command.command, command.args, facts.workingDirectory, env),
       clientOptions,
     );
@@ -472,7 +472,7 @@ export class ServerController implements vscode.Disposable {
     const summary = `The language server stopped ${this.crashes.length} times in three minutes, so it has not been started again.`;
     this.transition({ kind: 'failed', summary, detail: 'The log says what it was doing.' });
     void vscode.window
-      .showErrorMessage(`ProtoLang: ${summary}`, 'Restart', 'Show Log')
+      .showErrorMessage(`ProtoCross: ${summary}`, 'Restart', 'Show Log')
       .then((choice) => this.act(choice));
     return { action: CloseAction.DoNotRestart, handled: true };
   }
@@ -519,7 +519,7 @@ export class ServerController implements vscode.Disposable {
           : ['Show Log'];
 
     void vscode.window
-      .showWarningMessage(`ProtoLang: ${problem.summary} ${problem.detail}`, ...actions)
+      .showWarningMessage(`ProtoCross: ${problem.summary} ${problem.detail}`, ...actions)
       .then((choice) => this.act(choice));
   }
 
@@ -580,7 +580,7 @@ export class ServerController implements vscode.Disposable {
     }
 
     void this.languageClient
-      ?.sendNotification('protolang/didChangeWorkspaceTrust', { trusted: true })
+      ?.sendNotification('protocross/didChangeWorkspaceTrust', { trusted: true })
       .catch((error: unknown) => this.log.warn(`Could not tell the server the workspace is trusted: ${String(error)}`));
   }
 }
