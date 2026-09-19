@@ -269,7 +269,7 @@ public class ScopeQueryTests
     /// binder have to say so together. They did not: the query listed the receiver's fields, which
     /// never included it, while the binder asked the descriptor pool by name and found it. The name
     /// bound and was never offered, and neither sweep below could see that, because nothing in the
-    /// corpus declares an extension.
+    /// corpus writes an extension's name where a field could be meant.
     /// </summary>
     [Fact]
     public void AnExtensionDeclaredInTheReceiverIsNeitherOfferedNorBound()
