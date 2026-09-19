@@ -200,6 +200,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Where a declaration is | `DeclarationSite` | [Symbols/DeclarationSite.cs](src/ProtoCross.Core/Symbols/DeclarationSite.cs) |
 | Where a `.proto` declared it, and what it said | `SchemaDeclaration`, `SchemaSite`, `SchemaComments` | [Symbols/SchemaDeclaration.cs](src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) |
 | Everything a schema declares, once | `SchemaSymbols` | [Binding/SchemaSymbols.cs](src/ProtoCross.Core/Binding/SchemaSymbols.cs) |
+| Which fields a name reaches on a message, never an extension | `MessageFields` | [Binding/MessageFields.cs](src/ProtoCross.Core/Binding/MessageFields.cs) |
 | Which symbol a reference means | `SymbolId` | [Symbols/SymbolId.cs](src/ProtoCross.Core/Symbols/SymbolId.cs) |
 | Where a symbol is used | `SymbolReference`, `ReferenceKind` | [Symbols/SymbolReference.cs](src/ProtoCross.Core/Symbols/SymbolReference.cs) |
 | What a name is in scope over | `ScopeEntry` | [Symbols/ScopeEntry.cs](src/ProtoCross.Core/Symbols/ScopeEntry.cs) |

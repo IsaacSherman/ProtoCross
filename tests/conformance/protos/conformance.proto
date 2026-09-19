@@ -5,7 +5,9 @@ package protocross.conformance;
 // Schema for the ProtoCross conformance vectors (spec 25.2).
 //
 // Every vector file shares this one schema so protoc runs once per language and the C++ link
-// reuses a single conformance.pb object file. Each vector gets its OWN message: the C# backend
+// reuses a single conformance.pb object file. The exception is keyword_package.pcross, whose
+// subject is a package and so a file: keyword_package.proto is generated and linked alongside this
+// one. Each vector gets its OWN message: the C# backend
 // names its extension class after the receiver, so two vector files extending the same message
 // would emit duplicate class declarations into the one assembly the C# vectors are built as.
 
@@ -13,6 +15,10 @@ package protocross.conformance;
 // these live: both protoc runs are expected to find them on their own.
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
+
+// extension_scope.pcross -- proto3 lets a schema extend only an options message, so this is where
+// the extension it declares inside a message has something to extend.
+import "google/protobuf/descriptor.proto";
 
 // integer_overflow.pcross -- wrapping arithmetic (spec 10.1).
 message OverflowCase {
@@ -180,6 +186,110 @@ message GroupingInner {
 
 message GroupingLeaf {
   int64 depth = 1;
+}
+
+
+// extension_scope.pcross -- an extension declared inside a message is not one of its fields, so a
+// method may take its name (spec 13.1, 16.1). Both generated APIs keep the extension somewhere a
+// method on the message is not: C# on the nested static class, C++ as a static member.
+message ExtensionScopeCase {
+  int64 held = 1;
+
+  extend google.protobuf.FieldOptions {
+    int64 extension_scope_tag = 50000;
+  }
+
+// keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
+//
+// protoc's C++ generator lowercases a field name, then appends an underscore when the result is a
+// C++ keyword or names a member every generated message already declares, and builds every accessor
+// from that one name: class_(), set_class_(), has_default_(), mutable_new_(), add_delete_(). Each
+// field below reaches that rule by a different path. C# needs none of it, because a PascalCased
+// name never spells a C# keyword, so the same schema is the check that the two sides agree.
+message KeywordFieldCase {
+  int64 class = 1;
+  KeywordFieldInner new = 2;
+  repeated int64 delete = 3;
+  repeated KeywordFieldInner template = 4;
+  optional int64 default = 5;
+
+  // Lowercased before the keyword test, so this is friend_() rather than Friend().
+  int64 Friend = 6;
+
+  // Not a keyword: the static member every generated message declares.
+  int64 default_instance = 7;
+
+  // Not a keyword either, but a macro, and protoc's list escapes it all the same.
+  int64 assert = 8;
+}
+
+message KeywordFieldInner {
+  int64 this = 1;
+}
+
+// keyword_types.pcross -- messages, enums, and enum values whose names C++ cannot use as they stand
+// (spec 24.2).
+//
+// protoc's C++ generator appends an underscore to a message's or a top-level enum's flattened name
+// when it is a C++ keyword or the name of a member every generated message declares, so New is the
+// class New_ and Swap the enum Swap_. A nested type is named after its already-escaped parent, which
+// makes New.Inner the class New__Inner. Enum values are escaped one at a time, before any prefix:
+// Swap's new is new_ at namespace scope, and New.Kind's class is New__Kind_class_. protoc's C#
+// generator keeps every one of these names, which is what lets the same schema check both sides.
+message New {
+  enum Kind {
+    class = 0;
+    KIND_PLAIN = 1;
+  }
+
+  message Inner {
+    int64 value = 1;
+  }
+
+  Kind kind = 1;
+  Inner inner = 2;
+  Swap mode = 3;
+  union pair = 4;
+}
+
+// A top-level enum, escaped like a message. Its values live at namespace scope in C++, where new
+// and delete are keywords and NULL is a macro.
+enum Swap {
+  new = 0;
+  delete = 1;
+  NULL = 2;
+}
+
+// A keyword as the type's own name, rather than a generated member's.
+message union {
+  int64 value = 1;
+// property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
+//
+// protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an
+// underscore that stands before a leading digit, and then appends an underscore when the result is
+// the containing message's own name or a member every generated message declares. Has{Name} is
+// built from that one name. C++ lowercases instead, so only 'descriptor' is renamed on that side.
+message PropertyNameCase {
+  // The message's own name once PascalCased: PropertyNameCase_.
+  int64 property_name_case = 1;
+
+  // Members every generated message declares: Descriptor_, Types_, Parser_, HasClone_.
+  PropertyNameInner descriptor = 2;
+  repeated int64 types = 3;
+  repeated PropertyNameInner parser = 4;
+  optional int64 clone = 5;
+
+  // A letter after a digit is capitalized: Field1A, and HasRetry2X for the presence test.
+  int64 field1a = 6;
+  optional int64 retry2x = 7;
+
+  // The underscore survives, because an identifier cannot start with the digit: _1St.
+  int64 _1st = 8;
+}
+
+message PropertyNameInner {
+  // Named after its own message one level down, where the receiver is not that message.
+  int64 property_name_inner = 1;
 }
 
 // checked/checked_arithmetic.pcross -- the checked overflow policy (spec 10.4).

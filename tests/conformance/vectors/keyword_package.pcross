@@ -1,0 +1,70 @@
+// Conformance vectors for a package whose components are C++ keywords (spec 24.2).
+//
+// The schema is protocross.conformance.namespace.default, and protoc's C++ generator escapes each
+// component of it, so the generated types are in ::protocross::conformance::namespace_::default_.
+// Every name the C++ backend qualifies with a namespace is reached here: the namespace its own
+// functions are declared in, a call from one of them to another, the receiver type, a message and
+// an enum declared in the package, and one of that enum's values.
+
+import proto "keyword_package.proto";
+
+extend KeywordPackageCase {
+    fn doubled() -> int64 {
+        return count + count;
+    }
+
+    // A call qualifies the function it reaches with the package's namespace.
+    fn quadrupled() -> int64 {
+        return doubled() + doubled();
+    }
+
+    fn is_high() -> bool {
+        return level == PackageLevel.PACKAGE_LEVEL_HIGH;
+    }
+
+    fn current_level() -> PackageLevel {
+        return level;
+    }
+
+    // The package's own name, spelled out, as the type of a local.
+    fn inner_value() -> int64 {
+        if not has inner {
+            return -1;
+        }
+
+        var copy: protocross.conformance.namespace.default.KeywordPackageInner = inner;
+        return copy.value;
+    }
+}
+
+test KeywordPackageCase.quadrupled "one method calls another in an escaped namespace" {
+    receiver {
+        count = 3;
+    }
+
+    expect return 12;
+}
+
+test KeywordPackageCase.is_high "an enum value is qualified with the escaped namespace" {
+    receiver {
+        level = PackageLevel.PACKAGE_LEVEL_HIGH;
+    }
+
+    expect return true;
+}
+
+test KeywordPackageCase.current_level "an enum value is returned through the escaped namespace" {
+    receiver {
+        level = PackageLevel.PACKAGE_LEVEL_HIGH;
+    }
+
+    expect return PackageLevel.PACKAGE_LEVEL_HIGH;
+}
+
+test KeywordPackageCase.inner_value "reads a message named by the package's full name" {
+    receiver {
+        inner { value = 9; }
+    }
+
+    expect return 9;
+}
