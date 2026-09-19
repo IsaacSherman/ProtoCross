@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// enum_types.pcross -- enum types and named enum values.
+//
+// A top-level enum as well as a nested one, because the two are named differently in C++: protoc
+// prefixes a nested enum's values with the flattened enum name and leaves a top-level enum's bare.
+enum ConformanceStatus {
+  CONFORMANCE_STATUS_UNSPECIFIED = 0;
+  CONFORMANCE_STATUS_READY = 1;
+}
+
+message EnumCase {
+  enum Level {
+    LEVEL_UNSPECIFIED = 0;
+    LEVEL_HIGH = 1;
+    LEVEL_LOW = 2;
+  }
+
+  Level level = 1;
+  Level other = 2;
+  int64 count = 3;
+  ConformanceStatus status = 4;
+}

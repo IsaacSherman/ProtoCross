@@ -3,6 +3,7 @@ using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
+using ProtoCross.Tests.Conformance;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -178,14 +179,12 @@ public class BinderResilienceTests
     }
 
     /// <remarks>
-    /// The two schemas the corpus imports. Loaded together in one <c>protoc</c> run, because the
-    /// sweeps above bind tens of thousands of trees and must not pay for a process each.
+    /// Every schema the corpus imports: the example's and each conformance vector's. Loaded together
+    /// in one <c>protoc</c> run, because the sweeps above bind tens of thousands of trees and must not
+    /// pay for a process each.
     /// </remarks>
     private static IReadOnlyList<FileDescriptor> LoadSchemas()
         => DescriptorLoader.CreateDefault().Load(
-            ["invoice.proto", "conformance.proto"],
-            [
-                TestPaths.ExampleProtoDirectory,
-                Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "protos"),
-            ]);
+            ["invoice.proto", .. ConformanceVectors.SchemaFileNames],
+            [TestPaths.ExampleProtoDirectory, ConformanceVectors.ProtoDirectory]);
 }

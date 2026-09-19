@@ -11,14 +11,21 @@ name: build and test
 # Two events and no others, and the branch filters are what keep it that way.
 #
 # 'pull_request.branches' filters the branch being merged *into*, so this is every proposal to change
-# main and nothing else. 'push.branches' filters the branch being pushed *to*, so it catches a commit
-# landed on main directly and does not fire for work pushed to a feature branch. Ordinary pushes
-# therefore cost nothing at all: the suite is what a person runs before they propose a change, and
-# this is the same suite run where the proposal is judged rather than a second opinion on every
-# keystroke of the way there.
+# main or a sprint branch, and nothing else. A sprint branch is where parallel issue branches meet
+# before anything reaches main, which makes it where their combination breaks: three pull requests
+# into sprints/language-1-1 once landed a schema protoc rejected and a test helper that did not
+# compile, because nothing ran there. The ruleset on sprints/** requires this run, on a branch that
+# is up to date with its base, so the combination is what gets tested.
+#
+# 'push.branches' filters the branch being pushed *to*, so it catches a commit landed on main
+# directly and does not fire for work pushed to a feature branch. A sprint branch needs no push
+# trigger: its ruleset admits changes only through a pull request that is already up to date, so the
+# run on that pull request tested the tree the merge produces. Ordinary pushes therefore cost nothing
+# at all: the suite is what a person runs before they propose a change, and this is the same suite
+# run where the proposal is judged rather than a second opinion on every keystroke of the way there.
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'sprints/**']
     # 'ready_for_review' is not a default and is needed because of the draft condition below: without
     # it, a pull request opened as a draft and later marked ready would have declined every run it was
     # offered and then never be offered another.

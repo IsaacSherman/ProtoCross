@@ -11,7 +11,7 @@
 // and fixture, a nested message and a keyword-named message as locals, a top-level and a nested
 // enum as parameters, returns and comparands, and each kind of value set in a fixture.
 
-import proto "conformance.proto";
+import proto "keyword_types.proto";
 
 extend New {
     // A nested enum under an escaped parent, and a value that is a keyword: New__Kind_class_.

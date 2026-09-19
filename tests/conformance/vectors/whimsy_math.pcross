@@ -5,7 +5,7 @@
 // float/double conversion, integer wraparound, on_zero fallbacks, strings, booleans, and compound
 // control flow in the same generated test project.
 
-import proto "conformance.proto";
+import proto "whimsy_math.proto";
 
 extend WhimsyIngredient {
     fn sparkle_score(scale: int64) -> int64 {

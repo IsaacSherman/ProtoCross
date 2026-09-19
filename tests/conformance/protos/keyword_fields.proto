@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
+//
+// protoc's C++ generator lowercases a field name, then appends an underscore when the result is a
+// C++ keyword or names a member every generated message already declares, and builds every accessor
+// from that one name: class_(), set_class_(), has_default_(), mutable_new_(), add_delete_(). Each
+// field below reaches that rule by a different path. C# needs none of it, because a PascalCased
+// name never spells a C# keyword, so the same schema is the check that the two sides agree.
+message KeywordFieldCase {
+  int64 class = 1;
+  KeywordFieldInner new = 2;
+  repeated int64 delete = 3;
+  repeated KeywordFieldInner template = 4;
+  optional int64 default = 5;
+
+  // Lowercased before the keyword test, so this is friend_() rather than Friend().
+  int64 Friend = 6;
+
+  // Not a keyword: the static member every generated message declares.
+  int64 default_instance = 7;
+
+  // Not a keyword either, but a macro, and protoc's list escapes it all the same.
+  int64 assert = 8;
+}
+
+message KeywordFieldInner {
+  int64 this = 1;
+}

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// strings.pcross -- string equality and string returns (spec 11).
+message StringCase {
+  string left = 1;
+  string right = 2;
+}

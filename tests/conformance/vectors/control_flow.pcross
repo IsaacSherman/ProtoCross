@@ -5,7 +5,7 @@
 // for-in over a repeated field. The backend smoke suites assert that the emitted source contains
 // each construct; these vectors assert that it computes the same answer in both languages.
 
-import proto "conformance.proto";
+import proto "control_flow.proto";
 
 extend ControlFlowCase {
     // if / else if / else

@@ -9,7 +9,7 @@
 // literal, and ProtoCross has no MIN constant. It is spelled the way <climits> spells it,
 // as -MAX - 1.
 
-import proto "conformance.proto";
+import proto "integer_overflow.proto";
 
 extend OverflowCase {
     fn add_i32() -> int32 {

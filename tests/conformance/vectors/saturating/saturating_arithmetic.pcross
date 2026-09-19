@@ -8,7 +8,7 @@
 // overflow when its operands share a sign, a product's sign is the exclusive-or of its operands' --
 // so both directions are covered for each operation rather than just the one that overflows upward.
 
-import proto "conformance.proto";
+import proto "saturating_arithmetic.proto";
 
 extend SaturatingOverflowCase {
     fn i32_sum() -> int32 {

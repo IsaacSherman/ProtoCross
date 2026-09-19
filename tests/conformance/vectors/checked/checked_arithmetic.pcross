@@ -10,7 +10,7 @@
 // field rather than a literal, so the compiler cannot fold the overflow away and decide the
 // terminating path is unreachable.
 
-import proto "conformance.proto";
+import proto "checked_arithmetic.proto";
 
 extend CheckedOverflowCase {
     fn i32_sum() -> int32 {

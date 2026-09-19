@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// floating_point.pcross -- IEEE 754 division, including by zero.
+message FloatCase {
+  double numerator = 1;
+  double denominator = 2;
+  float narrow_numerator = 3;
+  float narrow_denominator = 4;
+}

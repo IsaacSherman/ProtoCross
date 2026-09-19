@@ -11,7 +11,7 @@
 // now the language's own requirement (spec 13.1), so the workaround is gone and the fixtures below
 // are free to leave a field out -- presence.pcross is where that is covered on purpose.
 
-import proto "conformance.proto";
+import proto "well_known.proto";
 
 extend WellKnownCase {
     fn ends_at_seconds() -> int64 {

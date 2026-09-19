@@ -30,10 +30,10 @@ internal static class ConformanceVectors
     /// them in one run per language.
     /// </summary>
     /// <remarks>
-    /// Nearly every vector shares <c>conformance.proto</c>. One about a package cannot, because a
-    /// package belongs to a file, so the corpus has more than one schema. Generating whatever is in
-    /// the directory rather than a list kept here means a schema is added the way a vector is: by
-    /// dropping the file in.
+    /// Each vector owns a schema named after it. A shared one collected every new vector at its end, so
+    /// two branches adding vectors in parallel always conflicted there, however unrelated they were.
+    /// Generating whatever is in the directory rather than a list kept here means a schema is added the
+    /// way a vector is: by dropping the file in.
     /// </remarks>
     public static IReadOnlyList<string> SchemaFileNames { get; } =
         Directory.GetFiles(ProtoDirectory, "*.proto")

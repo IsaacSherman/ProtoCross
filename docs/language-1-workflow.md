@@ -28,6 +28,12 @@ Issue pull requests use the sprint branch as their base, never `main`:
 gh pr create --draft --base sprints/language-1-1 --title "..." --body-file pr-body.md
 ```
 
+They land one at a time. A ruleset on `sprints/**` requires a pull request, the CI checks, and a
+branch that is up to date with the sprint tip, so everything reaches the sprint branch the same way,
+including fixes to the sprint branch itself. When the tip moves, rebase onto it and let CI run again;
+never merge the sprint branch in. The rules for side sessions, and the reasons for all of this, are
+in [CLAUDE.md](../CLAUDE.md).
+
 ### The comments are part of the issue
 
 The owner settles design questions **in comments on the issue being decided**, and many of those

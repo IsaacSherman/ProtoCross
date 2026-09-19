@@ -8,7 +8,7 @@
 // instance reads through. So a method may be called what the extension is called, and what this
 // pins is that both backends build that method and call it.
 
-import proto "conformance.proto";
+import proto "extension_scope.proto";
 
 extend ExtensionScopeCase {
     fn extension_scope_tag() -> int64 {

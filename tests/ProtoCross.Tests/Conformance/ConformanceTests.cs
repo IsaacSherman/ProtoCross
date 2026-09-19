@@ -72,7 +72,7 @@ public class ConformanceVectorTests
             Assert.False(
                 others.Contains(receiver),
                 $"'{name}' extends '{receiver}', which another vector also extends. Give each vector "
-                + "its own message in conformance.proto.");
+                + "its own message, in its own schema.");
         }
     }
 

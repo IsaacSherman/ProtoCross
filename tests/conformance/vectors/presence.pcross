@@ -10,7 +10,7 @@
 // pin is that the three presence kinds a proto3 schema can carry are genuinely different, and that
 // each guard shape means what it says in both targets.
 
-import proto "conformance.proto";
+import proto "presence.proto";
 
 extend PresenceCase {
     // The plain guard. Without the 'if', the read is a compile error.

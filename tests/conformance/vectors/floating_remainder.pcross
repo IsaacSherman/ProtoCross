@@ -10,7 +10,7 @@
 // zero are checked through the properties that identify them: a NaN is unequal to itself, and a zero
 // is negative when dividing by it yields a negative infinity.
 
-import proto "conformance.proto";
+import proto "floating_remainder.proto";
 
 extend RemainderCase {
     fn remainder() -> double {

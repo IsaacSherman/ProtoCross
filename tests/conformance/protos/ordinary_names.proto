@@ -1,0 +1,8 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// ordinary_names.pcross -- names that are ProtoCross identifiers but target-language keywords.
+message OrdinaryNameCase {
+  int64 factor = 1;
+}

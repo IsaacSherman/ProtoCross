@@ -10,9 +10,8 @@ to agree with it.
 
 ```text
 tests/conformance/
-  protos/conformance.proto     the schema every vector shares, bar one
-  protos/keyword_package.proto the one: its subject is a package, which belongs to a file
-  vectors/*.pcross          the vectors themselves
+  protos/<vector>.proto        each vector's schema, named after it
+  vectors/*.pcross             the vectors themselves
   vectors/<policy>/            vectors compiled under a non-default language policy
     protocross.config.xml       what makes them non-default
     *.pcross
@@ -45,12 +44,14 @@ serialization format of their own.
 
 ## Adding a vector
 
-1. Add a message for it to `protos/conformance.proto`. **Give it a message of its own.** Every
+1. Add a schema for it to `protos/`, named after the vector (`foo.proto` for `foo.pcross`), in
+   `package protocross.conformance` unless the package is the subject. Every schema there is
+   generated and linked, so dropping the file in is enough. **Give it a message of its own.** Every
    vector is compiled into a single C# assembly, and the C# backend names its extension class after
    the receiver, so two vectors extending the same message would emit that class twice.
-   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this. A vector about something
-   a file owns, such as its package, needs a `.proto` of its own instead; every schema in `protos/`
-   is generated and linked, so dropping the file in is enough.
+   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this. A schema per vector, rather
+   than one they all share, is what lets two branches add vectors at once without meeting at the end
+   of the same file.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
 3. Run `dotnet test ProtoCross.slnx`.

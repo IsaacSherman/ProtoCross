@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// control_flow.pcross -- if / else if / else, while, break, continue, for-in (spec 15).
+message ControlFlowCase {
+  repeated int64 values = 1;
+  int64 threshold = 2;
+}
