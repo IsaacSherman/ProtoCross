@@ -194,6 +194,14 @@ public static class NameConventions
     /// connects it back to this compiler. The rule and both lists are the same in the sources of
     /// protoc 31.1 and 33.4, and were checked against the header 33.4 generates.
     /// </para>
+    /// <para>
+    /// It is a version's rule, not protobuf's forever. protoc 21.x escaped keywords only, from a list
+    /// without <c>assert</c>, <c>char8_t</c> or <c>constinit</c>, and no generated members. For most of
+    /// the names the two disagree on, that older header does not compile on its own, since the field
+    /// collides with a member or a macro. The exception is <c>char8_t</c> and <c>constinit</c> under
+    /// C++17, where they are not keywords, so a header from protoc 21.x or earlier needs a C++20
+    /// build, as the generated scaffold already uses, to pair with this spelling.
+    /// </para>
     /// </remarks>
     public static string GetCppFieldName(FieldDescriptor field)
     {
