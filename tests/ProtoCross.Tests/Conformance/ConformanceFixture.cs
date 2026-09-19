@@ -98,7 +98,7 @@ public sealed class ConformanceFixture
         workspace.Write(files);
 
         var generated = workspace.GenerateProtobuf(
-            protoc, ConformanceVectors.ProtoDirectory, ConformanceVectors.SchemaFileName);
+            protoc, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
 
         if (generated.ExitCode != 0)
         {
@@ -167,7 +167,7 @@ public sealed class ConformanceFixture
         workspace.Write(files);
 
         var generated = workspace.GenerateProtobuf(
-            protobuf.ProtocPath!, ConformanceVectors.ProtoDirectory, ConformanceVectors.SchemaFileName);
+            protobuf.ProtocPath!, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
 
         if (generated.ExitCode != 0)
         {
@@ -176,7 +176,7 @@ public sealed class ConformanceFixture
         }
 
         var drivers = modules.Select(entry => entry.Vector.Name + ".tests.cc").ToList();
-        var programs = workspace.BuildAndRun(compiler, protobuf, drivers, ["conformance.pb.cc"]);
+        var programs = workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources);
 
         var results = new List<ConformanceResult>();
         var output = new List<string>();

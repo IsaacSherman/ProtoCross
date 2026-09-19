@@ -10,7 +10,8 @@ to agree with it.
 
 ```text
 tests/conformance/
-  protos/conformance.proto     one schema, shared by every vector
+  protos/conformance.proto     the schema every vector shares, bar one
+  protos/keyword_package.proto the one: its subject is a package, which belongs to a file
   vectors/*.pcross          the vectors themselves
   vectors/<policy>/            vectors compiled under a non-default language policy
     protocross.config.xml       what makes them non-default
@@ -47,7 +48,9 @@ serialization format of their own.
 1. Add a message for it to `protos/conformance.proto`. **Give it a message of its own.** Every
    vector is compiled into a single C# assembly, and the C# backend names its extension class after
    the receiver, so two vectors extending the same message would emit that class twice.
-   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this.
+   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this. A vector about something
+   a file owns, such as its package, needs a `.proto` of its own instead; every schema in `protos/`
+   is generated and linked, so dropping the file in is enough.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
 3. Run `dotnet test ProtoCross.slnx`.
@@ -102,6 +105,8 @@ failing. A fully equipped machine should report no skips.
 | `whimsy_math` | A larger end-to-end fixture with repeated protobuf objects, method calls, arguments, mixed numeric widths, explicit casts, unsigned wrapping, float/double math, strings, booleans, and compound control flow |
 | `presence` | `has` over the three presence kinds a proto3 schema can carry, every guard shape, and the cases that separate explicit presence from a comparison against the default (spec 8.4, 13.1) |
 | `keyword_fields` | Fields whose names C++ cannot use as they stand -- keywords, a capitalized keyword, a macro, and a generated member's name -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.2) |
+| `keyword_types` | Messages, enums, and enum values whose names C++ cannot use as they stand -- a keyword, a generated member's name, a nested type under an escaped parent, and keyword and macro values of a top-level and a nested enum -- as receivers, locals, parameters, returns, and fixture values (spec 24.2) |
+| `keyword_package` | A package whose components are C++ keywords: the namespace the generated functions live in, a call between them, and a message and an enum value qualified with it (spec 24.2) |
 | `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
 | `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and `MIN % -1` does not (spec 10.1, 10.4) |
 | `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width (spec 10.1, 10.4) |

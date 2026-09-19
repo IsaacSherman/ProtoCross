@@ -683,11 +683,69 @@ public class NameMappingTests
         }
     }
 
-    /// <summary>
-    /// The declarations of one generated class, so a getter one message declares cannot answer for
-    /// another: both messages here have a field called <c>descriptor</c>, spelled differently.
-    /// </summary>
-    private static string ClassBody(string header, string className)
+    /// <summary>The protoc header for <see cref="AwkwardFieldSchema"/>, and the messages it declares.</summary>
+    private static (IReadOnlyList<MessageDescriptor> Messages, string Header) GenerateCppHeader()
+    {
+        var (schema, header) = GenerateCppHeader(AwkwardFieldSchemaName, AwkwardFieldSchema);
+        return ([.. schema.MessageTypes], header);
+    }
+    /// <summary>The protoc header for <paramref name="schemaText"/>, and the file it describes.</summary>
+    /// <remarks>
+    /// A property existing is not enough, because a wrong answer can be another field's right one:
+    /// <c>not_like</c> misread as a group is <c>MyGroup</c>, which <c>mygroup</c> declares. protoc
+    /// also names each field's number constant after its property, so that constant is what ties a
+    /// name to the field it belongs to.
+    /// </remarks>
+    private static (FileDescriptor Schema, string Header) GenerateCppHeader(string schemaName, string schemaText)
+    {
+          /* Might be the proper body, might be the old body; arose during a merge conflict and resolution is unclear
+        var directory = TestPaths.CreateTempDirectory();
+        File.WriteAllText(Path.Combine(directory, schemaName), schemaText);
+
+        var generated = Toolchain.RunProtoc(protoc, "cpp_out", directory, directory, schemaName);
+        Assert.True(generated.ExitCode == 0, $"protoc could not generate C++.{Environment.NewLine}{generated.Output}");
+
+        var schema = new DescriptorLoader(protoc)
+            .LoadBundle([schemaName], [directory])
+            .Descriptors.Single(file => file.Name == schemaName);
+
+        var header = File.ReadAllText(Path.Combine(directory, NameConventions.GetCppProtoHeader(schema)));
+        return (schema, header.ReplaceLineEndings("\n"));
+      */
+        var (messages, source) = GenerateWithPinnedProtoc(
+            AwkwardPropertySchemaName,
+            AwkwardPropertySchema,
+            "csharp_out",
+            "AwkwardProperties.cs");
+
+        Assert.NotEmpty(messages);
+        foreach (var message in messages)
+        {
+            var declarations = CSharpClassBody(source, message.Name);
+            foreach (var field in message.Fields.InDeclarationOrder())
+            {
+                var property = NameConventions.GetCSharpPropertyName(field);
+                Assert.True(
+                    DeclaresInstanceProperty(declarations, property),
+                    $"protoc declares no property '{property}' on {message.Name} for the field '{field.Name}'");
+
+                var numberConstant = $"public const int {property}FieldNumber = {field.FieldNumber};";
+                Assert.True(
+                    declarations.Contains(numberConstant, StringComparison.Ordinal),
+                    $"protoc declares no '{numberConstant}' on {message.Name}, so '{property}' is not the "
+                    + $"property of the field '{field.Name}'");
+
+                if (field.HasPresence && field.FieldType is not (FieldType.Message or FieldType.Group))
+                {
+                    Assert.True(
+                        DeclaresInstanceProperty(declarations, "Has" + property),
+                        $"protoc declares no 'Has{property}' on {message.Name} for the field '{field.Name}'");
+                }
+            }
+        }
+    }
+  
+      private static string ClassBody(string header, string className)
     {
         var start = header.IndexOf($"class {className} final", StringComparison.Ordinal);
         Assert.True(start >= 0, $"the generated header has no class {className}");
@@ -695,6 +753,12 @@ public class NameMappingTests
         var end = header.IndexOf("\n};", start, StringComparison.Ordinal);
         return header[start..end];
     }
+  
+
+    /// <summary>
+    /// The declarations of one generated class, so a getter one message declares cannot answer for
+    /// another: both messages here have a field called <c>descriptor</c>, spelled differently.
+    /// </summary>
 
     // --- C# properties ---
     //
@@ -770,54 +834,57 @@ public class NameMappingTests
         }
         """;
 
-    /// <summary>
-    /// Every property <see cref="NameConventions.GetCSharpPropertyName"/> names is the one protoc
-    /// declared for that field, and so is the presence test spelled from it, for a schema of the names
-    /// its rule treats differently: the message's own name in and out of case, every member on
-    /// protoc's list and one inherited member that is not, digits and underscores in each position,
-    /// and delimited fields with and without the shape of a group.
-    /// </summary>
-    /// <remarks>
-    /// A property existing is not enough, because a wrong answer can be another field's right one:
-    /// <c>not_like</c> misread as a group is <c>MyGroup</c>, which <c>mygroup</c> declares. protoc
-    /// also names each field's number constant after its property, so that constant is what ties a
-    /// name to the field it belongs to.
-    /// </remarks>
-    [Fact]
-    public void EveryCSharpPropertyNameIsTheOneTheProtocClassDeclaresForThatField()
+/// <summary>
+/// Every property <see cref="NameConventions.GetCSharpPropertyName"/> names is the one protoc
+/// declared for that field, and so is the presence test spelled from it, for a schema of the names
+/// its rule treats differently: the message's own name in and out of case, every member on
+/// protoc's list and one inherited member that is not, digits and underscores in each position,
+/// and delimited fields with and without the shape of a group.
+/// </summary>
+/// <remarks>
+/// A property existing is not enough, because a wrong answer can be another field's right one:
+/// <c>not_like</c> misread as a group is <c>MyGroup</c>, which <c>mygroup</c> declares. protoc
+/// also names each field's number constant after its property, so that constant is what ties a
+/// name to the field it belongs to.
+/// </remarks>
+[Fact]
+public void EveryCSharpPropertyNameIsTheOneTheProtocClassDeclaresForThatField()
+{
+    var (messages, source) = GenerateWithPinnedProtoc(
+        AwkwardPropertySchemaName,
+        AwkwardPropertySchema,
+        "csharp_out",
+        "AwkwardProperties.cs");
+
+    Assert.NotEmpty(messages);
+    foreach (var message in messages)
     {
-        var (messages, source) = GenerateWithPinnedProtoc(
-            AwkwardPropertySchemaName,
-            AwkwardPropertySchema,
-            "csharp_out",
-            "AwkwardProperties.cs");
-
-        Assert.NotEmpty(messages);
-        foreach (var message in messages)
+        var declarations = CSharpClassBody(source, message.Name);
+        foreach (var field in message.Fields.InDeclarationOrder())
         {
-            var declarations = CSharpClassBody(source, message.Name);
-            foreach (var field in message.Fields.InDeclarationOrder())
+            var property = NameConventions.GetCSharpPropertyName(field);
+            Assert.True(
+                DeclaresInstanceProperty(declarations, property),
+                $"protoc declares no property '{property}' on {message.Name} for the field '{field.Name}'");
+
+            var numberConstant = $"public const int {property}FieldNumber = {field.FieldNumber};";
+            Assert.True(
+                declarations.Contains(numberConstant, StringComparison.Ordinal),
+                $"protoc declares no '{numberConstant}' on {message.Name}, so '{property}' is not the "
+                + $"property of the field '{field.Name}'");
+
+            if (field.HasPresence && field.FieldType is not (FieldType.Message or FieldType.Group))
             {
-                var property = NameConventions.GetCSharpPropertyName(field);
                 Assert.True(
-                    DeclaresInstanceProperty(declarations, property),
-                    $"protoc declares no property '{property}' on {message.Name} for the field '{field.Name}'");
-
-                var numberConstant = $"public const int {property}FieldNumber = {field.FieldNumber};";
-                Assert.True(
-                    declarations.Contains(numberConstant, StringComparison.Ordinal),
-                    $"protoc declares no '{numberConstant}' on {message.Name}, so '{property}' is not the "
-                    + $"property of the field '{field.Name}'");
-
-                if (field.HasPresence && field.FieldType is not (FieldType.Message or FieldType.Group))
-                {
-                    Assert.True(
-                        DeclaresInstanceProperty(declarations, "Has" + property),
-                        $"protoc declares no 'Has{property}' on {message.Name} for the field '{field.Name}'");
-                }
+                    DeclaresInstanceProperty(declarations, "Has" + property),
+                    $"protoc declares no 'Has{property}' on {message.Name} for the field '{field.Name}'");
             }
         }
     }
+}
+
+
+
 
     /// <summary>
     /// The members one generated class declares ahead of its nested types, so a property one message
@@ -956,4 +1023,153 @@ public class NameMappingTests
         var descriptors = new DescriptorLoader(protoc).LoadBundle(names, [directory]).Descriptors;
         return ([.. names.Select(name => descriptors.Single(descriptor => descriptor.Name == name))], directory);
     }
+
+    // --- C++ type, enum value, and namespace names ---
+    //
+    // protoc's C++ generator escapes a type's flattened name against the keywords and the members a
+    // generated message declares, each enum value against the keywords, and each package component
+    // the same way. keyword_types.pcross and keyword_package.pcross run that end to end, but a
+    // vector has to compile in C# too, and a nested message called MergeFrom does not: C# forbids a
+    // member named after its enclosing class. So the whole of each rule is checked here, against
+    // the header protoc writes.
+
+    private const string AwkwardTypeSchemaName = "awkward_types.proto";
+
+    private const string AwkwardTypeSchema = """
+        syntax = "proto3";
+
+        // A keyword, a macro, and a generated member's name, which is escaped as a class and not as
+        // a package.
+        package awkward.new.NULL.Swap;
+
+        message GetDescriptor {}
+        message GetReflection {}
+        message default_instance {}
+        message Swap {}
+        message UnsafeArenaSwap {}
+        message CopyFrom {}
+        message MergeFrom {}
+        message IsInitialized {}
+        message GetMetadata {}
+        message union {}
+
+        message New {
+          message Inner {}
+          message MergeFrom {}
+
+          enum Kind {
+            class = 0;
+            KIND_PLAIN = 1;
+          }
+        }
+
+        message Plain {
+          message Clear {}
+        }
+
+        message thread {
+          message local {}
+        }
+
+        message wchar {
+          enum t {
+            T_ZERO = 0;
+          }
+        }
+
+        enum Clear {
+          new = 0;
+          delete = 1;
+          NULL = 2;
+          assert = 3;
+          not_eq = 4;
+          PLAIN = 5;
+        }
+
+        enum friend {
+          FRIEND_ZERO = 0;
+        }
+        """;
+
+    /// <summary>
+    /// Every class name <see cref="NameConventions.GetCppTypeName(MessageDescriptor)"/> gives, and
+    /// every enum name <see cref="NameConventions.GetCppTypeName(EnumDescriptor)"/> gives, is one the
+    /// protoc header declares, for a schema of every generated member a class could collide with, a
+    /// keyword, a nested type under an escaped parent, nested names that collide only once flattened
+    /// and nested names that stop colliding once flattened.
+    /// </summary>
+    [Fact]
+    public void EveryCppTypeNameIsAClassOrEnumTheProtocHeaderDeclares()
+    {
+        var (schema, header) = GenerateCppHeader(AwkwardTypeSchemaName, AwkwardTypeSchema);
+
+        var messages = AllMessages(schema).ToList();
+        Assert.NotEmpty(messages);
+        foreach (var message in messages)
+        {
+            var declaration = $"\nclass {NameConventions.GetCppTypeName(message)} final ";
+            Assert.True(
+                header.Contains(declaration, StringComparison.Ordinal),
+                $"protoc declares no '{declaration.Trim()}' for the message '{message.FullName}'");
+        }
+
+        var enums = AllEnums(schema).ToList();
+        Assert.NotEmpty(enums);
+        foreach (var enumType in enums)
+        {
+            var declaration = $"\nenum {NameConventions.GetCppTypeName(enumType)} : int {{";
+            Assert.True(
+                header.Contains(declaration, StringComparison.Ordinal),
+                $"protoc declares no '{declaration.Trim()}' for the enum '{enumType.FullName}'");
+        }
+    }
+
+    /// <summary>
+    /// Every enum value name <see cref="NameConventions.GetCppValueName"/> gives is a constant the
+    /// protoc header defines at namespace scope, with that value's number: keywords, a macro and an
+    /// alternative token in a top-level enum, and a keyword in an enum nested under an escaped class.
+    /// </summary>
+    [Fact]
+    public void EveryCppValueNameIsAConstantTheProtocHeaderDefines()
+    {
+        var (schema, header) = GenerateCppHeader(AwkwardTypeSchemaName, AwkwardTypeSchema);
+
+        var values = AllEnums(schema).SelectMany(enumType => enumType.Values).ToList();
+        Assert.NotEmpty(values);
+        foreach (var value in values)
+        {
+            var definition = $"\n  {NameConventions.GetCppValueName(value)} = {value.Number},\n";
+            Assert.True(
+                header.Contains(definition, StringComparison.Ordinal),
+                $"protoc defines no '{definition.Trim()}' for the value '{value.FullName}'");
+        }
+    }
+
+    /// <summary>
+    /// The namespace <see cref="NameConventions.GetCppNamespace"/> gives is the one the protoc header
+    /// opens, one component at a time: a keyword and a macro escaped, and a generated member's name,
+    /// which a class would have escaped, left alone.
+    /// </summary>
+    [Fact]
+    public void TheCppNamespaceIsTheOneTheProtocHeaderOpens()
+    {
+        var (schema, header) = GenerateCppHeader(AwkwardTypeSchemaName, AwkwardTypeSchema);
+
+        var opening = string.Concat(
+            NameConventions.GetCppNamespace(schema).Split("::").Select(component => $"namespace {component} {{\n"));
+        Assert.True(
+            header.Contains(opening, StringComparison.Ordinal),
+            $"protoc does not open the namespaces{Environment.NewLine}{opening}for the package '{schema.Package}'");
+    }
+
+    /// <summary>Every message the file declares, nested ones included.</summary>
+    private static IEnumerable<MessageDescriptor> AllMessages(FileDescriptor schema)
+        => schema.MessageTypes.SelectMany(WithNested);
+
+    /// <summary>Every enum the file declares, top-level and nested.</summary>
+    private static IEnumerable<EnumDescriptor> AllEnums(FileDescriptor schema)
+        => schema.EnumTypes.Concat(AllMessages(schema).SelectMany(message => message.EnumTypes));
+
+    private static IEnumerable<MessageDescriptor> WithNested(MessageDescriptor message)
+        => message.NestedTypes.SelectMany(WithNested).Prepend(message);
 }

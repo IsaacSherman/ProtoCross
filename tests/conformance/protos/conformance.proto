@@ -5,7 +5,9 @@ package protocross.conformance;
 // Schema for the ProtoCross conformance vectors (spec 25.2).
 //
 // Every vector file shares this one schema so protoc runs once per language and the C++ link
-// reuses a single conformance.pb object file. Each vector gets its OWN message: the C# backend
+// reuses a single conformance.pb object file. The exception is keyword_package.pcross, whose
+// subject is a package and so a file: keyword_package.proto is generated and linked alongside this
+// one. Each vector gets its OWN message: the C# backend
 // names its extension class after the receiver, so two vector files extending the same message
 // would emit duplicate class declarations into the one assembly the C# vectors are built as.
 
@@ -220,6 +222,42 @@ message KeywordFieldInner {
   int64 this = 1;
 }
 
+// keyword_types.pcross -- messages, enums, and enum values whose names C++ cannot use as they stand
+// (spec 24.2).
+//
+// protoc's C++ generator appends an underscore to a message's or a top-level enum's flattened name
+// when it is a C++ keyword or the name of a member every generated message declares, so New is the
+// class New_ and Swap the enum Swap_. A nested type is named after its already-escaped parent, which
+// makes New.Inner the class New__Inner. Enum values are escaped one at a time, before any prefix:
+// Swap's new is new_ at namespace scope, and New.Kind's class is New__Kind_class_. protoc's C#
+// generator keeps every one of these names, which is what lets the same schema check both sides.
+message New {
+  enum Kind {
+    class = 0;
+    KIND_PLAIN = 1;
+  }
+
+  message Inner {
+    int64 value = 1;
+  }
+
+  Kind kind = 1;
+  Inner inner = 2;
+  Swap mode = 3;
+  union pair = 4;
+}
+
+// A top-level enum, escaped like a message. Its values live at namespace scope in C++, where new
+// and delete are keywords and NULL is a macro.
+enum Swap {
+  new = 0;
+  delete = 1;
+  NULL = 2;
+}
+
+// A keyword as the type's own name, rather than a generated member's.
+message union {
+  int64 value = 1;
 // property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
 //
 // protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an
