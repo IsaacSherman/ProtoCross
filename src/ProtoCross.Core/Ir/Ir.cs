@@ -7,7 +7,8 @@ namespace ProtoCross.Ir;
 
 /// <summary>
 /// The typed intermediate representation. Per spec 22.2 this preserves source locations, resolved
-/// protobuf type references, exact numeric operation kinds, and evaluation order. Backends consume only this; they never see the AST.
+/// protobuf type references, exact numeric operation kinds, and evaluation order. Backends consume
+/// only this; they never see the AST.
 /// </summary>
 public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrTest> Tests)
 {
