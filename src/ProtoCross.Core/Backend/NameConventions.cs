@@ -67,16 +67,15 @@ public static class NameConventions
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> by capitalizing the first letter and every
     /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>. The C#
-    /// backend names methods and extension classes with it, and <see cref="GetCSharpNamespace"/> the
-    /// segments of a package.
+    /// backend names methods and extension classes with it.
     /// </summary>
     /// <remarks>
     /// Close to protoc's C# rule, and not it: <see cref="UnderscoresToPascalCase"/> also capitalizes a
-    /// letter after a digit and keeps an underscore before a leading digit. A field's property has to
-    /// be exactly the one protoc declared, so it is named by <see cref="GetCSharpPropertyName"/>
-    /// instead. A method name only has to agree with itself, and moving this rule would rename methods
-    /// that callers already compile against. A package segment has no such freedom, and spec 21.2
-    /// records where the two rules part.
+    /// letter after a digit and keeps an underscore before a leading digit. A field's property and a
+    /// file's namespace have to be exactly the ones protoc declared, so they are named by
+    /// <see cref="GetCSharpPropertyName"/> and <see cref="GetCSharpNamespace"/> instead. A method name
+    /// only has to agree with itself, and moving this rule would rename methods that callers already
+    /// compile against.
     /// </remarks>
     public static string ToPascalCase(string name)
     {
@@ -99,24 +98,37 @@ public static class NameConventions
     }
 
     /// <summary>
-    /// The C# namespace protoc would use for a file: the explicit <c>csharp_namespace</c> option
-    /// when present, otherwise the PascalCased protobuf package.
+    /// The C# namespace protoc declares a file's classes in: the file's <c>csharp_namespace</c> option
+    /// when it sets one, and otherwise its protobuf package PascalCased, so <c>acme.v1beta1</c> is
+    /// <c>Acme.V1Beta1</c>. Empty for the global namespace.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A port of <c>GetFileNamespace</c> in protoc's <c>compiler/csharp/names.cc</c>. The package is
+    /// converted by <see cref="UnderscoresToPascalCase"/> in one pass with its periods kept, not a
+    /// component at a time, and the difference shows in the underscore protoc keeps in front of a
+    /// leading digit: it keeps one at the start of the package and nowhere else. So <c>_1x.acme</c>
+    /// is <c>_1X.Acme</c>, and <c>acme._1x</c> is <c>Acme.1X</c>. That is not a C# identifier, and
+    /// protoc's own output for the package does not compile, but it is the namespace protoc declares,
+    /// and no other spelling names a class that exists. <see cref="ToPascalCase"/>, the simpler rule
+    /// that names methods, is not close enough either: it leaves a letter after a digit alone, and
+    /// <c>Acme.V1beta1</c> is not protoc's namespace.
+    /// </para>
+    /// <para>
+    /// The option wins whenever the file sets it, even to nothing, which is how a schema with a
+    /// package puts its classes in the global namespace. So the question is whether it was set, not
+    /// whether it says anything.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than approximated, as <see cref="GetCSharpPropertyName"/> is and for the same
+    /// reason. The rule is the same in the sources of protoc 31.1 and 33.4, and both declare the same
+    /// namespace for every case described here.
+    /// </para>
+    /// </remarks>
     public static string GetCSharpNamespace(FileDescriptor file)
-    {
-        var explicitNamespace = file.GetOptions()?.CsharpNamespace;
-        if (!string.IsNullOrEmpty(explicitNamespace))
-        {
-            return explicitNamespace;
-        }
-
-        if (string.IsNullOrEmpty(file.Package))
-        {
-            return string.Empty;
-        }
-
-        return string.Join('.', file.Package.Split('.').Select(ToPascalCase));
-    }
+        => file.GetOptions() is { HasCsharpNamespace: true } options
+            ? options.CsharpNamespace
+            : UnderscoresToPascalCase(file.Package, preservePeriod: true);
 
     /// <summary>
     /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>.
@@ -361,17 +373,21 @@ public static class NameConventions
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> the way protoc's C# generator does: a
     /// letter at the start, after a separator or after a digit is capitalized, every other letter and
-    /// digit is kept as it is, and anything else is dropped. A port of <c>UnderscoresToPascalCase</c>
-    /// in the generator's <c>names.cc</c>.
+    /// digit is kept as it is, and anything else is dropped, except a period when
+    /// <paramref name="preservePeriod"/> asks for it to be kept. A port of <c>UnderscoresToCamelCase</c>
+    /// in the generator's <c>names.cc</c>, called as its <c>UnderscoresToPascalCase</c> calls it for a
+    /// field and as its <c>GetFileNamespace</c> does, with periods kept, for a package.
     /// </summary>
     /// <remarks>
     /// It differs from <see cref="ToPascalCase"/> in the two places that decide whether a property
     /// exists. A letter after a digit is capitalized, so <c>field1a</c> is <c>Field1A</c>, and an
     /// underscore standing before a leading digit is kept, so <c>_1st</c> is <c>_1St</c> rather than
-    /// <c>1St</c>, which is not an identifier. protoc's rule has one more clause, an underscore for a
-    /// name ending in <c>#</c>, which is left out because no field name can contain one.
+    /// <c>1St</c>, which is not an identifier. That underscore is decided once, for the whole name, so
+    /// a package keeps it only in front of its first component. protoc's rule has one more clause, an
+    /// underscore for a name ending in <c>#</c>, which is left out because no field name or package can
+    /// contain one.
     /// </remarks>
-    private static string UnderscoresToPascalCase(string name)
+    private static string UnderscoresToPascalCase(string name, bool preservePeriod = false)
     {
         var builder = new StringBuilder(name.Length + 1);
         var capitalizeNext = true;
@@ -390,6 +406,11 @@ public static class NameConventions
             }
             else
             {
+                if (c == '.' && preservePeriod)
+                {
+                    builder.Append(c);
+                }
+
                 capitalizeNext = true;
             }
         }

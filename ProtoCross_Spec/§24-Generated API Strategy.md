@@ -40,6 +40,20 @@ Keywords need nothing, because every C# keyword is lowercase and a PascalCased n
 `class` is `Class`. The rule is protoc's `GetPropertyName`, reproduced rather than approximated for
 the same reason as the C++ rule in [24.2](#242-c), and it is the same in protoc 31.1 and 33.4.
 
+**The namespace is the one protoc declares for the file.** Each extension class is declared in the
+namespace protoc's C# generator declares its receiver's file in, and every message and enum is
+qualified with it. That namespace is the file's `csharp_namespace` option whenever the file sets it,
+even to the empty string, which is the global namespace. Otherwise it is the file's package,
+converted by the same rule as a field name but in one pass over the whole package, with each period
+kept and starting a new word: `acme.v1beta1` is `Acme.V1Beta1`, `snake_case.pkg` is `SnakeCase.Pkg`,
+and a file with no package is in the global namespace. The underscore kept in front of a leading
+digit is therefore kept only at the start of the package, so `_1x.acme` is `_1X.Acme` and `acme._1x`
+is `Acme.1X`. That last is not a C# namespace, and protoc's own output for such a package does not
+compile, but it is what protoc names, and no other spelling would name a namespace its classes are
+declared in. Method names and extension classes are not converted this way: their rule only has to
+agree with itself. The namespace rule is protoc's `GetFileNamespace`, and it is the same in protoc
+31.1 and 33.4.
+
 This choice may need revisiting if mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, since extension methods cannot access
 anything the public surface does not already expose.
 
