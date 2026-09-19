@@ -363,7 +363,7 @@ public sealed class Binder
             return;
         }
 
-        if (receiver.FindFieldByName(method.Name.Text) is not null)
+        if (MessageFields.Named(receiver, method.Name.Text) is not null)
         {
             _diagnostics.Error(
                 "PC0023",
@@ -686,7 +686,7 @@ public sealed class Binder
                 continue;
             }
 
-            var descriptorField = descriptor.FindFieldByName(field.FieldName.Text);
+            var descriptorField = MessageFields.Named(descriptor, field.FieldName.Text);
             if (descriptorField is null)
             {
                 _diagnostics.Error(
@@ -1579,7 +1579,7 @@ public sealed class Binder
         if (context.AllowImplicitReceiverFields)
         {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            var field = context.Receiver.FindFieldByName(name.Name.Text);
+            var field = MessageFields.Named(context.Receiver, name.Name.Text);
             if (field is not null)
             {
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
@@ -1836,7 +1836,7 @@ public sealed class Binder
     private static bool IsValueName(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is not null
         || scope.LookupParameter(name) is not null
-        || (context.AllowImplicitReceiverFields && context.Receiver.FindFieldByName(name) is not null);
+        || (context.AllowImplicitReceiverFields && MessageFields.Named(context.Receiver, name) is not null);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -1880,7 +1880,7 @@ public sealed class Binder
             return new IrLiteral(null, ErrorType.Instance, member.Span);
         }
 
-        var field = messageType.Descriptor.FindFieldByName(member.Name.Text);
+        var field = MessageFields.Named(messageType.Descriptor, member.Name.Text);
         if (field is not null)
         {
             Use(SymbolId.ForField(field), member.Name.Span);
@@ -2097,7 +2097,7 @@ public sealed class Binder
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
                 receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
-                field = context.Receiver.FindFieldByName(bare.Name.Text);
+                field = MessageFields.Named(context.Receiver, bare.Name.Text);
                 name = bare.Name.Text;
                 fieldNameSpan = bare.Name.Span;
                 break;
@@ -2122,7 +2122,7 @@ public sealed class Binder
                 }
 
                 receiver = target;
-                field = message.Descriptor.FindFieldByName(member.Name.Text);
+                field = MessageFields.Named(message.Descriptor, member.Name.Text);
                 name = member.Name.Text;
                 fieldNameSpan = member.Name.Span;
                 break;

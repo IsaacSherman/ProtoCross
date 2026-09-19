@@ -265,6 +265,35 @@ public class ScopeQueryTests
     }
 
     /// <summary>
+    /// An extension declared inside the receiver is not one of its fields, and the query and the
+    /// binder have to say so together. They did not: the query listed the receiver's fields, which
+    /// never included it, while the binder asked the descriptor pool by name and found it. The name
+    /// bound and was never offered, and neither sweep below could see that, because nothing in the
+    /// corpus declares an extension.
+    /// </summary>
+    [Fact]
+    public void AnExtensionDeclaredInTheReceiverIsNeitherOfferedNorBound()
+    {
+        const string source =
+            """
+            import proto "extensions.proto";
+
+            extend Host {
+                fn f() -> int64 {
+                    return scoped;
+                }
+            }
+            """;
+
+        var model = SemanticModel.For(Compile(source, TestPaths.FixtureProtoDirectory));
+        var offset = source.IndexOf("scoped;", StringComparison.Ordinal);
+
+        Assert.Contains("held", NamesAt(model, offset));
+        Assert.DoesNotContain("scoped", NamesAt(model, offset));
+        Assert.True(model.ReferenceAt(offset) is null, "a name that is not offered must not bind either");
+    }
+
+    /// <summary>
     /// A field whose presence has not been established is still offered. PC0078 is reported on a
     /// name that resolved, and the way out of it is to write that name inside a guard -- so
     /// withholding it would hide the field from the author who has to guard it.
