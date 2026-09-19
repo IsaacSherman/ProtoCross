@@ -111,6 +111,11 @@ A test that cannot fail is worse than no test: it costs a run and buys confidenc
 - Semantic behavior belongs in the **conformance corpus**
   ([tests/conformance/vectors](tests/conformance/vectors)), where it is compiled and executed in both
   backends. Unit tests cover the layer above that.
+- **A new topic gets a new file, not the end of an old one.** Two branches that both append to the
+  same long class or schema collide at its last lines, however unrelated they are. Each conformance
+  vector owns a schema named after it (`floating_remainder.proto` for `floating_remainder.pcross`),
+  and a test class that has grown sections is split into `partial` files, one per section
+  (`NameMappingTests.CppTypes.cs`), so a new section is a new file.
 
 ## Keep the spec current
 
@@ -164,17 +169,55 @@ alternative rejected, and what did **not** move. Bullets only for a genuine list
 PR bodies follow the same voice with `## Why`, `## What`, `## Compatibility`, `## Tests` headings.
 Compatibility is not optional: say what stayed byte-for-byte identical and how that was checked.
 
-**Open every pull request as a draft, and mark it ready only once it merges cleanly into `main`.**
-Not a formality — it is what the CI triggers are built around. A draft is not tested, so a branch
-that still has conflicts costs nothing while it is being rebased; marking it ready is the event that
-asks for the full suite, both gated switches thrown. Reversing that order spends a run on a branch
-that cannot merge, and then spends another on the version that can.
+**Open every pull request as a draft, and mark it ready only once it merges cleanly into its base.**
+The base is `main` for a sprint, and the sprint branch an issue branch was cut from for everything
+else. Not a formality — it is what the CI triggers are built around. A draft is not tested, so a
+branch that still has conflicts costs nothing while it is being rebased; marking it ready is the
+event that asks for the full suite, both gated switches thrown. Reversing that order spends a run on
+a branch that cannot merge, and then spends another on the version that can.
 
-So the sequence is: open as draft, rebase onto `main` until `git merge-base --is-ancestor main HEAD`
-succeeds — the branch contains everything on `main`, so there is nothing left to conflict — run the
-suite locally, then mark ready. If a conflict appears after that, because someone else merged first,
-put it back into draft, resolve, and mark it ready again. The green check has to describe the code
-that is going to land, and a conflict resolved after the check means it no longer does.
+So the sequence is: open as draft, rebase onto the base until
+`git merge-base --is-ancestor <base> HEAD` succeeds — the branch contains everything on its base, so
+there is nothing left to conflict — run the suite locally, then mark ready. If a conflict appears
+after that, because someone else merged first, put it back into draft, resolve, and mark it ready
+again. The green check has to describe the code that is going to land, and a conflict resolved after
+the check means it no longer does.
+
+**Rebase onto the base; never merge the base into a branch.** A rebase replays each commit, so a
+conflict is resolved inside an ordinary commit that the pull request's diff shows. A merge buries the
+resolution in a merge commit nobody reads. That is how a sprint once shipped a test helper with
+another test's body in it, and a shared schema missing two closing braces: each was a conflict
+resolved inside a merge of the sprint branch into an issue branch, and each merged without anyone
+seeing it. Then run the suite, because a conflict resolved correctly line by line can still combine
+into something that does not build.
+
+**The sprint branch accepts only tested, up-to-date pull requests.** A ruleset on `sprints/**`
+requires a pull request, the CI checks, and a branch that is current with the sprint tip, and it
+refuses force pushes. So pull requests land one at a time: merging one makes the others stale, and
+each of those rebases and is tested again before it can follow. That applies to fixes made on the
+sprint branch itself as well — they go through a pull request like anything else.
+
+## Side sessions
+
+A side session is a task handed to a separate session, in its own worktree, so the current issue
+does not grow to include it. They are worth having, and they are also how parallel branches come to
+edit the same lines. These rules keep the first without the second.
+
+- **Only the session working the current issue starts one.** A side session that finds something
+  files an issue for it and says so in its pull request. It never starts a session of its own, so
+  there is always one place that knows everything in flight.
+- **Check for overlap first.** List the files the side session will touch, and compare them with the
+  current issue branch and with every open pull request into the sprint branch
+  (`gh pr list --base <sprint branch> --json number,files`). If they overlap, file an issue instead:
+  the work waits for its turn rather than racing another branch through the same lines.
+- **It branches from the sprint branch's tip, never from the branch that started it.** A branch cut
+  from another unmerged branch carries that branch's commits, so its pull request lands both — one
+  merge once closed three pull requests at once. Work that genuinely depends on something unmerged is
+  an issue, not a side session.
+- **It closes one issue, opens a draft pull request, and stops.** It never marks its own pull request
+  ready, never merges it, and rebases rather than merging when the base moves.
+- **The prompt that starts it says all of this**, together with the sprint branch to cut from and the
+  issue it closes. A side session reads CLAUDE.md, but it should not have to infer its own limits.
 
 ## Tooling notes
 
