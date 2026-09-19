@@ -20,20 +20,6 @@ namespace ProtoCross.Backend.Cpp;
 /// </remarks>
 public sealed class CppBackend : ITestProjectScaffold
 {
-    private static readonly HashSet<string> ReservedWords = new(StringComparer.Ordinal)
-    {
-        "alignas", "alignof", "and", "asm", "auto", "bitand", "bitor", "bool", "break", "case",
-        "catch", "char", "class", "compl", "concept", "const", "consteval", "constexpr", "continue",
-        "co_await", "co_return", "co_yield", "decltype", "default", "delete", "do", "double",
-        "dynamic_cast", "else", "enum", "explicit", "export", "extern", "false", "float", "for",
-        "friend", "goto", "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept",
-        "not", "nullptr", "operator", "or", "private", "protected", "public", "register",
-        "reinterpret_cast", "requires", "return", "short", "signed", "sizeof", "static",
-        "static_assert", "static_cast", "struct", "switch", "template", "this", "thread_local",
-        "throw", "true", "try", "typedef", "typeid", "typename", "union", "unsigned", "using",
-        "virtual", "void", "volatile", "wchar_t", "while", "xor",
-    };
-
     private const string ReceiverName = "self";
     private const string RuntimeNamespace = "::protocross_runtime";
 
@@ -432,16 +418,17 @@ public sealed class CppBackend : ITestProjectScaffold
         foreach (var value in message.Fields.OrderBy(v => v.Field.FieldNumber))
         {
             var field = value.Field;
+            var accessor = NameConventions.GetCppFieldName(field);
             if (value.MessageValue is not null)
             {
                 var local = names.Next(field.Name);
-                var mutator = field.IsRepeated ? $"add_{field.Name}" : $"mutable_{field.Name}";
+                var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
                 writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
                 EmitCppFixtureFields(writer, local, true, value.MessageValue, names);
                 continue;
             }
 
-            var setter = field.IsRepeated ? $"add_{field.Name}" : $"set_{field.Name}";
+            var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
             writer.WriteLine($"{target}{access}{setter}({Expression(value.ScalarValue!)});");
         }
     }
@@ -627,11 +614,12 @@ public sealed class CppBackend : ITestProjectScaffold
         IrThis => ReceiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver)}.{field.Field.Name}()",
+        IrFieldAccess field => $"{Expression(field.Receiver)}.{NameConventions.GetCppFieldName(field.Field)}()",
 
         // Uniform in C++, unlike C#: protoc emits has_x() for every field with presence,
         // message-typed or not.
-        IrFieldPresence presence => $"{Expression(presence.Receiver)}.has_{presence.Field.Name}()",
+        IrFieldPresence presence
+            => $"{Expression(presence.Receiver)}.has_{NameConventions.GetCppFieldName(presence.Field)}()",
         IrMethodCall call => EmitCall(call),
         IrBinary binary => EmitBinary(binary),
         IrIntegerDivision division => EmitIntegerDivision(division),
@@ -990,7 +978,7 @@ public sealed class CppBackend : ITestProjectScaffold
         _ => TypeName(type),
     };
 
-    private static string Escape(string name) => ReservedWords.Contains(name) ? name + "_" : name;
+    private static string Escape(string name) => NameConventions.EscapeCppKeyword(name);
 
     private static string UniqueTestFunctionName(IrTest test, HashSet<string> usedNames)
     {
@@ -1030,7 +1018,7 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         var identifier = builder.ToString().TrimEnd('_');
-        return ReservedWords.Contains(identifier) ? identifier + "_" : identifier;
+        return Escape(identifier);
     }
 
     private static string EscapeString(string value)

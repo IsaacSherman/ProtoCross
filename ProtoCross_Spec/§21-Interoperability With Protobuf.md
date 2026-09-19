@@ -96,6 +96,19 @@ The current implementation defines:
 - C++ behavior is emitted as header-only free functions in the protobuf namespace.
 - Target method names are mapped by the backend's protobuf naming convention helpers.
 - Namespace/package mapping follows the generated protobuf target's conventions.
+- Fields are read and written through the accessors the target's protobuf generator declares, spelled
+  as that generator spells them. A field name the target language cannot use as it stands, such as
+  `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
+  accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
+
+Implementation Note:
+
+- The C# backend PascalCases a field name into its property name. That matches protoc's C# generator
+  for a keyword such as `class`, which becomes `Class`, because a PascalCased name is never a C#
+  keyword. The backend does not yet reproduce three
+  renames that generator makes: a trailing underscore on a property that would collide with a
+  generated member (`descriptor` is `Descriptor_`) or with its own message's name, and a capital after
+  a digit (`field1a` is `Field1A`). A field reaching one of those emits C# that does not compile.
 
 Open Question:
 

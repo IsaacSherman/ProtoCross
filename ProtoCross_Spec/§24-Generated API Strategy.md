@@ -45,6 +45,24 @@ Const-correctness follows from the read-only method model: every receiver is `co
 message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be
 revisited along with the free-function shape.
 
+**Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
+C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,
+and the presence test and the setters a test fixture uses are `has_name()`, `set_name()`,
+`mutable_name()` and `add_name()`. That name is the field's name lowercased, with an underscore
+appended when the result is on protoc's list of C++ keywords and macros (`class`, `new`, `assert`) or
+names a nullary member every generated message declares (`descriptor`, `default_instance`,
+`unknown_fields`, `mutable_unknown_fields`). So a field `class` is read with `class_()` and written
+with `set_class_()`, since the prefix is added to the escaped name rather than restoring the bare one,
+and a field `Friend` is read with `friend_()`. The one exception is a message that sets
+`no_standard_descriptor_accessor`, which has no `descriptor()` of its own and keeps a field of that
+name bare.
+
+The rule is protoc's `FieldName`, reproduced rather than approximated, because any other spelling
+names an accessor that does not exist and fails in the consumer's build rather than in this compiler.
+It is the same in protoc 31.1 and 33.4. The backend escapes the names it chooses itself -- methods,
+parameters and locals -- against the same keyword list, so a name protoc will not use as an accessor
+is not used as an identifier either.
+
 Questions:
 
 - Should generated methods be added to message classes when insertion points are available?

@@ -11,6 +11,43 @@ namespace ProtoCross.Backend;
 public static class NameConventions
 {
     /// <summary>
+    /// Every name protoc's C++ generator will not use as it stands: the C++ keywords and alternative
+    /// tokens, plus <c>NULL</c> and <c>assert</c>, which are macros. <c>kKeywordList</c> in the
+    /// generator's <c>helpers.cc</c>, copied rather than rewritten from the standard.
+    /// </summary>
+    /// <remarks>
+    /// The list exists to agree with a header protoc generated: a field whose name is on it has
+    /// accessors with an underscore, and one whose name is not has none, whatever the standard says.
+    /// The C++ backend escapes its own identifiers against the same list, because a name protoc will
+    /// not use is no more usable as a method or a local. It used to keep a list of its own, and the
+    /// two had drifted -- that one was missing <c>const_cast</c>, <c>char8_t</c> and the alternative
+    /// tokens such as <c>not_eq</c>.
+    /// </remarks>
+    private static readonly HashSet<string> CppKeywords = new(StringComparer.Ordinal)
+    {
+        "NULL", "alignas", "alignof", "and", "and_eq", "asm", "assert", "auto", "bitand", "bitor",
+        "bool", "break", "case", "catch", "char", "class", "compl", "const", "constexpr",
+        "const_cast", "continue", "decltype", "default", "delete", "do", "double", "dynamic_cast",
+        "else", "enum", "explicit", "export", "extern", "false", "float", "for", "friend", "goto",
+        "if", "inline", "int", "long", "mutable", "namespace", "new", "noexcept", "not", "not_eq",
+        "nullptr", "operator", "or", "or_eq", "private", "protected", "public", "register",
+        "reinterpret_cast", "return", "short", "signed", "sizeof", "static", "static_assert",
+        "static_cast", "struct", "switch", "template", "this", "thread_local", "throw", "true",
+        "try", "typedef", "typeid", "typename", "union", "unsigned", "using", "virtual", "void",
+        "volatile", "wchar_t", "while", "xor", "xor_eq", "char8_t", "char16_t", "char32_t",
+        "concept", "consteval", "constinit", "co_await", "co_return", "co_yield", "requires",
+    };
+
+    /// <summary>
+    /// The nullary members every generated C++ message declares, which an accessor of the same name
+    /// could not overload. <c>MessageKnownNullaryMethodsSnakeCase</c> in protoc's <c>helpers.cc</c>.
+    /// </summary>
+    private static readonly HashSet<string> CppMessageNullaryMembers = new(StringComparer.Ordinal)
+    {
+        "unknown_fields", "mutable_unknown_fields", "descriptor", "default_instance",
+    };
+
+    /// <summary>
     /// Converts a protobuf <c>snake_case</c> name to <c>PascalCase</c>, matching the C# protobuf
     /// generator so <c>unit_price_cents</c> lines up with the generated <c>UnitPriceCents</c>.
     /// </summary>
@@ -131,6 +168,49 @@ public static class NameConventions
         => value.EnumDescriptor.ContainingType is null
             ? value.Name
             : GetCppTypeName(value.EnumDescriptor) + "_" + value.Name;
+
+    /// <summary>
+    /// The name protoc's C++ generator spells every accessor of a field from: the getter is
+    /// <c>name()</c>, and the rest are prefixes on the same name -- <c>has_name()</c>,
+    /// <c>set_name()</c>, <c>mutable_name()</c>, <c>add_name()</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A port of <c>FieldName</c> in protoc's <c>compiler/cpp/helpers.cc</c>. The name is lowercased,
+    /// then given a trailing underscore if the result is on <see cref="CppKeywords"/> or is one of
+    /// <see cref="CppMessageNullaryMembers"/>. A field called <c>class</c> is therefore read with
+    /// <c>class_()</c> and written with <c>set_class_()</c>, not <c>set_class()</c>: protoc prefixes the
+    /// escaped name, so a prefix that would have made the bare one legal does not bring it back.
+    /// </para>
+    /// <para>
+    /// The order is protoc's, and it shows. <c>Friend</c> lowercases onto a keyword and becomes
+    /// <c>friend_</c>; <c>NULL</c>, on the list only in capitals, lowercases off it and stays
+    /// <c>null</c>. The one exception is a message with <c>no_standard_descriptor_accessor</c> set,
+    /// which gives up its generated <c>descriptor()</c> and so leaves a field of that name alone.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than approximated, as <see cref="GetCSharpValueName"/> is and for the same
+    /// reason: a name that is nearly right is a compile error in the consumer's build, where nothing
+    /// connects it back to this compiler. The rule and both lists are the same in the sources of
+    /// protoc 31.1 and 33.4, and were checked against the header 33.4 generates.
+    /// </para>
+    /// </remarks>
+    public static string GetCppFieldName(FieldDescriptor field)
+    {
+        if (field.Name == "descriptor" && field.ContainingType.GetOptions()?.NoStandardDescriptorAccessor == true)
+        {
+            return field.Name;
+        }
+
+        var name = field.Name.ToLowerInvariant();
+        return CppKeywords.Contains(name) || CppMessageNullaryMembers.Contains(name) ? name + "_" : name;
+    }
+
+    /// <summary>
+    /// <paramref name="name"/> as a C++ identifier: itself, or with an underscore appended when it is
+    /// a name protoc's C++ generator would escape. protoc's own <c>ResolveKeyword</c>.
+    /// </summary>
+    public static string EscapeCppKeyword(string name) => CppKeywords.Contains(name) ? name + "_" : name;
 
     /// <summary>
     /// Removes <paramref name="prefix"/> from the front of <paramref name="value"/>, ignoring case
