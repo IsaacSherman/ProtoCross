@@ -100,6 +100,10 @@ The current implementation defines:
   as that generator spells them. A field name the target language cannot use as it stands, such as
   `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
   accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
+- Messages, enums, enum values and package components are named the same way: as the target's
+  protobuf generator names them, escaped where it escapes them. A message called `New`, an enum value
+  called `new` and a package component called `default` are ordinary in ProtoCross and are not
+  rejected. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
 
 Implementation Note:
 

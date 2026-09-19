@@ -16,12 +16,12 @@ public static class NameConventions
     /// generator's <c>helpers.cc</c>, copied rather than rewritten from the standard.
     /// </summary>
     /// <remarks>
-    /// The list exists to agree with a header protoc generated: a field whose name is on it has
-    /// accessors with an underscore, and one whose name is not has none, whatever the standard says.
-    /// The C++ backend escapes its own identifiers against the same list, because a name protoc will
-    /// not use is no more usable as a method or a local. It used to keep a list of its own, and the
-    /// two had drifted -- that one was missing <c>const_cast</c>, <c>char8_t</c> and the alternative
-    /// tokens such as <c>not_eq</c>.
+    /// The list exists to agree with a header protoc generated: a field, a type, an enum value or a
+    /// package component whose name is on it is spelled with an underscore, and one whose name is not
+    /// is spelled as it stands, whatever the standard says. The C++ backend escapes its own
+    /// identifiers against the same list, because a name protoc will not use is no more usable as a
+    /// method or a local. It used to keep a list of its own, and the two had drifted -- that one was
+    /// missing <c>const_cast</c>, <c>char8_t</c> and the alternative tokens such as <c>not_eq</c>.
     /// </remarks>
     private static readonly HashSet<string> CppKeywords = new(StringComparer.Ordinal)
     {
@@ -45,6 +45,20 @@ public static class NameConventions
     private static readonly HashSet<string> CppMessageNullaryMembers = new(StringComparer.Ordinal)
     {
         "unknown_fields", "mutable_unknown_fields", "descriptor", "default_instance",
+    };
+
+    /// <summary>
+    /// The members of a generated C++ message that a class of the same name would collide with.
+    /// <c>MessageKnownMethodsCamelCase</c> in protoc's <c>helpers.cc</c>.
+    /// </summary>
+    /// <remarks>
+    /// A different list from <see cref="CppMessageNullaryMembers"/>, because protoc checks a
+    /// different one: this is the list it holds a type name against, and that one a field name.
+    /// </remarks>
+    private static readonly HashSet<string> CppMessageKnownMethods = new(StringComparer.Ordinal)
+    {
+        "GetDescriptor", "GetReflection", "default_instance", "Swap", "UnsafeArenaSwap", "New",
+        "CopyFrom", "MergeFrom", "IsInitialized", "GetMetadata", "Clear",
     };
 
     /// <summary>
@@ -92,10 +106,16 @@ public static class NameConventions
     }
 
     /// <summary>
-    /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>.
+    /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>, and
+    /// each component escaped on its own, so <c>acme.new.default</c> is <c>acme::new_::default_</c>.
     /// </summary>
+    /// <remarks>
+    /// A port of <c>Namespace</c> in protoc's <c>compiler/cpp/helpers.cc</c>, which passes every
+    /// component through <see cref="EscapeCppKeyword"/>. Only the keyword list applies: a package is
+    /// not a class, so a component named <c>New</c> or <c>Swap</c> is left alone.
+    /// </remarks>
     public static string GetCppNamespace(FileDescriptor file)
-        => string.IsNullOrEmpty(file.Package) ? string.Empty : file.Package.Replace(".", "::", StringComparison.Ordinal);
+        => string.Join("::", file.Package.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeCppKeyword));
 
     /// <summary>The generated protobuf C++ header for a .proto file: <c>foo.proto</c> to <c>foo.pb.h</c>.</summary>
     public static string GetCppProtoHeader(FileDescriptor file)
@@ -107,19 +127,29 @@ public static class NameConventions
     }
 
     /// <summary>
-    /// The C++ nested-type qualifier for a message, for example <c>Outer_Inner</c> for a message
-    /// nested inside <c>Outer</c>.
+    /// The C++ class protoc generates for a message, unqualified: the message's name joined to its
+    /// enclosing messages' with underscores, for example <c>Outer_Inner</c> for a message nested
+    /// inside <c>Outer</c>, and escaped as <see cref="EscapeCppTypeName"/> describes.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A port of <c>ClassName</c> in protoc's <c>compiler/cpp/helpers.cc</c>, and the order of its
+    /// two steps is protoc's. The enclosing part is this method's own answer for the parent, escape
+    /// included, and the escape is then applied to the whole flattened name. So <c>New</c> is
+    /// <c>New_</c>, a message nested in it is <c>New__Inner</c>, with the parent's underscore still in
+    /// it, and <c>Plain.Swap</c> is <c>Plain_Swap</c>, because the flattened name collides with
+    /// nothing even though its last part would.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than approximated, as <see cref="GetCppFieldName"/> is and for the same
+    /// reason. The rule and its lists are the same in the sources of protoc 31.1 and 33.4, and were
+    /// checked against the headers both generate.
+    /// </para>
+    /// </remarks>
     public static string GetCppTypeName(MessageDescriptor message)
-    {
-        var parts = new List<string>();
-        for (var current = message; current is not null; current = current.ContainingType)
-        {
-            parts.Insert(0, current.Name);
-        }
-
-        return string.Join('_', parts);
-    }
+        => EscapeCppTypeName(message.ContainingType is { } parent
+            ? GetCppTypeName(parent) + "_" + message.Name
+            : message.Name);
 
     /// <summary>The C# type name for a message, including the outer-class nesting protoc applies.</summary>
     public static string GetCSharpTypeName(MessageDescriptor message)
@@ -136,8 +166,18 @@ public static class NameConventions
     /// The C++ type name for an enum. protoc flattens nested types into the namespace with
     /// underscores, so <c>Outer.E</c> becomes <c>Outer_E</c>.
     /// </summary>
+    /// <remarks>
+    /// A port of protoc's <c>ClassName</c> for an enum, which is not the rule for a message. A
+    /// top-level enum is escaped as a class would be, so <c>Swap</c> is <c>Swap_</c>. A nested one is
+    /// named after its parent's class, escape included, so <c>New.Kind</c> is <c>New__Kind</c>, and
+    /// then left as it is. That holds even when the flattened name lands on the keyword list, as
+    /// <c>wchar.t</c> does: protoc emits an enum called <c>wchar_t</c>, whose header does not
+    /// compile, and no spelling here could make it.
+    /// </remarks>
     public static string GetCppTypeName(EnumDescriptor enumType)
-        => string.Join('_', EnclosingNames(enumType.ContainingType, enumType.Name));
+        => enumType.ContainingType is { } parent
+            ? GetCppTypeName(parent) + "_" + enumType.Name
+            : EscapeCppTypeName(enumType.Name);
 
     /// <summary>
     /// The C# name of an enum value. protoc strips the enum's own name from the front of the value
@@ -164,10 +204,19 @@ public static class NameConventions
     /// <c>Outer.Nested.NESTED_SOME</c> becomes <c>Outer_Nested_NESTED_SOME</c> while
     /// <c>TopLevelStatus.TOP_LEVEL_STATUS_OK</c> stays <c>TOP_LEVEL_STATUS_OK</c>.
     /// </summary>
+    /// <remarks>
+    /// The value's own name is escaped first, as protoc's <c>EnumValueName</c> does, and the prefix
+    /// goes on afterwards. So a top-level value <c>new</c> is <c>new_</c>, and a nested
+    /// <c>New.Kind.class</c> is <c>New__Kind_class_</c>, keeping an underscore the prefixed name would
+    /// not have needed -- the same way <c>set_class_()</c> keeps the field's.
+    /// </remarks>
     public static string GetCppValueName(EnumValueDescriptor value)
-        => value.EnumDescriptor.ContainingType is null
-            ? value.Name
-            : GetCppTypeName(value.EnumDescriptor) + "_" + value.Name;
+    {
+        var name = EscapeCppKeyword(value.Name);
+        return value.EnumDescriptor.ContainingType is null
+            ? name
+            : GetCppTypeName(value.EnumDescriptor) + "_" + name;
+    }
 
     /// <summary>
     /// The name protoc's C++ generator spells every accessor of a field from: the getter is
@@ -196,11 +245,12 @@ public static class NameConventions
     /// </para>
     /// <para>
     /// It is a version's rule, not protobuf's forever. protoc 21.x escaped keywords only, from a list
-    /// without <c>assert</c>, <c>char8_t</c> or <c>constinit</c>, and no generated members. For most of
-    /// the names the two disagree on, that older header does not compile on its own, since the field
-    /// collides with a member or a macro. The exception is <c>char8_t</c> and <c>constinit</c> under
-    /// C++17, where they are not keywords, so a header from protoc 21.x or earlier needs a C++20
-    /// build, as the generated scaffold already uses, to pair with this spelling.
+    /// without <c>assert</c>, <c>char16_t</c>, <c>char32_t</c> or any keyword C++20 added, and no
+    /// generated members. For most of the names the two disagree on, that older header does not
+    /// compile on its own, since the field collides with a keyword, a member or a macro. The
+    /// exception is the C++20 keywords, such as <c>char8_t</c> and <c>constinit</c>, under C++17,
+    /// where they are not keywords, so a header from protoc 21.x or earlier needs a C++20 build, as
+    /// the generated scaffold already uses, to pair with this spelling.
     /// </para>
     /// </remarks>
     public static string GetCppFieldName(FieldDescriptor field)
@@ -219,6 +269,14 @@ public static class NameConventions
     /// a name protoc's C++ generator would escape. protoc's own <c>ResolveKeyword</c>.
     /// </summary>
     public static string EscapeCppKeyword(string name) => CppKeywords.Contains(name) ? name + "_" : name;
+
+    /// <summary>
+    /// <paramref name="name"/> as a C++ class at namespace scope: itself, or with an underscore
+    /// appended when it is on <see cref="CppKeywords"/> or is one of
+    /// <see cref="CppMessageKnownMethods"/>. protoc's <c>ResolveKnownNameCollisions</c> for a type.
+    /// </summary>
+    private static string EscapeCppTypeName(string name)
+        => CppKeywords.Contains(name) || CppMessageKnownMethods.Contains(name) ? name + "_" : name;
 
     /// <summary>
     /// Removes <paramref name="prefix"/> from the front of <paramref name="value"/>, ignoring case
