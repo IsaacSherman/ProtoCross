@@ -62,15 +62,9 @@ It does not aim to support:
 
 These omissions are part of the design. The more ProtoCross depends on target-language-specific features, the harder it becomes to guarantee equivalent behavior across C#, C++, Python, and future backends.
 
-## Virtual Behavior
+## No Overridable Behavior
 
-One open design area is overridable behavior.
-
-There is a useful distinction between supporting overridable methods and supporting inheritance. ProtoCross may eventually allow a method to be marked as `virtual`, meaning a backend can expose an appropriate override mechanism for that target language.
-
-That does not necessarily mean ProtoCross should define subclasses or assume generated protobuf classes are good inheritance targets. Some protobuf runtimes make inheritance awkward or unsafe. A portable design may need to express "this behavior can be replaced" without promising "subclass this generated message."
-
-This remains an active design question.
+A ProtoCross method means one thing, stated once. There are no virtual methods and no override mechanism: a method whose behavior could be replaced from outside would be a second source of truth, which is what the language exists to prevent. The spec records the decision in section 17.
 
 ## Compiler Direction
 
@@ -129,8 +123,7 @@ Implemented:
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends
 
-Not implemented: maps, oneof, mutation, virtual methods, `Result` types, `switch`, and the Python
-backend. Backends reject these rather than emitting something whose semantics differ from the spec.
+Not implemented: maps, oneof, mutation, `Result` types, `switch`, and the Python backend. Backends reject these rather than emitting something whose semantics differ from the spec.
 
 ### Building
 

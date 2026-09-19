@@ -50,21 +50,6 @@ public sealed class CppBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        foreach (var method in module.Methods.Where(m => m.IsVirtual))
-        {
-            diagnostics.Error(
-                "PC1101",
-                "virtual methods are not supported by the C++ backend",
-                $"'{method.Name}' is declared virtual. Override semantics are still an open "
-                + "design question (spec 17), so this backend rejects them rather than guessing.",
-                method.Span);
-        }
-
-        if (diagnostics.HasErrors)
-        {
-            return [];
-        }
-
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
         var guard = MakeIncludeGuard(baseName);

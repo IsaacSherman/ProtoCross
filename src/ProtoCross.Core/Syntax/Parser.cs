@@ -240,7 +240,7 @@ public sealed class Parser
         var methods = new List<MethodDeclaration>();
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
         {
-            if (Current.Kind is TokenKind.Fn or TokenKind.Virtual)
+            if (Current.Kind == TokenKind.Fn)
             {
                 methods.Add(ParseMethodDeclaration());
                 continue;
@@ -249,11 +249,11 @@ public sealed class Parser
             _diagnostics.Error(
                 "PC0012",
                 "unexpected member in extend block",
-                $"Expected 'fn' or 'virtual' but found {Current.Kind.Describe()}.",
+                $"Expected 'fn' but found {Current.Kind.Describe()}.",
                 Current.Span,
                 "Extend blocks contain methods. Fields belong in the .proto schema.");
 
-            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile or TokenKind.Fn or TokenKind.Virtual))
+            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile or TokenKind.Fn))
             {
                 Advance();
             }
@@ -544,10 +544,7 @@ public sealed class Parser
 
     private MethodDeclaration ParseMethodDeclaration()
     {
-        var start = Current.Span;
-        var isVirtual = Match(TokenKind.Virtual);
-
-        Expect(TokenKind.Fn);
+        var start = Expect(TokenKind.Fn).Span;
         var name = ExpectName();
 
         Expect(TokenKind.OpenParen);
@@ -577,7 +574,7 @@ public sealed class Parser
         }
 
         var body = ParseBlock();
-        return new MethodDeclaration(name, isVirtual, parameters, returnType, body, Spanning(start, body.Span));
+        return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span));
     }
 
     private TypeReference ParseTypeReference()

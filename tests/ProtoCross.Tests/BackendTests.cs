@@ -303,33 +303,6 @@ public class BackendTests
             StringComparison.Ordinal);
     }
 
-    [Fact]
-    public void BothBackendsRejectVirtualMethods()
-    {
-        var path = TestPaths.WriteTempScript(
-            """
-            import proto "invoice.proto";
-            extend InvoiceItem {
-                virtual fn line_total_cents() -> int64 {
-                    return quantity * unit_price_cents;
-                }
-            }
-            """);
-
-        var result = Compilation.Compile(path, [TestPaths.ExampleProtoDirectory]);
-        Assert.True(result.Success, "the binder accepts virtual; only backends reject it");
-
-        var options = new BackendOptions("test.pcross");
-
-        var csharpDiagnostics = new DiagnosticBag();
-        new CSharpBackend().Emit(result.Module!, options, csharpDiagnostics);
-        Assert.Contains(csharpDiagnostics, d => d.Code == "PC1001");
-
-        var cppDiagnostics = new DiagnosticBag();
-        new CppBackend().Emit(result.Module!, options, cppDiagnostics);
-        Assert.Contains(cppDiagnostics, d => d.Code == "PC1101");
-    }
-
     private static string EmitDivisionSample(IBackend backend, string fileSuffix)
     {
         var path = TestPaths.WriteTempScript(

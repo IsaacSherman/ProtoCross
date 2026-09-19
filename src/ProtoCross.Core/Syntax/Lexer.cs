@@ -60,7 +60,6 @@ public sealed class Lexer
         ["uint32"] = TokenKind.UInt32,
         ["uint64"] = TokenKind.UInt64,
         ["var"] = TokenKind.Var,
-        ["virtual"] = TokenKind.Virtual,
         ["void"] = TokenKind.Void,
         ["while"] = TokenKind.While,
     };

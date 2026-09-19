@@ -589,7 +589,7 @@ public sealed class Binder
                 method.Span);
         }
 
-        return new IrMethod(signature, body, method.IsVirtual);
+        return new IrMethod(signature, body);
     }
 
     private IrTest? BindTest(TestDeclaration test)

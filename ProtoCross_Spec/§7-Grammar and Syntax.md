@@ -12,7 +12,7 @@ import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
-method_decl       = [ "virtual" ] "fn" identifier
+method_decl       = "fn" identifier
                     "(" [ parameter_list ] ")"
                     [ "->" type_ref ]
                     block;

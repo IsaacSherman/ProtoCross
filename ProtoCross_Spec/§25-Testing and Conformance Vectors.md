@@ -13,7 +13,6 @@ The conformance suite should include:
 - Presence/default-value tests.
 - Repeated field and map tests.
 - Error handling tests.
-- Virtual/override behavior tests, if supported.
 - Partial-binding and diagnostic-recovery tests.
 - Symbol identity tests for editor-facing semantic data.
 

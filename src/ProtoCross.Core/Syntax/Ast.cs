@@ -30,7 +30,6 @@ public sealed record ExtendDeclaration(
 
 public sealed record MethodDeclaration(
     SyntaxName Name,
-    bool IsVirtual,
     IReadOnlyList<ParameterDeclaration> Parameters,
     TypeReference? ReturnType,
     BlockStatement Body,

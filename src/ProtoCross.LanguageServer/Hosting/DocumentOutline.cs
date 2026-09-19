@@ -248,9 +248,7 @@ public static class DocumentOutline
         var parameters = method.Parameters.Select(
             parameter => $"{parameter.Name.Text}: {parameter.Type.Name.Text}");
 
-        var written = $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}";
-
-        return method.IsVirtual ? $"virtual {written}" : written;
+        return $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}";
     }
 
     // ------------------------------------------------------- the shape of an entry

@@ -51,7 +51,6 @@ The IR preserves:
 - Local assignment intent.
 - Terminal-failure behavior for `on_zero fail`.
 - Evaluation order.
-- Virtual/overridable annotations.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
   diagnostics.
 
