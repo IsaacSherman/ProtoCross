@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// proto3 lets a schema extend only an options message, so this is where the extension declared
+// inside ExtensionScopeCase has something to extend.
+import "google/protobuf/descriptor.proto";
+
+// extension_scope.pcross -- an extension declared inside a message is not one of its fields, so a
+// method may take its name (spec 13.1, 16.1). Both generated APIs keep the extension somewhere a
+// method on the message is not: C# on the nested static class, C++ as a static member.
+message ExtensionScopeCase {
+  int64 held = 1;
+
+  extend google.protobuf.FieldOptions {
+    int64 extension_scope_tag = 50000;
+  }
+}

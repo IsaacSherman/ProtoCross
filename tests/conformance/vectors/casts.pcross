@@ -17,7 +17,7 @@
 // int32 MIN is spelled -MAX - 1 for the same reason int64 MIN is in integer_overflow.pcross:
 // its magnitude does not fit in a positive literal of its own type.
 
-import proto "conformance.proto";
+import proto "casts.proto";
 
 extend CastCase {
     // The headline case. Done in 32 bits this overflows to -2, so a conversion that is missing or

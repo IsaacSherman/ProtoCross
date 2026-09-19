@@ -13,7 +13,7 @@
 // reachable: a non-zero literal divisor is proof the on_zero clause is dead, and the compiler
 // warns about it.
 
-import proto "conformance.proto";
+import proto "integer_division.proto";
 
 extend DivisionCase {
     fn quotient() -> int64 {

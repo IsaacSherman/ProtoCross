@@ -16,7 +16,7 @@ namespace ProtoCross.Tests;
 public class PresenceTests
 {
     private const string Prelude = "import proto \"fixtures.proto\";\n";
-    private const string ConformancePrelude = "import proto \"conformance.proto\";\n";
+    private const string ConformancePrelude = "import proto \"presence.proto\";\n";
 
     private static readonly string ConformanceProtoDirectory =
         Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "protos");

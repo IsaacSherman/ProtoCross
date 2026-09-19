@@ -6,9 +6,6 @@ syntax = "proto3";
 // protoc's C++ generator escapes each component of a package on its own, so everything declared
 // here lives in ::protocross::conformance::namespace_::default_. C# PascalCases the same components
 // into Protocross.Conformance.Namespace.Default, which needs no escaping at all.
-//
-// This is the one vector with a schema of its own, because a package belongs to a file: every
-// other vector shares conformance.proto and so shares its package.
 package protocross.conformance.namespace.default;
 
 enum PackageLevel {

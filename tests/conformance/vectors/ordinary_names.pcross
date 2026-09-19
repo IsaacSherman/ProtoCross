@@ -6,7 +6,7 @@
 // a method name, and a test target. A backend that forgets one site emits code that does not
 // compile, and this vector is what notices.
 
-import proto "conformance.proto";
+import proto "ordinary_names.proto";
 
 extend OrdinaryNameCase {
     fn scaled(virtual: int64) -> int64 {

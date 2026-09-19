@@ -11,7 +11,7 @@
 // So each method reads one field by one shape, and the fixtures set every one of them through the
 // same renamed property.
 
-import proto "conformance.proto";
+import proto "property_names.proto";
 
 extend PropertyNameCase {
     fn own_name_value() -> int64 {

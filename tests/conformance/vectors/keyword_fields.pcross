@@ -10,7 +10,7 @@
 // So each method reads one field by one accessor shape, and the fixtures write every one of them:
 // the getter, 'has', and the setter, 'mutable_' and 'add_' forms that build a receiver.
 
-import proto "conformance.proto";
+import proto "keyword_fields.proto";
 
 extend KeywordFieldCase {
     fn class_value() -> int64 {

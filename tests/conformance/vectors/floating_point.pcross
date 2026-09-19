@@ -9,7 +9,7 @@
 // the sign so positive and negative infinity are told apart. The NaN predicates use the defining
 // property that every comparison involving a NaN is false, including equality with itself.
 
-import proto "conformance.proto";
+import proto "floating_point.proto";
 
 extend FloatCase {
     fn is_positive_infinity() -> bool {

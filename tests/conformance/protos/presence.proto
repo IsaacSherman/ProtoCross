@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+import "google/protobuf/timestamp.proto";
+
+// presence.pcross -- field presence and the guard rule (spec 8.4, 13.1).
+//
+// Deliberately mixes the three presence kinds a proto3 schema can have, because they are not the
+// same question. A singular message field has presence without asking for it; a scalar declared
+// 'optional' has explicit presence and generates a HasX; a plain scalar has none at all, and an
+// unset one is indistinguishable from a set zero.
+message PresenceCase {
+  google.protobuf.Timestamp starts_at = 1;
+  PresenceInner inner = 2;
+
+  optional int64 tuning = 3;
+  optional string label = 4;
+
+  // No 'optional': an unset value and 0 are the same value here, which is what makes
+  // 'has implicit_count' a compile error rather than a question with an answer.
+  int64 implicit_count = 5;
+
+  repeated int64 readings = 6;
+}
+
+message PresenceInner {
+  google.protobuf.Timestamp stamp = 1;
+  int64 weight = 2;
+}
