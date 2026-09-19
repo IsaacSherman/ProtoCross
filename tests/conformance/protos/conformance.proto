@@ -14,6 +14,10 @@ package protocross.conformance;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
+// extension_scope.pcross -- proto3 lets a schema extend only an options message, so this is where
+// the extension it declares inside a message has something to extend.
+import "google/protobuf/descriptor.proto";
+
 // integer_overflow.pcross -- wrapping arithmetic (spec 10.1).
 message OverflowCase {
   int32 i32_left = 1;
@@ -176,6 +180,17 @@ message GroupingInner {
 message GroupingLeaf {
   int64 depth = 1;
 }
+
+
+// extension_scope.pcross -- an extension declared inside a message is not one of its fields, so a
+// method may take its name (spec 13.1, 16.1). Both generated APIs keep the extension somewhere a
+// method on the message is not: C# on the nested static class, C++ as a static member.
+message ExtensionScopeCase {
+  int64 held = 1;
+
+  extend google.protobuf.FieldOptions {
+    int64 extension_scope_tag = 50000;
+  }
 
 // keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
 //

@@ -18,8 +18,9 @@ Implementation Note:
   info is where a schema's declaration sites and doc comments live, so discarding it meant paying
   `protoc` to produce the one thing the compiler then threw away.
 - That source info is answered, not merely kept. Given a message, enum, field, or enum value
-  descriptor reachable from a compilation -- a field an `extend` block declares included, since it
-  is a field like any other -- the compiler reports the schema that declares it, the
+  descriptor reachable from a compilation -- an extension included, since protobuf describes one with
+  a field descriptor like any other, though it is not a field of any message
+  ([13.4](./§13-Messages.md#134-extensions)) -- the compiler reports the schema that declares it, the
   range of the whole declaration, the range of the declared name inside it, and the leading,
   trailing, and detached comments written about it with the comment markers already removed.
   Missing information is ordinary rather than an error: a schema with no comments, a descriptor set

@@ -44,6 +44,8 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: no repeated mutation;
   only locals can be assigned ([14](./§14-Repeated%20Fields%20and%20Collections.md#14-repeated-fields-and-collections), [18](./§18-Mutability.md#18-mutability)). Future mutation syntax remains open.
 - Map support and map iteration order.
+- Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
+  and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
 - Switch support.
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 - Receiver mutation and possible const/mut method split.

@@ -912,7 +912,7 @@ public sealed class CompletionProvider
 
         return
         [
-            .. level.Descriptor.Fields.InDeclarationOrder()
+            .. MessageFields.InDeclarationOrder(level.Descriptor)
                 .Where(field => !field.IsMap && !already.Contains(field.Name))
                 .Select(field => Member(
                     field.Name,
@@ -1347,7 +1347,7 @@ public sealed class CompletionProvider
                 // member it cannot have. And parentheses already written mean a call, which a field
                 // can never be: 'other.count()' is PC0044, an unknown method, rather than a field
                 // read with punctuation after it.
-                .. message.Descriptor.Fields.InDeclarationOrder()
+                .. MessageFields.InDeclarationOrder(message.Descriptor)
                     .Where(field => !field.IsMap
                         && !subject.FollowedByCall
                         && (!writingAReceiver || TypeFactory.FromField(field) is MessageType))
