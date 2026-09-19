@@ -29,7 +29,6 @@ time rather than emitting something whose semantics differ.
 | Cross-message method calls | Yes | Yes | — | C++ emits all declarations before any definition. |
 | Local variables and assignment | Yes | Yes | — | Only locals can be assigned. |
 | Mutable methods | No | No | — | Blocked on the open question in 16.1. |
-| Virtual methods | No | No | — | Blocked on 17; both backends reject. |
 | Maps | No | No | — | Blocked on 14.2. |
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |

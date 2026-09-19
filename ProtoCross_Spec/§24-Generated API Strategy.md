@@ -61,7 +61,6 @@ Questions:
 
 - Are generated protobuf C# classes safe to extend directly?
 - Should mutable methods require partial class integration?
-- How should virtual behavior be represented?
 
 ### 24.2 C++
 
@@ -71,7 +70,6 @@ Potential strategies:
 - Generated helper namespaces.
 - Protobuf insertion points.
 - Wrapper/adaptor classes.
-- Policy-based override hooks.
 
 **Decided for the current implementation: header-only free functions** in the message's own
 protobuf namespace, taking the receiver as `const T&`. This subclasses nothing, needs no protoc

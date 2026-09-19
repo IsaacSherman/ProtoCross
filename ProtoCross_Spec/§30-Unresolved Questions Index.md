@@ -49,8 +49,10 @@ This section should be maintained as the authoritative list of open decisions.
 - Switch support.
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 - Receiver mutation and possible const/mut method split.
-- Virtual method inclusion in version 1.
-- Portable override registration model.
+- ~~Virtual method inclusion in version 1.~~ Decided: no virtual methods; `virtual` is an ordinary
+  identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
+- ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to
+  register ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - Error result model.
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).

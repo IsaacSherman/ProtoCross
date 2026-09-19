@@ -101,7 +101,6 @@ true
 uint32
 uint64
 var
-virtual
 void
 while
 ```

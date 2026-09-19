@@ -51,7 +51,6 @@ public enum TokenKind
     UInt32,
     UInt64,
     Var,
-    Virtual,
     Void,
     While,
 

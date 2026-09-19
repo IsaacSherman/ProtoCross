@@ -7,8 +7,8 @@ namespace ProtoCross.Ir;
 
 /// <summary>
 /// The typed intermediate representation. Per spec 22.2 this preserves source locations, resolved
-/// protobuf type references, exact numeric operation kinds, evaluation order, and virtual
-/// annotations. Backends consume only this; they never see the AST.
+/// protobuf type references, exact numeric operation kinds, and evaluation order. Backends consume
+/// only this; they never see the AST.
 /// </summary>
 public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrTest> Tests)
 {
@@ -159,10 +159,6 @@ public sealed record IrMethodSignature(
     /// whether it may be used as a value, so a rendering that omitted it would be silent about the
     /// thing most worth knowing before writing the call.
     /// </para>
-    /// <para>
-    /// <c>virtual</c> is absent because it is not part of the signature -- <see cref="IrMethod"/>
-    /// carries it, since it says how a method is dispatched rather than how it is called.
-    /// </para>
     /// </remarks>
     public string DisplayName
         => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}";
@@ -254,7 +250,7 @@ public sealed record IrLocal(DeclarationSite Declaration, PlType Type)
 /// something needs to, it should build a new one rather than amend this.
 /// </para>
 /// </remarks>
-public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body, bool IsVirtual)
+public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body)
     : IrNode(Signature.Declaration.Extent)
 {
     public MessageDescriptor Receiver => Signature.Receiver;

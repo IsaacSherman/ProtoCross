@@ -1,68 +1,37 @@
 ## 17. Virtual and Override Semantics
 
-ProtoCross parses `virtual`, but the implemented backends reject virtual methods.
+**Decided: ProtoCross has no virtual methods and no overriding.** A method means one thing, stated
+once, in every target.
 
-### 17.1 Design Principle
+Normative Requirements:
 
-Current Status:
-
-- `virtual` is accepted by the parser and carried in the IR.
-- The C# and C++ backends reject virtual methods at compile time because portable override semantics
-  are not defined.
-- `virtual` does not define a ProtoCross subclass model.
+- There is no `virtual` modifier and no mechanism for replacing a method's behavior from outside
+  it: not by subclassing, not by a registered hook, and not by a generated delegate.
+- `virtual` is not a keyword ([6.4](./§6-Lexical%20Structure.md#64-keywords)). It is an ordinary
+  identifier, and a backend escapes it wherever a target reserves it, as it does any other name.
 - ProtoCross source cannot declare subclasses.
-- Generated protobuf message subclasses are forbidden as a portability strategy.
+- Subclassing generated protobuf messages is forbidden as a portability strategy.
 
-```protocross
-extend DetectorReading {
-    virtual fn overridable_count_rate() -> int64 {
-        return counts / live_time on_zero fail;
-    }
-}
-```
+Rationale:
 
-Possible future shape. Overridable functions cannot behave like classical virtual functions:
-protobuf compiles into sealed classes in C# so inheritance is impossible. They would need something
-like this by necessity:
+The project exists so that behavior has one source of truth. An overridable method is a second one
+by construction: what `rate()` computes depends on code that is not in the ProtoCross source and may
+differ per host and per target. That is the divergence the language is here to prevent.
 
-```csharp
-	public partial class DetectorReading{
-	public delegate double DetectorReadingCountRateOverride();  //We can also just use Func<double> here.
-	public static DetectorReadingCountRateOverride CountRateOverride {get;set;} //Note: Proto files are nullable agnostic
-	public double RealTime {get;set;}
-	public double CountRate(){
-		if(CountRateOverride != null)
-			return CountRateOverride();
-		else
-			return counts / RealTime;
-	}
-}
-```
+It could not have been classical dispatch in any case. protoc generates sealed or
+inheritance-hostile classes in several targets, so every workable design needs something else. The
+most concrete one sketched was a static, settable delegate on the generated class. That is global
+mutable state, it is not thread-safe, and spec 20 bans concurrency primitives but cannot stop a host
+from being concurrent.
+
+The keyword had been parsed and carried through the IR, and then rejected by both backends (the
+former `PC1001` and `PC1101`). So it type-checked and failed only at the last step, and no program
+ever generated code with it. Removing it breaks nothing that worked. Keeping it reserved would keep a
+word for a feature the language has decided against.
+
+The owner's note from the draft that preceded this decision, kept because it is the argument:
 
 `That said, I'm really not convinced they're a good idea at all. Again, we're writing this because *we don't want to have more than 1 source of truth for behavior*.  Virtual functions are antithetical to that.  But they might be a necessary workaround for some people in some scenarios- I just don't know what they might be. ~IS`
 
-### 17.2 Backend Strategies
-
-Possible C# strategies:
-
-- Generate a static, settable delegate field in the class.  
-- Generate partial method hooks.
-- Generate an adapter/wrapper class.
-
-Possible C++ strategies:
-
-- Generate free functions plus overridable policy objects.
-- Use protobuf generator insertion points where appropriate.
-- Generate wrapper/adaptor classes rather than subclass protobuf messages.
-
-Possible Python strategies:
-
-- Generate regular methods.
-- Generate mixins or monkey-patch registration helpers.
-- Generate wrapper classes.
-
-Open Questions:
-
-- Is `virtual` part of version 1?  `I think yes.  But it's low on the list. We're doing this because we DON'T want to write functions for every language. ~IS`
-- Must all backends support virtual behavior, or may some reject it? `If we're going to do it... we should do it for every language. All languages should be able to support something like this, even if it's not explicitly supported. ~IS`
-- Should there be a portable override registration mechanism? `Out of scope for v1. ~IS`
+A host that genuinely needs different behavior should call a different method, or do the work in its
+own language around the generated code.

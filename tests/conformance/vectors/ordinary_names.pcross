@@ -1,0 +1,50 @@
+// Conformance vectors for a name that is an ordinary identifier in ProtoCross and a keyword in the
+// targets.
+//
+// `virtual` was a ProtoCross keyword until #10 removed it. It is still reserved in both C# and C++,
+// so each backend has to escape it everywhere an author can now write it: as a parameter, a local,
+// a method name, and a test target. A backend that forgets one site emits code that does not
+// compile, and this vector is what notices.
+
+import proto "conformance.proto";
+
+extend OrdinaryNameCase {
+    fn scaled(virtual: int64) -> int64 {
+        return virtual * factor;
+    }
+
+    fn virtual() -> int64 {
+        var virtual: int64 = factor + 1;
+        return virtual;
+    }
+
+    fn calls_virtual() -> int64 {
+        return virtual() + scaled(virtual());
+    }
+}
+
+test OrdinaryNameCase.scaled "a parameter named virtual" {
+    receiver {
+        factor = 3;
+    }
+
+    arg virtual = 7;
+
+    expect return 21;
+}
+
+test OrdinaryNameCase.virtual "a method and a local named virtual" {
+    receiver {
+        factor = 3;
+    }
+
+    expect return 4;
+}
+
+test OrdinaryNameCase.calls_virtual "a call to a method named virtual" {
+    receiver {
+        factor = 3;
+    }
+
+    expect return 16;
+}

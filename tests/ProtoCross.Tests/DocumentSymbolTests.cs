@@ -25,7 +25,7 @@ public class DocumentSymbolTests
                 return count * scale;
             }
 
-            virtual fn described() {
+            fn described() {
                 return;
             }
         }
@@ -104,7 +104,7 @@ public class DocumentSymbolTests
     [Fact]
     public void AMethodThatReturnsNothingSaysSo()
         => Assert.Equal(
-            "virtual () -> void",
+            "() -> void",
             Named(Named(Outline(Source), "protocross.tests.Outer").Children!, "described").Detail);
 
     /// <summary>

@@ -58,6 +58,11 @@ message RemainderCase {
   double zero = 5;
 }
 
+// ordinary_names.pcross -- names that are ProtoCross identifiers but target-language keywords.
+message OrdinaryNameCase {
+  int64 factor = 1;
+}
+
 // casts.pcross -- explicit numeric conversions (spec 10.3).
 message CastCase {
   int32 i32 = 1;

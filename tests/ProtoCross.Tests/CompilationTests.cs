@@ -121,6 +121,27 @@ public class CompilationTests
         Assert.IsType<IrThis>(left.Receiver);
     }
 
+    /// <summary>
+    /// <c>virtual</c> was removed from the language (spec 17) rather than kept reserved, so it is a
+    /// name like any other: a parameter, a local, and a method may all be called it.
+    /// </summary>
+    [Fact]
+    public void VirtualIsAnOrdinaryName()
+    {
+        var result = CompileSource(Prelude +
+            """
+            extend InvoiceItem {
+                fn virtual(virtual: int64) -> int64 {
+                    var doubled: int64 = virtual * 2;
+                    return doubled;
+                }
+            }
+            """);
+
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        Assert.Single(result.Module!.Methods, method => method.Name == "virtual");
+    }
+
     [Fact]
     public void ResolvesForwardReferencesBetweenExtendBlocks()
     {

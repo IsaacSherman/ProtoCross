@@ -54,7 +54,7 @@
       "patterns": [
         {
           "name": "keyword.control.pcross",
-          "match": "(?<![\\p{L}\\p{Nd}_])(?:and|arg|as|bool|break|bytes|case|continue|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|virtual|void|while)(?![\\p{L}\\p{Nd}_])"
+          "match": "(?<![\\p{L}\\p{Nd}_])(?:and|arg|as|bool|break|bytes|case|continue|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])"
         }
       ]
     },

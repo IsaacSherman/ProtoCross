@@ -98,6 +98,7 @@ failing. A fully equipped machine should report no skips.
 | `integer_division` | Truncation toward zero, `on_zero` fallbacks, `on_zero fail`, and `MIN / -1` and `MIN % -1` (spec 10.2, 10.2.1) |
 | `floating_point` | IEEE 754 division including by zero: infinities, NaN, and NaN comparison behavior |
 | `floating_remainder` | `%` on `float` and `double`: the sign of the dividend, exactness, negative zero, and a zero, infinite, or NaN operand |
+| `ordinary_names` | `virtual` as a parameter, a local, a method, and a test target: an ordinary name in ProtoCross that both targets reserve, so each has to escape it (spec 17) |
 | `control_flow` | `if` / `else if` / `else`, `while`, `while true` with `break`, `continue`, and `for`-`in` (spec 15) |
 | `strings` | String equality, string returns, and literals containing characters both backends must escape (spec 11) |
 | `enum_types` | Enum-typed locals, parameters, and returns, and named enum values in comparisons, returns, branches, and fixtures (spec 12) |
@@ -132,7 +133,7 @@ The harness is written so a third backend is a small addition, not a third copy:
 - **Enum values with no declared name.** proto3 enums are open, so a field can hold a number the
   schema does not name, but a fixture can only set a value that exists. What happens to an unknown
   value is undecided (spec 12), so there is nothing to pin.
-- **Maps, oneof, mutation, and virtual methods** are not implemented in the language, so there is
+- **Maps, oneof, and mutation** are not implemented in the language, so there is
   nothing to write a vector against.
 - **The compiler's refusals** are not here and cannot be: a vector has to compile. `PC0078`,
   `PC0079`, and `PC0080` are covered by `PresenceTests`, and the configuration diagnostics by
