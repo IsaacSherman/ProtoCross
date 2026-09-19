@@ -181,6 +181,7 @@ message GroupingLeaf {
   int64 depth = 1;
 }
 
+
 // extension_scope.pcross -- an extension declared inside a message is not one of its fields, so a
 // method may take its name (spec 13.1, 16.1). Both generated APIs keep the extension somewhere a
 // method on the message is not: C# on the nested static class, C++ as a static member.
@@ -190,6 +191,62 @@ message ExtensionScopeCase {
   extend google.protobuf.FieldOptions {
     int64 extension_scope_tag = 50000;
   }
+
+// keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
+//
+// protoc's C++ generator lowercases a field name, then appends an underscore when the result is a
+// C++ keyword or names a member every generated message already declares, and builds every accessor
+// from that one name: class_(), set_class_(), has_default_(), mutable_new_(), add_delete_(). Each
+// field below reaches that rule by a different path. C# needs none of it, because a PascalCased
+// name never spells a C# keyword, so the same schema is the check that the two sides agree.
+message KeywordFieldCase {
+  int64 class = 1;
+  KeywordFieldInner new = 2;
+  repeated int64 delete = 3;
+  repeated KeywordFieldInner template = 4;
+  optional int64 default = 5;
+
+  // Lowercased before the keyword test, so this is friend_() rather than Friend().
+  int64 Friend = 6;
+
+  // Not a keyword: the static member every generated message declares.
+  int64 default_instance = 7;
+
+  // Not a keyword either, but a macro, and protoc's list escapes it all the same.
+  int64 assert = 8;
+}
+
+message KeywordFieldInner {
+  int64 this = 1;
+}
+
+// property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
+//
+// protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an
+// underscore that stands before a leading digit, and then appends an underscore when the result is
+// the containing message's own name or a member every generated message declares. Has{Name} is
+// built from that one name. C++ lowercases instead, so only 'descriptor' is renamed on that side.
+message PropertyNameCase {
+  // The message's own name once PascalCased: PropertyNameCase_.
+  int64 property_name_case = 1;
+
+  // Members every generated message declares: Descriptor_, Types_, Parser_, HasClone_.
+  PropertyNameInner descriptor = 2;
+  repeated int64 types = 3;
+  repeated PropertyNameInner parser = 4;
+  optional int64 clone = 5;
+
+  // A letter after a digit is capitalized: Field1A, and HasRetry2X for the presence test.
+  int64 field1a = 6;
+  optional int64 retry2x = 7;
+
+  // The underscore survives, because an identifier cannot start with the digit: _1St.
+  int64 _1st = 8;
+}
+
+message PropertyNameInner {
+  // Named after its own message one level down, where the receiver is not that message.
+  int64 property_name_inner = 1;
 }
 
 // checked/checked_arithmetic.pcross -- the checked overflow policy (spec 10.4).

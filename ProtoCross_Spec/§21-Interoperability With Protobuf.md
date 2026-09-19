@@ -96,7 +96,20 @@ The current implementation defines:
 - C# behavior is emitted as extension methods in generated static classes.
 - C++ behavior is emitted as header-only free functions in the protobuf namespace.
 - Target method names are mapped by the backend's protobuf naming convention helpers.
-- Namespace/package mapping follows the generated protobuf target's conventions.
+- Namespace/package mapping follows the generated protobuf target's conventions exactly: a file's
+  namespace is the one that generator declares for it. [24.1](./§24-Generated%20API%20Strategy.md#241-c)
+  states the C# rule.
+- Fields are read and written through the accessors the target's protobuf generator declares, spelled
+  as that generator spells them. A field name the target language cannot use as it stands, such as
+  `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
+  accessor, and does not reject it. [24.1](./§24-Generated%20API%20Strategy.md#241-c) states the C#
+  rule and [24.2](./§24-Generated%20API%20Strategy.md#242-c) the C++ one.
+
+Implementation Note:
+
+- C++ namespaces do not yet follow protoc as closely as fields do. The C++ backend does not escape a
+  package component protoc escapes: a package `acme.new` is `acme::new` here and `acme::new_` in
+  protoc's output, so a schema reaching it emits code naming a namespace that does not exist.
 
 Open Question:
 
