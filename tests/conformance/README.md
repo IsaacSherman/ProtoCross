@@ -107,6 +107,7 @@ failing. A fully equipped machine should report no skips.
 | `keyword_fields` | Fields whose names C++ cannot use as they stand -- keywords, a capitalized keyword, a macro, and a generated member's name -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.2) |
 | `keyword_types` | Messages, enums, and enum values whose names C++ cannot use as they stand -- a keyword, a generated member's name, a nested type under an escaped parent, and keyword and macro values of a top-level and a nested enum -- as receivers, locals, parameters, returns, and fixture values (spec 24.2) |
 | `keyword_package` | A package whose components are C++ keywords: the namespace the generated functions live in, a call between them, and a message and an enum value qualified with it (spec 24.2) |
+| `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
 | `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and `MIN % -1` does not (spec 10.1, 10.4) |
 | `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width (spec 10.1, 10.4) |
 

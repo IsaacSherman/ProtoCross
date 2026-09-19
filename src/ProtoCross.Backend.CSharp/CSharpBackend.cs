@@ -353,7 +353,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         foreach (var group in message.Fields.GroupBy(v => v.Field.FieldNumber).OrderBy(g => g.Key))
         {
             var field = group.First().Field;
-            var property = NameConventions.ToPascalCase(field.Name);
+            var property = NameConventions.GetCSharpPropertyName(field);
 
             if (field.IsRepeated)
             {
@@ -552,7 +552,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         IrThis => receiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, receiverName)}.{NameConventions.ToPascalCase(field.Field.Name)}",
+        IrFieldAccess field => $"{Expression(field.Receiver, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
             IrFieldPresence presence => EmitPresence(presence, receiverName),
         IrMethodCall call => EmitCall(call, receiverName),
         IrBinary binary => EmitBinary(binary, receiverName),
@@ -605,7 +605,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
     private static string EmitPresence(IrFieldPresence presence, string receiverName)
     {
         var receiver = Expression(presence.Receiver, receiverName);
-        var property = NameConventions.ToPascalCase(presence.Field.Name);
+        var property = NameConventions.GetCSharpPropertyName(presence.Field);
 
         return presence.Field.FieldType is FieldType.Message or FieldType.Group
             ? $"({receiver}.{property} != null)"

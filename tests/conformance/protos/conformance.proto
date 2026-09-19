@@ -16,6 +16,10 @@ package protocross.conformance;
 import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 
+// extension_scope.pcross -- proto3 lets a schema extend only an options message, so this is where
+// the extension it declares inside a message has something to extend.
+import "google/protobuf/descriptor.proto";
+
 // integer_overflow.pcross -- wrapping arithmetic (spec 10.1).
 message OverflowCase {
   int32 i32_left = 1;
@@ -179,6 +183,17 @@ message GroupingLeaf {
   int64 depth = 1;
 }
 
+
+// extension_scope.pcross -- an extension declared inside a message is not one of its fields, so a
+// method may take its name (spec 13.1, 16.1). Both generated APIs keep the extension somewhere a
+// method on the message is not: C# on the nested static class, C++ as a static member.
+message ExtensionScopeCase {
+  int64 held = 1;
+
+  extend google.protobuf.FieldOptions {
+    int64 extension_scope_tag = 50000;
+  }
+
 // keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
 //
 // protoc's C++ generator lowercases a field name, then appends an underscore when the result is a
@@ -243,6 +258,33 @@ enum Swap {
 // A keyword as the type's own name, rather than a generated member's.
 message union {
   int64 value = 1;
+// property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
+//
+// protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an
+// underscore that stands before a leading digit, and then appends an underscore when the result is
+// the containing message's own name or a member every generated message declares. Has{Name} is
+// built from that one name. C++ lowercases instead, so only 'descriptor' is renamed on that side.
+message PropertyNameCase {
+  // The message's own name once PascalCased: PropertyNameCase_.
+  int64 property_name_case = 1;
+
+  // Members every generated message declares: Descriptor_, Types_, Parser_, HasClone_.
+  PropertyNameInner descriptor = 2;
+  repeated int64 types = 3;
+  repeated PropertyNameInner parser = 4;
+  optional int64 clone = 5;
+
+  // A letter after a digit is capitalized: Field1A, and HasRetry2X for the presence test.
+  int64 field1a = 6;
+  optional int64 retry2x = 7;
+
+  // The underscore survives, because an identifier cannot start with the digit: _1St.
+  int64 _1st = 8;
+}
+
+message PropertyNameInner {
+  // Named after its own message one level down, where the receiver is not that message.
+  int64 property_name_inner = 1;
 }
 
 // checked/checked_arithmetic.pcross -- the checked overflow policy (spec 10.4).
