@@ -198,6 +198,7 @@ message ExtensionScopeCase {
   extend google.protobuf.FieldOptions {
     int64 extension_scope_tag = 50000;
   }
+}
 
 // keyword_fields.pcross -- fields whose names C++ cannot use as they stand (spec 24.2).
 //
@@ -263,6 +264,8 @@ enum Swap {
 // A keyword as the type's own name, rather than a generated member's.
 message union {
   int64 value = 1;
+}
+
 // property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
 //
 // protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an

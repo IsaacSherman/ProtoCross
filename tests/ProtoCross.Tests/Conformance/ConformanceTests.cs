@@ -18,6 +18,23 @@ public class ConformanceVectorTests
             $"No conformance vectors were found under {ConformanceVectors.VectorDirectory}.");
     }
 
+    /// <summary>
+    /// Every schema the corpus generates must load before individual vectors can prove their own
+    /// behavior. A malformed shared schema otherwise turns each vector's binding failure into the
+    /// first indication of the same problem.
+    /// </summary>
+    [Fact]
+    public void EveryConformanceSchemaLoads()
+    {
+        var imports = ConformanceVectors.SchemaFileNames
+            .Select(name => $"import proto \"{name}\";{Environment.NewLine}");
+        var result = Compilation.Compile(
+            TestPaths.WriteTempScript(string.Concat(imports)),
+            [ConformanceVectors.ProtoDirectory]);
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+    }
+
     [Theory]
     [MemberData(nameof(Names))]
     public void EveryVectorCompilesAndDeclaresTests(string name)
