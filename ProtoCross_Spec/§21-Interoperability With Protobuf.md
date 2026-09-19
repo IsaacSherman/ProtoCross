@@ -99,16 +99,17 @@ The current implementation defines:
 - Fields are read and written through the accessors the target's protobuf generator declares, spelled
   as that generator spells them. A field name the target language cannot use as it stands, such as
   `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
-  accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
+  accessor, and does not reject it. [24.1](./§24-Generated%20API%20Strategy.md#241-c) states the C#
+  rule and [24.2](./§24-Generated%20API%20Strategy.md#242-c) the C++ one.
 
 Implementation Note:
 
-- The C# backend PascalCases a field name into its property name. That matches protoc's C# generator
-  for a keyword such as `class`, which becomes `Class`, because a PascalCased name is never a C#
-  keyword. The backend does not yet reproduce three
-  renames that generator makes: a trailing underscore on a property that would collide with a
-  generated member (`descriptor` is `Descriptor_`) or with its own message's name, and a capital after
-  a digit (`field1a` is `Field1A`). A field reaching one of those emits C# that does not compile.
+- Namespaces do not yet follow protoc as closely as fields do. The C# backend PascalCases each package
+  segment with the simpler rule that also names its methods, which does not capitalize a letter after
+  a digit: a package `acme.v1beta1` is `Acme.V1beta1` here and `Acme.V1Beta1` in protoc's output. The
+  C++ backend does not escape a segment protoc escapes: a package `acme.new` is `acme::new` here and
+  `acme::new_` in protoc's output. A schema reaching either emits code naming a namespace that does
+  not exist.
 
 Open Question:
 

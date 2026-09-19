@@ -48,9 +48,36 @@ public static class NameConventions
     };
 
     /// <summary>
-    /// Converts a protobuf <c>snake_case</c> name to <c>PascalCase</c>, matching the C# protobuf
-    /// generator so <c>unit_price_cents</c> lines up with the generated <c>UnitPriceCents</c>.
+    /// The members protoc's C# generator declares or overrides on every message, which a property of
+    /// the same name would collide with. <c>reserved_member_names</c> in the generator's
+    /// <c>GetPropertyName</c>.
     /// </summary>
+    /// <remarks>
+    /// Deliberately not every inherited member. protoc leaves out <c>GetType</c> and
+    /// <c>MemberwiseClone</c>, because a property hiding either is a warning rather than an error and
+    /// renaming one now would break code already written against it. So a field <c>get_type</c> is
+    /// <c>GetType</c>, and this list has to stay protoc's rather than grow into a complete one.
+    /// </remarks>
+    private static readonly HashSet<string> CSharpMessageMembers = new(StringComparer.Ordinal)
+    {
+        "Types", "Descriptor", "Equals", "ToString", "GetHashCode", "WriteTo", "Clone",
+        "CalculateSize", "MergeFrom", "OnConstruction", "Parser",
+    };
+
+    /// <summary>
+    /// Converts a <c>snake_case</c> name to <c>PascalCase</c> by capitalizing the first letter and every
+    /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>. The C#
+    /// backend names methods and extension classes with it, and <see cref="GetCSharpNamespace"/> the
+    /// segments of a package.
+    /// </summary>
+    /// <remarks>
+    /// Close to protoc's C# rule, and not it: <see cref="UnderscoresToPascalCase"/> also capitalizes a
+    /// letter after a digit and keeps an underscore before a leading digit. A field's property has to
+    /// be exactly the one protoc declared, so it is named by <see cref="GetCSharpPropertyName"/>
+    /// instead. A method name only has to agree with itself, and moving this rule would rename methods
+    /// that callers already compile against. A package segment has no such freedom, and spec 21.2
+    /// records where the two rules part.
+    /// </remarks>
     public static string ToPascalCase(string name)
     {
         var builder = new StringBuilder(name.Length);
@@ -168,6 +195,46 @@ public static class NameConventions
         => value.EnumDescriptor.ContainingType is null
             ? value.Name
             : GetCppTypeName(value.EnumDescriptor) + "_" + value.Name;
+
+    /// <summary>
+    /// The property protoc's C# generator declares for a field of a message, which is also the name
+    /// its presence test prefixes: <c>unit_price_cents</c> is read with <c>UnitPriceCents</c> and
+    /// tested with <c>HasUnitPriceCents</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A port of <c>GetPropertyName</c> in protoc's <c>compiler/csharp/csharp_helpers.cc</c>. The name
+    /// is PascalCased by <see cref="UnderscoresToPascalCase"/>, then given a trailing underscore if the
+    /// result is the name of the message that declares the field, which a member cannot share, or is
+    /// on <see cref="CSharpMessageMembers"/>. A field <c>descriptor</c> is therefore
+    /// <c>Descriptor_</c>, tested with <c>HasDescriptor_</c>, and a field <c>probe</c> in a message
+    /// <c>Probe</c> is <c>Probe_</c>. Both checks see the PascalCased result, so <c>Descriptor</c> is
+    /// escaped as well, and <c>CLASHING</c> in a message <c>Clashing</c> is not.
+    /// </para>
+    /// <para>
+    /// A group is named after its type instead of its field, because protoc made the field name by
+    /// lowercasing the type: <c>group MyGroup</c> declares a field <c>mygroup</c> and a property
+    /// <c>MyGroup</c>. An editions field with delimited encoding is named the same way exactly when it
+    /// has the shape a group would have had, which <see cref="IsGroupLike"/> decides.
+    /// </para>
+    /// <para>
+    /// Reproduced rather than approximated, as <see cref="GetCSharpValueName"/> and
+    /// <see cref="GetCppFieldName"/> are and for the same reason: a name that is nearly right is a
+    /// compile error in the consumer's build, where nothing connects it back to this compiler. The
+    /// rule, the member list and the case conversion are the same in the sources of protoc 31.1 and
+    /// 33.4, and both generate identical properties for every case described here.
+    /// </para>
+    /// <para>
+    /// It is not for an extension, which protoc declares as a static member of an <c>Extensions</c>
+    /// class rather than as a property, and checks against the message it extends rather than against
+    /// <see cref="FieldDescriptor.ContainingType"/>, the scope that declares it.
+    /// </para>
+    /// </remarks>
+    public static string GetCSharpPropertyName(FieldDescriptor field)
+    {
+        var name = UnderscoresToPascalCase(IsGroupLike(field) ? field.MessageType.Name : field.Name);
+        return name == field.ContainingType.Name || CSharpMessageMembers.Contains(name) ? name + "_" : name;
+    }
 
     /// <summary>
     /// The name protoc's C++ generator spells every accessor of a field from: the getter is
@@ -290,6 +357,70 @@ public static class NameConventions
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// Converts a <c>snake_case</c> name to <c>PascalCase</c> the way protoc's C# generator does: a
+    /// letter at the start, after a separator or after a digit is capitalized, every other letter and
+    /// digit is kept as it is, and anything else is dropped. A port of <c>UnderscoresToPascalCase</c>
+    /// in the generator's <c>names.cc</c>.
+    /// </summary>
+    /// <remarks>
+    /// It differs from <see cref="ToPascalCase"/> in the two places that decide whether a property
+    /// exists. A letter after a digit is capitalized, so <c>field1a</c> is <c>Field1A</c>, and an
+    /// underscore standing before a leading digit is kept, so <c>_1st</c> is <c>_1St</c> rather than
+    /// <c>1St</c>, which is not an identifier. protoc's rule has one more clause, an underscore for a
+    /// name ending in <c>#</c>, which is left out because no field name can contain one.
+    /// </remarks>
+    private static string UnderscoresToPascalCase(string name)
+    {
+        var builder = new StringBuilder(name.Length + 1);
+        var capitalizeNext = true;
+
+        foreach (var c in name)
+        {
+            if (char.IsAsciiLetter(c))
+            {
+                builder.Append(capitalizeNext ? char.ToUpperInvariant(c) : c);
+                capitalizeNext = false;
+            }
+            else if (char.IsAsciiDigit(c))
+            {
+                builder.Append(c);
+                capitalizeNext = true;
+            }
+            else
+            {
+                capitalizeNext = true;
+            }
+        }
+
+        if (builder.Length > 0 && char.IsAsciiDigit(builder[0]) && name.StartsWith('_'))
+        {
+            builder.Insert(0, '_');
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Whether a field is a group, or an editions field that could have been written as one, which
+    /// protoc names after its type rather than its field. A port of <c>IsGroupLike</c> in protoc's
+    /// <c>descriptor.cc</c>.
+    /// </summary>
+    /// <remarks>
+    /// Delimited encoding is not enough on its own: editions allow it on any message field, whatever
+    /// the field is called and wherever its type is declared, and protoc names such a field after the
+    /// field. It also needs the shape a group always had, a field named for its type lowercased and a
+    /// type declared in the same file and scope as the field. The runtime reports delimited encoding as
+    /// <see cref="FieldType.Group"/>, as protoc's own descriptors do. protoc compares the scope
+    /// separately for an extension; <see cref="FieldDescriptor.ContainingType"/> is already the
+    /// declaring scope for one, so the single comparison covers both.
+    /// </remarks>
+    private static bool IsGroupLike(FieldDescriptor field)
+        => field.FieldType == FieldType.Group
+            && field.Name == field.MessageType.Name.ToLowerInvariant()
+            && field.MessageType.File == field.File
+            && field.MessageType.ContainingType == field.ContainingType;
 
     /// <summary>The chain of enclosing message names, outermost first, ending with <paramref name="leaf"/>.</summary>
     private static List<string> EnclosingNames(MessageDescriptor? containingType, string leaf)

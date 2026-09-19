@@ -17,6 +17,29 @@ codegen: the generated messages may live in a different assembly, and nothing de
 being partial. Method names are PascalCased to match the C# protobuf generator, so
 `line_total_cents` becomes `LineTotalCents` and reads the same as a hand-written member.
 
+**Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
+C# generator derives one property name per field: the field is read as `Name`, a test fixture
+initializes `Name`, and a scalar with explicit presence is tested with `HasName`. That name is the
+field's name PascalCased: the first letter, every letter after an underscore and every letter after
+a digit are capitalized, the underscores are dropped, and every other character keeps its case, except
+that an underscore is kept in front of a name that would otherwise begin with a digit. An underscore
+is then appended when the result is the name of the message that declares the field, or one of the
+members every generated message declares or overrides: `Types`, `Descriptor`, `Equals`, `ToString`,
+`GetHashCode`, `WriteTo`, `Clone`, `CalculateSize`, `MergeFrom`, `OnConstruction` and `Parser`. So
+`field1a` is `Field1A`, `_1st` is `_1St`, a field `descriptor` is read as `Descriptor_` and tested
+with `HasDescriptor_`, and a field `probe` in a message `Probe` is `Probe_`. Both checks see the
+PascalCased result, so a field `Descriptor` is escaped as well, and inherited members that are not on
+the list, such as `GetType`, are not escaped at all.
+
+A group is named after its type rather than its field: `group MyGroup` declares a field `mygroup` and
+a property `MyGroup`. An editions field with delimited encoding is named the same way when it has a
+group's shape, meaning it is named for its message type lowercased and the type is declared in the
+same scope as the field. Any other delimited field is named after the field.
+
+Keywords need nothing, because every C# keyword is lowercase and a PascalCased name never spells one:
+`class` is `Class`. The rule is protoc's `GetPropertyName`, reproduced rather than approximated for
+the same reason as the C++ rule in [24.2](#242-c), and it is the same in protoc 31.1 and 33.4.
+
 This choice may need revisiting if mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, since extension methods cannot access
 anything the public surface does not already expose.
 
