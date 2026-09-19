@@ -102,6 +102,7 @@ failing. A fully equipped machine should report no skips.
 | `whimsy_math` | A larger end-to-end fixture with repeated protobuf objects, method calls, arguments, mixed numeric widths, explicit casts, unsigned wrapping, float/double math, strings, booleans, and compound control flow |
 | `presence` | `has` over the three presence kinds a proto3 schema can carry, every guard shape, and the cases that separate explicit presence from a comparison against the default (spec 8.4, 13.1) |
 | `keyword_fields` | Fields whose names C++ cannot use as they stand -- keywords, a capitalized keyword, a macro, and a generated member's name -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.2) |
+| `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
 | `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and `MIN % -1` does not (spec 10.1, 10.4) |
 | `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width (spec 10.1, 10.4) |
 

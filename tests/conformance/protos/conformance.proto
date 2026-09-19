@@ -205,6 +205,35 @@ message KeywordFieldInner {
   int64 this = 1;
 }
 
+// property_names.pcross -- fields whose C# property protoc renames (spec 24.1).
+//
+// protoc's C# generator PascalCases a field name, capitalizing a letter after a digit and keeping an
+// underscore that stands before a leading digit, and then appends an underscore when the result is
+// the containing message's own name or a member every generated message declares. Has{Name} is
+// built from that one name. C++ lowercases instead, so only 'descriptor' is renamed on that side.
+message PropertyNameCase {
+  // The message's own name once PascalCased: PropertyNameCase_.
+  int64 property_name_case = 1;
+
+  // Members every generated message declares: Descriptor_, Types_, Parser_, HasClone_.
+  PropertyNameInner descriptor = 2;
+  repeated int64 types = 3;
+  repeated PropertyNameInner parser = 4;
+  optional int64 clone = 5;
+
+  // A letter after a digit is capitalized: Field1A, and HasRetry2X for the presence test.
+  int64 field1a = 6;
+  optional int64 retry2x = 7;
+
+  // The underscore survives, because an identifier cannot start with the digit: _1St.
+  int64 _1st = 8;
+}
+
+message PropertyNameInner {
+  // Named after its own message one level down, where the receiver is not that message.
+  int64 property_name_inner = 1;
+}
+
 // checked/checked_arithmetic.pcross -- the checked overflow policy (spec 10.4).
 message CheckedOverflowCase {
   int32 i32_left = 1;
