@@ -98,7 +98,7 @@ The current implementation defines:
 - Target method names are mapped by the backend's protobuf naming convention helpers.
 - Namespace/package mapping follows the generated protobuf target's conventions exactly: a file's
   namespace is the one that generator declares for it. [24.1](./§24-Generated%20API%20Strategy.md#241-c)
-  states the C# rule.
+  states the C# rule and [24.2](./§24-Generated%20API%20Strategy.md#242-c) the C++ one.
 - Fields are read and written through the accessors the target's protobuf generator declares, spelled
   as that generator spells them. A field name the target language cannot use as it stands, such as
   `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
@@ -107,12 +107,6 @@ The current implementation defines:
   protobuf generator names them, escaped where it escapes them. A message called `New`, an enum value
   called `new` and a package component called `default` are ordinary in ProtoCross and are not
   rejected. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
-
-Implementation Note:
-
-- C++ namespaces do not yet follow protoc as closely as fields do. The C++ backend does not escape a
-  package component protoc escapes: a package `acme.new` is `acme::new` here and `acme::new_` in
-  protoc's output, so a schema reaching it emits code naming a namespace that does not exist.
 
 Open Question:
 
