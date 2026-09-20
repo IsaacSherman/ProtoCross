@@ -71,10 +71,10 @@ without asking.
 
 | Area | C# behavior | ProtoCross rule | C++ must emulate | Config key | Spec |
 |---|---|---|---|---|---|
-| `x / 0.0` | IEEE 754: `+-inf`. No exception. | `+-inf`. No `on_zero` clause is permitted, because the operation cannot fail (`PC0015`). | Matches natively. | `--` | 10.2 |
-| `0.0 / 0.0` | `NaN`. | `NaN`. | Matches natively. | `--` | 10.2 |
+| `x / 0.0` | IEEE 754: `+-inf`. No exception. | `+-inf`. No `on_zero` clause is permitted, because the operation cannot fail (`PC0015`). | Matches natively while an operand arrives at run time. A division by zero is undefined behavior in C++ however it is written, so a compiler that can work the quotient out for itself may refuse it instead: MSVC rejects `1.0 / 0.0` as error C2124 and the generated header does not compile. A quotient whose operands are all constants is therefore emitted as `std::divides<T>{}(a, b)`, whose call nothing can fold. The answer is unchanged, and a division with even one run-time operand is still a bare `/`. | `--` | 10.2 |
+| `0.0 / 0.0` | `NaN`. | `NaN`. | Matches natively, through the same call when both operands are constants. | `--` | 10.2 |
 | Comparisons involving `NaN` | Every ordered comparison is false, and `NaN == NaN` is false. | The same. | Matches natively. | `--` | 10.2 |
-| Signed zero | IEEE 754: `-0.0 == 0.0` is true; `1.0 / -0.0` is `-inf`. | The same. | Matches natively. | `--` | 10.2 |
+| Signed zero | IEEE 754: `-0.0 == 0.0` is true; `1.0 / -0.0` is `-inf`. | The same. | Matches natively; `1.0 / -0.0` is written from constants, so it goes through the same call as `x / 0.0`. | `--` | 10.2 |
 | `x % y` | The remainder of a truncating division, computed exactly and carrying the sign of `x`. `x % 0.0`, `inf % y`, and a `NaN` operand are `NaN`; `x % inf` is `x`. Unaffected by checked context. | The same. No `on_zero` clause is permitted (`PC0015`). | The built-in `%` is not defined on floating-point operands, so it does not compile. Emitted as `std::fmod`, which the C standard specifies to compute exactly this, with `<cmath>` included only by a header that uses it. | `--` | 10.2 |
 | `+` `-` `*` `/` rounding | IEEE 754, round to nearest, ties to even, at the operand's own precision. No implicit widening to a larger evaluation format, and no contraction into a fused multiply-add. | *Not yet pinned.* ProtoCross states IEEE 754 for division only. | *Not yet pinned.* C++ compilers may contract `a * b + c` into an FMA by default -- `-ffp-contract=fast` is GCC's and Clang's default -- which changes the result. Nothing currently prevents it. | `--` | 8.2 |
 

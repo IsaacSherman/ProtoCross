@@ -23,6 +23,15 @@ public sealed class CppBackend : ITestProjectScaffold
     private const string ReceiverName = "self";
     private const string RuntimeNamespace = "::protocross_runtime";
 
+    /// <summary>What a generated library header is called, after the source it was generated from.</summary>
+    /// <remarks>
+    /// One home, because three places need it and they had drifted: the file is written under this
+    /// name, the generated tests include it by this name, and the include guard is built from it. The
+    /// guard kept a copy of its own, so renaming <c>.pl.h</c> to <c>.pc.h</c> moved two of the three
+    /// and left every generated header guarded by a macro named after an extension nothing produces.
+    /// </remarks>
+    private const string HeaderExtension = ".pc.h";
+
     /// <summary>Exit code a child uses when an <c>expect fail</c> body returned instead of dying.</summary>
     private const int DidNotTerminateExitCode = 91;
 
@@ -38,7 +47,7 @@ public sealed class CppBackend : ITestProjectScaffold
     {
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
-        var guard = MakeIncludeGuard(baseName);
+        var guard = MakeIncludeGuard(baseName + HeaderExtension);
 
         WriteHeader(writer, options, guard, module);
 
@@ -87,7 +96,7 @@ public sealed class CppBackend : ITestProjectScaffold
         return
         [
             new GeneratedFile(CppRuntime.FileName, CppRuntime.Source),
-            new GeneratedFile(baseName + ".pc.h", writer.ToString()),
+            new GeneratedFile(baseName + HeaderExtension, writer.ToString()),
         ];
     }
 
@@ -166,7 +175,7 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         writer.WriteLine();
-        writer.WriteLine($"#include \"{baseName}.pc.h\"");
+        writer.WriteLine($"#include \"{baseName}{HeaderExtension}\"");
         writer.WriteLine();
 
         writer.WriteLine("// Reported when '--run' names a test this driver does not have.");
@@ -442,6 +451,12 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         writer.WriteLine("#include <cstdint>");
+
+        if (UsesFoldableFloatingDivision(module))
+        {
+            writer.WriteLine("#include <functional>");
+        }
+
         writer.WriteLine("#include <limits>");
         writer.WriteLine("#include <string>");
         writer.WriteLine();
@@ -460,15 +475,24 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine();
     }
 
-    private static string MakeIncludeGuard(string baseName)
+    /// <summary>The macro a generated header guards itself with, built from its own file name.</summary>
+    /// <remarks>
+    /// From the whole file name, extension included, so that renaming the file renames the guard and
+    /// the two cannot say different things -- which is the whole of the defect this replaces. The
+    /// <c>PROTOCROSS_</c> prefix is what makes it unique in a consumer's build, where a macro called
+    /// <c>CASTS_PC_H_</c> would be a collision waiting for the day they generate from a schema of
+    /// their own by that name. <c>protocross_runtime.h</c> spells its guard out, and arrives at the
+    /// same shape because its name already begins with the prefix.
+    /// </remarks>
+    private static string MakeIncludeGuard(string fileName)
     {
         var builder = new StringBuilder("PROTOCROSS_");
-        foreach (var c in baseName)
+        foreach (var c in fileName)
         {
             builder.Append(char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_');
         }
 
-        builder.Append("_PL_H_");
+        builder.Append('_');
         return builder.ToString();
     }
 
@@ -646,6 +670,15 @@ public sealed class CppBackend : ITestProjectScaffold
             return $"::std::fmod({left}, {right})";
         }
 
+        if (IsFoldableFloatingDivision(binary))
+        {
+            // A call is not a constant expression, so the quotient is left for the program to work
+            // out, exactly as one taken from fields already is. ::std::divides is specified to
+            // return left / right and nothing besides, which keeps the repair in this header
+            // instead of in protocross_runtime.h, which every generated project carries.
+            return $"::std::divides<{TypeName(binary.ResultType)}>{{}}({left}, {right})";
+        }
+
         return $"({left} {OperatorText(binary.Operator)} {right})";
     }
 
@@ -675,6 +708,78 @@ public sealed class CppBackend : ITestProjectScaffold
     /// </remarks>
     private static bool UsesFloatingRemainder(IrModule module)
         => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFloatingRemainder);
+
+    /// <summary>
+    /// Whether <paramref name="binary"/> is a floating-point <c>/</c> the C++ front end would work
+    /// out for itself, which is the case a compiler may refuse rather than emit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A division by zero is undefined behavior in C++ however it is written, so a compiler that can
+    /// see one is entitled to reject it, and MSVC does: <c>1.0 / 0.0</c> is error C2124, "divide or
+    /// mod by zero", and the generated header does not compile at all. Spec 10.2 says that quotient
+    /// is an infinity, so the language would be promising an answer one backend cannot deliver for
+    /// the most direct way an author can ask for it.
+    /// </para>
+    /// <para>
+    /// Both operands, not just the divisor. The refusal comes from constant folding, so it needs
+    /// every operand to be a constant: <c>self.numerator() / 0.0</c> compiles, and it is still
+    /// emitted as a bare <c>/</c>. Asking about the divisor alone would put a function call around
+    /// every <c>x / 2.0</c> in the corpus to fix something that was never broken.
+    /// </para>
+    /// <para>
+    /// <see cref="IsConstantExpression"/> answers the other half, and answers it by node kind rather
+    /// than by value, because the zero is often not written as one -- <c>-0.0</c>, <c>0 as double</c>
+    /// and <c>0.0 * 2.0</c> are all divisors the fold reaches and a list of spellings would not.
+    /// Knowing the value would need a constant evaluator in the backend, and having one would buy a
+    /// narrower rule for a construct nobody writes twice.
+    /// </para>
+    /// </remarks>
+    private static bool IsFoldableFloatingDivision(IrBinary binary)
+        => binary.Operator == IrBinaryOperator.Divide
+            && binary.ResultType is ScalarType { IsFloatingPoint: true }
+            && IsConstantExpression(binary.Left)
+            && IsConstantExpression(binary.Right);
+
+    /// <summary>
+    /// Whether this expression is emitted as something the C++ front end can evaluate while
+    /// compiling.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A question about the emitted C++ rather than about the IR, so it follows what the emitter
+    /// writes. The four node kinds here become literals and operators; everything else becomes a
+    /// call or a member access, and neither is a constant expression. Integer arithmetic is the case
+    /// worth naming: it looks constant and is not, because it routes through
+    /// <c>protocross_runtime.h</c>, so <c>(2 - 2) as double</c> is a divisor the front end cannot
+    /// work out. Counting it as constant anyway costs an inlined call that was not needed, which is
+    /// the direction this predicate is allowed to be wrong in.
+    /// </para>
+    /// <para>
+    /// A reference to a local is deliberately absent. MSVC does fold through a <c>const</c> local,
+    /// so this answer depends on <see cref="EmitStatement"/> declaring locals without <c>const</c> --
+    /// which it must anyway, since a ProtoCross local can be assigned.
+    /// </para>
+    /// </remarks>
+    private static bool IsConstantExpression(IrExpression expression) => expression switch
+    {
+        IrLiteral => true,
+        IrUnary unary => IsConstantExpression(unary.Operand),
+        IrBinary binary => IsConstantExpression(binary.Left) && IsConstantExpression(binary.Right),
+        IrConversion conversion => IsConstantExpression(conversion.Operand),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether anything in <paramref name="module"/> is a foldable floating-point division, and so
+    /// needs <c>&lt;functional&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// Conditional for the same reason <see cref="UsesFloatingRemainder"/> is: a header for a module
+    /// that writes no such division stays byte-for-byte what it was before this repair existed.
+    /// </remarks>
+    private static bool UsesFoldableFloatingDivision(IrModule module)
+        => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFoldableFloatingDivision);
 
     private static string EmitIntegerDivision(IrIntegerDivision division)
     {

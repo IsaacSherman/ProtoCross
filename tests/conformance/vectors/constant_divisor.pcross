@@ -1,0 +1,190 @@
+// Conformance vectors for a floating-point division both of whose operands are written out.
+//
+// The answers here are the ones floating_point.pcross already pins: IEEE 754 division by zero is an
+// infinity, and zero over zero is a NaN. What is different is where the operands come from. Those
+// vectors divide one field by another, so the quotient is computed when the generated code runs;
+// these write both operands into the source, so the C++ front end computes it while compiling --
+// and MSVC rejects a division it folds to a zero divisor outright, as error C2124, before anything
+// can run. The rule the language states is therefore unreachable in one backend for the most direct
+// way an author can write it, which is what these vectors are here to prevent.
+//
+// A constant divisor alone is not enough to provoke it: a fold needs both operands, so
+// 'numerator / 0.0' compiles where '1.0 / 0.0' does not. Each vector below is written to be one node
+// kind the fold can reach through -- a literal, a negation, an arithmetic operator, a conversion --
+// because whether a quotient compiles has to follow the shape of the expression rather than a list
+// of the spellings somebody thought of.
+//
+// Infinities and NaN have no literal form, so each case returns a predicate, as floating_point.pcross
+// does: 'q == q * 2.0' is true of an infinity and of no finite non-zero value, and a NaN is the only
+// value unequal to itself.
+
+import proto "constant_divisor.proto";
+
+extend ConstantDivisorCase {
+    fn constant_quotient_is_positive_infinity() -> bool {
+        var q: double = 1.0 / 0.0;
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    fn negated_constant_quotient_is_negative_infinity() -> bool {
+        var q: double = -1.0 / 0.0;
+        return q < 0.0 and q == q * 2.0;
+    }
+
+    fn constant_zero_over_zero_is_nan() -> bool {
+        var q: double = 0.0 / 0.0;
+        return q != q;
+    }
+
+    // The divisor is an integer literal that adopts 'double' from the operand beside it (10.3), so
+    // this is the same division as the first one, written the way an author is likely to reach for.
+    fn integer_zero_divisor_is_positive_infinity() -> bool {
+        var q: double = 1.0 / 0;
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    // A conversion, which is a cast in the generated C++ and folds like any other constant.
+    fn converted_zero_divisor_is_positive_infinity() -> bool {
+        var q: double = 1.0 / (0 as double);
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    // A negation, which is where the sign of the zero decides the sign of the infinity.
+    fn negative_zero_divisor_is_negative_infinity() -> bool {
+        var q: double = 1.0 / -0.0;
+        return q < 0.0 and q == q * 2.0;
+    }
+
+    // An arithmetic operator: the divisor is zero only once the multiplication is worked out, so a
+    // rule about literal zeros would not see it.
+    fn computed_zero_divisor_is_positive_infinity() -> bool {
+        var q: double = 1.0 / (0.0 * 2.0);
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    // The case that must keep dividing the way it always has: nothing can be folded, because the
+    // numerator is only known when this runs.
+    fn field_over_constant_zero_is_positive_infinity() -> bool {
+        var q: double = numerator / 0.0;
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    fn field_over_constant_zero_is_nan() -> bool {
+        var q: double = numerator / 0.0;
+        return q != q;
+    }
+
+    fn narrow_constant_quotient_is_positive_infinity() -> bool {
+        var q: float = 1.0 / 0.0;
+        return q > 0.0 and q == q * 2.0;
+    }
+
+    fn narrow_field_over_constant_zero_is_nan() -> bool {
+        var q: float = narrow_numerator / 0.0;
+        return q != q;
+    }
+
+    // A constant quotient that is not an infinity at all. It is folded exactly as the others are, so
+    // it is the one that says the repair leaves an ordinary division's answer alone.
+    fn constant_quotient() -> double {
+        return 1.0 / 4.0;
+    }
+
+    fn narrow_constant_quotient() -> float {
+        return 1.0 / 4.0;
+    }
+}
+
+test ConstantDivisorCase.constant_quotient_is_positive_infinity "a constant one over a constant zero is positive infinity" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.negated_constant_quotient_is_negative_infinity "a negated constant numerator carries its sign into the infinity" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.constant_zero_over_zero_is_nan "a constant zero over a constant zero is NaN" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.integer_zero_divisor_is_positive_infinity "an integer zero divisor adopts double and divides the same way" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.converted_zero_divisor_is_positive_infinity "a converted zero divides the same way" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.negative_zero_divisor_is_negative_infinity "a constant negative zero divisor yields negative infinity" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.computed_zero_divisor_is_positive_infinity "a divisor that is zero only once computed divides the same way" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.field_over_constant_zero_is_positive_infinity "a field over a constant zero is positive infinity" {
+    receiver {
+        numerator = 1.0;
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.field_over_constant_zero_is_nan "a zero field over a constant zero is NaN" {
+    receiver {
+        numerator = 0.0;
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.narrow_constant_quotient_is_positive_infinity "float constants divide the way double constants do" {
+    receiver {
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.narrow_field_over_constant_zero_is_nan "a zero float field over a constant zero is NaN" {
+    receiver {
+        narrow_numerator = 0.0;
+    }
+
+    expect return true;
+}
+
+test ConstantDivisorCase.constant_quotient "a constant quotient that is not an infinity keeps its value" {
+    receiver {
+    }
+
+    expect return 0.25;
+}
+
+test ConstantDivisorCase.narrow_constant_quotient "a narrow constant quotient keeps its value" {
+    receiver {
+    }
+
+    expect return 0.25;
+}

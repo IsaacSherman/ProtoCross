@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// constant_divisor.pcross -- floating-point division whose operands are both written out.
+message ConstantDivisorCase {
+  // The one case whose numerator is not a constant. Its divisor still is, which is what separates
+  // a division the C++ front end can fold from one it cannot.
+  double numerator = 1;
+  float narrow_numerator = 2;
+}
