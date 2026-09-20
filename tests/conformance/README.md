@@ -69,6 +69,9 @@ Two constraints are worth knowing before writing one:
 - **Take divisors from fixture fields, not literals.** A non-zero literal divisor is proof that an
   `on_zero` clause is unreachable, and the compiler warns about it (PC0056). A field-supplied
   divisor keeps both the zero and non-zero paths live.
+  That is a rule about integer division. A floating-point division takes no clause at all, so
+  `constant_divisor.pcross` writes both operands out deliberately: what it pins is what the
+  backends do with a quotient they can work out before the program runs.
 - **Some values have no literal form.** `int64` MIN cannot be written directly, because its
   magnitude does not fit in a positive 64-bit literal; write it as `-9223372036854775807 - 1`, the
   way `<climits>` does. There is no `inf` or `NaN` literal either, so floating-point edge cases are
@@ -99,6 +102,7 @@ failing. A fully equipped machine should report no skips.
 | `integer_division` | Truncation toward zero, `on_zero` fallbacks, `on_zero fail`, and `MIN / -1` and `MIN % -1` (spec 10.2, 10.2.1) |
 | `floating_point` | IEEE 754 division including by zero: infinities, NaN, and NaN comparison behavior |
 | `floating_remainder` | `%` on `float` and `double`: the sign of the dividend, exactness, negative zero, and a zero, infinite, or NaN operand |
+| `constant_divisor` | Floating-point division whose operands are both written into the source, which the C++ front end works out while compiling rather than leaving to run: a literal, negated, converted, and computed zero divisor, and the field-over-constant divisions that cannot be folded (spec 10.2, 23.1) |
 | `ordinary_names` | `virtual` as a parameter, a local, a method, and a test target: an ordinary name in ProtoCross that both targets reserve, so each has to escape it (spec 17) |
 | `control_flow` | `if` / `else if` / `else`, `while`, `while true` with `break`, `continue`, and `for`-`in` (spec 15) |
 | `strings` | String equality, string returns, and literals containing characters both backends must escape (spec 11) |
