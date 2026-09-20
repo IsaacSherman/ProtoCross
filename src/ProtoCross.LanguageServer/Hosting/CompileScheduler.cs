@@ -392,21 +392,23 @@ public sealed class CompileScheduler
         // reader looking up a severity the code is documented never to have.
         if (compiled.LoaderFailure is { } failure && settings.ProtocPath is not null)
         {
-            var refused = new DiagnosticContribution();
-            refused.Add(
-                uri,
-                new Diagnostic
-                {
-                    Range = DiagnosticMapper.WholeDocumentStart,
-                    Severity = DiagnosticSeverity.Error,
-                    Code = "PC2107",
-                    Source = DiagnosticMapper.Source,
-                    Message = $"protoc could not be used: '{settings.ProtocPath}', from "
-                        + $"{settings.ProtocPathSource.Describe()}, exists but could not be prepared to run. "
-                        + $"{failure?.Message} Nothing is compiled for this document until it can be.",
-                });
+            // Reported and then mapped, rather than assembled as an editor diagnostic here: the
+            // descriptor is what carries the code, the severity and the title prefix together, and the
+            // mapper is what puts the title, the message and the help where 26.1 says a host puts them.
+            // Built by hand, this one diagnostic was the only one in the server that went out without
+            // the structured copy a quick fix reads.
+            var refused = new Diagnostics.DiagnosticBag();
+            refused.Report(
+                HostDiagnosticCodes.ProtocCouldNotBeUsed,
+                $"'{settings.ProtocPath}', from {settings.ProtocPathSource.Describe()}, exists but "
+                    + $"could not be prepared to run. {failure?.Message} Nothing is compiled for this "
+                    + "document until it can be.",
+                Diagnostics.SourceSpan.None);
 
-            return WithConfiguration(refused, uri, settings, mapper);
+            var contribution = new DiagnosticContribution();
+            contribution.Add(uri, mapper.Map(refused.Single(), uri.Text, DiagnosticMapper.WholeDocumentStart));
+
+            return WithConfiguration(contribution, uri, settings, mapper);
         }
 
         if (compiled.Result is not { } result)

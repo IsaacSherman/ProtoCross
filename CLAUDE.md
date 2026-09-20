@@ -83,9 +83,12 @@ Observed across the codebase; match them rather than introducing a second style.
 - **Guard clauses and early return**; the happy path stays at the left margin.
 - **Nullable is on and meaningful.** `null` means "there is none" (a buffer with no directory), and
   every consumer asks one question rather than `is null` in one place and `IsNullOrEmpty` in another.
-- **Diagnostics** get a `PL####` code, a lowercase title, a full-sentence message, a span, and —
-  wherever a reader could act on it — a `Help` string that says what to do. Help text is part of the
-  product; #61 turns it into quick fixes.
+- **Diagnostics** get a `PC####` code, a lowercase title, a full-sentence message, a span, and —
+  wherever a reader could act on it — a `Help` string that says what to do. The first three come
+  from a `DiagnosticDescriptor` in `DiagnosticCodes`, or `HostDiagnosticCodes` for the server's own
+  range: a raise site names one and never spells a code, so two sites cannot disagree about what a
+  code means. The message and the help are written at the site, because both say what went wrong
+  *here*. Help text is part of the product; #61 turns it into quick fixes.
 - **Public API stability is deliberate.** Existing constructor signatures and rendering are kept
   working when a type changes shape underneath them.
 

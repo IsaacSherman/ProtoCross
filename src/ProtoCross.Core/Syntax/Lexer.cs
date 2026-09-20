@@ -233,9 +233,8 @@ public sealed class Lexer
 
         if (!closed)
         {
-            _diagnostics.Error(
-                "PC0004",
-                "unterminated block comment",
+            _diagnostics.Report(
+                DiagnosticCodes.UnterminatedBlockComment,
                 "Reached end of file while scanning a block comment.",
                 SourceSpan.SingleLine(_file, start.Offset, start.Line, start.Column, 2),
                 "Close the comment with '*/'.");
@@ -304,9 +303,8 @@ public sealed class Lexer
         {
             if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var floatValue))
             {
-                _diagnostics.Error(
-                    "PC0005",
-                    "invalid float literal",
+                _diagnostics.Report(
+                    DiagnosticCodes.InvalidFloatLiteral,
                     $"'{text}' is not a valid floating-point literal.",
                     span);
                 floatValue = 0d;
@@ -317,9 +315,8 @@ public sealed class Lexer
 
         if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
         {
-            _diagnostics.Error(
-                "PC0006",
-                "integer literal out of range",
+            _diagnostics.Report(
+                DiagnosticCodes.IntegerLiteralOutOfRange,
                 $"'{text}' does not fit in a 64-bit signed integer.",
                 span);
             intValue = 0L;
@@ -389,9 +386,8 @@ public sealed class Lexer
                         // The span covers the backslash and the character it escapes, which is what
                         // the author actually wrote. Pointing at the escape character alone also ran
                         // the range one position past the end of a text that ended mid-escape.
-                        _diagnostics.Error(
-                            "PC0007",
-                            "unrecognized escape sequence",
+                        _diagnostics.Report(
+                            DiagnosticCodes.UnrecognizedEscapeSequence,
                             $"'\\{escape}' is not a recognized escape sequence.",
                             SourceSpan.SingleLine(_file, _position - 1, line, Column - 1, 2));
                         Advance();
@@ -410,9 +406,8 @@ public sealed class Lexer
 
         if (!terminated)
         {
-            _diagnostics.Error(
-                "PC0008",
-                "unterminated string literal",
+            _diagnostics.Report(
+                DiagnosticCodes.UnterminatedStringLiteral,
                 "String literals must be closed before the end of the line.",
                 span);
         }
@@ -549,9 +544,8 @@ public sealed class Lexer
 
         if (kind == TokenKind.Unknown)
         {
-            _diagnostics.Error(
-                "PC0009",
-                "unexpected character",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedCharacter,
                 $"'{text}' is not valid ProtoCross syntax.",
                 span);
         }

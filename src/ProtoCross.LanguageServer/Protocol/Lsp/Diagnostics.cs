@@ -26,7 +26,7 @@ public sealed record Diagnostic
 
     public DiagnosticSeverity Severity { get; init; } = DiagnosticSeverity.Error;
 
-    /// <summary>The <c>PL####</c> code, or null for a diagnostic this compiler did not write.</summary>
+    /// <summary>The <c>PC####</c> code, or null for a diagnostic this compiler did not write.</summary>
     /// <remarks>
     /// Null is protoc's case. Its messages have no code in this compiler's numbering, and giving them
     /// one would be ProtoCross inventing a taxonomy for another tool's output. <see cref="Source"/>

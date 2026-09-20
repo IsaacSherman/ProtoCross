@@ -96,9 +96,8 @@ public sealed class Parser
             return true;
         }
 
-        _diagnostics.Error(
-            "PC0010",
-            "unexpected token",
+        _diagnostics.Report(
+            DiagnosticCodes.UnexpectedToken,
             $"Expected {kind.Describe()} but found {Current.Kind.Describe()}.",
             Current.Span);
 
@@ -157,9 +156,8 @@ public sealed class Parser
         if (!_reportedNesting)
         {
             _reportedNesting = true;
-            _diagnostics.Error(
-                "PC0081",
-                "nesting is too deep",
+            _diagnostics.Report(
+                DiagnosticCodes.NestingIsTooDeep,
                 $"This construct nests more than {MaxNestingDepth} levels deep, which the compiler "
                 + "does not parse.",
                 Current.Span,
@@ -196,9 +194,8 @@ public sealed class Parser
                     break;
 
                 default:
-                    _diagnostics.Error(
-                        "PC0011",
-                        "unexpected top-level declaration",
+                    _diagnostics.Report(
+                        DiagnosticCodes.UnexpectedTopLevelDeclaration,
                         $"Expected 'import', 'extend', or 'test' but found {Current.Kind.Describe()}.",
                         Current.Span,
                         "A ProtoCross file contains proto imports, extend blocks, and test declarations.");
@@ -246,9 +243,8 @@ public sealed class Parser
                 continue;
             }
 
-            _diagnostics.Error(
-                "PC0012",
-                "unexpected member in extend block",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedExtendMember,
                 $"Expected 'fn' but found {Current.Kind.Describe()}.",
                 Current.Span,
                 "Extend blocks contain methods. Fields belong in the .proto schema.");
@@ -295,9 +291,8 @@ public sealed class Parser
                     break;
 
                 default:
-                    _diagnostics.Error(
-                        "PC0016",
-                        "unexpected member in test block",
+                    _diagnostics.Report(
+                        DiagnosticCodes.UnexpectedTestMember,
                         $"Expected 'receiver', 'arg', or 'expect' but found {Current.Kind.Describe()}.",
                         Current.Span);
 
@@ -316,9 +311,8 @@ public sealed class Parser
 
         if (receiver is null)
         {
-            _diagnostics.Error(
-                "PC0017",
-                "test is missing a receiver",
+            _diagnostics.Report(
+                DiagnosticCodes.TestHasNoReceiver,
                 "A ProtoCross unit test must declare the protobuf receiver fixture.",
                 Spanning(start, end),
                 "Add a 'receiver { ... }' block.");
@@ -333,9 +327,8 @@ public sealed class Parser
 
         if (expectation is null)
         {
-            _diagnostics.Error(
-                "PC0018",
-                "test is missing an expectation",
+            _diagnostics.Report(
+                DiagnosticCodes.TestHasNoExpectation,
                 "A ProtoCross unit test must declare 'expect return <value>;' or 'expect fail;'.",
                 Spanning(start, end));
 
@@ -447,9 +440,8 @@ public sealed class Parser
             return new TestFailExpectation(Spanning(start, end));
         }
 
-        _diagnostics.Error(
-            "PC0019",
-            "expected a test expectation",
+        _diagnostics.Report(
+            DiagnosticCodes.ExpectedTestExpectation,
             $"Expected 'return' or 'fail' but found {Current.Kind.Describe()}.",
             Current.Span);
         Advance();
@@ -599,9 +591,8 @@ public sealed class Parser
 
         var insertionPoint = InsertionPointAfterPreviousToken();
 
-        _diagnostics.Error(
-            "PC0013",
-            "expected a type",
+        _diagnostics.Report(
+            DiagnosticCodes.ExpectedType,
             $"Expected a type name but found {token.Kind.Describe()}.",
             token.Span);
         Advance();
@@ -927,12 +918,11 @@ public sealed class Parser
 
         if (op is not (BinaryOperatorKind.Divide or BinaryOperatorKind.Modulo))
         {
-            _diagnostics.Error(
-                "PC0015",
-                "on_zero is only valid on division",
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroOutsideIntegerDivision,
                 $"'on_zero' cannot be applied to '{operatorToken.Text}'.",
                 onZeroToken.Span,
-                "Only '/' and '%' can fail on a zero operand.");
+                "Only integer '/' and '%' can fail on a zero operand.");
         }
 
         // 'on_zero fail' says there is no correct value to substitute, so the program stops.
@@ -1092,9 +1082,8 @@ public sealed class Parser
             }
 
             default:
-                _diagnostics.Error(
-                    "PC0014",
-                    "expected an expression",
+                _diagnostics.Report(
+                    DiagnosticCodes.ExpectedExpression,
                     $"Expected an expression but found {token.Kind.Describe()}.",
                     token.Span);
                 Advance();

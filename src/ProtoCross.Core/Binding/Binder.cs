@@ -282,9 +282,8 @@ public sealed class Binder
             return;
         }
 
-        _diagnostics.Warning(
-            "PC0077",
-            "extending a well-known type",
+        _diagnostics.Report(
+            DiagnosticCodes.ExtendingAWellKnownType,
             $"'{receiver.Name}' comes from the protobuf runtime, so consumers have it without this "
             + "behavior. The generated extensions have to ship as their own library for anyone to "
             + "call them.",
@@ -309,9 +308,8 @@ public sealed class Binder
 
         if (candidates.Count > 0)
         {
-            _diagnostics.Error(
-                "PC0020",
-                "ambiguous message name",
+            _diagnostics.Report(
+                DiagnosticCodes.AmbiguousMessageName,
                 $"'{name}' matches {candidates.Count} messages: "
                 + string.Join(", ", candidates.Select(c => c.FullName)) + ".",
                 span,
@@ -319,9 +317,8 @@ public sealed class Binder
             return null;
         }
 
-        _diagnostics.Error(
-            "PC0021",
-            "unknown message type",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownMessageType,
             $"No protobuf message named '{name}' was found in the imported schemas.",
             span,
             "Check the 'import proto' declarations and the --proto_path include directories.");
@@ -354,9 +351,8 @@ public sealed class Binder
 
         if (_methods.ContainsKey(key))
         {
-            _diagnostics.Error(
-                "PC0022",
-                "duplicate method",
+            _diagnostics.Report(
+                DiagnosticCodes.DuplicateMethod,
                 $"'{receiver.FullName}' already defines a method named '{method.Name}'.",
                 method.Span,
                 "Overloading is not supported; give the method a distinct name.");
@@ -365,9 +361,8 @@ public sealed class Binder
 
         if (MessageFields.Named(receiver, method.Name.Text) is not null)
         {
-            _diagnostics.Error(
-                "PC0023",
-                "method name collides with a field",
+            _diagnostics.Report(
+                DiagnosticCodes.MethodNameCollidesWithField,
                 $"'{receiver.FullName}' has a field named '{method.Name}'.",
                 method.Span,
                 "Methods and protobuf fields share one name space on a message.");
@@ -391,9 +386,8 @@ public sealed class Binder
             var type = ResolveTypeReference(parameter.Type);
             if (type is VoidType)
             {
-                _diagnostics.Error(
-                    "PC0024",
-                    "void is not a value type",
+                _diagnostics.Report(
+                    DiagnosticCodes.VoidIsNotAValueType,
                     $"{Capitalized(Refer(parameter.Name, "parameter", "Parameter"))} cannot be "
                     + "declared void.",
                     parameter.Span,
@@ -445,9 +439,8 @@ public sealed class Binder
     {
         var ordered = fullNames.Order(StringComparer.Ordinal).ToList();
 
-        _diagnostics.Error(
-            "PC0074",
-            "ambiguous type name",
+        _diagnostics.Report(
+            DiagnosticCodes.AmbiguousTypeName,
             $"'{name}' matches {ordered.Count} types: " + string.Join(", ", ordered) + ".",
             span,
             "Qualify the name with its protobuf package.");
@@ -515,9 +508,8 @@ public sealed class Binder
             return NamedEnum(onlyEnum);
         }
 
-        _diagnostics.Error(
-            "PC0025",
-            "unknown type",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownType,
             $"'{reference.Name}' is not a protobuf scalar, message, or enum type.",
             reference.Span,
             "ProtoCross types come only from the protobuf type universe (spec 8.1).");
@@ -565,9 +557,8 @@ public sealed class Binder
 
             if (!scope.TryDeclareParameter(parameter))
             {
-                _diagnostics.Error(
-                    "PC0026",
-                    "duplicate parameter",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateParameter,
                     $"A parameter named '{parameter.Name}' is already declared.",
                     parameter.Declaration.Extent);
                 continue;
@@ -581,9 +572,8 @@ public sealed class Binder
 
         if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
         {
-            _diagnostics.Error(
-                "PC0027",
-                "missing return statement",
+            _diagnostics.Report(
+                DiagnosticCodes.MissingReturnStatement,
                 $"{Capitalized(Refer(method.Name, "method"))} declares a return type of "
                 + $"'{signature.ReturnType.DisplayName}' but not all paths return a value.",
                 method.Span);
@@ -627,9 +617,8 @@ public sealed class Binder
 
         if (target.Receiver.IsMissing)
         {
-            _diagnostics.Error(
-                "PC0057",
-                "invalid test target",
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidTestTarget,
                 $"'{target.Method}' is not a method target.",
                 span,
                 "Write tests against a receiver method, for example 'test Invoice.total_cents'.");
@@ -655,9 +644,8 @@ public sealed class Binder
             return signature;
         }
 
-        _diagnostics.Error(
-            "PC0058",
-            "unknown test target",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownTestTarget,
             $"'{receiver.FullName}' has no ProtoCross method named '{target.Method}'.",
             span,
             "Tests can only target methods declared in an extend block.");
@@ -689,9 +677,8 @@ public sealed class Binder
             var descriptorField = MessageFields.Named(descriptor, field.FieldName.Text);
             if (descriptorField is null)
             {
-                _diagnostics.Error(
-                    "PC0059",
-                    "unknown fixture field",
+                _diagnostics.Report(
+                    DiagnosticCodes.UnknownFixtureField,
                     $"'{descriptor.FullName}' has no field named '{field.FieldName}'.",
                     field.Span);
                 continue;
@@ -705,9 +692,8 @@ public sealed class Binder
 
             if (descriptorField.IsMap)
             {
-                _diagnostics.Error(
-                    "PC0060",
-                    "maps are not supported in test fixtures",
+                _diagnostics.Report(
+                    DiagnosticCodes.MapsAreNotSupportedInFixtures,
                     $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
                     field.Span);
                 continue;
@@ -715,9 +701,8 @@ public sealed class Binder
 
             if (!descriptorField.IsRepeated && !seenSingular.Add(descriptorField.Name))
             {
-                _diagnostics.Error(
-                    "PC0061",
-                    "duplicate fixture field",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateFixtureField,
                     $"Field '{descriptorField.Name}' is set more than once.",
                     field.Span,
                     "Repeated fields may be listed multiple times; singular fields may not.");
@@ -734,9 +719,8 @@ public sealed class Binder
                     // is an ordinary expression. PC0063 below catches one of the wrong enum type.
                     if (expectedType is MessageType)
                     {
-                        _diagnostics.Error(
-                            "PC0062",
-                            "fixture field requires a nested value",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldRequiresANestedValue,
                             $"Field '{descriptorField.Name}' is message '{expectedType.DisplayName}' and cannot be set from an expression.",
                             field.Span,
                             $"Write '{descriptorField.Name} {{ ... }}' to build the nested message.");
@@ -746,9 +730,8 @@ public sealed class Binder
                     var value = BindExpression(scalar.Value, NoNames(), context, expectedType);
                     if (value.Type is not ErrorType && !TypesMatch(expectedType, value.Type))
                     {
-                        _diagnostics.Error(
-                            "PC0063",
-                            "fixture field type mismatch",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldTypeMismatch,
                             $"Field '{descriptorField.Name}' expects '{expectedType.DisplayName}' but got '{value.Type.DisplayName}'.",
                             field.Span);
                     }
@@ -762,9 +745,8 @@ public sealed class Binder
                     var fieldType = TypeFactory.FromFieldValue(descriptorField);
                     if (fieldType is not MessageType messageType)
                     {
-                        _diagnostics.Error(
-                            "PC0064",
-                            "fixture field is not a message",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldIsNotAMessage,
                             $"Field '{descriptorField.Name}' has type '{fieldType.DisplayName}' and cannot contain nested fields.",
                             field.Span);
                         continue;
@@ -802,9 +784,8 @@ public sealed class Binder
 
             if (!declared.TryAdd(argument.Name.Text, argument))
             {
-                _diagnostics.Error(
-                    "PC0065",
-                    "duplicate test argument",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateTestArgument,
                     $"Argument '{argument.Name}' is supplied more than once.",
                     argument.Span);
             }
@@ -834,9 +815,8 @@ public sealed class Binder
             {
                 if (argumentNamesAreComplete)
                 {
-                    _diagnostics.Error(
-                        "PC0066",
-                        "missing test argument",
+                    _diagnostics.Report(
+                        DiagnosticCodes.MissingTestArgument,
                         $"Test '{test.Name}' does not supply argument '{name}'.",
                         test.Span);
                 }
@@ -864,9 +844,8 @@ public sealed class Binder
             var value = BindExpression(declaration.Value, NoNames(), context, expectedType);
             if (value.Type is not ErrorType && !TypesMatch(expectedType, value.Type))
             {
-                _diagnostics.Error(
-                    "PC0067",
-                    "test argument type mismatch",
+                _diagnostics.Report(
+                    DiagnosticCodes.TestArgumentTypeMismatch,
                     $"Argument '{name}' expects '{expectedType.DisplayName}' but got '{value.Type.DisplayName}'.",
                     declaration.Span);
             }
@@ -876,9 +855,8 @@ public sealed class Binder
 
         foreach (var extra in declared.Keys.Except(NamedParametersOf(signature), StringComparer.Ordinal))
         {
-            _diagnostics.Error(
-                "PC0068",
-                "unknown test argument",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownTestArgument,
                 $"'{signature.Name}' has no parameter named '{extra}'.",
                 declared[extra].Span);
         }
@@ -906,9 +884,8 @@ public sealed class Binder
             {
                 if (signature.ReturnType is VoidType)
                 {
-                    _diagnostics.Error(
-                        "PC0069",
-                        "void method cannot expect a return value",
+                    _diagnostics.Report(
+                        DiagnosticCodes.VoidMethodCannotExpectAReturnValue,
                         $"'{signature.Name}' does not return a value.",
                         returns.Span);
                 }
@@ -918,9 +895,8 @@ public sealed class Binder
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
-                    _diagnostics.Error(
-                        "PC0070",
-                        "test expectation type mismatch",
+                    _diagnostics.Report(
+                        DiagnosticCodes.TestExpectationTypeMismatch,
                         $"'{signature.Name}' returns '{signature.ReturnType.DisplayName}' but the expectation is '{value.Type.DisplayName}'.",
                         returns.Span);
                 }
@@ -1145,9 +1121,8 @@ public sealed class Binder
 
         if (declaredType is VoidType)
         {
-            _diagnostics.Error(
-                "PC0024",
-                "void is not a value type",
+            _diagnostics.Report(
+                DiagnosticCodes.VoidIsNotAValueType,
                 $"{Capitalized(Refer(declaration.Name, "variable", "Variable"))} cannot be "
                 + "declared void.",
                 declaration.Span,
@@ -1162,9 +1137,8 @@ public sealed class Binder
             && initializer.Type is not ErrorType
             && !TypesMatch(declaredType, initializer.Type))
         {
-            _diagnostics.Error(
-                "PC0028",
-                "type mismatch in variable initializer",
+            _diagnostics.Report(
+                DiagnosticCodes.VariableInitializerTypeMismatch,
                 $"Cannot initialize {Refer(declaration.Name, "variable")} of type "
                 + $"'{declaredType.DisplayName}' with a value of type "
                 + $"'{initializer.Type.DisplayName}'.",
@@ -1192,9 +1166,8 @@ public sealed class Binder
         }
         else
         {
-            _diagnostics.Error(
-                "PC0029",
-                "duplicate variable",
+            _diagnostics.Report(
+                DiagnosticCodes.DuplicateVariable,
                 $"A variable named '{declaration.Name}' is already in scope.",
                 declaration.Span);
         }
@@ -1208,9 +1181,8 @@ public sealed class Binder
         {
             if (context.ReturnType is not VoidType)
             {
-                _diagnostics.Error(
-                    "PC0030",
-                    "missing return value",
+                _diagnostics.Report(
+                    DiagnosticCodes.MissingReturnValue,
                     $"This method must return a value of type '{context.ReturnType.DisplayName}'.",
                     statement.Span);
             }
@@ -1222,17 +1194,15 @@ public sealed class Binder
 
         if (context.ReturnType is VoidType)
         {
-            _diagnostics.Error(
-                "PC0031",
-                "unexpected return value",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedReturnValue,
                 "This method does not declare a return type.",
                 statement.Span);
         }
         else if (value.Type is not ErrorType && !TypesMatch(context.ReturnType, value.Type))
         {
-            _diagnostics.Error(
-                "PC0032",
-                "return type mismatch",
+            _diagnostics.Report(
+                DiagnosticCodes.ReturnTypeMismatch,
                 $"Cannot return a value of type '{value.Type.DisplayName}' from a method "
                 + $"declared '{context.ReturnType.DisplayName}'.",
                 statement.Span,
@@ -1255,9 +1225,8 @@ public sealed class Binder
         {
             if (collection.Type is not ErrorType)
             {
-                _diagnostics.Error(
-                    "PC0033",
-                    "not iterable",
+                _diagnostics.Report(
+                    DiagnosticCodes.NotIterable,
                     $"Cannot iterate a value of type '{collection.Type.DisplayName}'.",
                     statement.Collection.Span,
                     "'for' iterates protobuf repeated fields (spec 14).");
@@ -1290,9 +1259,8 @@ public sealed class Binder
             }
             else
             {
-                _diagnostics.Error(
-                    "PC0029",
-                    "duplicate variable",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateVariable,
                     $"A variable named '{statement.VariableName}' is already in scope.",
                     statement.Span);
             }
@@ -1343,9 +1311,8 @@ public sealed class Binder
 
         if (bound.Type is not ErrorType && !TypesMatch(bound.Type, ScalarType.BoolType))
         {
-            _diagnostics.Error(
-                "PC0071",
-                "condition must be bool",
+            _diagnostics.Report(
+                DiagnosticCodes.ConditionMustBeBool,
                 $"The '{keyword}' condition has type '{bound.Type.DisplayName}'.",
                 condition.Span,
                 "ProtoCross does not treat non-bool values as true or false; compare explicitly.");
@@ -1358,9 +1325,8 @@ public sealed class Binder
     {
         if (context.LoopDepth == 0)
         {
-            _diagnostics.Error(
-                "PC0072",
-                "'break' outside a loop",
+            _diagnostics.Report(
+                DiagnosticCodes.BreakOutsideALoop,
                 "'break' can only appear inside a 'for' or 'while' loop.",
                 statement.Span);
         }
@@ -1372,9 +1338,8 @@ public sealed class Binder
     {
         if (context.LoopDepth == 0)
         {
-            _diagnostics.Error(
-                "PC0073",
-                "'continue' outside a loop",
+            _diagnostics.Report(
+                DiagnosticCodes.ContinueOutsideALoop,
                 "'continue' can only appear inside a 'for' or 'while' loop.",
                 statement.Span);
         }
@@ -1386,9 +1351,8 @@ public sealed class Binder
     {
         if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
         {
-            _diagnostics.Error(
-                "PC0034",
-                "invalid assignment target",
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidAssignmentTarget,
                 "Only local variables can be assigned.",
                 statement.Target.Span,
                 "Whether methods may mutate the receiver is still an open question (spec 16.1).");
@@ -1426,9 +1390,8 @@ public sealed class Binder
 
         if (value.Type is not ErrorType && local.Type is not ErrorType && !TypesMatch(local.Type, value.Type))
         {
-            _diagnostics.Error(
-                "PC0035",
-                "type mismatch in assignment",
+            _diagnostics.Report(
+                DiagnosticCodes.AssignmentTypeMismatch,
                 $"Cannot assign a value of type '{value.Type.DisplayName}' to '{local.Name}' "
                 + $"of type '{local.Type.DisplayName}'.",
                 statement.Span,
@@ -1489,9 +1452,8 @@ public sealed class Binder
         if (operand.Type is not ScalarType { IsNumeric: true } source
             || target is not ScalarType { IsNumeric: true } destination)
         {
-            _diagnostics.Error(
-                "PC0075",
-                "invalid conversion",
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidConversion,
                 $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
                 cast.Span,
                 "'as' converts between numeric scalar types only (spec 10.3).");
@@ -1541,9 +1503,8 @@ public sealed class Binder
 
             if (scalar.IsInteger)
             {
-                _diagnostics.Error(
-                    "PC0036",
-                    "integer literal out of range",
+                _diagnostics.Report(
+                    DiagnosticCodes.LiteralOutOfRangeForItsType,
                     $"{literal.Value} is outside the range of '{scalar.DisplayName}'.",
                     literal.Span);
                 return new IrLiteral(literal.Value, scalar, literal.Span);
@@ -1590,9 +1551,8 @@ public sealed class Binder
             }
         }
 
-        _diagnostics.Error(
-            "PC0037",
-            "unknown name",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownName,
             $"'{name.Name}' is not a variable, parameter, or field of "
             + $"'{context.Receiver.FullName}'.",
             name.Span);
@@ -1624,9 +1584,8 @@ public sealed class Binder
     {
         if (field.IsMap)
         {
-            _diagnostics.Error(
-                "PC0038",
-                "maps are not supported",
+            _diagnostics.Report(
+                DiagnosticCodes.MapsAreNotSupported,
                 $"Field '{field.Name}' is a map, which this compiler version does not support.",
                 span);
             return new IrLiteral(null, ErrorType.Instance, span);
@@ -1638,9 +1597,8 @@ public sealed class Binder
 
             if (path is null)
             {
-                _diagnostics.Error(
-                    "PC0078",
-                    "message field may be unset",
+                _diagnostics.Report(
+                    DiagnosticCodes.MessageFieldMayBeUnset,
                     $"'{field.Name}' is reached through a value that has no name, so its presence "
                     + "cannot be established.",
                     span,
@@ -1649,9 +1607,8 @@ public sealed class Binder
             }
             else if (!context.Present.Contains(path))
             {
-                _diagnostics.Error(
-                    "PC0078",
-                    "message field may be unset",
+                _diagnostics.Report(
+                    DiagnosticCodes.MessageFieldMayBeUnset,
                     $"'{field.Name}' is a message field, which may be unset. Reading it would mean "
                     + "different things in different backends.",
                     span,
@@ -1687,9 +1644,8 @@ public sealed class Binder
         var value = descriptor.FindValueByName(member.Name.Text);
         if (value is null)
         {
-            _diagnostics.Error(
-                "PC0076",
-                "unknown enum value",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownEnumValue,
                 $"'{member.Name}' is not a value of enum '{descriptor.FullName}'.",
                 member.Span,
                 "Enum values are written exactly as the .proto file spells them.");
@@ -1872,9 +1828,8 @@ public sealed class Binder
 
         if (receiver.Type is not MessageType messageType)
         {
-            _diagnostics.Error(
-                "PC0039",
-                "member access on a non-message value",
+            _diagnostics.Report(
+                DiagnosticCodes.MemberAccessOnANonMessage,
                 $"Type '{receiver.Type.DisplayName}' has no members.",
                 member.Span);
             return new IrLiteral(null, ErrorType.Instance, member.Span);
@@ -1889,18 +1844,16 @@ public sealed class Binder
 
         if (_methods.ContainsKey((messageType.Descriptor.FullName, member.Name.Text)))
         {
-            _diagnostics.Error(
-                "PC0040",
-                "method used as a value",
+            _diagnostics.Report(
+                DiagnosticCodes.MethodUsedAsAValue,
                 $"'{member.Name}' is a method and must be called.",
                 member.Span,
                 $"Write '{member.Name}()'.");
             return new IrLiteral(null, ErrorType.Instance, member.Span);
         }
 
-        _diagnostics.Error(
-            "PC0041",
-            "unknown field",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownField,
             $"'{messageType.Descriptor.FullName}' has no field named '{member.Name}'.",
             member.Span);
         return new IrLiteral(null, ErrorType.Instance, member.Span);
@@ -1954,9 +1907,8 @@ public sealed class Binder
 
                 if (boundReceiver.Type is not MessageType messageType)
                 {
-                    _diagnostics.Error(
-                        "PC0042",
-                        "method call on a non-message value",
+                    _diagnostics.Report(
+                        DiagnosticCodes.MethodCallOnANonMessage,
                         $"Type '{boundReceiver.Type.DisplayName}' has no methods.",
                         invocation.Span);
                     return Uncallable(boundReceiver);
@@ -1977,9 +1929,8 @@ public sealed class Binder
                 break;
 
             default:
-                _diagnostics.Error(
-                    "PC0043",
-                    "expression is not callable",
+                _diagnostics.Report(
+                    DiagnosticCodes.ExpressionIsNotCallable,
                     "Only ProtoCross methods can be called.",
                     invocation.Span,
                     "Calling target-language functions is not permitted (spec 20).");
@@ -1995,9 +1946,8 @@ public sealed class Binder
 
         if (!_methods.TryGetValue((receiverDescriptor.FullName, methodName), out var signature))
         {
-            _diagnostics.Error(
-                "PC0044",
-                "unknown method",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownMethod,
                 $"'{receiverDescriptor.FullName}' has no ProtoCross method named '{methodName}'.",
                 invocation.Span,
                 "Methods must be defined in an extend block for that message.");
@@ -2015,9 +1965,8 @@ public sealed class Binder
 
         if (arguments.Count != signature.Parameters.Count)
         {
-            _diagnostics.Error(
-                "PC0045",
-                "wrong number of arguments",
+            _diagnostics.Report(
+                DiagnosticCodes.WrongNumberOfArguments,
                 $"'{methodName}' takes {signature.Parameters.Count} argument(s) "
                 + $"but {arguments.Count} were supplied.",
                 invocation.Span);
@@ -2037,9 +1986,8 @@ public sealed class Binder
 
             if (!TypesMatch(signature.Parameters[i].Type, arguments[i].Type))
             {
-                _diagnostics.Error(
-                    "PC0046",
-                    "argument type mismatch",
+                _diagnostics.Report(
+                    DiagnosticCodes.ArgumentTypeMismatch,
                     $"Argument {i + 1} of '{methodName}' expects "
                     + $"'{signature.Parameters[i].Type.DisplayName}' but got "
                     + $"'{arguments[i].Type.DisplayName}'.",
@@ -2113,9 +2061,8 @@ public sealed class Binder
 
                 if (target.Type is not MessageType message)
                 {
-                    _diagnostics.Error(
-                        "PC0080",
-                        "'has' needs a field",
+                    _diagnostics.Report(
+                        DiagnosticCodes.HasNeedsAField,
                         $"'{target.Type.DisplayName}' is not a message, so it has no fields to test.",
                         has.Span);
                     return new IrLiteral(null, ErrorType.Instance, has.Span);
@@ -2129,9 +2076,8 @@ public sealed class Binder
             }
 
             default:
-                _diagnostics.Error(
-                    "PC0080",
-                    "'has' needs a field",
+                _diagnostics.Report(
+                    DiagnosticCodes.HasNeedsAField,
                     "The operand of 'has' must name a protobuf field.",
                     has.Span,
                     "Only a field can be unset. A local, a parameter, and a method result always "
@@ -2141,9 +2087,8 @@ public sealed class Binder
 
         if (field is null)
         {
-            _diagnostics.Error(
-                "PC0041",
-                "unknown field",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownField,
                 $"'{name}' is not a field of '{(receiver.Type as MessageType)?.Descriptor.FullName}'.",
                 has.Span);
             return new IrLiteral(null, ErrorType.Instance, has.Span);
@@ -2157,9 +2102,8 @@ public sealed class Binder
 
         if (field.IsMap)
         {
-            _diagnostics.Error(
-                "PC0038",
-                "maps are not supported",
+            _diagnostics.Report(
+                DiagnosticCodes.MapsAreNotSupported,
                 $"'{name}' is a map field.",
                 has.Span);
             return new IrLiteral(null, ErrorType.Instance, has.Span);
@@ -2167,9 +2111,8 @@ public sealed class Binder
 
         if (!field.HasPresence)
         {
-            _diagnostics.Error(
-                "PC0079",
-                "field has no presence",
+            _diagnostics.Report(
+                DiagnosticCodes.FieldHasNoPresence,
                 $"'{name}' cannot be tested for presence.",
                 has.Span,
                 field.IsRepeated
@@ -2240,9 +2183,8 @@ public sealed class Binder
         {
             if (!TypesMatch(left.Type, ScalarType.BoolType) || !TypesMatch(right.Type, ScalarType.BoolType))
             {
-                _diagnostics.Error(
-                    "PC0047",
-                    "logical operator requires bool operands",
+                _diagnostics.Report(
+                    DiagnosticCodes.LogicalOperatorRequiresBoolOperands,
                     $"Cannot apply '{Describe(binary.Operator)}' to "
                     + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                     binary.Span);
@@ -2253,9 +2195,8 @@ public sealed class Binder
 
         if (!TypesMatch(left.Type, right.Type))
         {
-            _diagnostics.Error(
-                "PC0048",
-                "operand type mismatch",
+            _diagnostics.Report(
+                DiagnosticCodes.OperandTypeMismatch,
                 $"Cannot apply '{Describe(binary.Operator)}' to "
                 + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                 binary.Span,
@@ -2269,9 +2210,8 @@ public sealed class Binder
             var ordered = binary.Operator is not (BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual);
             if (ordered && left.Type is not ScalarType { IsNumeric: true })
             {
-                _diagnostics.Error(
-                    "PC0049",
-                    "operands are not ordered",
+                _diagnostics.Report(
+                    DiagnosticCodes.OperandsAreNotOrdered,
                     $"'{Describe(binary.Operator)}' requires numeric operands, "
                     + $"but both are '{left.Type.DisplayName}'.",
                     binary.Span);
@@ -2282,9 +2222,8 @@ public sealed class Binder
 
         if (left.Type is not ScalarType { IsNumeric: true } resultType)
         {
-            _diagnostics.Error(
-                "PC0050",
-                "arithmetic on a non-numeric type",
+            _diagnostics.Report(
+                DiagnosticCodes.ArithmeticOnANonNumericType,
                 $"Cannot apply '{Describe(binary.Operator)}' to '{left.Type.DisplayName}'.",
                 binary.Span);
             return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
@@ -2298,13 +2237,18 @@ public sealed class Binder
             return BindIntegerDivision(binary, op, left, right, resultType, scope, context);
         }
 
-        if (binary.OnZero is not null)
+        // Only for a division, because the parser has already rejected 'on_zero' on anything that is
+        // not one, and reporting it again here would say the same thing twice -- in a message about
+        // IEEE 754 that is not even true of the operator the author wrote.
+        if (binary.OnZero is not null && op is (IrBinaryOperator.Divide or IrBinaryOperator.Modulo))
         {
-            _diagnostics.Error(
-                "PC0015",
-                "on_zero is only valid on integer division",
-                $"'{resultType.DisplayName}' division follows IEEE 754 and yields infinity or NaN "
-                + "rather than failing.",
+            // Named rather than called division, because '%' reaches here too and yields NaN rather
+            // than an infinity: a message about division would describe an operator the author did
+            // not write and an outcome theirs cannot produce.
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroOutsideIntegerDivision,
+                $"'{Describe(binary.Operator)}' on '{resultType.DisplayName}' follows IEEE 754 and "
+                + "yields infinity or NaN rather than failing.",
                 binary.OnZero.Span);
         }
 
@@ -2333,9 +2277,8 @@ public sealed class Binder
         {
             if (binary.OnZero is not null)
             {
-                _diagnostics.Warning(
-                    "PC0056",
-                    "unnecessary on_zero clause",
+                _diagnostics.Report(
+                    DiagnosticCodes.UnnecessaryOnZeroClause,
                     "The divisor is a non-zero literal, so this clause is unreachable.",
                     binary.OnZero.Span);
             }
@@ -2347,9 +2290,8 @@ public sealed class Binder
 
         if (binary.OnZero is null)
         {
-            _diagnostics.Error(
-                "PC0054",
-                "integer division requires an on_zero clause",
+            _diagnostics.Report(
+                DiagnosticCodes.MissingOnZeroClause,
                 $"'{Describe(binary.Operator)}' on '{resultType.DisplayName}' must state what to "
                 + "produce when the divisor is zero.",
                 binary.Span,
@@ -2372,9 +2314,8 @@ public sealed class Binder
 
         if (onZero.Type is not ErrorType && !TypesMatch(resultType, onZero.Type))
         {
-            _diagnostics.Error(
-                "PC0055",
-                "on_zero type mismatch",
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroTypeMismatch,
                 $"The fallback has type '{onZero.Type.DisplayName}' but the division produces "
                 + $"'{resultType.DisplayName}'.",
                 binary.OnZero.Span,
@@ -2408,9 +2349,8 @@ public sealed class Binder
         {
             if (operand.Type is not ScalarType { IsNumeric: true } scalar)
             {
-                _diagnostics.Error(
-                    "PC0051",
-                    "negation requires a numeric operand",
+                _diagnostics.Report(
+                    DiagnosticCodes.NegationRequiresANumericOperand,
                     $"Cannot negate a value of type '{operand.Type.DisplayName}'.",
                     unary.Span);
                 return new IrUnary(
@@ -2419,9 +2359,8 @@ public sealed class Binder
 
             if (scalar.IsInteger && !scalar.IsSigned)
             {
-                _diagnostics.Error(
-                    "PC0052",
-                    "negation of an unsigned type",
+                _diagnostics.Report(
+                    DiagnosticCodes.NegationOfAnUnsignedType,
                     $"'{scalar.DisplayName}' is unsigned and cannot be negated.",
                     unary.Span);
             }
@@ -2432,9 +2371,8 @@ public sealed class Binder
 
         if (!TypesMatch(operand.Type, ScalarType.BoolType))
         {
-            _diagnostics.Error(
-                "PC0053",
-                "logical not requires a bool operand",
+            _diagnostics.Report(
+                DiagnosticCodes.LogicalNotRequiresABoolOperand,
                 $"Cannot apply 'not' to a value of type '{operand.Type.DisplayName}'.",
                 unary.Span);
         }

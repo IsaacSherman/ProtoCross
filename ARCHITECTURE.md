@@ -214,7 +214,11 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 ### Diagnostics
 
 `Diagnostic` is `(Code, Severity, Title, Message, Span, Help?)` — very nearly the LSP diagnostic
-shape already, `Help` included. Codes are `PL####`. Rendering is
+shape already, `Help` included. Codes are `PC####`, and a raise site names a `DiagnosticDescriptor`
+rather than spelling one: the code, the severity and the title belong to the rule and live in
+[DiagnosticCodes](src/ProtoCross.Core/Diagnostics/DiagnosticCodes.cs), or in `HostDiagnosticCodes`
+for the editor host's own `PC21##` range. The message and the help belong to the occurrence and stay
+at the site. Rendering is
 `CODE: title` / `file:line:column` / message / optional `help:` line, per spec 26. **That rendering
 is published output**; a change to it moves what users see.
 

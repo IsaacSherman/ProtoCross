@@ -463,9 +463,8 @@ public sealed class Compilation
     {
         if (failure.Kind is DescriptorLoadFailureKind.TimedOut)
         {
-            diagnostics.Error(
-                "PC0083",
-                "protoc did not finish",
+            diagnostics.Report(
+                DiagnosticCodes.ProtocDidNotFinish,
                 failure.Message,
                 span,
                 "The schemas may be perfectly good. A very large import closure on a machine that "
@@ -475,7 +474,7 @@ public sealed class Compilation
             return;
         }
 
-        diagnostics.Error("PC0003", "protobuf schema could not be loaded", failure.Message, span);
+        diagnostics.Report(DiagnosticCodes.SchemaLoadFailed, failure.Message, span);
     }
 
     private CompilationResult Compile(DiagnosticBag diagnostics, CancellationToken cancellationToken)
@@ -511,9 +510,8 @@ public sealed class Compilation
         {
             foreach (var (path, reason) in _unusableIncludePaths)
             {
-                diagnostics.Error(
-                    "PC0082",
-                    "include path could not be used",
+                diagnostics.Report(
+                    DiagnosticCodes.IncludePathCouldNotBeUsed,
                     $"'{path}' could not be resolved to a directory: {reason}",
                     SourceSpan.None,
                     "The path is malformed, not merely missing -- an include directory that does not "
@@ -525,9 +523,8 @@ public sealed class Compilation
 
         if (unit.Imports.Count == 0)
         {
-            diagnostics.Error(
-                "PC0001",
-                "no proto imports",
+            diagnostics.Report(
+                DiagnosticCodes.NoProtoImports,
                 "A ProtoCross file must import at least one protobuf schema.",
                 unit.Span,
                 "Add an 'import proto \"your.proto\";' declaration (spec 5.2).");
@@ -565,9 +562,8 @@ public sealed class Compilation
             // schema that could not be found is one mistake told twice.
             if (import.Outcome is ImportOutcome.NotFound)
             {
-                diagnostics.Error(
-                    "PC0002",
-                    "proto file not found",
+                diagnostics.Report(
+                    DiagnosticCodes.ProtoFileNotFound,
                     $"Could not find '{import.Path}' in any include directory.",
                     import.Span,
                     ImportSearchHelp(import, cancellationToken));
