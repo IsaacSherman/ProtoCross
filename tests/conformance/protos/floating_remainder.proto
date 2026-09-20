@@ -10,6 +10,7 @@ message RemainderCase {
   float narrow_divisor = 4;
 
   // Infinities and NaN have no literal form, so vectors that need one divide by this. A literal
-  // 0.0 divisor will not do: MSVC folds it into a compile error.
+  // 0.0 divisor would do now that constant_divisor.pcross made one compile everywhere; a field
+  // keeps these vectors about the remainder rather than about how its operands were spelled.
   double zero = 5;
 }

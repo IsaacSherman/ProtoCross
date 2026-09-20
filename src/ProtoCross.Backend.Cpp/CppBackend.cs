@@ -442,6 +442,12 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         writer.WriteLine("#include <cstdint>");
+
+        if (UsesFoldableFloatingDivision(module))
+        {
+            writer.WriteLine("#include <functional>");
+        }
+
         writer.WriteLine("#include <limits>");
         writer.WriteLine("#include <string>");
         writer.WriteLine();
@@ -646,6 +652,15 @@ public sealed class CppBackend : ITestProjectScaffold
             return $"::std::fmod({left}, {right})";
         }
 
+        if (IsFoldableFloatingDivision(binary))
+        {
+            // A call is not a constant expression, so the quotient is left for the program to work
+            // out, exactly as one taken from fields already is. ::std::divides is specified to
+            // return left / right and nothing besides, which keeps the repair in this header
+            // instead of in protocross_runtime.h, which every generated project carries.
+            return $"::std::divides<{TypeName(binary.ResultType)}>{{}}({left}, {right})";
+        }
+
         return $"({left} {OperatorText(binary.Operator)} {right})";
     }
 
@@ -675,6 +690,78 @@ public sealed class CppBackend : ITestProjectScaffold
     /// </remarks>
     private static bool UsesFloatingRemainder(IrModule module)
         => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFloatingRemainder);
+
+    /// <summary>
+    /// Whether <paramref name="binary"/> is a floating-point <c>/</c> the C++ front end would work
+    /// out for itself, which is the case a compiler may refuse rather than emit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A division by zero is undefined behavior in C++ however it is written, so a compiler that can
+    /// see one is entitled to reject it, and MSVC does: <c>1.0 / 0.0</c> is error C2124, "divide or
+    /// mod by zero", and the generated header does not compile at all. Spec 10.2 says that quotient
+    /// is an infinity, so the language would be promising an answer one backend cannot deliver for
+    /// the most direct way an author can ask for it.
+    /// </para>
+    /// <para>
+    /// Both operands, not just the divisor. The refusal comes from constant folding, so it needs
+    /// every operand to be a constant: <c>self.numerator() / 0.0</c> compiles, and it is still
+    /// emitted as a bare <c>/</c>. Asking about the divisor alone would put a function call around
+    /// every <c>x / 2.0</c> in the corpus to fix something that was never broken.
+    /// </para>
+    /// <para>
+    /// <see cref="IsConstantExpression"/> answers the other half, and answers it by node kind rather
+    /// than by value, because the zero is often not written as one -- <c>-0.0</c>, <c>0 as double</c>
+    /// and <c>0.0 * 2.0</c> are all divisors the fold reaches and a list of spellings would not.
+    /// Knowing the value would need a constant evaluator in the backend, and having one would buy a
+    /// narrower rule for a construct nobody writes twice.
+    /// </para>
+    /// </remarks>
+    private static bool IsFoldableFloatingDivision(IrBinary binary)
+        => binary.Operator == IrBinaryOperator.Divide
+            && binary.ResultType is ScalarType { IsFloatingPoint: true }
+            && IsConstantExpression(binary.Left)
+            && IsConstantExpression(binary.Right);
+
+    /// <summary>
+    /// Whether this expression is emitted as something the C++ front end can evaluate while
+    /// compiling.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A question about the emitted C++ rather than about the IR, so it follows what the emitter
+    /// writes. The four node kinds here become literals and operators; everything else becomes a
+    /// call or a member access, and neither is a constant expression. Integer arithmetic is the case
+    /// worth naming: it looks constant and is not, because it routes through
+    /// <c>protocross_runtime.h</c>, so <c>(2 - 2) as double</c> is a divisor the front end cannot
+    /// work out. Counting it as constant anyway costs an inlined call that was not needed, which is
+    /// the direction this predicate is allowed to be wrong in.
+    /// </para>
+    /// <para>
+    /// A reference to a local is deliberately absent. MSVC does fold through a <c>const</c> local,
+    /// so this answer depends on <see cref="EmitStatement"/> declaring locals without <c>const</c> --
+    /// which it must anyway, since a ProtoCross local can be assigned.
+    /// </para>
+    /// </remarks>
+    private static bool IsConstantExpression(IrExpression expression) => expression switch
+    {
+        IrLiteral => true,
+        IrUnary unary => IsConstantExpression(unary.Operand),
+        IrBinary binary => IsConstantExpression(binary.Left) && IsConstantExpression(binary.Right),
+        IrConversion conversion => IsConstantExpression(conversion.Operand),
+        _ => false,
+    };
+
+    /// <summary>
+    /// Whether anything in <paramref name="module"/> is a foldable floating-point division, and so
+    /// needs <c>&lt;functional&gt;</c>.
+    /// </summary>
+    /// <remarks>
+    /// Conditional for the same reason <see cref="UsesFloatingRemainder"/> is: a header for a module
+    /// that writes no such division stays byte-for-byte what it was before this repair existed.
+    /// </remarks>
+    private static bool UsesFoldableFloatingDivision(IrModule module)
+        => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFoldableFloatingDivision);
 
     private static string EmitIntegerDivision(IrIntegerDivision division)
     {
