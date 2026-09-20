@@ -118,7 +118,9 @@ Normative Requirements:
   `x + (a / b on_zero 0)`. The fallback parses at unary precedence, so anything more involved than a
   literal, name, or call must be parenthesized.
 - `on_zero` is rejected on any other operator, and on floating-point division, where it is
-  meaningless (`PC0015`).
+  meaningless (`PC0015`). One rule, one code, and one report: a clause the parser has already
+  rejected is not rejected a second time by the binder, which would otherwise explain a `+` in terms
+  of IEEE 754 division.
 - Backends emit a runtime zero check for every integer division except the proven-literal case.
 
 `fail` is deliberately blunt. A catchable exception would let a consumer resume from a state the

@@ -37,11 +37,11 @@ namespace ProtoCross.LanguageServer.Hosting;
 public static class CompilationDiagnostics
 {
     /// <summary>The code the compiler reports a schema-load failure under.</summary>
-    private const string SchemaLoadFailed = "PC0003";
+    private static string SchemaLoadFailed => ProtoCross.Diagnostics.DiagnosticCodes.SchemaLoadFailed.Code;
 
     /// <summary>What protoc's own messages are attributed to.</summary>
     /// <remarks>
-    /// Not a <c>PL</c> code. protoc's errors have no code in this compiler's numbering, and giving
+    /// Not a <c>PC</c> code. protoc's errors have no code in this compiler's numbering, and giving
     /// them one would be ProtoCross inventing a taxonomy for another tool's output -- the same
     /// reasoning <see cref="ProtocDiagnostic"/> already applies to severity.
     /// </remarks>

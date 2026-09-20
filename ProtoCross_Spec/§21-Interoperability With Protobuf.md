@@ -103,6 +103,10 @@ The current implementation defines:
   as that generator spells them. A field name the target language cannot use as it stands, such as
   `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
   accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
+- Behavior extended onto a message that comes from the protobuf runtime -- a well-known type such as
+  `Timestamp` -- is `PC0077`, a warning rather than an error. The code is legal and generates, but a
+  consumer already has that message from the runtime and will not have the extensions, which have to
+  ship as a library of their own before anyone can call them.
 - Messages, enums, enum values and package components are named the same way: as the target's
   protobuf generator names them, escaped where it escapes them. A message called `New`, an enum value
   called `new` and a package component called `default` are ordinary in ProtoCross and are not

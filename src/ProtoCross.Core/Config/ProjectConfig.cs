@@ -214,9 +214,8 @@ public sealed record ProjectConfig(
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            diagnostics.Error(
-                "PC2003",
-                "configuration file could not be read",
+            diagnostics.Report(
+                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
                 ex.Message,
                 new SourceSpan(name, SourcePosition.None, SourcePosition.None));
             return null;
@@ -236,9 +235,8 @@ public sealed record ProjectConfig(
         }
         catch (XmlException ex)
         {
-            diagnostics.Error(
-                "PC2003",
-                "configuration file could not be read",
+            diagnostics.Report(
+                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
                 ex.Message,
                 Span(file, ex.LineNumber, ex.LinePosition));
             return null;
@@ -247,9 +245,8 @@ public sealed record ProjectConfig(
         var root = document.Root;
         if (root is null || root.Name.LocalName != "ProtoCross")
         {
-            diagnostics.Error(
-                "PC2003",
-                "configuration file could not be read",
+            diagnostics.Report(
+                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
                 $"The root element must be <ProtoCross>, not <{root?.Name.LocalName ?? "(empty)"}>.",
                 Span(file, root));
             return null;
@@ -338,9 +335,8 @@ public sealed record ProjectConfig(
 
                 if (!explicitKeys.Add(key))
                 {
-                    diagnostics.Error(
-                        "PC2004",
-                        "duplicate configuration setting",
+                    diagnostics.Report(
+                        DiagnosticCodes.DuplicateConfigurationSetting,
                         $"'{key}' is stated more than once.",
                         Span(file, setting),
                         "Two answers to one question is not a configuration, it is a coin toss. Keep one.");
@@ -395,9 +391,8 @@ public sealed record ProjectConfig(
             }
         }
 
-        diagnostics.Error(
-            "PC2002",
-            "unknown configuration value",
+        diagnostics.Report(
+            DiagnosticCodes.UnknownConfigurationValue,
             $"'{text}' is not a legal value for '{key}'.",
             Span(file, element),
             $"Legal values: {string.Join(", ", Enum.GetValues<T>().Select(v => v.ToString()))}.");
@@ -414,9 +409,8 @@ public sealed record ProjectConfig(
         string parent,
         IReadOnlyList<string> known)
     {
-        diagnostics.Error(
-            "PC2001",
-            "unknown configuration element",
+        diagnostics.Report(
+            DiagnosticCodes.UnknownConfigurationElement,
             $"<{name}> is not a setting ProtoCross knows about inside <{parent}>.",
             Span(file, element),
             known.Count == 0

@@ -448,13 +448,19 @@ public class CompilationTests
         Assert.Contains(result.Diagnostics, d => d.Code == "PC0015");
     }
 
+    /// <remarks>
+    /// Once, and titled for the rule rather than for the site: the parser rejects the clause and the
+    /// binder used to reject the same clause again on its way past, so one mistake was reported twice
+    /// and the two reports disagreed about what <c>on_zero</c> is valid on.
+    /// </remarks>
     [Fact]
-    public void RejectsOnZeroOnNonDivisionOperators()
+    public void RejectsOnZeroOnNonDivisionOperatorsOnce()
     {
         var result = CompileSource(
             Prelude + "extend InvoiceItem { fn f() -> int64 { return quantity + 1 on_zero 0; } }");
 
-        Assert.Contains(result.Diagnostics, d => d.Code == "PC0015");
+        var rejection = Assert.Single(result.Diagnostics, d => d.Code == "PC0015");
+        Assert.Equal("on_zero is only valid on integer division", rejection.Title);
     }
 
     [Fact]
