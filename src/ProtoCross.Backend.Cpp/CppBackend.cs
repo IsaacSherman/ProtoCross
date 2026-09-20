@@ -23,6 +23,15 @@ public sealed class CppBackend : ITestProjectScaffold
     private const string ReceiverName = "self";
     private const string RuntimeNamespace = "::protocross_runtime";
 
+    /// <summary>What a generated library header is called, after the source it was generated from.</summary>
+    /// <remarks>
+    /// One home, because three places need it and they had drifted: the file is written under this
+    /// name, the generated tests include it by this name, and the include guard is built from it. The
+    /// guard kept a copy of its own, so renaming <c>.pl.h</c> to <c>.pc.h</c> moved two of the three
+    /// and left every generated header guarded by a macro named after an extension nothing produces.
+    /// </remarks>
+    private const string HeaderExtension = ".pc.h";
+
     /// <summary>Exit code a child uses when an <c>expect fail</c> body returned instead of dying.</summary>
     private const int DidNotTerminateExitCode = 91;
 
@@ -38,7 +47,7 @@ public sealed class CppBackend : ITestProjectScaffold
     {
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
-        var guard = MakeIncludeGuard(baseName);
+        var guard = MakeIncludeGuard(baseName + HeaderExtension);
 
         WriteHeader(writer, options, guard, module);
 
@@ -87,7 +96,7 @@ public sealed class CppBackend : ITestProjectScaffold
         return
         [
             new GeneratedFile(CppRuntime.FileName, CppRuntime.Source),
-            new GeneratedFile(baseName + ".pc.h", writer.ToString()),
+            new GeneratedFile(baseName + HeaderExtension, writer.ToString()),
         ];
     }
 
@@ -166,7 +175,7 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         writer.WriteLine();
-        writer.WriteLine($"#include \"{baseName}.pc.h\"");
+        writer.WriteLine($"#include \"{baseName}{HeaderExtension}\"");
         writer.WriteLine();
 
         writer.WriteLine("// Reported when '--run' names a test this driver does not have.");
@@ -466,15 +475,24 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine();
     }
 
-    private static string MakeIncludeGuard(string baseName)
+    /// <summary>The macro a generated header guards itself with, built from its own file name.</summary>
+    /// <remarks>
+    /// From the whole file name, extension included, so that renaming the file renames the guard and
+    /// the two cannot say different things -- which is the whole of the defect this replaces. The
+    /// <c>PROTOCROSS_</c> prefix is what makes it unique in a consumer's build, where a macro called
+    /// <c>CASTS_PC_H_</c> would be a collision waiting for the day they generate from a schema of
+    /// their own by that name. <c>protocross_runtime.h</c> spells its guard out, and arrives at the
+    /// same shape because its name already begins with the prefix.
+    /// </remarks>
+    private static string MakeIncludeGuard(string fileName)
     {
         var builder = new StringBuilder("PROTOCROSS_");
-        foreach (var c in baseName)
+        foreach (var c in fileName)
         {
             builder.Append(char.IsLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_');
         }
 
-        builder.Append("_PL_H_");
+        builder.Append('_');
         return builder.ToString();
     }
 
