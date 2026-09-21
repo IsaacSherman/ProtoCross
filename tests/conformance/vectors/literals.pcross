@@ -1,0 +1,423 @@
+// Conformance vectors for every form a numeric literal can take (spec 6.6), and for the rules that
+// give a literal its type and its value (spec 10.3).
+//
+// Before these forms existed, several of these values could only be reached by arithmetic: int32 and
+// int64 MIN as -MAX - 1, uint64 above int64 MAX by doubling, large doubles by multiplication, and an
+// infinity or a NaN only through the property that identifies one. Each is written here the way it
+// is meant. Where an expectation can spell its value a second way -- in hexadecimal, say, where the
+// method spells it in decimal -- it does, so that a test is not merely a literal compared with itself.
+
+import proto "literals.proto";
+
+extend LiteralCase {
+    // ------------------------------------------------------- integer forms
+
+    fn hexadecimal() -> int64 {
+        return 0xFF;
+    }
+
+    fn hexadecimal_digits_in_either_case() -> int64 {
+        return 0xdeadBEEF;
+    }
+
+    fn binary() -> int64 {
+        return 0b1010_0101;
+    }
+
+    fn separated_decimal() -> int64 {
+        return 1_000_000;
+    }
+
+    fn uint32_maximum_in_hexadecimal() -> uint32 {
+        return 0xFFFF_FFFF;
+    }
+
+    fn uint64_maximum_in_hexadecimal() -> uint64 {
+        return 0xFFFF_FFFF_FFFF_FFFF;
+    }
+
+    fn uint64_maximum() -> uint64 {
+        return 18446744073709551615;
+    }
+
+    fn hexadecimal_adopting_double() -> double {
+        return 0x10;
+    }
+
+    // ------------------------------------------------------- the natural type
+
+    // A literal with no expected type is int64, or uint64 where only uint64 can hold it. Each local
+    // is returned as it is, so a local of any other type would not compile.
+    fn natural_type_is_int64() -> int64 {
+        var n = 9223372036854775807;
+        return n;
+    }
+
+    fn natural_type_widens_to_uint64() -> uint64 {
+        var n = 9223372036854775808;
+        return n;
+    }
+
+    // ------------------------------------------------------- negative literals
+
+    fn int32_minimum() -> int32 {
+        return -2147483648;
+    }
+
+    fn int64_minimum() -> int64 {
+        return -9223372036854775808;
+    }
+
+    // One below MIN wraps to MAX (10.1), which is true of MIN and of nothing else.
+    fn int32_minimum_minus_one_wraps() -> int32 {
+        var m: int32 = -2147483648;
+        return m - 1;
+    }
+
+    fn int64_minimum_minus_one_wraps() -> int64 {
+        var m: int64 = -9223372036854775808;
+        return m - 1;
+    }
+
+    // Only the '-' written directly on the literal belongs to it. A second one is a negation of a
+    // negative literal, which the generated code has to be able to spell without the two signs
+    // running together into a decrement.
+    fn negated_negative_literal() -> int64 {
+        return -(-5);
+    }
+
+    fn negated_int32_minimum_wraps() -> int32 {
+        return -(-2147483648);
+    }
+
+    // A literal on the left takes its type from the operand on the right, negative or not.
+    fn negative_literal_on_the_left() -> bool {
+        return -1 < narrow;
+    }
+
+    // A negative literal is a literal, so it is as plainly non-zero as a positive one and the
+    // division needs no on_zero clause.
+    fn divided_by_a_negative_literal() -> int32 {
+        return narrow / -2;
+    }
+
+    fn negative_literal_converted() -> uint32 {
+        return -1 as uint32;
+    }
+
+    fn negative_literal_adopting_double() -> double {
+        return -5;
+    }
+
+    // Where a floating-point type is expected, the sign applies to the rounded value, so -0 is
+    // negative zero, as -0.0 is.
+    fn negative_zero_adopting_double() -> double {
+        var z: double = -0;
+        return 1.0 / z;
+    }
+
+    // ------------------------------------------------------- floating-point forms
+
+    fn exponent() -> double {
+        return 1e10;
+    }
+
+    fn negative_exponent() -> double {
+        return 1.5e-3;
+    }
+
+    fn capital_exponent_with_a_sign() -> double {
+        return 2E+8;
+    }
+
+    fn separated_fraction() -> double {
+        return 1_000.000_1;
+    }
+
+    fn largest_double_is_finite() -> bool {
+        var m: double = 1.7976931348623157e308;
+        return m < __INF and m * 2.0 == __INF;
+    }
+
+    // ------------------------------------------------------- rounding once
+
+    // Each spelling lies a hair to one side of the midpoint between 1 and the float after it, closer
+    // than a double can tell apart, so rounding to double first lands exactly on the midpoint and the
+    // side is lost. Rounded once, straight to float, each goes the way it leans.
+    fn float_just_below_a_midpoint_rounds_down() -> float {
+        return 1.00000005960464477539062499999;
+    }
+
+    fn float_just_above_a_midpoint_rounds_up() -> float {
+        return 1.00000005960464477539062500001;
+    }
+
+    // 2^24 + 1 is the first integer a float cannot hold. It is a tie, and ties go to even.
+    fn integer_adopting_float_rounds_to_even() -> float {
+        return 16777217;
+    }
+
+    // ------------------------------------------------------- infinity and NaN
+
+    fn infinity() -> double {
+        return __INF;
+    }
+
+    fn float_infinity() -> float {
+        return __INF;
+    }
+
+    fn negative_infinity() -> double {
+        return -__INF;
+    }
+
+    fn not_a_number_is_unequal_to_itself() -> bool {
+        var n: double = __NAN;
+        return n != n;
+    }
+
+    fn float_not_a_number_is_unequal_to_itself() -> bool {
+        var n: float = __NAN;
+        return n != n;
+    }
+
+    fn finite_lies_between_the_infinities() -> bool {
+        return -__INF < real and real < __INF;
+    }
+
+    // ------------------------------------------------------- a floating-point literal on the left
+
+    fn float_literal_on_the_left_adopts_float() -> bool {
+        return 1.5 < single;
+    }
+
+    fn negative_float_literal_on_the_left_adopts_float() -> bool {
+        return -1.5 < single;
+    }
+
+    // ------------------------------------------------------- fixture values
+
+    fn wide_unsigned_field() -> uint64 {
+        return wide_unsigned;
+    }
+
+    fn wide_field() -> int64 {
+        return wide;
+    }
+}
+
+test LiteralCase.hexadecimal "a hexadecimal literal" {
+    receiver { }
+    expect return 255;
+}
+
+test LiteralCase.hexadecimal_digits_in_either_case "hexadecimal digits in either case" {
+    receiver { }
+    expect return 3735928559;
+}
+
+test LiteralCase.binary "a binary literal with a separator" {
+    receiver { }
+    expect return 165;
+}
+
+test LiteralCase.separated_decimal "a decimal literal with separators" {
+    receiver { }
+    expect return 1000000;
+}
+
+test LiteralCase.uint32_maximum_in_hexadecimal "uint32 MAX in hexadecimal" {
+    receiver { }
+    expect return 4294967295;
+}
+
+test LiteralCase.uint64_maximum_in_hexadecimal "uint64 MAX in hexadecimal" {
+    receiver { }
+    expect return 18446744073709551615;
+}
+
+test LiteralCase.uint64_maximum "uint64 MAX in decimal" {
+    receiver { }
+    expect return 0xFFFF_FFFF_FFFF_FFFF;
+}
+
+test LiteralCase.hexadecimal_adopting_double "a hexadecimal literal adopts double" {
+    receiver { }
+    expect return 16.0;
+}
+
+test LiteralCase.natural_type_is_int64 "int64 MAX has type int64 on its own" {
+    receiver { }
+    expect return 0x7FFF_FFFF_FFFF_FFFF;
+}
+
+test LiteralCase.natural_type_widens_to_uint64 "one past int64 MAX has type uint64 on its own" {
+    receiver { }
+    expect return 0x8000_0000_0000_0000;
+}
+
+test LiteralCase.int32_minimum "int32 MIN as a literal" {
+    receiver { }
+    expect return -0x8000_0000;
+}
+
+test LiteralCase.int64_minimum "int64 MIN as a literal" {
+    receiver { }
+    expect return -0x8000_0000_0000_0000;
+}
+
+test LiteralCase.int32_minimum_minus_one_wraps "int32 MIN minus one wraps to MAX" {
+    receiver { }
+    expect return 2147483647;
+}
+
+test LiteralCase.int64_minimum_minus_one_wraps "int64 MIN minus one wraps to MAX" {
+    receiver { }
+    expect return 9223372036854775807;
+}
+
+test LiteralCase.negated_negative_literal "negating a negative literal" {
+    receiver { }
+    expect return 5;
+}
+
+test LiteralCase.negated_int32_minimum_wraps "negating int32 MIN wraps to MIN" {
+    receiver { }
+    expect return -2147483648;
+}
+
+test LiteralCase.negative_literal_on_the_left "a negative literal on the left adopts int32" {
+    receiver {
+        narrow = 0;
+    }
+
+    expect return true;
+}
+
+test LiteralCase.divided_by_a_negative_literal "division by a negative literal truncates" {
+    receiver {
+        narrow = 7;
+    }
+
+    expect return -3;
+}
+
+test LiteralCase.negative_literal_converted "a negative literal converted to uint32 wraps" {
+    receiver { }
+    expect return 4294967295;
+}
+
+test LiteralCase.negative_literal_adopting_double "a negative integer literal adopts double" {
+    receiver { }
+    expect return -5.0;
+}
+
+test LiteralCase.negative_zero_adopting_double "-0 adopting double is negative zero" {
+    receiver { }
+    expect return -__INF;
+}
+
+test LiteralCase.exponent "an exponent" {
+    receiver { }
+    expect return 10000000000.0;
+}
+
+test LiteralCase.negative_exponent "a negative exponent" {
+    receiver { }
+    expect return 0.0015;
+}
+
+test LiteralCase.capital_exponent_with_a_sign "a capital E and an explicit sign" {
+    receiver { }
+    expect return 200000000.0;
+}
+
+test LiteralCase.separated_fraction "separators in the fraction" {
+    receiver { }
+    expect return 1000.0001;
+}
+
+test LiteralCase.largest_double_is_finite "the largest double is finite" {
+    receiver { }
+    expect return true;
+}
+
+test LiteralCase.float_just_below_a_midpoint_rounds_down "a float literal below a midpoint rounds down" {
+    receiver { }
+    expect return 1.0;
+}
+
+test LiteralCase.float_just_above_a_midpoint_rounds_up "a float literal above a midpoint rounds up" {
+    receiver { }
+    expect return 1.00000011920928955078125;
+}
+
+test LiteralCase.integer_adopting_float_rounds_to_even "an integer literal adopting float ties to even" {
+    receiver { }
+    expect return 16777216.0;
+}
+
+test LiteralCase.infinity "infinity" {
+    receiver { }
+    expect return __INF;
+}
+
+test LiteralCase.float_infinity "infinity adopts float" {
+    receiver { }
+    expect return __INF;
+}
+
+test LiteralCase.negative_infinity "negative infinity" {
+    receiver { }
+    expect return -__INF;
+}
+
+test LiteralCase.not_a_number_is_unequal_to_itself "NaN is unequal to itself" {
+    receiver { }
+    expect return true;
+}
+
+test LiteralCase.float_not_a_number_is_unequal_to_itself "NaN adopts float" {
+    receiver { }
+    expect return true;
+}
+
+test LiteralCase.finite_lies_between_the_infinities "a finite value lies between the infinities" {
+    receiver {
+        real = 1e308;
+    }
+
+    expect return true;
+}
+
+test LiteralCase.float_literal_on_the_left_adopts_float "a float literal on the left adopts float" {
+    receiver {
+        single = 2.5;
+    }
+
+    expect return true;
+}
+
+test LiteralCase.negative_float_literal_on_the_left_adopts_float "a negative float literal on the left adopts float" {
+    receiver {
+        single = -1.0;
+    }
+
+    expect return true;
+}
+
+test LiteralCase.wide_unsigned_field "uint64 MAX as a fixture value" {
+    receiver {
+        wide_unsigned = 0xFFFF_FFFF_FFFF_FFFF;
+    }
+
+    expect return 18446744073709551615;
+}
+
+test LiteralCase.wide_field "int64 MIN as a fixture value" {
+    receiver {
+        wide = -9223372036854775808;
+    }
+
+    expect return -0x8000_0000_0000_0000;
+}

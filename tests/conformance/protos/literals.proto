@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// literals.pcross -- every form a numeric literal can take, and the rules that type it.
+message LiteralCase {
+  int32 narrow = 1;
+  int64 wide = 2;
+  uint32 narrow_unsigned = 3;
+  uint64 wide_unsigned = 4;
+  float single = 5;
+  double real = 6;
+}
