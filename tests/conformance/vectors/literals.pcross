@@ -185,6 +185,21 @@ extend LiteralCase {
         return -__INF < real and real < __INF;
     }
 
+    // A NaN expectation is met by a NaN (spec 25.3), which == alone could never confirm.
+    fn not_a_number() -> double {
+        return __NAN;
+    }
+
+    fn float_not_a_number() -> float {
+        return __NAN;
+    }
+
+    // A NaN the program works out as it runs, so what the expectation meets is a value and not a
+    // spelling.
+    fn zero_over_zero() -> double {
+        return real / real;
+    }
+
     // ------------------------------------------------------- a floating-point literal on the left
 
     fn float_literal_on_the_left_adopts_float() -> bool {
@@ -380,6 +395,24 @@ test LiteralCase.not_a_number_is_unequal_to_itself "NaN is unequal to itself" {
 test LiteralCase.float_not_a_number_is_unequal_to_itself "NaN adopts float" {
     receiver { }
     expect return true;
+}
+
+test LiteralCase.not_a_number "a NaN expectation is met by a NaN" {
+    receiver { }
+    expect return __NAN;
+}
+
+test LiteralCase.float_not_a_number "a float NaN expectation is met by a NaN" {
+    receiver { }
+    expect return __NAN;
+}
+
+test LiteralCase.zero_over_zero "a NaN worked out at run time meets a NaN expectation" {
+    receiver {
+        real = 0.0;
+    }
+
+    expect return __NAN;
 }
 
 test LiteralCase.finite_lies_between_the_infinities "a finite value lies between the infinities" {
