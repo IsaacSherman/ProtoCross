@@ -57,11 +57,11 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnterminatedBlockComment =
         new("PC0004", DiagnosticSeverity.Error, "unterminated block comment");
 
-    /// <summary>A floating-point literal the lexer cannot convert (spec 6.1).</summary>
-    public static readonly DiagnosticDescriptor InvalidFloatLiteral =
-        new("PC0005", DiagnosticSeverity.Error, "invalid float literal");
+    /// <summary>A numeric literal spelled no way spec 6.6 allows, such as <c>0x</c> or <c>5u</c>.</summary>
+    public static readonly DiagnosticDescriptor InvalidNumericLiteral =
+        new("PC0005", DiagnosticSeverity.Error, "invalid numeric literal");
 
-    /// <summary>An integer literal that does not fit in a 64-bit signed integer (spec 6.1).</summary>
+    /// <summary>An integer literal larger than uint64 MAX, which no integer type can hold (spec 6.6).</summary>
     public static readonly DiagnosticDescriptor IntegerLiteralOutOfRange =
         new("PC0006", DiagnosticSeverity.Error, "integer literal out of range");
 
@@ -399,6 +399,15 @@ public static class DiagnosticCodes
     /// <summary>protoc was still running when the compiler stopped waiting for it (spec 21.1).</summary>
     public static readonly DiagnosticDescriptor ProtocDidNotFinish =
         new("PC0083", DiagnosticSeverity.Error, "protoc did not finish");
+
+    // ------------------------------------------------------- numeric literals
+
+    /// <summary>
+    /// A floating-point literal too large for the type it takes: for a double as soon as it is read,
+    /// and for a float where it is used as one (spec 10.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FloatingPointLiteralOutOfRange =
+        new("PC0084", DiagnosticSeverity.Error, "floating-point literal out of range");
 
     // ------------------------------------------------------- the configuration file
 

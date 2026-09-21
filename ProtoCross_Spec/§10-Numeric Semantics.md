@@ -164,8 +164,35 @@ Normative Requirements:
   operator must already have the same type, and a returned value must already have the declared
   return type. This is what makes the overflow rule in 10.1 well-defined: the width the result wraps
   to is never the product of a promotion the author did not write.
-- Integer literals are the single exception: a literal adopts the expected type at its use site when
-  the value fits, so `var total: int64 = 0;` needs no suffix or conversion.
+- **Literals are the single exception** ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)): a literal adopts the expected type at its use site,
+  so `var total: int64 = 0;` needs no suffix or conversion.
+  - An integer literal adopts any numeric type. In an integer type its value must fit, or it is
+    `PC0036`; in a floating-point type it is rounded. A floating-point literal adopts `float` where a
+    `float` is expected, and is a `double` everywhere else.
+  - Where nothing is expected, an integer literal is `int64`, or `uint64` if only `uint64` can hold
+    its value; a floating-point literal is `double`. An integer literal below int64 MIN fits neither
+    and is `PC0036`.
+  - A literal on the left of a binary operator adopts the type of the operand on its right, as one on
+    the right adopts the type of the operand on its left. So `-1 < count` and `1.5 < ratio` both
+    type-check where `count` is an `int32` and `ratio` a `float`.
+- **A `-` written directly on an integer literal is part of the literal**, and the literal is
+  range-checked as the negative value. That is what makes `-2147483648` an `int32` and
+  `-9223372036854775808` an `int64`: the magnitude of each is one more than its type's MAX, so a
+  literal that took the type first and was negated afterwards could never reach it.
+  - It takes one `-` only. In `-(-5)` the outer one negates a negative literal, as ordinary
+    arithmetic under 10.1. Parentheses between the `-` and the digits make no difference.
+  - A negative literal does not fit an unsigned type: `-1` where a `uint32` is expected is `PC0036`,
+    and `-1 as uint32` is the conversion that wraps it.
+  - A negative literal is a literal wherever a literal matters: `x / -2` needs no `on_zero` clause
+    (10.2.1), exactly as `x / 2` does not.
+- **A literal is rounded once**, from its exact decimal value straight to the type it adopts, to
+  nearest with ties to even. A `float` literal is never rounded to a `double` on the way, which
+  would round twice, and differently for a decimal close enough to the midpoint between two floats.
+  An integer literal adopting a floating-point type is rounded the same way, and its sign applies
+  afterwards, so `-0` where a `double` is expected is negative zero, the same value as `-0.0`.
+- A floating-point literal too large for the type it adopts is `PC0084` rather than an infinity:
+  `1e39` is in range as a `double` and out of range as a `float`. One too small to represent rounds to
+  zero or to a subnormal, as rounding does. `__INF` is never out of range.
 - An explicit conversion is written `<expression> as <type>`.
 
 ```protocross
@@ -181,9 +208,9 @@ extend Order {
   `a as int64 * b` is `(a as int64) * b`, and `-a as int32` negates in the source type and converts
   the result. Conversions chain left to right.
 - The operand of a conversion carries no type expectation into itself. An integer literal in that
-  position takes its natural `int64` and a floating-point literal its natural `double`, so
-  `3000000000 as int32` is a narrowing conversion that wraps rather than a literal reported as out
-  of range.
+  position takes its natural `int64` or `uint64`, and a floating-point literal its natural
+  `double`, so `3000000000 as int32` is a narrowing conversion that wraps rather than a literal
+  reported as out of range.
 - Both the source and the target must be numeric scalar types: the four integer types, `float`, and
   `double`. Anything else is `PC0075`, including `bool`, `string`, `bytes`, messages, and enums.
   Whether an enum can convert to or from an integer is left open in 12, and proto3's open enums make

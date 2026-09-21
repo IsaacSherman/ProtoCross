@@ -10,7 +10,4 @@ message CastCase {
   uint64 u64 = 4;
   double d = 5;
   float f = 6;
-
-  // A NaN has no literal form, so vectors that need one build it as d / zero.
-  double zero = 7;
 }

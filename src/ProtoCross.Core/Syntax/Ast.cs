@@ -252,9 +252,37 @@ public sealed record CastExpression(
     TypeReference TargetType,
     SourceSpan Span) : Expression(Span);
 
-public sealed record IntegerLiteralExpression(long Value, SourceSpan Span) : Expression(Span);
+/// <summary>
+/// An integer literal as written: its magnitude, in any of the spellings spec 6.6 allows.
+/// </summary>
+/// <remarks>
+/// Never negative, because a sign is never part of the token. A <c>-</c> written directly on the
+/// literal is a <see cref="UnaryExpression"/> around it here, and the binder folds the two into one
+/// negative literal (spec 10.3). A <see cref="ulong"/> rather than a <see cref="long"/>, so that
+/// uint64 MAX, and the magnitude of int64 MIN, have somewhere to live.
+/// </remarks>
+public sealed record IntegerLiteralExpression(ulong Value, SourceSpan Span) : Expression(Span)
+{
+    /// <summary>Kept so that code building a literal from a <see cref="long"/> still compiles.</summary>
+    /// <exception cref="ArgumentOutOfRangeException">The value is negative, which no literal is.</exception>
+    public IntegerLiteralExpression(long value, SourceSpan span)
+        : this(value >= 0 ? (ulong)value : throw new ArgumentOutOfRangeException(nameof(value)), span)
+    {
+    }
+}
 
-public sealed record FloatLiteralExpression(double Value, SourceSpan Span) : Expression(Span);
+/// <summary>
+/// A floating-point literal: a decimal with a fraction or an exponent, or <c>__INF</c> or <c>__NAN</c>.
+/// </summary>
+public sealed record FloatLiteralExpression(double Value, SourceSpan Span) : Expression(Span)
+{
+    /// <summary>The same literal rounded once, straight from its decimal to a float.</summary>
+    /// <remarks>
+    /// Not <c>(float)Value</c>, which rounds twice; see <see cref="FloatingPointValue"/>. It falls back
+    /// to that only for a node built without it, which the parser never does.
+    /// </remarks>
+    public float SingleValue { get; init; } = (float)Value;
+}
 
 public sealed record BooleanLiteralExpression(bool Value, SourceSpan Span) : Expression(Span);
 

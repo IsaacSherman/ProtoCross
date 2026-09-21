@@ -10,12 +10,6 @@
 // undefined behavior in C++, and narrowing a double past float's range is undefined behavior in
 // C++ where C# yields an infinity. Those three are why the vectors below exist; the widening cases
 // are here because a conversion that quietly loses a value is worse than one that fails to build.
-//
-// Large doubles are built by multiplication rather than written down: ProtoCross has no exponent
-// syntax, so 1e40 would have to be spelled with forty-one digits. There is no NaN literal either,
-// so a NaN is produced the way floating_point.pcross produces one, by dividing zero by zero.
-// int32 MIN is spelled -MAX - 1 for the same reason int64 MIN is in integer_overflow.pcross:
-// its magnitude does not fit in a positive literal of its own type.
 
 import proto "casts.proto";
 
@@ -38,10 +32,8 @@ extend CastCase {
         return u32 as int32;
     }
 
-    // uint64 values above int64 MAX have no literal form, so the operand is wrapped into existence
-    // first, exactly as integer_overflow.pcross does.
     fn wide_unsigned_as_signed() -> int64 {
-        return (u64 - 1) as int64;
+        return u64 as int64;
     }
 
     fn widened_to_double() -> double {
@@ -57,21 +49,15 @@ extend CastCase {
     }
 
     fn saturated() -> int32 {
-        var big: double = d * d * d;
-        return big as int32;
+        return d as int32;
     }
 
     fn nan_to_integer() -> int32 {
-        var q: double = d / zero;
-        return q as int32;
+        return d as int32;
     }
 
-    // No infinity literal, so the result is checked by the property that identifies an infinity:
-    // it is positive and unchanged by doubling.
-    fn narrowed_is_infinite() -> bool {
-        var big: double = d * d * d * d;
-        var n: float = big as float;
-        return n > 0.0 and n == n * 2.0;
+    fn narrowed_past_float() -> float {
+        return d as float;
     }
 }
 
@@ -97,7 +83,7 @@ test CastCase.narrowed "narrowing to int32 wraps into the sign bit" {
         i64 = 2147483648;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test CastCase.to_unsigned "a negative int32 reinterprets as uint32" {
@@ -118,7 +104,7 @@ test CastCase.from_unsigned "uint32 MAX reinterprets as -1" {
 
 test CastCase.wide_unsigned_as_signed "uint64 MAX reinterprets as -1" {
     receiver {
-        u64 = 0;
+        u64 = 18446744073709551615;
     }
 
     expect return -1;
@@ -160,7 +146,7 @@ test CastCase.truncated "a negative double truncates toward zero, not down" {
 
 test CastCase.saturated "a double above int32 MAX saturates rather than wrapping" {
     receiver {
-        d = 1000000.0;
+        d = 1e18;
     }
 
     expect return 2147483647;
@@ -168,25 +154,24 @@ test CastCase.saturated "a double above int32 MAX saturates rather than wrapping
 
 test CastCase.saturated "a double below int32 MIN saturates rather than wrapping" {
     receiver {
-        d = -1000000.0;
+        d = -1e18;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test CastCase.nan_to_integer "NaN converts to zero" {
     receiver {
-        d = 0.0;
-        zero = 0.0;
+        d = __NAN;
     }
 
     expect return 0;
 }
 
-test CastCase.narrowed_is_infinite "a double past float's range narrows to infinity" {
+test CastCase.narrowed_past_float "a double past float's range narrows to infinity" {
     receiver {
-        d = 10000000000.0;
+        d = 1e40;
     }
 
-    expect return true;
+    expect return __INF;
 }

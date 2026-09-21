@@ -13,7 +13,7 @@ namespace ProtoCross.Binding;
 /// IR. Runs in two passes so a method may call another method declared later in the file, or in a
 /// different extend block.
 /// </summary>
-public sealed class Binder
+public sealed partial class Binder
 {
     private readonly DiagnosticBag _diagnostics;
     private readonly SchemaTypes _types;
@@ -1407,11 +1407,8 @@ public sealed class Binder
         MethodContext context,
         PlType? expectedType) => expression switch
         {
-            IntegerLiteralExpression literal => BindIntegerLiteral(literal, expectedType),
-            FloatLiteralExpression literal => new IrLiteral(
-                literal.Value,
-                expectedType is ScalarType { Kind: ScalarKind.Float } ? ScalarType.FloatType : ScalarType.DoubleType,
-                literal.Span),
+            _ when IntegerLiteralOf(expression) is { } written => BindIntegerLiteral(written, expression.Span, expectedType),
+            FloatLiteralExpression literal => BindFloatLiteral(literal, expectedType),
             BooleanLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.BoolType, literal.Span),
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
@@ -1433,9 +1430,9 @@ public sealed class Binder
     /// <remarks>
     /// The operand is bound with no expected type. The cast already states the target, so the
     /// operand keeps whatever type it has on its own: an integer literal takes its natural
-    /// <c>int64</c> and a float literal its natural <c>double</c>. That is what makes
-    /// <c>3000000000 as int32</c> a narrowing conversion that wraps, rather than a literal that
-    /// silently retypes itself and then reports PC0036 for not fitting.
+    /// <c>int64</c>, or <c>uint64</c> where only that holds it, and a float literal its natural
+    /// <c>double</c>. That is what makes <c>3000000000 as int32</c> a narrowing conversion that wraps,
+    /// rather than a literal that silently retypes itself and then reports PC0036 for not fitting.
     /// </remarks>
     private IrExpression BindCast(CastExpression cast, Scope scope, MethodContext context)
     {
@@ -1482,46 +1479,6 @@ public sealed class Binder
 
         return destination.IsInteger ? ConversionKind.FloatToInteger : ConversionKind.FloatToFloat;
     }
-
-    /// <summary>
-    /// Integer literals adopt the expected integer type when the value fits, so
-    /// <c>var total: int64 = 0;</c> does not require a suffix or a cast.
-    /// </summary>
-    private IrExpression BindIntegerLiteral(IntegerLiteralExpression literal, PlType? expectedType)
-    {
-        if (expectedType is ScalarType scalar)
-        {
-            if (scalar.IsFloatingPoint)
-            {
-                return new IrLiteral((double)literal.Value, scalar, literal.Span);
-            }
-
-            if (scalar.IsInteger && FitsIn(literal.Value, scalar))
-            {
-                return new IrLiteral(literal.Value, scalar, literal.Span);
-            }
-
-            if (scalar.IsInteger)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.LiteralOutOfRangeForItsType,
-                    $"{literal.Value} is outside the range of '{scalar.DisplayName}'.",
-                    literal.Span);
-                return new IrLiteral(literal.Value, scalar, literal.Span);
-            }
-        }
-
-        return new IrLiteral(literal.Value, ScalarType.Int64Type, literal.Span);
-    }
-
-    private static bool FitsIn(long value, ScalarType scalar) => scalar.Kind switch
-    {
-        ScalarKind.Int32 => value is >= int.MinValue and <= int.MaxValue,
-        ScalarKind.Int64 => true,
-        ScalarKind.UInt32 => value is >= 0 and <= uint.MaxValue,
-        ScalarKind.UInt64 => value >= 0,
-        _ => false,
-    };
 
     private IrExpression BindName(NameExpression name, Scope scope, MethodContext context)
     {
@@ -2160,8 +2117,13 @@ public sealed class Binder
         var right = BindExpression(
             binary.Right, scope, rightContext, left.Type is ErrorType ? operandHint : left.Type);
 
-        // An untyped integer literal on the left should take its type from the right operand.
-        if (binary.Left is IntegerLiteralExpression && right.Type is ScalarType && !TypesMatch(left.Type, right.Type))
+        // A literal on the left takes its type from the right operand, the way one on the right takes
+        // it from the left (spec 10.3). One that failed to bind at all has already said why, and
+        // binding it again would say so twice.
+        if (IsNumericLiteral(binary.Left)
+            && left.Type is not ErrorType
+            && right.Type is ScalarType
+            && !TypesMatch(left.Type, right.Type))
         {
             left = BindExpression(binary.Left, scope, context, right.Type);
         }
@@ -2271,7 +2233,7 @@ public sealed class Binder
         Scope scope,
         MethodContext context)
     {
-        var divisorIsProvenNonZero = right is IrLiteral { Value: long literal } && literal != 0;
+        var divisorIsProvenNonZero = right is IrLiteral { Value: (long and not 0L) or (ulong and not 0UL) };
 
         if (divisorIsProvenNonZero)
         {

@@ -111,7 +111,7 @@ test SaturatingOverflowCase.i32_product "int32 multiplication past MAX clamps to
 
 test SaturatingOverflowCase.i32_negated "negating int32 MIN clamps to MAX" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
     }
 
     expect return 2147483647;
@@ -137,7 +137,7 @@ test SaturatingOverflowCase.i64_product "int64 multiplication past MAX clamps to
 
 test SaturatingOverflowCase.i64_negated "negating int64 MIN clamps to MAX" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
     }
 
     expect return 9223372036854775807;
@@ -146,7 +146,7 @@ test SaturatingOverflowCase.i64_negated "negating int64 MIN clamps to MAX" {
 // The one division that overflows. Its quotient is 2^63, so it lands on MAX.
 test SaturatingOverflowCase.i64_quotient "MIN / -1 clamps to MAX" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -156,7 +156,7 @@ test SaturatingOverflowCase.i64_quotient "MIN / -1 clamps to MAX" {
 // The remainder of that same division is 0, which is representable, so no policy touches it.
 test SaturatingOverflowCase.i64_remainder "MIN % -1 is zero under saturation too" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -172,15 +172,13 @@ test SaturatingOverflowCase.u32_sum "uint32 addition past MAX clamps to MAX" {
     expect return 4294967295;
 }
 
-// uint64 MAX has no literal form -- it is above int64 MAX -- so it is built the way casts.pcross
-// builds values it cannot write: 2 * int64 MAX is one short of it.
 test SaturatingOverflowCase.u64_product "uint64 multiplication past MAX clamps to MAX" {
     receiver {
         u64_left = 4294967296;
         u64_right = 4294967296;
     }
 
-    expect return 9223372036854775807 as uint64 * 2 + 1;
+    expect return 18446744073709551615;
 }
 
 // --- clamping downward ---
@@ -191,16 +189,16 @@ test SaturatingOverflowCase.i32_difference "int32 subtraction past MIN clamps to
         i32_right = 2;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i32_sum "int32 addition past MIN clamps to MIN" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
         i32_right = -1;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i32_product "a negative product past MIN clamps to MIN" {
@@ -209,16 +207,16 @@ test SaturatingOverflowCase.i32_product "a negative product past MIN clamps to M
         i32_right = -2;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i64_product "a negative product past MIN clamps to MIN" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = 2;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 // Unsigned arithmetic can only leave the range at one end, so the lower clamp is zero.

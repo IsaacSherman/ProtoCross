@@ -144,6 +144,41 @@ public class BackendTests
     }
 
     /// <summary>
+    /// A NaN does not compare equal to itself, but it is still the only value that can meet a NaN
+    /// expectation (spec 25.3). The generated test driver therefore needs an explicit NaN case.
+    /// </summary>
+    [Fact]
+    public void CppTestsTreatTwoNaNsAsTheSameExpectedResult()
+    {
+        var path = TestPaths.WriteTempScript(
+            """
+            import proto "invoice.proto";
+
+            extend Invoice {
+                fn not_a_number() -> double { return __NAN; }
+            }
+
+            test Invoice.not_a_number "a NaN result" {
+                receiver { }
+                expect return __NAN;
+            }
+            """);
+
+        var result = Compilation.Compile(path, [TestPaths.ExampleProtoDirectory]);
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+
+        var diagnostics = new DiagnosticBag();
+        var source = Assert.Single(new CppBackend().EmitTests(
+            result.Module!, new BackendOptions("nan.pcross"), diagnostics)).Contents;
+
+        Assert.Empty(diagnostics);
+        Assert.Contains(
+            "actual == expected || (::std::isnan(actual) && ::std::isnan(expected))",
+            source,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A source with no <c>expect fail</c> test must not gain the child-process machinery, so the
     /// common case emits exactly what it emitted before the feature existed.
     /// </summary>
