@@ -10,8 +10,7 @@ This section defines the token-level syntax.
 - String literals support `\n`, `\t`, `\r`, `\\`, and `\"`.
 - A string literal ends at the closing quote or at the end of the line. Multi-line string literals
   are not supported.
-- Numeric literals use invariant-culture parsing. Integer literals fit in signed 64-bit storage
-  before contextual typing; floating literals contain a fractional part and have no exponent syntax.
+- Numeric literals take the forms [6.6](#66-numeric-literals) defines.
 
 ### 6.2 Comments
 
@@ -52,6 +51,10 @@ identifier = (.NET letter | "_") { .NET letter-or-digit | "_" }
 
 Identifiers are case-sensitive. ProtoCross does not impose a naming convention on source names.
 Backends may map method names to target conventions when emitting public APIs ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
+
+`__INF` and `__NAN` are spelled like identifiers and are floating-point literals ([6.6](#66-numeric-literals)), so
+neither one names anything. Nothing that merely resembles them is reserved: `__inf`, `___INF` and
+`__INFINITY` are ordinary names.
 
 Open Question:
 
@@ -132,7 +135,8 @@ Normative Requirements:
   standard modifier set with it. Every category is declared whether or not anything currently
   produces it.
 - A keyword ([6.4](#64-keywords)) is `keyword`, a string literal is `string`, an integer or floating-point literal is
-  `number`, and a comment ([6.2](#62-comments)) is `comment`.
+  `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
+  ([6.2](#62-comments)) is `comment`.
 - `->`, `+`, `-`, `*`, `/`, `%`, `=`, `==`, `!=`, `!`, `<`, `<=`, `>`, `>=`, `&&` and `||` are
   `operator`.
 - **From the token stream alone, every identifier is `variable`, whatever it names.** Distinguishing
@@ -175,3 +179,51 @@ Implementation Note:
 - A token may not cross a line in the published encoding, so a block comment is emitted as one token
   per line it touches.
 - Columns count UTF-16 code units, matching `SourcePosition` and the protocol's default encoding.
+
+### 6.6 Numeric Literals
+
+**Decided: decimal, hexadecimal and binary integers; decimal floating point with an optional
+exponent; `__INF` and `__NAN`; `_` between digits; and no type suffixes.**
+
+```text
+integer_literal = decimal_digits | "0x" hex_digits | "0b" binary_digits
+float_literal   = decimal_digits ( fraction [ exponent ] | exponent ) | "__INF" | "__NAN"
+fraction        = "." decimal_digits
+exponent        = ( "e" | "E" ) [ "+" | "-" ] decimal_digits
+decimal_digits  = digit { [ "_" ] digit }            digit     = "0" ... "9"
+hex_digits      = hex_digit { [ "_" ] hex_digit }    hex_digit = digit | "a" ... "f" | "A" ... "F"
+binary_digits   = bit { [ "_" ] bit }                bit       = "0" | "1"
+```
+
+```protocross
+var mask: uint64 = 0xFFFF_FFFF_0000_0000;
+var flags = 0b1010_0101;
+var avogadro = 6.022_140_76e23;
+var lowest: int32 = -2147483648;
+var unbounded: double = -__INF;
+```
+
+Normative Requirements:
+
+- **A literal has no sign.** A `-` before one is an operator. Written directly on an integer literal
+  it is folded into the literal, which is what makes `-2147483648` an `int32` ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- `_` stands between two digits of the literal's own base and nowhere else: not first or last, not
+  doubled, and not beside the prefix, the `.` or the exponent's `e`.
+- The prefixes are lowercase. Hexadecimal digits may be either case. A leading zero does not make a
+  literal octal: `017` is seventeen.
+- An exponent makes a literal floating point, with or without a fraction: `1e10` is a floating-point
+  literal, and `10000000000` an integer one.
+- A `.` begins a fraction only where a digit follows it, so `1.foo` is member access on `1`.
+- `__INF` is positive infinity and `__NAN` is a NaN. Negative infinity is `-__INF`. Which NaN is
+  unspecified, and nothing in the language can tell two NaNs apart.
+- **There are no type suffixes.** A literal takes its type from where it is used, or from `as`
+  ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)); a suffix would be a second way to say the same thing, and one that looks like
+  a particular target's syntax.
+- A letter, digit or `_` directly after a number belongs to it. So a malformed spelling is one
+  literal with one diagnostic, `PC0005` -- `5u`, `0X1F`, `0b102`, `1e`, `0x` and `1_` among them --
+  rather than a number followed by a name the parser then trips over.
+- An integer literal larger than uint64 MAX, `18446744073709551615`, is `PC0006`. A floating-point
+  literal too large for a `double`, the widest floating-point type, is `PC0084`. Whether a value fits
+  the type a literal actually takes is decided where the literal is used ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- A decimal literal denotes its exact decimal value. It is rounded once, straight to the type it
+  takes, never through another floating-point type first ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).

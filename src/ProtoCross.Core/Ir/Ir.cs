@@ -518,6 +518,22 @@ public enum ConversionKind
     FloatToInteger,
 }
 
+/// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
+/// <remarks>
+/// <para>
+/// <paramref name="Value"/> is a <see cref="long"/> for a signed integer type and a
+/// <see cref="ulong"/> for an unsigned one, whatever the width; a <see cref="double"/> for
+/// <c>float</c> and <c>double</c> alike; a <see cref="bool"/> or a <see cref="string"/> for those types;
+/// and null for a node of <see cref="ErrorType"/>, or for an enum type standing in for its receiver.
+/// </para>
+/// <para>
+/// A <c>float</c> literal's double is exactly a float: the one its decimal rounds to, reached in one
+/// rounding. A backend spells that float, and never needs to round anything itself. A negative
+/// integer literal is one literal, not a negation, which is what lets int32 MIN and int64 MIN be
+/// literals, so a backend has to spell a negative value in a way that still reads as one expression
+/// wherever it lands.
+/// </para>
+/// </remarks>
 public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Span)
     : IrExpression(LiteralType, Span);
 

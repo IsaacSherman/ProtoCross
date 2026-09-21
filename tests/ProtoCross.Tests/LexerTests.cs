@@ -54,7 +54,7 @@ public class LexerTests
         var tokens = Tokenize("1234", out var diagnostics);
 
         Assert.Empty(diagnostics);
-        Assert.Equal(1234L, tokens[0].Value);
+        Assert.Equal<object?>(1234UL, tokens[0].Value);
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class LexerTests
 
         Assert.Empty(diagnostics);
         Assert.Equal(TokenKind.FloatLiteral, tokens[0].Kind);
-        Assert.Equal(3.5d, tokens[0].Value);
+        Assert.Equal<object?>(new FloatingPointValue(3.5d, 3.5f), tokens[0].Value);
     }
 
     [Fact]

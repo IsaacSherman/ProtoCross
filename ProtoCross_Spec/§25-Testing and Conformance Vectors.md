@@ -28,8 +28,8 @@ declaration ([25.3](#253-author-written-protocross-unit-tests)) in a `.pcross` f
   to say the same thing would have to re-earn all of that.
 - **Expected results.** ProtoCross literals bound to the method's return type. Being bound to the
   IR rather than to a serialization makes them language-independent without a wire format of their
-  own. The cost is that values with no ProtoCross literal -- `int64` MIN, `uint64` above `int64`
-  MAX, infinity, NaN -- must be written as expressions or asserted through a predicate.
+  own. Every value of every numeric type has a literal ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)), `int64` MIN, `uint64` MAX,
+  the infinities and NaN among them, so an expectation never has to be computed.
 - **Compile and execute, not inspect.** Golden assertions over emitted source only state that a
   backend emits what it emitted last time, one language at a time. The suite compiles the generated
   code with a real compiler and runs it, and requires every backend to have run the same set of

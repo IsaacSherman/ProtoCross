@@ -36,6 +36,10 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Explicit cast syntax.~~ Decided: `x as int64`, numeric scalars only ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
 - ~~Numeric conversion rules.~~ Decided: integer targets wrap, floating point to integer
   truncates and saturates with NaN mapping to zero ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- ~~Numeric literal forms.~~ Decided: `0x` and `0b` integers, `_` between digits, exponents, and
+  `__INF` and `__NAN`, with no type suffixes ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)); a `-` written on an integer literal is
+  part of it, and a literal with no expected type is `int64` or else `uint64` ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+  Whether there is a `bytes` literal remains open ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - String indexing and comparison semantics.
 - ~~How protobuf enum values are referenced.~~ Decided: `EnumType.VALUE_NAME` ([12](./§12-Enums.md#12-enums)).
 - Enum unknown-value behavior, and whether an enum converts to or from an integer.

@@ -1051,11 +1051,14 @@ public sealed class Parser
         {
             case TokenKind.IntegerLiteral:
                 Advance();
-                return new IntegerLiteralExpression((long)(token.Value ?? 0L), token.Span);
+                return new IntegerLiteralExpression((ulong)(token.Value ?? 0UL), token.Span);
 
             case TokenKind.FloatLiteral:
+            {
                 Advance();
-                return new FloatLiteralExpression((double)(token.Value ?? 0d), token.Span);
+                var value = (FloatingPointValue)(token.Value ?? default(FloatingPointValue));
+                return new FloatLiteralExpression(value.Double, token.Span) { SingleValue = value.Single };
+            }
 
             case TokenKind.StringLiteral:
                 Advance();

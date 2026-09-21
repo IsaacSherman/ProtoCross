@@ -1,3 +1,4 @@
+| `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
 # ProtoCross Conformance Vectors
 
 This directory is the answer to the question in spec 25.2: does every backend produce the *same*
@@ -64,7 +65,7 @@ discovery rather than a hook that exists only for tests. `vectors/checked/` and
 still build into the one C# assembly and the one C++ link, because both generated runtime files
 carry every policy and are therefore identical whichever one was selected.
 
-Two constraints are worth knowing before writing one:
+One constraint is worth knowing before writing one:
 
 - **Take divisors from fixture fields, not literals.** A non-zero literal divisor is proof that an
   `on_zero` clause is unreachable, and the compiler warns about it (PC0056). A field-supplied
@@ -72,10 +73,6 @@ Two constraints are worth knowing before writing one:
   That is a rule about integer division. A floating-point division takes no clause at all, so
   `constant_divisor.pcross` writes both operands out deliberately: what it pins is what the
   backends do with a quotient they can work out before the program runs.
-- **Some values have no literal form.** `int64` MIN cannot be written directly, because its
-  magnitude does not fit in a positive 64-bit literal; write it as `-9223372036854775807 - 1`, the
-  way `<climits>` does. There is no `inf` or `NaN` literal either, so floating-point edge cases are
-  written as `bool`-returning predicates. `floating_point.pcross` shows the pattern.
 
 ## What the harness checks
 
@@ -131,10 +128,6 @@ The harness is written so a third backend is a small addition, not a third copy:
 
 ## Not covered yet
 
-- **`uint64` literals above `int64` MAX**, and `int64` MIN and `int32` MIN, have no direct literal
-  form. Nor do infinities, NaN, or any float needing an exponent: ProtoCross has no exponent syntax,
-  so `casts.pcross` builds large doubles by multiplication and checks an infinity by the property
-  that identifies one rather than comparing against a literal.
 - **Enum values with no declared name.** proto3 enums are open, so a field can hold a number the
   schema does not name, but a fixture can only set a value that exists. What happens to an unknown
   value is undecided (spec 12), so there is nothing to pin.

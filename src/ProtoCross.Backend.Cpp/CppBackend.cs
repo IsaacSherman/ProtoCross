@@ -889,6 +889,7 @@ public sealed class CppBackend : ITestProjectScaffold
         bool value => value ? "true" : "false",
         long value when literal.LiteralType is ScalarType scalar => FormatInteger(value, scalar),
         long value => value.ToString(CultureInfo.InvariantCulture),
+        ulong value when literal.LiteralType is ScalarType scalar => FormatInteger(value, scalar),
         double value => FormatDouble(value, literal.LiteralType),
         string value => FormatString(value),
         _ => throw new ArgumentOutOfRangeException(nameof(literal), literal.Value, "Unhandled literal."),
@@ -933,24 +934,46 @@ public sealed class CppBackend : ITestProjectScaffold
         return builder.ToString();
     }
 
+    /// <summary>Formats a signed integer literal with the suffix its type requires.</summary>
+    /// <remarks>
+    /// <para>
+    /// A negative one is parenthesized, so that it reads as one expression wherever it lands, as
+    /// everything else this backend emits does.
+    /// </para>
+    /// <para>
+    /// The most negative value of each type has no literal of its own. C++ has no negative literals,
+    /// only negations of positive ones, and the magnitude of each MIN is one more than its type's MAX:
+    /// <c>2147483648</c> is not an <c>int</c>, and <c>9223372036854775808</c> is not a <c>long long</c>
+    /// -- or anything signed at all. Each is spelled the way <c>&lt;climits&gt;</c> spells it, as MAX
+    /// negated less one, which is a constant expression of exactly the right type.
+    /// </para>
+    /// </remarks>
     private static string FormatInteger(long value, ScalarType scalar)
     {
-        // long.MinValue has no positive counterpart, so the literal cannot be written directly:
-        // the lexer would parse '-9223372036854775808' as negation of an out-of-range literal.
         if (value == long.MinValue)
         {
             return "(-9223372036854775807LL - 1)";
         }
 
-        var text = value.ToString(CultureInfo.InvariantCulture);
-        return scalar.Kind switch
+        if (scalar.Kind == ScalarKind.Int32 && value == int.MinValue)
         {
-            ScalarKind.Int64 => text + "LL",
-            ScalarKind.UInt64 => text + "ULL",
-            ScalarKind.UInt32 => text + "U",
-            _ => text,
-        };
+            return "(-2147483647 - 1)";
+        }
+
+        var text = value.ToString(CultureInfo.InvariantCulture) + IntegerSuffix(scalar);
+        return value < 0 ? $"({text})" : text;
     }
+
+    private static string FormatInteger(ulong value, ScalarType scalar)
+        => value.ToString(CultureInfo.InvariantCulture) + IntegerSuffix(scalar);
+
+    private static string IntegerSuffix(ScalarType scalar) => scalar.Kind switch
+    {
+        ScalarKind.Int64 => "LL",
+        ScalarKind.UInt64 => "ULL",
+        ScalarKind.UInt32 => "U",
+        _ => string.Empty,
+    };
 
     private static string FormatDouble(double value, PlType type)
     {
@@ -965,7 +988,12 @@ public sealed class CppBackend : ITestProjectScaffold
             return double.IsNegativeInfinity(value) ? $"(-{text2})" : text2;
         }
 
-        var text = value.ToString("R", CultureInfo.InvariantCulture);
+        // A float is spelled as the float it is, in the fewest digits that give it back, rather than as
+        // the double that holds it: both round-trip, but only the first is what an author wrote.
+        var text = isFloat
+            ? ((float)value).ToString("R", CultureInfo.InvariantCulture)
+            : value.ToString("R", CultureInfo.InvariantCulture);
+
         if (!text.Contains('.', StringComparison.Ordinal)
             && !text.Contains('E', StringComparison.Ordinal)
             && !text.Contains('e', StringComparison.Ordinal))
@@ -973,7 +1001,12 @@ public sealed class CppBackend : ITestProjectScaffold
             text += ".0";
         }
 
-        return type is ScalarType { Kind: ScalarKind.Float } ? text + "f" : text;
+        if (isFloat)
+        {
+            text += "f";
+        }
+
+        return double.IsNegative(value) ? $"({text})" : text;
     }
 
     private static string OperatorText(IrBinaryOperator op) => op switch

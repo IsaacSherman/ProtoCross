@@ -44,9 +44,14 @@
     "numbers": {
       "patterns": [
         {
-          "comment": "A '.' begins a fractional part only when a digit follows it; there is no exponent syntax (spec 6.1).",
+          "comment": "Spelled like names, and literals (spec 6.6). Only these exact spellings: __INFINITY and ___INF are names.",
           "name": "constant.numeric.pcross",
-          "match": "\\p{Nd}+(?:\\.\\p{Nd}+)?"
+          "match": "(?<![\\p{L}\\p{Nd}_])(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_])"
+        },
+        {
+          "comment": "The extent the lexer gives a number, valid or not (spec 6.6): a prefix and every word character after it; or digits and separators, a fraction only where a digit follows the '.', an exponent only where a digit follows the 'e' or its sign, and then anything glued on, which makes the literal malformed and keeps it one literal.",
+          "name": "constant.numeric.pcross",
+          "match": "0[xb][\\p{L}\\p{Nd}_]*|\\p{Nd}[\\p{Nd}_]*(?:\\.(?=\\p{Nd})[\\p{Nd}_]*)?(?:[eE](?:[+-](?=\\p{Nd})|(?=\\p{Nd}))[\\p{Nd}_]*)?[\\p{L}\\p{Nd}_]*"
         }
       ]
     },
