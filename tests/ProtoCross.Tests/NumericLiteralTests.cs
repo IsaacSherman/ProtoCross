@@ -229,6 +229,17 @@ public class NumericLiteralTests
         => Assert.Equal("PC0036", SingleCode(CompileBody("fn f() { var n = -9223372036854775809; }")));
 
     /// <summary>
+    /// A literal on the left is bound twice -- once with nothing expected, and again in the type on
+    /// the right -- and a value below int64 MIN is out of range both times. It is one mistake, so it
+    /// is one diagnostic.
+    /// </summary>
+    [Fact]
+    public void ALiteralNoIntegerTypeCanHoldIsReportedOnceOnTheLeft()
+        => Assert.Equal(
+            "PC0036",
+            SingleCode(CompileBody("fn f() -> bool { return -9223372036854775809 < small_count; }")));
+
+    /// <summary>
     /// A literal is as plainly non-zero negative as positive, and as plainly non-zero unsigned as
     /// signed. The unsigned rows guard the representation: an unsigned literal holds a
     /// <see cref="ulong"/>, and a proof that looked only for a <see cref="long"/> would demand an
