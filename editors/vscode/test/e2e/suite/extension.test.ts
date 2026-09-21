@@ -16,7 +16,8 @@ function workspaceFile(name: string): string {
   return path.join(folder.uri.fsPath, name);
 }
 
-async function until<T>(read: () => T | undefined, describe: string, patienceMs = 60_000): Promise<T> {
+// The description is a function where what is worth saying on failure is only known by then.
+async function until<T>(read: () => T | undefined, describe: string | (() => string), patienceMs = 60_000): Promise<T> {
   const deadline = Date.now() + patienceMs;
   for (;;) {
     const value = read();
@@ -24,9 +25,56 @@ async function until<T>(read: () => T | undefined, describe: string, patienceMs 
       return value;
     }
     if (Date.now() > deadline) {
-      throw new Error(`Never saw ${describe}.`);
+      throw new Error(`Never saw ${typeof describe === 'string' ? describe : describe()}.`);
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+interface Sighting {
+  readonly seen: boolean;
+  dispose(): void;
+}
+
+// Whether VS Code reports any change to a workspace file of this name from now on. A glob given as a
+// string starts no watcher of its own: VS Code filters one stream it runs for the whole workspace, and
+// the language client's watchers are filters on that same stream.
+function watchFor(name: string): Sighting {
+  const watcher = vscode.workspace.createFileSystemWatcher(`**/${name}`);
+  let seen = false;
+  const note = (): void => {
+    seen = true;
+  };
+  const listening = [watcher.onDidCreate(note), watcher.onDidChange(note), watcher.onDidDelete(note)];
+
+  return {
+    get seen() {
+      return seen;
+    },
+    dispose() {
+      listening.forEach((listener) => listener.dispose());
+      watcher.dispose();
+    },
+  };
+}
+
+// Waits until VS Code's workspace watcher is reporting changes. It starts on its own schedule -- on
+// macOS, an FSEvents stream, which never reports what happened before it began -- so a file written in
+// a session's first seconds can go unreported however correct the server is (#118). A probe no server
+// watches is rewritten until a change to it arrives, which leaves whatever a test writes next as the
+// one write that test makes.
+async function workspaceWatcherRunning(): Promise<void> {
+  const probe = watchFor('watcher-probe.txt');
+  try {
+    await until(() => {
+      if (probe.seen) {
+        return true;
+      }
+      fs.writeFileSync(workspaceFile('watcher-probe.txt'), `${Date.now()}\n`);
+      return undefined;
+    }, "VS Code's file watcher report a change in the workspace");
+  } finally {
+    probe.dispose();
   }
 }
 
@@ -96,13 +144,24 @@ describe('the extension, installed', () => {
     );
   });
 
+  // One save, never retried: retrying would pass a server that misses the first save it is told about,
+  // which is the failure this is here to catch. What is waited out first is only VS Code's own start-up.
   it('refreshes diagnostics when an imported schema is saved, with no edit to the file', async () => {
-    fs.writeFileSync(workspaceFile('shape.proto'), 'syntax = "proto3";\n\nmessage Shape {\n  int64 height = 1;\n  int64 width = 2;\n}\n');
+    await workspaceWatcherRunning();
+    const save = watchFor('shape.proto');
 
-    await until(
-      () => (problems(source).every((problem) => problem.severity !== vscode.DiagnosticSeverity.Error) ? true : undefined),
-      'the error to clear once width was added to the schema',
-    );
+    try {
+      fs.writeFileSync(workspaceFile('shape.proto'), 'syntax = "proto3";\n\nmessage Shape {\n  int64 height = 1;\n  int64 width = 2;\n}\n');
+
+      await until(
+        () => (problems(source).every((problem) => problem.severity !== vscode.DiagnosticSeverity.Error) ? true : undefined),
+        () =>
+          'the error to clear once width was added to the schema; ' +
+          (save.seen ? 'VS Code did report the save to its watchers' : 'VS Code never reported the save to any watcher'),
+      );
+    } finally {
+      save.dispose();
+    }
   });
 
   it('starts the server outside every workspace folder', async () => {
