@@ -167,6 +167,12 @@ Normative Requirements:
   document that most needs recompiling is the one whose load failed and so recorded nothing. A change
   to any other file recompiles nothing. A schema outside every workspace folder is outside what a
   client watches, and is seen on the next edit.
+  **The host also recompiles every open document once, when the client agrees to watch.** Until then
+  a change is reported to nobody, and the first compile may already have read the file as it was, so
+  a save in a session's first moments would otherwise leave diagnostics describing the old file until
+  the next change to it. Every document rather than only those whose kept compilation is out of date,
+  because what is kept is not necessarily what was published: a question asked after the save can
+  rebuild it, and the diagnostics on screen would then be passed over as current.
 - **Closing a document withdraws what it published and abandons what is outstanding for it.** Work
   already under way may finish, since some of it is shared and cannot be recalled, but nothing it
   produces is published, and **work not yet started is not started**. The second half is not a

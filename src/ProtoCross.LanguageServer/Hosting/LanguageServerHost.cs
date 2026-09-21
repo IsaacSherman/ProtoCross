@@ -726,6 +726,28 @@ public sealed class LanguageServerHost : IDisposable
     /// every <c>didOpen</c> is queued behind. A refusal is logged, because a client that declared the
     /// capability and then refused it has a defect somebody will want to find.
     /// </para>
+    /// <para>
+    /// <b>Everything open is recompiled once the client agrees.</b> Until then a schema saved on disk
+    /// is reported to nobody: the first compile may already have read it, and no watcher existed to see
+    /// it change. That window is the server's first second or two, and a save inside it left an error on
+    /// screen that the schema no longer caused, until the next change to that schema (#118). The
+    /// recompile covers whatever moved before the answer, and a document whose schemas did not move
+    /// costs a hash per schema rather than a compile, because <see cref="DocumentSemantics"/> answers
+    /// from what it holds.
+    /// </para>
+    /// <para>
+    /// Every open document rather than only those whose held compilation has gone out of date, which
+    /// was the narrower alternative. What is held is not necessarily what was published: a hover can
+    /// rebuild it after the save, and the diagnostics on screen would then be skipped as current while
+    /// still describing the old schema. The cost of the broad rule is at most one republish of unchanged
+    /// diagnostics per open document, once a session -- and usually nothing, because the answer tends to
+    /// arrive while the first compile is still waiting out its debounce, and simply replaces it.
+    /// </para>
+    /// <para>
+    /// What this cannot cover is a client that answers before its own watcher is running. VS Code's
+    /// watchers filter one workspace-wide stream that starts on its own schedule, and the protocol gives
+    /// a server no way to ask when it has.
+    /// </para>
     /// </remarks>
     private void WatchFiles()
     {
@@ -752,7 +774,14 @@ public sealed class LanguageServerHost : IDisposable
             catch (Exception ex) when (ex is JsonRpcException or OperationCanceledException or IOException or ObjectDisposedException)
             {
                 _log.Warning("The client did not agree to watch schema and policy files, so a change to one is seen on the next edit.", ex);
+                return;
             }
+
+            // Off the worker, and concurrently with whatever it is handling, which the scheduler is built
+            // for: its queue is a concurrent one, and a run it hands out for a document closed meanwhile
+            // finds it closed and publishes nothing.
+            _log.Trace("The client is watching schema and policy files; recompiling open documents in case one changed before it was.");
+            _scheduler.ScheduleAll();
         }
     }
 
