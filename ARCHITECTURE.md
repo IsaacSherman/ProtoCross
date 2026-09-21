@@ -412,8 +412,9 @@ nothing did was *ask*: diagnostics are published when a compile runs, and saving
 tab is not a keystroke in this one. So once initialized the server asks a client that can watch files
 to report `**/*.proto` and `**/protocross.config.xml`
 ([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
-reschedules every open document. Each compile asks `DocumentSemantics` first, so a document whose schemas
-still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
+reschedules every open document. So does the client agreeing to watch, since a save before its watcher
+was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
+schemas still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
 an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
 
 When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
