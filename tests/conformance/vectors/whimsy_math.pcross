@@ -255,7 +255,7 @@ test WhimsyCauldronCase.clipped_drift "large negative double-to-int64 conversion
         drift = -10000000.0;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 // The three settled cases below cover the disjunction one operand at a time. A single case with

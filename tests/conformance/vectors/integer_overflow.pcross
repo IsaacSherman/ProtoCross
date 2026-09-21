@@ -4,10 +4,6 @@
 // consumer builds with CheckForOverflowUnderflow, and signed overflow is undefined behavior in
 // C++, which optimizers are entitled to exploit. These vectors are what proves both backends
 // produce the two's complement answer anyway.
-//
-// int64 MIN cannot be written as a literal: its magnitude does not fit in a positive 64-bit
-// literal, and ProtoCross has no MIN constant. It is spelled the way <climits> spells it,
-// as -MAX - 1.
 
 import proto "integer_overflow.proto";
 
@@ -48,10 +44,8 @@ extend OverflowCase {
         return u32_left - u32_right;
     }
 
-    // uint64 values above 2^63 - 1 cannot be written as literals either, so the wrapped result is
-    // checked by halving it: 2^64 - 1 halved is exactly int64 MAX.
-    fn halved_sub_u64() -> uint64 {
-        return (u64_left - u64_right) / 2;
+    fn sub_u64() -> uint64 {
+        return u64_left - u64_right;
     }
 }
 
@@ -61,12 +55,12 @@ test OverflowCase.add_i32 "int32 addition wraps past MAX" {
         i32_right = 1;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test OverflowCase.sub_i32 "int32 subtraction wraps past MIN" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
         i32_right = 1;
     }
 
@@ -94,10 +88,10 @@ test OverflowCase.mul_i32 "int32 multiplication wraps to a negative result" {
 // Negating int32 MIN has no representable result, so under wrapping it is MIN again.
 test OverflowCase.negate_i32 "negating int32 MIN yields MIN" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test OverflowCase.add_i64 "int64 addition wraps past MAX" {
@@ -106,7 +100,7 @@ test OverflowCase.add_i64 "int64 addition wraps past MAX" {
         i64_right = 1;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 test OverflowCase.mul_i64 "int64 multiplication discards the high word" {
@@ -120,10 +114,10 @@ test OverflowCase.mul_i64 "int64 multiplication discards the high word" {
 
 test OverflowCase.negate_i64 "negating int64 MIN yields MIN" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 test OverflowCase.add_u32 "uint32 addition wraps to zero" {
@@ -144,11 +138,11 @@ test OverflowCase.sub_u32 "uint32 subtraction wraps to MAX" {
     expect return 4294967295;
 }
 
-test OverflowCase.halved_sub_u64 "uint64 subtraction wraps to MAX" {
+test OverflowCase.sub_u64 "uint64 subtraction wraps to MAX" {
     receiver {
         u64_left = 0;
         u64_right = 1;
     }
 
-    expect return 9223372036854775807;
+    expect return 18446744073709551615;
 }

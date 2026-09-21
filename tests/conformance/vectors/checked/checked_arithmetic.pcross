@@ -115,7 +115,7 @@ test CheckedOverflowCase.i64_quotient "a zero divisor still takes the on_zero fa
 // MIN % -1 is 0 under every policy, because 0 is representable. Only the quotient overflows.
 test CheckedOverflowCase.i64_remainder "MIN % -1 is zero, not an overflow" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -162,7 +162,7 @@ test CheckedOverflowCase.i32_product "int32 multiplication past MAX terminates" 
 
 test CheckedOverflowCase.i32_negated "negating int32 MIN terminates" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
     }
 
     expect fail;
@@ -188,7 +188,7 @@ test CheckedOverflowCase.i64_product "int64 multiplication past MAX terminates" 
 
 test CheckedOverflowCase.i64_negated "negating int64 MIN terminates" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
     }
 
     expect fail;
@@ -196,7 +196,7 @@ test CheckedOverflowCase.i64_negated "negating int64 MIN terminates" {
 
 test CheckedOverflowCase.i64_quotient "MIN / -1 terminates" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
