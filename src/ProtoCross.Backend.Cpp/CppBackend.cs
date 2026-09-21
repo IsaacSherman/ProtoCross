@@ -356,7 +356,7 @@ public sealed class CppBackend : ITestProjectScaffold
 
         writer.WriteLine($"const auto actual = {CppInvocation(test)};");
         writer.WriteLine($"const auto expected = {Expression(returnExpectation.Value)};");
-        using (writer.Block("if (actual != expected)"))
+        using (writer.Block($"if ({ExpectationUnmet(returnExpectation.Value.Type)})"))
         {
             // Printed on stdout rather than stderr so a harness reading the driver sees every
             // result line in the order they happened.
@@ -370,6 +370,28 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine($"::std::cout << \"[ok] {EscapeString(test.Identity)}\" << ::std::endl;");
         writer.WriteLine("return true;");
     }
+
+    /// <summary>
+    /// The condition under which a returned value does not meet its <c>expect return</c>: they are
+    /// unequal, unless both are NaN (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A NaN is unequal to everything, itself included, so <c>!=</c> alone fails every NaN expectation
+    /// however right the result is. The generated C# test never had that problem, because xUnit's
+    /// <c>Assert.Equal</c> compares doubles with <c>Equals</c>, where a NaN equals a NaN -- which is how
+    /// <c>expect return __NAN;</c> came to pass in one backend and fail in the other.
+    /// </para>
+    /// <para>
+    /// Only a floating-point expectation gets the longer condition, so every other test stays
+    /// byte-for-byte what it was. Nothing else about <c>==</c> changes: <c>0.0</c> still meets a
+    /// <c>-0.0</c>, as it does under <c>Equals</c>.
+    /// </para>
+    /// </remarks>
+    private static string ExpectationUnmet(PlType type)
+        => type is ScalarType { IsFloatingPoint: true }
+            ? "actual != expected && !(actual != actual && expected != expected)"
+            : "actual != expected";
 
     /// <summary>
     /// Emits the body a child process runs for an <c>expect fail</c> test. It is never called in

@@ -52,6 +52,10 @@ Normative Requirements:
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
   declares the expected return value or expected terminal failure.
+- An `expect return` is met when the returned value equals the expected one under `==`, with one
+  exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
+  exception no test could say that a result is not a number; and which NaN it is cannot matter,
+  because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
 - Test declarations are not emitted into production behavior output unless test generation is
   explicitly requested.
 - The compiler generates target-language test source files into a user-selected output directory.
