@@ -2118,8 +2118,12 @@ public sealed partial class Binder
             binary.Right, scope, rightContext, left.Type is ErrorType ? operandHint : left.Type);
 
         // A literal on the left takes its type from the right operand, the way one on the right takes
-        // it from the left (spec 10.3).
-        if (IsNumericLiteral(binary.Left) && right.Type is ScalarType && !TypesMatch(left.Type, right.Type))
+        // it from the left (spec 10.3). One that failed to bind at all has already said why, and
+        // binding it again would say so twice.
+        if (IsNumericLiteral(binary.Left)
+            && left.Type is not ErrorType
+            && right.Type is ScalarType
+            && !TypesMatch(left.Type, right.Type))
         {
             left = BindExpression(binary.Left, scope, context, right.Type);
         }

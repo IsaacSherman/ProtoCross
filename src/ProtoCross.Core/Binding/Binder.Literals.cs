@@ -71,15 +71,23 @@ public sealed partial class Binder
 
         var type = expectedType is ScalarType { IsInteger: true } integer ? integer : NaturalType(literal.Value);
 
-        if (!FitsIn(literal.Value, type))
+        if (FitsIn(literal.Value, type))
         {
-            _diagnostics.Report(
-                DiagnosticCodes.LiteralOutOfRangeForItsType,
-                $"{literal} is outside the range of '{type.DisplayName}'.",
-                span);
+            return new IrLiteral(Representation(literal.Value, type), type, span);
         }
 
-        return new IrLiteral(Representation(literal.Value, type), type, span);
+        _diagnostics.Report(
+            DiagnosticCodes.LiteralOutOfRangeForItsType,
+            $"{literal} is outside the range of '{type.DisplayName}'.",
+            span);
+
+        // Where an integer type was expected, the literal keeps it, so the mistake stays one diagnostic
+        // rather than gaining a second about types that do not match. Where none was, no integer type
+        // can hold the value at all, so the literal has no type -- and nothing rebinds it in another
+        // one to report the same value a second time.
+        return expectedType is ScalarType { IsInteger: true }
+            ? new IrLiteral(Representation(literal.Value, type), type, span)
+            : new IrLiteral(null, ErrorType.Instance, span);
     }
 
     /// <summary>
