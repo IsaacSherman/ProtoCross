@@ -16,6 +16,8 @@ tests/conformance/
   vectors/<policy>/            vectors compiled under a non-default language policy
     protocross.config.xml       what makes them non-default
     *.pcross
+  vectors/sweep/               generated vectors, under the default policy
+  vectors/<policy>/sweep/      generated vectors, under that directory's policy
 ```
 
 The harness lives in [`tests/ProtoCross.Tests/Conformance/`](../ProtoCross.Tests/Conformance) and runs
@@ -74,6 +76,43 @@ One constraint is worth knowing before writing one:
   `constant_divisor.pcross` writes both operands out deliberately: what it pins is what the
   backends do with a quotient they can work out before the program runs.
 
+## Generated vectors
+
+The `sweep/` directories hold vectors nobody wrote by hand: every numeric operator and every
+conversion over the values where each can go wrong, several thousand rows in all. They and their
+schemas are written by
+[`tests/ProtoCross.Tests/Conformance/Sweep/`](../ProtoCross.Tests/Conformance/Sweep), and each file
+says so on its first line. **Do not edit them.** Change the generator, then rewrite them:
+
+```bash
+PROTOCROSS_REGENERATE_SWEEP=1 dotnet test ProtoCross.slnx --filter "FullyQualifiedName~ArithmeticSweepTests"
+```
+
+`ArithmeticSweepTests` fails when a committed file is not what the generator writes, and when a
+generated file is left behind that the generator no longer writes. They are committed rather than
+generated as the suite runs because the harness compiles what is in the directory, a failure should
+point at a line that exists, and a file that exists can be opened in the editor.
+
+Each test walks one table of rows and returns the index of the first row the backend got wrong, or
+`-1`, which is what it expects. So a failure reads `expected -1, actual 17`, and every row carries its
+index in a trailing comment: search the vector for `// 17` inside the failing test.
+
+The expected values do not come from either backend:
+
+- **Integer results** are computed exactly, in arbitrary precision, and only then brought into range
+  as the policy says: reduced modulo 2^N, clamped, or, under `Checked`, left out of the table. Each
+  way an operator can overflow under `Checked` is a test of its own instead, expecting termination,
+  using the narrowest overflow among the boundary values.
+- **Floating-point results** are C#'s own arithmetic, which is the reference (spec 10), done in the
+  type's own precision. A row expecting NaN sets `nan` rather than a value, and every other row is
+  compared by `1 / x` as well as `==`, which is what tells `0.0` from `-0.0`.
+- **An integer converted to a floating-point type** is rounded from its exact value, to nearest with
+  ties to even, rather than by a cast that might round twice.
+
+The generated vectors are left out of `CompiledCorpus`, which the editor sweeps walk position by
+position. They repeat a few constructs thousands of times, so they add nothing those sweeps would not
+already meet, and they would multiply what the sweeps cost.
+
 ## What the harness checks
 
 | Test | Checks |
@@ -111,6 +150,11 @@ failing. A fully equipped machine should report no skips.
 | `keyword_types` | Messages, enums, and enum values whose names C++ cannot use as they stand -- a keyword, a generated member's name, a nested type under an escaped parent, and keyword and macro values of a top-level and a nested enum -- as receivers, locals, parameters, returns, and fixture values (spec 24.2) |
 | `keyword_package` | A package whose components are C++ keywords: the namespace the generated functions live in, a call between them, and a message and an enum value qualified with it (spec 24.2) |
 | `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
+| `sweep/integer_sweep` | Every integer `+ - * / %` and unary `-` over every pair of boundary values of each integer type, with the fallback for a zero divisor, and every comparison of the same pairs, under the default wrapping policy (spec 10.1, 10.2). Generated |
+| `sweep/floating_sweep` | Every floating-point `+ - * / %`, unary `-` and comparison, in `float` and `double`, over both zeros, an inexact fraction, the largest finite value, the smallest subnormal, both infinities and NaN (spec 10.2). Generated |
+| `sweep/conversion_sweep` | Every `as` between the six numeric types, over each integer type's boundary values and rounding ties, and the floating-point values either side of each integer type's range and of `float`'s (spec 10.3). Generated |
+| `checked/sweep/checked_integer_sweep` | The integer sweep under the checked policy: every result that fits, and the narrowest overflow in each direction each operator can overflow terminating (spec 10.1). Generated |
+| `saturating/sweep/saturating_integer_sweep` | The integer sweep under the saturating policy, every result clamped (spec 10.1). Generated |
 | `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and `MIN % -1` does not (spec 10.1, 10.4) |
 | `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width (spec 10.1, 10.4) |
 
