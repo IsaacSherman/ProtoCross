@@ -28,6 +28,7 @@ time rather than emitting something whose semantics differ.
 | Repeated iteration | Yes | Yes | — | `foreach` / range-`for` over the protobuf container. |
 | Cross-message method calls | Yes | Yes | — | C++ emits all declarations before any definition. |
 | Local variables and assignment | Yes | Yes | — | Only locals can be assigned. |
+| Compound assignment | Yes | Yes | — | Bound as its long form ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so neither backend sees one. |
 | Mutable methods | No | No | — | Blocked on the open question in 16.1. |
 | Maps | No | No | — | Blocked on 14.2. |
 | Result/error returns | No | No | — | Blocked on 19. |

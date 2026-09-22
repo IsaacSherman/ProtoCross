@@ -130,6 +130,23 @@ public class SemanticTokenTests
         Assert.Equal(expected, painted);
     }
 
+    /// <summary>
+    /// Each compound assignment is one operator token, so <c>&lt;&lt;=</c> is never painted as a
+    /// shift beside an assignment.
+    /// </summary>
+    [Fact]
+    public void EveryCompoundAssignmentOperatorIsOneOperatorToken()
+    {
+        string[] expected = ["+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>="];
+        var source = string.Concat(expected.Select(spelling => $"x {spelling} 1; "));
+
+        var painted = Paint(source)
+            .Where(token => token.Type == SemanticTokenLegend.Operator)
+            .Select(token => TextOf(source, token));
+
+        Assert.Equal(expected, painted);
+    }
+
     [Fact]
     public void LexicalTokensAreProducedForAFileThatDoesNotParse()
     {

@@ -828,6 +828,22 @@ public class ParserTests
 
                 break;
 
+            case CompoundAssignmentStatement assignment:
+                foreach (var name in Names(assignment.Target).Concat(Names(assignment.Value)))
+                {
+                    yield return name;
+                }
+
+                if (assignment.OnZero?.Fallback is { } compoundFallback)
+                {
+                    foreach (var name in Names(compoundFallback))
+                    {
+                        yield return name;
+                    }
+                }
+
+                break;
+
             case ExpressionStatement expression:
                 foreach (var name in Names(expression.Expression))
                 {

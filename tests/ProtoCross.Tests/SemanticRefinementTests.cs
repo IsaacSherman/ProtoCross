@@ -292,6 +292,35 @@ public class SemanticRefinementTests
     }
 
     /// <summary>
+    /// The target of a compound assignment is marked as assigned, although the operation it stands
+    /// for reads it too, and the same name read on its right is not.
+    /// </summary>
+    [Fact]
+    public async Task ACompoundAssignmentsTargetIsMarkedAndTheReadBesideItIsNot()
+    {
+        const string Assigned =
+            """
+            import proto "fixtures.proto";
+
+            extend Outer {
+                fn stepped() -> int64 {
+                    var total: int64 = 1;
+                    total += total;
+
+                    return total;
+                }
+            }
+            """;
+
+        var written = (await NamesAsync(Assigned)).Where(name => name.Text == "total").ToList();
+
+        Assert.Equal(4, written.Count);
+        Assert.True(written[1].Token.Has(SemanticTokenLegend.Modification), "the target is assigned");
+        Assert.False(written[2].Token.Has(SemanticTokenLegend.Modification), "the operand is read");
+        Assert.False(written[3].Token.Has(SemanticTokenLegend.Modification), "the return reads it");
+    }
+
+    /// <summary>
     /// The name a loop binds is a variable that cannot be assigned, which is the whole of what
     /// separates it from a local.
     /// </summary>

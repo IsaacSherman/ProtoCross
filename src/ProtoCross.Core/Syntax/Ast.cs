@@ -161,6 +161,24 @@ public sealed record ContinueStatement(SourceSpan Span) : Statement(Span);
 
 public sealed record AssignmentStatement(Expression Target, Expression Value, SourceSpan Span) : Statement(Span);
 
+/// <summary>
+/// A compound assignment, <c>x op= y</c>, which stores <c>x op y</c> in <c>x</c> (spec 9.2).
+/// <paramref name="OnZero"/> is the <c>on_zero</c> clause of an integer <c>/=</c> or <c>%=</c>, which
+/// follows the divisor as it does after <c>/</c>.
+/// </summary>
+/// <remarks>
+/// A statement of its own rather than an <see cref="AssignmentStatement"/> whose value the parser
+/// builds as a <see cref="BinaryExpression"/>, because that tree would hold the target twice, once as
+/// something written to and once as something read, where the author wrote it once. The syntax tree
+/// says what was written; the binder is where it becomes the long form.
+/// </remarks>
+public sealed record CompoundAssignmentStatement(
+    Expression Target,
+    BinaryOperatorKind Operator,
+    Expression Value,
+    SourceSpan Span,
+    OnZeroClause? OnZero = null) : Statement(Span);
+
 public sealed record ExpressionStatement(Expression Expression, SourceSpan Span) : Statement(Span);
 
 public abstract record Expression(SourceSpan Span) : SyntaxNode(Span);

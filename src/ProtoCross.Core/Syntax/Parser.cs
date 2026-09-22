@@ -800,8 +800,30 @@ public sealed class Parser
             return new AssignmentStatement(expression, value, Spanning(start, assignEnd));
         }
 
+        if (OperatorOfCompound(Current.Kind) is { } compound)
+        {
+            return ParseCompoundAssignment(start, expression, ToBinaryOperator(compound));
+        }
+
         var end = Expect(TokenKind.Semicolon).Span;
         return new ExpressionStatement(expression, Spanning(start, end));
+    }
+
+    /// <summary>Parses the rest of <c>x op= y;</c>, from the operator on (spec 9.2).</summary>
+    /// <remarks>
+    /// The right side is a whole expression, so it is one operand however loosely its own operators
+    /// bind: <c>x *= a + b</c> multiplies by the sum. An <c>on_zero</c> clause after it is the
+    /// compound's, taken as one after <c>/</c> is and refused where one after <c>+</c> would be. A
+    /// clause inside the right side belongs to the division it follows there.
+    /// </remarks>
+    private Statement ParseCompoundAssignment(SourceSpan start, Expression target, BinaryOperatorKind op)
+    {
+        var operatorToken = Advance();
+        var value = ParseExpression();
+        var onZero = ParseOnZeroClause(op, operatorToken);
+        var end = Expect(TokenKind.Semicolon).Span;
+
+        return new CompoundAssignmentStatement(target, op, value, Spanning(start, end), onZero);
     }
 
     private Expression ParseExpression()
@@ -884,6 +906,28 @@ public sealed class Parser
         TokenKind.LessLess => BinaryOperatorKind.ShiftLeft,
         TokenKind.GreaterGreater => BinaryOperatorKind.ShiftRight,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a binary operator."),
+    };
+
+    /// <summary>
+    /// The operator a compound assignment token applies, or null for a token that is not one.
+    /// </summary>
+    /// <remarks>
+    /// Answers with the operator's token rather than its operation, so that which operation a token
+    /// means is said once, in <see cref="ToBinaryOperator"/>, for both spellings.
+    /// </remarks>
+    private static TokenKind? OperatorOfCompound(TokenKind kind) => kind switch
+    {
+        TokenKind.PlusEquals => TokenKind.Plus,
+        TokenKind.MinusEquals => TokenKind.Minus,
+        TokenKind.StarEquals => TokenKind.Star,
+        TokenKind.SlashEquals => TokenKind.Slash,
+        TokenKind.PercentEquals => TokenKind.Percent,
+        TokenKind.AmpersandEquals => TokenKind.Ampersand,
+        TokenKind.PipeEquals => TokenKind.Pipe,
+        TokenKind.CaretEquals => TokenKind.Caret,
+        TokenKind.LessLessEquals => TokenKind.LessLess,
+        TokenKind.GreaterGreaterEquals => TokenKind.GreaterGreater,
+        _ => null,
     };
 
     private static UnaryOperatorKind ToUnaryOperator(TokenKind kind) => kind switch
