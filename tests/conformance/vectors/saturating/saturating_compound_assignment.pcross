@@ -1,0 +1,113 @@
+// Conformance vectors for compound assignment under the saturating overflow policy (spec 9.2, 10.1).
+//
+// A compound assignment is the operation it abbreviates, so the policy governing that operation
+// governs it too: past a bound it stores the bound, and where no policy governs the operation -- a
+// shift -- it stores what the shift discards to.
+
+import proto "saturating_compound_assignment.proto";
+
+extend SaturatingCompoundCase {
+    fn i32_increased() -> int32 {
+        var total = i32;
+        total += amount;
+        return total;
+    }
+
+    fn u32_decreased() -> uint32 {
+        var total = u32;
+        total -= 1;
+        return total;
+    }
+
+    fn i64_doubled() -> int64 {
+        var total = i64;
+        total *= 2;
+        return total;
+    }
+
+    fn i64_divided() -> int64 {
+        var total = i64;
+        total /= divisor on_zero 0;
+        return total;
+    }
+
+    fn u64_increased() -> uint64 {
+        var total = u64;
+        total += u64;
+        return total;
+    }
+
+    fn i32_shifted_left() -> int32 {
+        var total = i32;
+        total <<= 1;
+        return total;
+    }
+}
+
+test SaturatingCompoundCase.i32_increased "an addition that fits is not clamped" {
+    receiver {
+        i32 = 40;
+        amount = 2;
+    }
+
+    expect return 42;
+}
+
+test SaturatingCompoundCase.i32_increased "int32 addition past MAX stores MAX" {
+    receiver {
+        i32 = 2147483647;
+        amount = 1;
+    }
+
+    expect return 2147483647;
+}
+
+test SaturatingCompoundCase.i32_increased "int32 addition past MIN stores MIN" {
+    receiver {
+        i32 = -2147483648;
+        amount = -1;
+    }
+
+    expect return -2147483648;
+}
+
+test SaturatingCompoundCase.u32_decreased "uint32 subtraction below zero stores zero" {
+    receiver {
+        u32 = 0;
+    }
+
+    expect return 0;
+}
+
+test SaturatingCompoundCase.i64_doubled "int64 multiplication past MIN stores MIN" {
+    receiver {
+        i64 = -4611686018427387905;
+    }
+
+    expect return -9223372036854775808;
+}
+
+test SaturatingCompoundCase.i64_divided "int64 MIN divided by -1 stores MAX" {
+    receiver {
+        i64 = -9223372036854775808;
+        divisor = -1;
+    }
+
+    expect return 9223372036854775807;
+}
+
+test SaturatingCompoundCase.u64_increased "uint64 addition past MAX stores MAX" {
+    receiver {
+        u64 = 9223372036854775808;
+    }
+
+    expect return 18446744073709551615;
+}
+
+test SaturatingCompoundCase.i32_shifted_left "int32 MAX shifted left is not clamped" {
+    receiver {
+        i32 = 2147483647;
+    }
+
+    expect return -2;
+}
