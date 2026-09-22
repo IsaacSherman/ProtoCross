@@ -1839,7 +1839,7 @@ public sealed partial class Binder
         {
             return new IrMissingMemberAccess(
                 BindReceiverAwaitingAMember(member, scope, context),
-                member.Name.Span);
+                member.Span);
         }
 
         // A member access whose receiver is a plain dotted name may be naming an enum constant

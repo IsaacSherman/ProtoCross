@@ -580,8 +580,12 @@ public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Spa
 /// throws exactly that away.
 /// </para>
 /// <para>
-/// <paramref name="Span"/> is the empty range where the member name would go, so a client can anchor
-/// its list under the caret rather than over whatever token recovery landed on.
+/// <paramref name="Span"/> is the access as far as it was written -- the receiver, the dot, and the
+/// empty point after it where the name would go -- which is the span its syntax node carries. So it
+/// <em>ends</em> at the point a client anchors its list to, and not at whatever token recovery landed
+/// on. It spanned that empty point alone until 22.2 stated that a node lies inside the node holding
+/// it, which this was the one exception to: the receiver is written before the point the name would
+/// be typed at.
 /// </para>
 /// <para>
 /// No backend handles this, and none has to. One exists only when the parser reported a missing

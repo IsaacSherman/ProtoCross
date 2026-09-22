@@ -101,9 +101,9 @@ public static class IrWalk
     /// <summary>What a node holds directly.</summary>
     /// <remarks>
     /// In source order wherever the source had an order. A receiver comes before what is read from
-    /// it and an argument list follows its callee, but a node the binder anchored at a hole -- the
-    /// empty point an <see cref="IrMissingMemberAccess"/> occupies -- can sit before the receiver it
-    /// carries, because that is where the caret is rather than where the text is.
+    /// it and an argument list follows its callee. A node standing for something nobody has written
+    /// yet -- an <see cref="IrMissingMemberAccess"/> -- ends at the empty point where it would be
+    /// written and holds what was written before that, which is source order like any other.
     /// </remarks>
     public static IReadOnlyList<IrNode> ChildrenOf(IrNode node)
     {

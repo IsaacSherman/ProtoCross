@@ -132,11 +132,14 @@ What counts:
 - **Syntax, semantics, or the type system.** A new construct, a rule that moved, a case that used to
   be an error and is not.
 - **A diagnostic.** §26 governs codes and rendering, and both are published output.
-- **What the IR preserves.** §22.2 states the contract, and is currently behind it: it lists
-  declaration sites and resolved type references, but not where each name was *used* (#40) or what
-  was in scope at a position (#49), both of which the IR now carries. That gap is the worked example
-  for this whole section — two issues shipped, neither said so, and the contract has to be read from
-  the code instead.
+- **What the IR preserves.** §22.2 states the contract, and it is the worked example for this whole
+  section. It spent four issues behind the code — where each name was *used* (#40), what was in
+  scope at a position (#49), how each operation behaves (#105), how a literal's value is represented
+  (#28) — and each of those shipped without saying so, so the contract had to be read from the
+  binder until #107 caught it up. It also now states invariants a consumer may rely on, and those
+  are swept over the corpus in `IrContractTests`, so an addition that breaks one fails a test
+  instead of passing in silence. What the IR *preserves* is still prose, and still the part that
+  goes stale.
 - **An open question, once it is settled.** §30 is the authoritative list: strike the entry through,
   say what was decided, and name the section that decides it. §31 gets a dated row with the
   rationale. A decision argued out in a PR body and recorded nowhere else is one the next reader
