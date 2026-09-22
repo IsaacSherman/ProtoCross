@@ -2090,16 +2090,22 @@ public sealed partial class Binder
         MethodContext context,
         PlType? expectedType)
     {
-        var isComparison = binary.Operator
-            is BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual
-            or BinaryOperatorKind.LessThan or BinaryOperatorKind.LessThanOrEqual
-            or BinaryOperatorKind.GreaterThan or BinaryOperatorKind.GreaterThanOrEqual;
+        if (binary.Operator is BinaryOperatorKind.ShiftLeft or BinaryOperatorKind.ShiftRight)
+        {
+            return BindShift(binary, scope, context, expectedType);
+        }
 
+        var isComparison = IsComparison(binary.Operator);
         var isLogical = binary.Operator is BinaryOperatorKind.LogicalAnd or BinaryOperatorKind.LogicalOr;
+        var isBitwise = binary.Operator
+            is BinaryOperatorKind.BitwiseAnd or BinaryOperatorKind.BitwiseOr or BinaryOperatorKind.BitwiseXor;
 
         // Comparisons and logical operators produce bool, so the outer expectation says nothing
-        // about the operands.
-        var operandHint = isComparison || isLogical ? null : expectedType;
+        // about the operands. A bitwise operator produces an integer, so only an integer expectation
+        // says anything about its operands.
+        var operandHint = isComparison || isLogical ? null
+            : isBitwise ? IntegerOrNull(expectedType)
+            : expectedType;
 
         var left = BindExpression(binary.Left, scope, context, operandHint);
 
@@ -2155,6 +2161,19 @@ public sealed partial class Binder
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
         }
 
+        // Asked before the operands are compared with each other, because the likeliest way to reach
+        // here is an integer beside a bool, which is a question of precedence and not of conversion.
+        if (isBitwise && (!IsInteger(left.Type) || !IsInteger(right.Type)))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"Cannot apply '{Describe(binary.Operator)}' to "
+                + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
+                binary.Span,
+                BitwiseHelp(binary, left, right));
+            return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
         if (!TypesMatch(left.Type, right.Type))
         {
             _diagnostics.Report(
@@ -2180,6 +2199,13 @@ public sealed partial class Binder
             }
 
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        // The overflow policy governs none of the bitwise operators (spec 10.1), so each carries the
+        // same placeholder behavior a comparison does, and the policy is never asked about one.
+        if (isBitwise)
+        {
+            return new IrBinary(op, left, right, left.Type, ArithmeticBehavior.Wrap, binary.Span);
         }
 
         if (left.Type is not ScalarType { IsNumeric: true } resultType)
@@ -2217,6 +2243,121 @@ public sealed partial class Binder
         return new IrBinary(
             op, left, right, resultType, _policy.ResolveArithmetic(op, resultType), binary.Span);
     }
+
+    /// <summary>
+    /// Binds <c>&lt;&lt;</c> or <c>&gt;&gt;</c>, whose operands are not alike: a value, and a count
+    /// of how far to shift it (spec 10.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The count may have any integer type, because it is a count and not an operand of the
+    /// arithmetic, so neither operand's type is offered to the other. A literal value takes the type
+    /// expected of the shift, where that is an integer type, and a literal count takes its natural
+    /// type. Handing the count's type to the value would make <c>1 &lt;&lt; bit</c> an
+    /// <c>int32</c> wherever <c>bit</c> is one, whatever the shift was meant to produce; handing the
+    /// value's type to the count would reject a count literal the value's type cannot hold, although
+    /// only its low bits are ever used.
+    /// </para>
+    /// <para>
+    /// The result has the value's type. Like the other bitwise operators it is governed by no
+    /// overflow policy: a left shift discards what passes the width whatever the project chose.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindShift(
+        BinaryExpression binary,
+        Scope scope,
+        MethodContext context,
+        PlType? expectedType)
+    {
+        var op = ToIrOperator(binary.Operator);
+        var value = BindExpression(binary.Left, scope, context, IntegerOrNull(expectedType));
+        var count = BindExpression(binary.Right, scope, context, null);
+
+        if (value.Type is ErrorType || count.Type is ErrorType)
+        {
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        if (value.Type is not ScalarType { IsInteger: true } shifted)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"'{Describe(binary.Operator)}' shifts an integer, but the value here is "
+                + $"'{value.Type.DisplayName}'.",
+                binary.Span);
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        if (!IsInteger(count.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"'{Describe(binary.Operator)}' shifts by an integer count, but the count here is "
+                + $"'{count.Type.DisplayName}'.",
+                binary.Span,
+                "The count can be any integer type, whatever the value's is. Convert it with 'as'.");
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        return new IrBinary(op, value, count, shifted, ArithmeticBehavior.Wrap, binary.Span);
+    }
+
+    /// <summary>What to do about a bitwise operator given something other than two integers.</summary>
+    /// <remarks>
+    /// Two cases have a better answer than the message's. An integer beside a comparison is nearly
+    /// always <c>x &amp; mask == 0</c>, which C-family precedence groups as <c>x &amp; (mask == 0)</c>
+    /// (spec 9.2), so what is wanted is parentheses. Two bools are an author reaching for C#'s
+    /// <c>&amp;</c> and <c>|</c> on bools, which ProtoCross does not have, so what is wanted is the
+    /// logical operator.
+    /// </remarks>
+    private static string? BitwiseHelp(BinaryExpression binary, IrExpression left, IrExpression right)
+    {
+        var symbol = Describe(binary.Operator);
+
+        if (TypesMatch(left.Type, ScalarType.BoolType) && TypesMatch(right.Type, ScalarType.BoolType))
+        {
+            return $"'{symbol}' works on the bits of integers. For two bools, write "
+                + $"'{LogicalCounterpart(binary.Operator)}'.";
+        }
+
+        if ((ComparisonIn(binary.Left) ?? ComparisonIn(binary.Right)) is { } comparison)
+        {
+            var compared = Describe(comparison);
+            return $"'{compared}' binds tighter than '{symbol}', as it does in C# and C++, so the "
+                + $"comparison is an operand of '{symbol}'. To compare the result of '{symbol}', "
+                + $"parenthesize it: '(a {symbol} b) {compared} c'.";
+        }
+
+        return null;
+    }
+
+    private static BinaryOperatorKind? ComparisonIn(Expression expression)
+        => expression is BinaryExpression { Operator: var op } && IsComparison(op) ? op : null;
+
+    private static string LogicalCounterpart(BinaryOperatorKind kind) => kind switch
+    {
+        BinaryOperatorKind.BitwiseAnd => "and",
+        BinaryOperatorKind.BitwiseOr => "or",
+        BinaryOperatorKind.BitwiseXor => "!=",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a bitwise operator."),
+    };
+
+    private static bool IsComparison(BinaryOperatorKind kind)
+        => kind is BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual
+            or BinaryOperatorKind.LessThan or BinaryOperatorKind.LessThanOrEqual
+            or BinaryOperatorKind.GreaterThan or BinaryOperatorKind.GreaterThanOrEqual;
+
+    private static bool IsInteger(PlType? type) => type is ScalarType { IsInteger: true };
+
+    /// <summary>An expectation, kept only where it is an integer type.</summary>
+    /// <remarks>
+    /// For an operator that makes an integer from integers, a <c>double</c> expected of the result
+    /// says nothing its operands can use: a literal handed it would become a <c>double</c> and be
+    /// refused by the operator, where left alone it stays an integer and the mismatch is reported
+    /// where it really is, between the result and what was expected of it.
+    /// </remarks>
+    private static PlType? IntegerOrNull(PlType? expectedType)
+        => IsInteger(expectedType) ? expectedType : null;
 
     /// <summary>
     /// Binds integer <c>/</c> or <c>%</c>. The divisor must either be a literal that is provably
@@ -2295,16 +2436,21 @@ public sealed partial class Binder
         MethodContext context,
         PlType? expectedType)
     {
-        var operand = BindExpression(unary.Operand, scope, context, expectedType);
+        var operand = BindExpression(
+            unary.Operand,
+            scope,
+            context,
+            unary.Operator == UnaryOperatorKind.BitwiseNot ? IntegerOrNull(expectedType) : expectedType);
 
         if (operand.Type is ErrorType)
         {
             return new IrUnary(
-                unary.Operator == UnaryOperatorKind.Negate ? IrUnaryOperator.Negate : IrUnaryOperator.LogicalNot,
-                operand,
-                ErrorType.Instance,
-                ArithmeticBehavior.Wrap,
-                unary.Span);
+                ToIrOperator(unary.Operator), operand, ErrorType.Instance, ArithmeticBehavior.Wrap, unary.Span);
+        }
+
+        if (unary.Operator == UnaryOperatorKind.BitwiseNot)
+        {
+            return BindComplement(unary, operand);
         }
 
         if (unary.Operator == UnaryOperatorKind.Negate)
@@ -2343,6 +2489,33 @@ public sealed partial class Binder
             IrUnaryOperator.LogicalNot, operand, ScalarType.BoolType, ArithmeticBehavior.Wrap, unary.Span);
     }
 
+    /// <summary>Binds <c>~</c>, which flips every bit of an integer and is governed by no policy.</summary>
+    private IrUnary BindComplement(UnaryExpression unary, IrExpression operand)
+    {
+        if (operand.Type is not ScalarType { IsInteger: true } scalar)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseNotRequiresAnIntegerOperand,
+                $"Cannot apply '~' to a value of type '{operand.Type.DisplayName}'.",
+                unary.Span,
+                TypesMatch(operand.Type, ScalarType.BoolType)
+                    ? "'~' flips the bits of an integer. For a bool, write 'not'."
+                    : null);
+            return new IrUnary(
+                IrUnaryOperator.BitwiseNot, operand, ErrorType.Instance, ArithmeticBehavior.Wrap, unary.Span);
+        }
+
+        return new IrUnary(IrUnaryOperator.BitwiseNot, operand, scalar, ArithmeticBehavior.Wrap, unary.Span);
+    }
+
+    private static IrUnaryOperator ToIrOperator(UnaryOperatorKind kind) => kind switch
+    {
+        UnaryOperatorKind.Negate => IrUnaryOperator.Negate,
+        UnaryOperatorKind.LogicalNot => IrUnaryOperator.LogicalNot,
+        UnaryOperatorKind.BitwiseNot => IrUnaryOperator.BitwiseNot,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unhandled operator."),
+    };
+
     private static IrBinaryOperator ToIrOperator(BinaryOperatorKind kind) => kind switch
     {
         BinaryOperatorKind.Add => IrBinaryOperator.Add,
@@ -2358,6 +2531,11 @@ public sealed partial class Binder
         BinaryOperatorKind.GreaterThanOrEqual => IrBinaryOperator.GreaterThanOrEqual,
         BinaryOperatorKind.LogicalAnd => IrBinaryOperator.LogicalAnd,
         BinaryOperatorKind.LogicalOr => IrBinaryOperator.LogicalOr,
+        BinaryOperatorKind.BitwiseAnd => IrBinaryOperator.BitwiseAnd,
+        BinaryOperatorKind.BitwiseOr => IrBinaryOperator.BitwiseOr,
+        BinaryOperatorKind.BitwiseXor => IrBinaryOperator.BitwiseXor,
+        BinaryOperatorKind.ShiftLeft => IrBinaryOperator.ShiftLeft,
+        BinaryOperatorKind.ShiftRight => IrBinaryOperator.ShiftRight,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unhandled operator."),
     };
 
@@ -2376,6 +2554,11 @@ public sealed partial class Binder
         BinaryOperatorKind.GreaterThanOrEqual => ">=",
         BinaryOperatorKind.LogicalAnd => "and",
         BinaryOperatorKind.LogicalOr => "or",
+        BinaryOperatorKind.BitwiseAnd => "&",
+        BinaryOperatorKind.BitwiseOr => "|",
+        BinaryOperatorKind.BitwiseXor => "^",
+        BinaryOperatorKind.ShiftLeft => "<<",
+        BinaryOperatorKind.ShiftRight => ">>",
         _ => kind.ToString(),
     };
 

@@ -137,8 +137,8 @@ Normative Requirements:
 - A keyword ([6.4](#64-keywords)) is `keyword`, a string literal is `string`, an integer or floating-point literal is
   `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
   ([6.2](#62-comments)) is `comment`.
-- `->`, `+`, `-`, `*`, `/`, `%`, `=`, `==`, `!=`, `!`, `<`, `<=`, `>`, `>=`, `&&` and `||` are
-  `operator`.
+- `->`, `+`, `-`, `*`, `/`, `%`, `=`, `==`, `!=`, `!`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `&`,
+  `|`, `^`, `~`, `<<` and `>>` are `operator`.
 - **From the token stream alone, every identifier is `variable`, whatever it names.** Distinguishing
   a local from a parameter from a field from a method is a semantic question, and this layer runs
   over the tokens so that a file which does not parse is still classified -- which is exactly when a

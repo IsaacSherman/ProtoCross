@@ -245,6 +245,24 @@ public class HoverTests
         Assert.DoesNotContain("Overflow wraps, two's complement", card, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A shift and a bitwise operator carry a behavior and are governed by none (spec 10.1, 10.4), so
+    /// their card is their type. Reading the annotation without asking whether it governs anything is
+    /// how a card would come to say that a shift wraps.
+    /// </summary>
+    [Theory]
+    [InlineData("int64", "count << 3", "<< 3")]
+    [InlineData("int64", "count >> 3", ">> 3")]
+    [InlineData("int64", "count & count", "& count")]
+    [InlineData("uint32", "tally | tally", "| tally")]
+    [InlineData("int64", "~count", "~count")]
+    public async Task BitwiseOperationsDoNotClaimAnOverflowPolicy(string type, string expression, string marker)
+    {
+        var card = await ValidExpressionCardAsync(type, expression, marker);
+
+        Assert.DoesNotContain("Overflow", card, StringComparison.Ordinal);
+    }
+
     /// <summary>A floating-point target preserves NaN and does not truncate a fraction to an integer.</summary>
     [Theory]
     [InlineData("double", "ratio as double", "as double")]

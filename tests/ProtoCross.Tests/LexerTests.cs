@@ -48,6 +48,25 @@ public class LexerTests
             tokens.Select(t => t.Kind));
     }
 
+    /// <summary>
+    /// Each bitwise operator is one token, a lone <c>&amp;</c> or <c>|</c> included, and each
+    /// two-character one is read whole rather than as two operators side by side.
+    /// </summary>
+    [Fact]
+    public void RecognizesTheBitwiseAndShiftOperators()
+    {
+        var tokens = Tokenize("& && | || ^ ~ << < <= >> > >=", out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [
+                TokenKind.Ampersand, TokenKind.AmpersandAmpersand, TokenKind.Pipe, TokenKind.PipePipe,
+                TokenKind.Caret, TokenKind.Tilde, TokenKind.LessLess, TokenKind.Less, TokenKind.LessEquals,
+                TokenKind.GreaterGreater, TokenKind.Greater, TokenKind.GreaterEquals, TokenKind.EndOfFile,
+            ],
+            tokens.Select(t => t.Kind));
+    }
+
     [Fact]
     public void ParsesIntegerLiteralValue()
     {

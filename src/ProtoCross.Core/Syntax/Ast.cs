@@ -197,12 +197,18 @@ public enum BinaryOperatorKind
     GreaterThanOrEqual,
     LogicalAnd,
     LogicalOr,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    ShiftLeft,
+    ShiftRight,
 }
 
 public enum UnaryOperatorKind
 {
     Negate,
     LogicalNot,
+    BitwiseNot,
 }
 
 /// <summary>

@@ -59,6 +59,8 @@ Normative Requirement:
   expectations.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
+- Every binary operator is left-associative, and operators bind in the order
+  [9.2](./§9-Expressions%20and%20Operators.md#92-operators) gives.
 - A test declaration must contain a receiver fixture and an expectation. The parser accepts
   `receiver`, `arg`, and `expect` members in any order and reports missing required members after
   the block is parsed.

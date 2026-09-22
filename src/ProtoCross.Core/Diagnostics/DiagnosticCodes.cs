@@ -409,6 +409,19 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor FloatingPointLiteralOutOfRange =
         new("PC0084", DiagnosticSeverity.Error, "floating-point literal out of range");
 
+    // ------------------------------------------------------- bitwise operators
+
+    /// <summary>
+    /// <c>&amp;</c>, <c>|</c>, <c>^</c>, <c>&lt;&lt;</c> or <c>&gt;&gt;</c> with an operand that is not
+    /// an integer, which for a shift includes its count (spec 9.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor BitwiseOperatorRequiresIntegerOperands =
+        new("PC0085", DiagnosticSeverity.Error, "bitwise operator requires integer operands");
+
+    /// <summary><c>~</c> applied to a value that is not an integer (spec 9.2).</summary>
+    public static readonly DiagnosticDescriptor BitwiseNotRequiresAnIntegerOperand =
+        new("PC0086", DiagnosticSeverity.Error, "bitwise not requires an integer operand");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

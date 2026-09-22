@@ -140,6 +140,8 @@ public static class SemanticTokenLegend
                 or TokenKind.Percent or TokenKind.Equals or TokenKind.EqualsEquals or TokenKind.BangEquals
                 or TokenKind.Bang or TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater
                 or TokenKind.GreaterEquals or TokenKind.AmpersandAmpersand or TokenKind.PipePipe
+                or TokenKind.Ampersand or TokenKind.Pipe or TokenKind.Caret or TokenKind.Tilde
+                or TokenKind.LessLess or TokenKind.GreaterGreater
                 => OperatorIndex,
 
             // Structural punctuation, end of file, and the character the lexer could not make sense

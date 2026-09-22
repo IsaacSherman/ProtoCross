@@ -837,13 +837,27 @@ public sealed class Parser
         return new ErrorExpression(span);
     }
 
-    /// <summary>Binding power for infix operators; higher binds tighter.</summary>
+    /// <summary>Binding power for infix operators; higher binds tighter (spec 9.2).</summary>
+    /// <remarks>
+    /// The C-family order, which is C#'s and C++'s, so an expression means what a reader of either
+    /// target already takes it to mean, and a backend can emit it without regrouping. The price is
+    /// the one C pays: a comparison binds tighter than <c>&amp;</c>, <c>^</c> and <c>|</c>, so
+    /// <c>x &amp; mask == 0</c> is <c>x &amp; (mask == 0)</c>. That is a type error rather than a
+    /// silent regrouping, because a comparison is a <c>bool</c> and a bitwise operand is an integer,
+    /// and the binder's help for it says to parenthesize. Rust's order, with the bitwise operators
+    /// above the comparisons, was the alternative, and would have made the same expression mean one
+    /// thing here and another in both targets.
+    /// </remarks>
     private static int GetBinaryPrecedence(TokenKind kind) => kind switch
     {
-        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 5,
-        TokenKind.Plus or TokenKind.Minus => 4,
-        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals => 3,
-        TokenKind.EqualsEquals or TokenKind.BangEquals => 2,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 9,
+        TokenKind.Plus or TokenKind.Minus => 8,
+        TokenKind.LessLess or TokenKind.GreaterGreater => 7,
+        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals => 6,
+        TokenKind.EqualsEquals or TokenKind.BangEquals => 5,
+        TokenKind.Ampersand => 4,
+        TokenKind.Caret => 3,
+        TokenKind.Pipe => 2,
         TokenKind.AmpersandAmpersand or TokenKind.And => 1,
         TokenKind.PipePipe or TokenKind.Or => 0,
         _ => -1,
@@ -864,7 +878,20 @@ public sealed class Parser
         TokenKind.GreaterEquals => BinaryOperatorKind.GreaterThanOrEqual,
         TokenKind.AmpersandAmpersand or TokenKind.And => BinaryOperatorKind.LogicalAnd,
         TokenKind.PipePipe or TokenKind.Or => BinaryOperatorKind.LogicalOr,
+        TokenKind.Ampersand => BinaryOperatorKind.BitwiseAnd,
+        TokenKind.Pipe => BinaryOperatorKind.BitwiseOr,
+        TokenKind.Caret => BinaryOperatorKind.BitwiseXor,
+        TokenKind.LessLess => BinaryOperatorKind.ShiftLeft,
+        TokenKind.GreaterGreater => BinaryOperatorKind.ShiftRight,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a binary operator."),
+    };
+
+    private static UnaryOperatorKind ToUnaryOperator(TokenKind kind) => kind switch
+    {
+        TokenKind.Minus => UnaryOperatorKind.Negate,
+        TokenKind.Bang or TokenKind.Not => UnaryOperatorKind.LogicalNot,
+        TokenKind.Tilde => UnaryOperatorKind.BitwiseNot,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a prefix operator."),
     };
 
     private Expression ParseBinaryExpression(int minPrecedence)
@@ -974,7 +1001,7 @@ public sealed class Parser
             return new HasExpression(target, Spanning(token.Span, target.Span));
         }
 
-        if (token.Kind is TokenKind.Minus or TokenKind.Bang or TokenKind.Not)
+        if (token.Kind is TokenKind.Minus or TokenKind.Bang or TokenKind.Not or TokenKind.Tilde)
         {
             Advance();
 
@@ -995,8 +1022,7 @@ public sealed class Parser
                 ExitNesting();
             }
 
-            var op = token.Kind == TokenKind.Minus ? UnaryOperatorKind.Negate : UnaryOperatorKind.LogicalNot;
-            return new UnaryExpression(op, operand, Spanning(token.Span, operand.Span));
+            return new UnaryExpression(ToUnaryOperator(token.Kind), operand, Spanning(token.Span, operand.Span));
         }
 
         return ParsePostfixExpression();

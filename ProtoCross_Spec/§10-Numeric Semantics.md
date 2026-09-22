@@ -60,6 +60,40 @@ Wrapping remains the default because it is what unmodified C# does. `checked` ar
 described as C#'s behavior, but a C# author reaches it only through the `checked` keyword or a
 `CheckForOverflowUnderflow` build property.
 
+**Decided: a shift uses the low bits of its count, and no overflow policy governs a shift or a
+bitwise operator.**
+
+Normative Requirements:
+
+- A shift uses the low bits of its count: the count modulo N, where N is the width of the value
+  shifted. So `1 << 33` on an `int32` is `2`, and a count of `-1` shifts an `int32` by 31. The count's
+  own type and sign make no other difference
+  ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- `<<` discards the bits shifted past the width. `>>` copies the sign bit in for a signed value and
+  zeroes for an unsigned one, so on a signed value it rounds toward negative infinity: `-7 >> 1` is
+  `-4`, where `-7 / 2` is `-3`.
+- **The overflow policy does not govern a shift, `&`, `|`, `^` or `~`.** Under `Checked`,
+  `MAX << 1` does not terminate, and under `Saturating` it does not clamp: each keeps the low bits, as
+  `Wrapping` does. A shift discards bits by definition, which is what building a mask with one relies
+  on, and treating the bits it discards as an overflow would make `1 << 31` terminate a checked
+  program. The other four cannot leave the range of their type at all.
+- Backends emit the mask explicitly, by the third rule above, even where the target masks for
+  itself.
+
+| Target | Native shift by a count at or past the width | Why the default is not enough |
+|---|---|---|
+| C# | Masks the count to its low 5 or 6 bits, but takes only an `int` count. | A `long` or `ulong` count has to be narrowed to reach the operator, and narrowing first throws under a consumer's `CheckForOverflowUnderflow`. |
+| C++ | **Undefined behavior**, as is a negative count. | Not "whatever the hardware masks to": the optimizer may assume the count is in range. |
+| Python | Arbitrary precision: `<<` never discards a bit, and a negative count raises. | The width has to be reconstructed by masking, as for arithmetic. |
+
+Backend obligations:
+
+- **C#** emits `x << (int)(count & (N-1))`, masking before the cast so that nothing is ever narrowed
+  that does not fit. An `int` count is masked and not cast.
+- **C++** emits `x << (count & (N-1))`. C++20 defines both shifts of a signed value for every count
+  below the width, the left one as two's complement.
+- **Python** must mask the count, mask the result to N bits, and sign-correct.
+
 Open Question:
 
 - Whether a non-default behavior should also be declarable per file, per method, or per expression,
@@ -174,7 +208,8 @@ Normative Requirements:
     and is `PC0036`.
   - A literal on the left of a binary operator adopts the type of the operand on its right, as one on
     the right adopts the type of the operand on its left. So `-1 < count` and `1.5 < ratio` both
-    type-check where `count` is an `int32` and `ratio` a `float`.
+    type-check where `count` is an `int32` and `ratio` a `float`. A shift is the exception: its value
+    and its count are typed apart ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - **A `-` written directly on an integer literal is part of the literal**, and the literal is
   range-checked as the negative value. That is what makes `-2147483648` an `int32` and
   `-9223372036854775808` an `int64`: the magnitude of each is one more than its type's MAX, so a
@@ -334,8 +369,9 @@ Normative Requirements:
   arithmetic wraps in two's complement. Likewise a conversion carries one behavior and 10.3 gives it
   five rows, so the row is chosen by the source and the target together: only a floating-point
   source reaching an integer truncates, clamps and maps NaN to zero, and claiming that of
-  `ratio as double` is false twice over. Where the language states no rule, the honest explanation
-  is the type and nothing further.
+  `ratio as double` is false twice over. A shift or a bitwise operator carries a behavior as a
+  comparison does and is governed by none (10.1), so its explanation is its type. Where the language
+  states no rule, the honest explanation is the type and nothing further.
 
 Settings with a single legal value are listed anyway. The file's purpose is to enumerate every
 language-dependent preference, including the settled ones, so the whole contract is readable in one
