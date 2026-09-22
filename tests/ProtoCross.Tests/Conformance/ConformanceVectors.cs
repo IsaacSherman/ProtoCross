@@ -48,6 +48,14 @@ internal static class ConformanceVectors
     /// <summary>Every vector, in a stable order so failures reproduce.</summary>
     public static IReadOnlyList<ConformanceVector> All { get; } = Discover();
 
+    /// <summary>
+    /// Every vector someone wrote: <see cref="All"/>, leaving out the ones
+    /// <see cref="Sweep.ArithmeticSweep"/> generates into its own directories.
+    /// </summary>
+    public static IReadOnlyList<ConformanceVector> HandWritten { get; } =
+        All.Where(vector => Path.GetFileName(Path.GetDirectoryName(vector.SourcePath)) != Sweep.ArithmeticSweep.Directory)
+            .ToList();
+
     /// <summary>Vector names, for a theory that runs one case per vector.</summary>
     public static TheoryData<string> Names
     {

@@ -109,6 +109,10 @@ The expected values do not come from either backend:
 - **An integer converted to a floating-point type** is rounded from its exact value, to nearest with
   ties to even, rather than by a cast that might round twice.
 
+The generated vectors are left out of `CompiledCorpus`, which the editor sweeps walk position by
+position. They repeat a few constructs thousands of times, so they add nothing those sweeps would not
+already meet, and they would multiply what the sweeps cost.
+
 ## What the harness checks
 
 | Test | Checks |
