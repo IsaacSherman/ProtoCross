@@ -1,5 +1,6 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Syntax;
+using ProtoCross.Tests.Conformance;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -63,20 +64,19 @@ public class ParserResilienceTests
     /// Real sources, used as the seed for the mutation sweeps. Anything committed to the repository
     /// is a realistic shape, which makes its prefixes realistic half-typed shapes.
     /// </summary>
+    /// <remarks>
+    /// The generated vectors are left out. Both sweeps parse the whole file once per character of it,
+    /// so their cost is the square of its length, and a generated vector is a hundred kilobytes of a
+    /// few constructs the written vectors already contain: each one ran past the budget on its own,
+    /// and held the rest of the run up while it did.
+    /// </remarks>
     public static TheoryData<string> Corpus()
     {
         var data = new TheoryData<string> { TestPaths.SimpleScript };
 
-        var vectors = Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "vectors");
-        if (Directory.Exists(vectors))
+        foreach (var vector in ConformanceVectors.HandWritten)
         {
-            // Sorted so a failure names the same file on every machine.
-            foreach (var file in Directory
-                         .GetFiles(vectors, "*.pcross", SearchOption.AllDirectories)
-                         .OrderBy(path => path, StringComparer.Ordinal))
-            {
-                data.Add(file);
-            }
+            data.Add(vector.SourcePath);
         }
 
         return data;
