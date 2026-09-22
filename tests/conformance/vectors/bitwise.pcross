@@ -1,0 +1,420 @@
+// Conformance vectors for the bitwise and shift operators (spec 9.2, 10.1): where each one binds
+// among the other operators, how a literal beside one takes its type, how a count is reduced, and
+// the idioms the operators exist for.
+//
+// The generated sweep/bitwise_sweep vector computes every operator over every boundary value. This
+// one states, a case at a time, what an author can rely on. Each precedence case is written so that
+// any other grouping gives a different answer, and says which answer that would be.
+
+import proto "bitwise.proto";
+
+extend BitwiseCase {
+    // ------------------------------------------------------- precedence
+
+    // Grouped left to right, this would be (8 | 6) & 3, which is 2.
+    fn and_binds_tighter_than_or() -> int64 {
+        return 8 | 6 & 3;
+    }
+
+    // Grouped left to right, this would be (6 ^ 5) & 3, which is 3.
+    fn and_binds_tighter_than_xor() -> int64 {
+        return 6 ^ 5 & 3;
+    }
+
+    // Grouped left to right, this would be (2 | 1) ^ 3, which is 0.
+    fn xor_binds_tighter_than_or() -> int64 {
+        return 2 | 1 ^ 3;
+    }
+
+    // With the shift binding tighter, this would be (1 << 2) + 1, which is 5.
+    fn addition_binds_tighter_than_a_shift() -> int64 {
+        return 1 << 2 + 1;
+    }
+
+    // With the shift binding tighter, this would be (8 >> 1) * 2, which is 8.
+    fn multiplication_binds_tighter_than_a_shift() -> int64 {
+        return 8 >> 1 * 2;
+    }
+
+    // With the comparison binding tighter, this would shift 1 by a bool, which does not compile.
+    fn a_shift_binds_tighter_than_a_comparison() -> bool {
+        return 1 << 2 < 5;
+    }
+
+    // A comparison binds tighter than '&', as it does in C# and C++, so testing a bit takes
+    // parentheses: 'flags & 4 != 0' is flags & (4 != 0), which does not compile.
+    fn both_flags_set() -> bool {
+        return (flags & 4) != 0 and (flags & 1) != 0;
+    }
+
+    // Applied to the whole of 0 & 0xFF, the complement would be -1.
+    fn a_complement_binds_tighter_than_and() -> int64 {
+        return ~0 & 0xFF;
+    }
+
+    // Converting after the shift, this would shift an int32 by 40, which is by 8, and give 256.
+    fn a_conversion_binds_tighter_than_a_shift() -> int64 {
+        return narrow as int64 << 40;
+    }
+
+    // Prefix operators apply from the inside out: the complement of -5, and the negation of the
+    // complement of 5.
+    fn complement_of_a_negative_literal() -> int64 {
+        return ~-5;
+    }
+
+    fn negated_complement() -> int64 {
+        return -~5;
+    }
+
+    // ------------------------------------------------------- on fields
+
+    fn masked() -> int64 {
+        return wide & 0xFF;
+    }
+
+    fn combined() -> uint32 {
+        return narrow_unsigned | 0x8000_0000;
+    }
+
+    fn toggled() -> uint64 {
+        return wide_unsigned ^ 0xFF;
+    }
+
+    fn inverted() -> uint32 {
+        return ~narrow_unsigned;
+    }
+
+    // ------------------------------------------------------- how a literal is typed
+
+    // The complement of a literal adopts the type expected of it, so this is every bit of a uint32.
+    // Typed on its own it would be int64's -1, which would not be a uint32 to return.
+    fn complement_of_zero_as_uint32() -> uint32 {
+        return ~0;
+    }
+
+    fn complement_of_zero_on_its_own() -> int64 {
+        var all = ~0;
+        return all;
+    }
+
+    // The value shifted takes the type expected of the shift and never the count's. Here that is
+    // uint64, so 1 can reach the top bit; had it taken int32 from the count, the method would not
+    // compile.
+    fn one_shifted_into_the_top_bit() -> uint64 {
+        return 1 << count;
+    }
+
+    // A count literal keeps its own type rather than taking the value's, so a count no int32 can
+    // hold is still a count. Taking int32 it would be out of range; as an int64 it is 1 modulo 32.
+    fn a_count_no_int32_can_hold() -> int32 {
+        return narrow << 3000000001;
+    }
+
+    // ------------------------------------------------------- counts (spec 10.1)
+
+    fn shifted_by_count() -> int32 {
+        return narrow << count;
+    }
+
+    fn wide_shifted_by_a_narrow_count() -> int64 {
+        return wide << count;
+    }
+
+    fn narrow_shifted_right_by_a_wide_count() -> uint32 {
+        return narrow_unsigned >> wide_count;
+    }
+
+    // A signed value shifted right copies its sign bit in, which rounds toward negative infinity
+    // where a division truncates toward zero: -7 >> 1 is -4, and -7 / 2 is -3.
+    fn halved() -> int32 {
+        return narrow >> 1;
+    }
+
+    fn sign_filled() -> int64 {
+        return wide >> 63;
+    }
+
+    fn zero_filled() -> uint64 {
+        return wide_unsigned >> 63;
+    }
+
+    // A left shift discards what passes the width. It is not governed by the overflow policy, and
+    // the checked and saturating vectors show that it does the same under both of theirs.
+    fn doubled_past_max() -> int32 {
+        return narrow << 1;
+    }
+
+    // ------------------------------------------------------- idioms
+
+    fn has_flag(bit: int32) -> bool {
+        return (flags & (1 << bit)) != 0;
+    }
+
+    fn with_flag_cleared(bit: int32) -> int64 {
+        return flags & ~(1 << bit);
+    }
+
+    fn packed() -> uint64 {
+        return wide_unsigned << 32 | narrow_unsigned as uint64;
+    }
+}
+
+// --- precedence ---
+
+test BitwiseCase.and_binds_tighter_than_or "'&' binds tighter than '|'" {
+    receiver { }
+    expect return 10;
+}
+
+test BitwiseCase.and_binds_tighter_than_xor "'&' binds tighter than '^'" {
+    receiver { }
+    expect return 7;
+}
+
+test BitwiseCase.xor_binds_tighter_than_or "'^' binds tighter than '|'" {
+    receiver { }
+    expect return 2;
+}
+
+test BitwiseCase.addition_binds_tighter_than_a_shift "'+' binds tighter than '<<'" {
+    receiver { }
+    expect return 8;
+}
+
+test BitwiseCase.multiplication_binds_tighter_than_a_shift "'*' binds tighter than '>>'" {
+    receiver { }
+    expect return 2;
+}
+
+test BitwiseCase.a_shift_binds_tighter_than_a_comparison "'<<' binds tighter than '<'" {
+    receiver { }
+    expect return true;
+}
+
+test BitwiseCase.both_flags_set "two bits tested, both set" {
+    receiver {
+        flags = 5;
+    }
+
+    expect return true;
+}
+
+test BitwiseCase.both_flags_set "two bits tested, one set" {
+    receiver {
+        flags = 4;
+    }
+
+    expect return false;
+}
+
+test BitwiseCase.a_complement_binds_tighter_than_and "'~' binds tighter than '&'" {
+    receiver { }
+    expect return 255;
+}
+
+test BitwiseCase.a_conversion_binds_tighter_than_a_shift "'as' binds tighter than '<<'" {
+    receiver {
+        narrow = 1;
+    }
+
+    expect return 1 << 40;
+}
+
+test BitwiseCase.complement_of_a_negative_literal "the complement of a negative literal" {
+    receiver { }
+    expect return 4;
+}
+
+test BitwiseCase.negated_complement "a negated complement" {
+    receiver { }
+    expect return 6;
+}
+
+// --- on fields ---
+
+test BitwiseCase.masked "the low byte of an int64" {
+    receiver {
+        wide = 0x1234;
+    }
+
+    expect return 0x34;
+}
+
+test BitwiseCase.combined "the top bit of a uint32 set" {
+    receiver {
+        narrow_unsigned = 1;
+    }
+
+    expect return 2147483649;
+}
+
+test BitwiseCase.toggled "the low byte of a uint64 flipped" {
+    receiver {
+        wide_unsigned = 0x0F0F;
+    }
+
+    expect return 0x0FF0;
+}
+
+test BitwiseCase.inverted "the complement of a uint32 zero is its MAX" {
+    receiver {
+        narrow_unsigned = 0;
+    }
+
+    expect return 4294967295;
+}
+
+// --- how a literal is typed ---
+
+test BitwiseCase.complement_of_zero_as_uint32 "the complement of a literal adopts the expected type" {
+    receiver { }
+    expect return 0xFFFF_FFFF;
+}
+
+test BitwiseCase.complement_of_zero_on_its_own "the complement of a literal typed on its own is an int64" {
+    receiver { }
+    expect return -1;
+}
+
+test BitwiseCase.one_shifted_into_the_top_bit "the value shifted adopts the type expected of the shift, not the count's" {
+    receiver {
+        count = 63;
+    }
+
+    expect return 9223372036854775808;
+}
+
+test BitwiseCase.a_count_no_int32_can_hold "a count literal keeps its own type" {
+    receiver {
+        narrow = 1;
+    }
+
+    expect return 2;
+}
+
+// --- counts ---
+
+test BitwiseCase.shifted_by_count "a count of 33 shifts an int32 by 1" {
+    receiver {
+        narrow = 1;
+        count = 33;
+    }
+
+    expect return 2;
+}
+
+test BitwiseCase.shifted_by_count "a count of -1 shifts an int32 by 31" {
+    receiver {
+        narrow = 1;
+        count = -1;
+    }
+
+    expect return -2147483648;
+}
+
+test BitwiseCase.shifted_by_count "a count of 0 leaves the value alone" {
+    receiver {
+        narrow = 5;
+        count = 0;
+    }
+
+    expect return 5;
+}
+
+test BitwiseCase.wide_shifted_by_a_narrow_count "an int32 count shifts an int64 into its sign bit" {
+    receiver {
+        wide = 1;
+        count = 63;
+    }
+
+    expect return -9223372036854775808;
+}
+
+test BitwiseCase.wide_shifted_by_a_narrow_count "a count of 64 leaves an int64 alone" {
+    receiver {
+        wide = 1;
+        count = 64;
+    }
+
+    expect return 1;
+}
+
+test BitwiseCase.narrow_shifted_right_by_a_wide_count "uint64 MAX as a count shifts a uint32 by 31" {
+    receiver {
+        narrow_unsigned = 0x8000_0000;
+        wide_count = 0xFFFF_FFFF_FFFF_FFFF;
+    }
+
+    expect return 1;
+}
+
+test BitwiseCase.halved "a negative value shifted right rounds toward negative infinity" {
+    receiver {
+        narrow = -7;
+    }
+
+    expect return -4;
+}
+
+test BitwiseCase.sign_filled "int64 MIN shifted right by 63 is all sign bits" {
+    receiver {
+        wide = -9223372036854775808;
+    }
+
+    expect return -1;
+}
+
+test BitwiseCase.zero_filled "uint64 MAX shifted right by 63 is 1" {
+    receiver {
+        wide_unsigned = 0xFFFF_FFFF_FFFF_FFFF;
+    }
+
+    expect return 1;
+}
+
+test BitwiseCase.doubled_past_max "int32 MAX shifted left by 1 discards the top bit" {
+    receiver {
+        narrow = 2147483647;
+    }
+
+    expect return -2;
+}
+
+// --- idioms ---
+
+test BitwiseCase.has_flag "a bit that is set" {
+    receiver {
+        flags = 1 << 3 | 1 << 1;
+    }
+
+    arg bit = 3;
+    expect return true;
+}
+
+test BitwiseCase.has_flag "a bit that is not set" {
+    receiver {
+        flags = 1 << 3 | 1 << 1;
+    }
+
+    arg bit = 2;
+    expect return false;
+}
+
+test BitwiseCase.with_flag_cleared "one bit cleared and the others kept" {
+    receiver {
+        flags = 0b1010;
+    }
+
+    arg bit = 1;
+    expect return 0b1000;
+}
+
+test BitwiseCase.packed "two halves packed into a uint64" {
+    receiver {
+        wide_unsigned = 1;
+        narrow_unsigned = 2;
+    }
+
+    expect return 0x1_0000_0002;
+}

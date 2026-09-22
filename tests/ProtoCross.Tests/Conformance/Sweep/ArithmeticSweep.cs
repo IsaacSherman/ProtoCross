@@ -25,6 +25,7 @@ internal static class ArithmeticSweep
     public static IReadOnlyList<SweepVector> Vectors { get; } =
     [
         .. OverflowPolicy.All.Select(IntegerSweep.Render),
+        BitwiseSweep.Render(),
         FloatingSweep.Render(),
         ConversionSweep.Render(),
     ];

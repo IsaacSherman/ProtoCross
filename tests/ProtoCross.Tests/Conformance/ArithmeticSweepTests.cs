@@ -15,7 +15,7 @@ namespace ProtoCross.Tests.Conformance;
 /// spec. The cases here are the ones the spec settles in so many words, checked against the
 /// generator directly, so that kind of failure is found here and named for what it is.
 /// </remarks>
-public class ArithmeticSweepTests
+public partial class ArithmeticSweepTests
 {
     private const string Regenerate = "PROTOCROSS_REGENERATE_SWEEP";
 
