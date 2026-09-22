@@ -107,7 +107,7 @@ is one the next change breaks silently.
   no error-typed expression, which is what makes it safe for a backend -- handed a module only when
   the compilation succeeded -- never to ask about one.
 - **Every reference is resolved or is not a reference.** A node naming something ProtoCross declares
-  carries the identity of a declaration in the same module; a name that resolved to nothing binds to
+  carries the identity of a declaration the compilation holds; a name that resolved to nothing binds to
   an error-typed node instead of a stand-in symbol, and is not recorded as a use. A consumer
   therefore never holds an identity that answers nothing.
 - **Every construct is reachable by one walk.** Each node the compiler can produce is yielded by the
