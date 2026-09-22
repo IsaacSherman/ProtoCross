@@ -1104,6 +1104,7 @@ public sealed partial class Binder
         ContinueStatement continueStatement => BindContinue(continueStatement, context),
         ForInStatement forIn => BindForIn(forIn, scope, context),
         AssignmentStatement assignment => BindAssignment(assignment, scope, context),
+        CompoundAssignmentStatement assignment => BindCompoundAssignment(assignment, scope, context),
         ExpressionStatement expression => new IrExpressionStatement(
             BindExpression(expression.Expression, scope, context, null),
             expression.Span),
@@ -1351,37 +1352,7 @@ public sealed partial class Binder
     {
         if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.InvalidAssignmentTarget,
-                "Only local variables can be assigned.",
-                statement.Target.Span,
-                "Whether methods may mutate the receiver is still an open question (spec 16.1).");
-
-            // The target is bound even though nothing may be assigned to it. What PC0034 refuses is
-            // the assignment, not the expression on its left: `quantity`, `factor` and `line.quantity`
-            // all name something that resolves, and leaving them unbound put those names in the index
-            // nowhere and left an editor with nothing at a position the author is looking straight at.
-            // It is the same rule the map field in a fixture and the presence test on a field without
-            // presence already follow, and it is why binding a call that cannot be made keeps its
-            // arguments.
-            //
-            // Both halves in a block, because a statement has one slot and the alternative is to bind
-            // an expression and throw it away. No backend sees this: PC0034 has been reported, so the
-            // compilation has errors and EmittableModule is null.
-            var refusedTarget = new IrExpressionStatement(
-                BindExpression(statement.Target, scope, context, null),
-                statement.Target.Span);
-
-            MarkWritten(AssignedNameOf(statement.Target));
-
-            return new IrBlock(
-                [
-                    refusedTarget,
-                    new IrExpressionStatement(
-                        BindExpression(statement.Value, scope, context, null),
-                        statement.Value.Span),
-                ],
-                statement.Span);
+            return BindRefusedAssignment(statement.Target, [statement.Value], statement.Span, scope, context);
         }
 
         Use(local.Id, name.Name.Span, ReferenceKind.Write);
@@ -1399,6 +1370,110 @@ public sealed partial class Binder
         }
 
         return new IrAssignment(new IrLocalReference(local, name.Span), value, statement.Span);
+    }
+
+    /// <summary>Binds <c>x op= y</c> as <c>x = x op y</c> (spec 9.2).</summary>
+    /// <remarks>
+    /// <para>
+    /// The long form is built as syntax and bound by the code that binds <c>x op y</c> anywhere else,
+    /// so a compound assignment cannot come to mean something its long form does not: how a literal
+    /// is typed, the <c>on_zero</c> rule, the overflow policy and every refusal are the operator's
+    /// own. What comes out is the long form's IR, so neither backend knows compound assignment exists,
+    /// and each emits what it emits for the long form.
+    /// </para>
+    /// <para>
+    /// The target is recorded once, as a write, although the operation reads it too. It is one name
+    /// written once, and a read and a write at the same span would list it twice in every search for
+    /// references. LSP's highlight kinds have no read-and-write, and the write is what makes the
+    /// target worth telling apart.
+    /// </para>
+    /// <para>
+    /// No check that the result suits the target follows, as one follows <c>=</c>. Every operator
+    /// with a compound form produces the type of its left operand, and that operand is the target.
+    /// </para>
+    /// </remarks>
+    private IrStatement BindCompoundAssignment(
+        CompoundAssignmentStatement statement,
+        Scope scope,
+        MethodContext context)
+    {
+        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        {
+            return BindRefusedAssignment(
+                statement.Target,
+                statement.OnZero?.Fallback is { } fallback ? [statement.Value, fallback] : [statement.Value],
+                statement.Span,
+                scope,
+                context);
+        }
+
+        var operation = BindBinary(LongFormOf(statement), scope, context, local.Type, OperatorForm.Compound);
+        MarkWritten(name.Name);
+
+        return new IrAssignment(new IrLocalReference(local, name.Span), operation, statement.Span);
+    }
+
+    /// <summary>The operation a compound assignment stands for: <c>x op y</c>, for <c>x op= y</c>.</summary>
+    /// <remarks>
+    /// It spans the target through the right side and any clause after it, which is the whole
+    /// statement but its semicolon. That is what a reader takes the operation to be, and it lies inside
+    /// the assignment's own span, as every IR node's span lies inside its parent's.
+    /// </remarks>
+    private static BinaryExpression LongFormOf(CompoundAssignmentStatement statement)
+        => new(
+            statement.Operator,
+            statement.Target,
+            statement.Value,
+            SourceSpan.Union(statement.Target.Span, statement.OnZero?.Span ?? statement.Value.Span),
+            statement.OnZero);
+
+    /// <summary>
+    /// Binds an assignment to something that may not be assigned: <c>PC0034</c>, with the target and
+    /// every operand bound all the same.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The target is bound even though nothing may be assigned to it. What PC0034 refuses is the
+    /// assignment, not the expression on its left: <c>quantity</c>, <c>factor</c> and
+    /// <c>line.quantity</c> all name something that resolves, and leaving them unbound put those names
+    /// in the index nowhere and left an editor with nothing at a position the author is looking
+    /// straight at. It is the same rule the map field in a fixture and the presence test on a field
+    /// without presence already follow, and it is why binding a call that cannot be made keeps its
+    /// arguments.
+    /// </para>
+    /// <para>
+    /// Everything goes in a block, because a statement has one slot and the alternative is to bind an
+    /// expression and throw it away. No backend sees this: PC0034 has been reported, so the
+    /// compilation has errors and <c>EmittableModule</c> is null.
+    /// </para>
+    /// </remarks>
+    private IrStatement BindRefusedAssignment(
+        Expression target,
+        IReadOnlyList<Expression> operands,
+        SourceSpan span,
+        Scope scope,
+        MethodContext context)
+    {
+        _diagnostics.Report(
+            DiagnosticCodes.InvalidAssignmentTarget,
+            "Only local variables can be assigned.",
+            target.Span,
+            "Whether methods may mutate the receiver is still an open question (spec 16.1).");
+
+        var refusedTarget = new IrExpressionStatement(
+            BindExpression(target, scope, context, null),
+            target.Span);
+
+        MarkWritten(AssignedNameOf(target));
+
+        return new IrBlock(
+            [
+                refusedTarget,
+                .. operands.Select(operand => new IrExpressionStatement(
+                    BindExpression(operand, scope, context, null),
+                    operand.Span)),
+            ],
+            span);
     }
 
     private IrExpression BindExpression(
@@ -2084,15 +2159,22 @@ public sealed partial class Binder
         return new IrFieldPresence(receiver, field, has.Span);
     }
 
+    /// <param name="form">
+    /// How the operator was written, which is what every diagnostic below names. See
+    /// <see cref="OperatorForm"/>.
+    /// </param>
     private IrExpression BindBinary(
         BinaryExpression binary,
         Scope scope,
         MethodContext context,
-        PlType? expectedType)
+        PlType? expectedType,
+        OperatorForm form = OperatorForm.Infix)
     {
+        var symbol = Spell(binary.Operator, form);
+
         if (binary.Operator is BinaryOperatorKind.ShiftLeft or BinaryOperatorKind.ShiftRight)
         {
-            return BindShift(binary, scope, context, expectedType);
+            return BindShift(binary, symbol, scope, context, expectedType);
         }
 
         var isComparison = IsComparison(binary.Operator);
@@ -2153,7 +2235,7 @@ public sealed partial class Binder
             {
                 _diagnostics.Report(
                     DiagnosticCodes.LogicalOperatorRequiresBoolOperands,
-                    $"Cannot apply '{Describe(binary.Operator)}' to "
+                    $"Cannot apply '{symbol}' to "
                     + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                     binary.Span);
             }
@@ -2167,10 +2249,10 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
-                $"Cannot apply '{Describe(binary.Operator)}' to "
+                $"Cannot apply '{symbol}' to "
                 + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                 binary.Span,
-                BitwiseHelp(binary, left, right));
+                BitwiseHelp(binary, form, left, right));
             return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
         }
 
@@ -2178,7 +2260,7 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.OperandTypeMismatch,
-                $"Cannot apply '{Describe(binary.Operator)}' to "
+                $"Cannot apply '{symbol}' to "
                 + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                 binary.Span,
                 "ProtoCross does not apply implicit numeric conversions; both operands must "
@@ -2193,7 +2275,7 @@ public sealed partial class Binder
             {
                 _diagnostics.Report(
                     DiagnosticCodes.OperandsAreNotOrdered,
-                    $"'{Describe(binary.Operator)}' requires numeric operands, "
+                    $"'{symbol}' requires numeric operands, "
                     + $"but both are '{left.Type.DisplayName}'.",
                     binary.Span);
             }
@@ -2212,7 +2294,7 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.ArithmeticOnANonNumericType,
-                $"Cannot apply '{Describe(binary.Operator)}' to '{left.Type.DisplayName}'.",
+                $"Cannot apply '{symbol}' to '{left.Type.DisplayName}'.",
                 binary.Span);
             return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
         }
@@ -2222,7 +2304,7 @@ public sealed partial class Binder
         // NaN, which needs no declaration.
         if (op is (IrBinaryOperator.Divide or IrBinaryOperator.Modulo) && resultType.IsInteger)
         {
-            return BindIntegerDivision(binary, op, left, right, resultType, scope, context);
+            return BindIntegerDivision(binary, symbol, op, left, right, resultType, scope, context);
         }
 
         // Only for a division, because the parser has already rejected 'on_zero' on anything that is
@@ -2235,7 +2317,7 @@ public sealed partial class Binder
             // not write and an outcome theirs cannot produce.
             _diagnostics.Report(
                 DiagnosticCodes.OnZeroOutsideIntegerDivision,
-                $"'{Describe(binary.Operator)}' on '{resultType.DisplayName}' follows IEEE 754 and "
+                $"'{symbol}' on '{resultType.DisplayName}' follows IEEE 754 and "
                 + "yields infinity or NaN rather than failing.",
                 binary.OnZero.Span);
         }
@@ -2265,6 +2347,7 @@ public sealed partial class Binder
     /// </remarks>
     private IrExpression BindShift(
         BinaryExpression binary,
+        string symbol,
         Scope scope,
         MethodContext context,
         PlType? expectedType)
@@ -2282,7 +2365,7 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
-                $"'{Describe(binary.Operator)}' shifts an integer, but the value here is "
+                $"'{symbol}' shifts an integer, but the value here is "
                 + $"'{value.Type.DisplayName}'.",
                 binary.Span);
             return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
@@ -2292,7 +2375,7 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
-                $"'{Describe(binary.Operator)}' shifts by an integer count, but the count here is "
+                $"'{symbol}' shifts by an integer count, but the count here is "
                 + $"'{count.Type.DisplayName}'.",
                 binary.Span,
                 "The count can be any integer type, whatever the value's is. Convert it with 'as'.");
@@ -2308,19 +2391,30 @@ public sealed partial class Binder
     /// always <c>x &amp; mask == 0</c>, which C-family precedence groups as <c>x &amp; (mask == 0)</c>
     /// (spec 9.2), so what is wanted is parentheses. Two bools are an author reaching for C#'s
     /// <c>&amp;</c> and <c>|</c> on bools, which ProtoCross does not have, so what is wanted is the
-    /// logical operator.
+    /// logical operator -- written out in full after a compound assignment, since no logical operator
+    /// has a compound form.
     /// </remarks>
-    private static string? BitwiseHelp(BinaryExpression binary, IrExpression left, IrExpression right)
+    private static string? BitwiseHelp(
+        BinaryExpression binary,
+        OperatorForm form,
+        IrExpression left,
+        IrExpression right)
     {
-        var symbol = Describe(binary.Operator);
+        var symbol = Spell(binary.Operator, form);
 
         if (TypesMatch(left.Type, ScalarType.BoolType) && TypesMatch(right.Type, ScalarType.BoolType))
         {
-            return $"'{symbol}' works on the bits of integers. For two bools, write "
-                + $"'{LogicalCounterpart(binary.Operator)}'.";
+            var logical = LogicalCounterpart(binary.Operator);
+            return form == OperatorForm.Compound
+                ? $"'{symbol}' works on the bits of integers. For two bools, write the assignment out "
+                    + $"with '{logical}': 'a = a {logical} b'."
+                : $"'{symbol}' works on the bits of integers. For two bools, write '{logical}'.";
         }
 
-        if ((ComparisonIn(binary.Left) ?? ComparisonIn(binary.Right)) is { } comparison)
+        // The right side of a compound assignment is one operand whatever it holds, so a comparison
+        // there is not one precedence put there.
+        if (form == OperatorForm.Infix
+            && (ComparisonIn(binary.Left) ?? ComparisonIn(binary.Right)) is { } comparison)
         {
             var compared = Describe(comparison);
             return $"'{compared}' binds tighter than '{symbol}', as it does in C# and C++, so the "
@@ -2367,6 +2461,7 @@ public sealed partial class Binder
     /// </summary>
     private IrExpression BindIntegerDivision(
         BinaryExpression binary,
+        string symbol,
         IrBinaryOperator op,
         IrExpression left,
         IrExpression right,
@@ -2395,11 +2490,11 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.MissingOnZeroClause,
-                $"'{Describe(binary.Operator)}' on '{resultType.DisplayName}' must state what to "
+                $"'{symbol}' on '{resultType.DisplayName}' must state what to "
                 + "produce when the divisor is zero.",
                 binary.Span,
-                $"Write '{Describe(binary.Operator)} <divisor> on_zero <fallback>', or "
-                + $"'{Describe(binary.Operator)} <divisor> on_zero fail' if no value is correct.");
+                $"Write '{symbol} <divisor> on_zero <fallback>', or "
+                + $"'{symbol} <divisor> on_zero fail' if no value is correct.");
 
             return new IrIntegerDivision(
                 op, left, right, ZeroDivisorBehavior.Fallback, null, ErrorType.Instance,
@@ -2561,6 +2656,24 @@ public sealed partial class Binder
         BinaryOperatorKind.ShiftRight => ">>",
         _ => kind.ToString(),
     };
+
+    /// <summary>A binary operator as the author wrote it: a compound assignment's is followed by '='.</summary>
+    private static string Spell(BinaryOperatorKind kind, OperatorForm form)
+        => form == OperatorForm.Compound ? $"{Describe(kind)}=" : Describe(kind);
+
+    /// <summary>How a binary operator was written, which the operation it binds to does not say.</summary>
+    /// <remarks>
+    /// A compound assignment is bound as the operation it abbreviates, so the binder holds the same
+    /// syntax whichever the author wrote, and this is what tells the two apart. A diagnostic names the
+    /// operator as it was written -- <c>+=</c> where that is what was typed -- and precedence is blamed
+    /// only where precedence did the grouping, which it never does for the right side of a compound
+    /// assignment.
+    /// </remarks>
+    private enum OperatorForm
+    {
+        Infix,
+        Compound,
+    }
 
     private static bool TypesMatch(PlType left, PlType right) => left.Equals(right);
 

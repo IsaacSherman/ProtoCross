@@ -519,11 +519,11 @@ public sealed class Lexer
             case ',': Advance(); kind = TokenKind.Comma; break;
             case ':': Advance(); kind = TokenKind.Colon; break;
             case '.': Advance(); kind = TokenKind.Dot; break;
-            case '+': Advance(); kind = TokenKind.Plus; break;
-            case '*': Advance(); kind = TokenKind.Star; break;
-            case '/': Advance(); kind = TokenKind.Slash; break;
-            case '%': Advance(); kind = TokenKind.Percent; break;
-            case '^': Advance(); kind = TokenKind.Caret; break;
+            case '+': Advance(); kind = OrCompound(TokenKind.Plus, TokenKind.PlusEquals); break;
+            case '*': Advance(); kind = OrCompound(TokenKind.Star, TokenKind.StarEquals); break;
+            case '/': Advance(); kind = OrCompound(TokenKind.Slash, TokenKind.SlashEquals); break;
+            case '%': Advance(); kind = OrCompound(TokenKind.Percent, TokenKind.PercentEquals); break;
+            case '^': Advance(); kind = OrCompound(TokenKind.Caret, TokenKind.CaretEquals); break;
             case '~': Advance(); kind = TokenKind.Tilde; break;
 
             case '-':
@@ -535,7 +535,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Minus;
+                    kind = OrCompound(TokenKind.Minus, TokenKind.MinusEquals);
                 }
 
                 break;
@@ -578,7 +578,7 @@ public sealed class Lexer
                 else if (Current == '<')
                 {
                     Advance();
-                    kind = TokenKind.LessLess;
+                    kind = OrCompound(TokenKind.LessLess, TokenKind.LessLessEquals);
                 }
                 else
                 {
@@ -588,7 +588,8 @@ public sealed class Lexer
                 break;
 
             // There are no angle-bracketed type arguments for '>>' to be two closers of, so it is one
-            // token wherever it appears, as '<<' is.
+            // token wherever it appears, as '<<' is. For the same reason '>>=' is one token, and never
+            // '>' followed by '>='.
             case '>':
                 Advance();
                 if (Current == '=')
@@ -599,7 +600,7 @@ public sealed class Lexer
                 else if (Current == '>')
                 {
                     Advance();
-                    kind = TokenKind.GreaterGreater;
+                    kind = OrCompound(TokenKind.GreaterGreater, TokenKind.GreaterGreaterEquals);
                 }
                 else
                 {
@@ -617,7 +618,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Ampersand;
+                    kind = OrCompound(TokenKind.Ampersand, TokenKind.AmpersandEquals);
                 }
 
                 break;
@@ -631,7 +632,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Pipe;
+                    kind = OrCompound(TokenKind.Pipe, TokenKind.PipeEquals);
                 }
 
                 break;
@@ -654,5 +655,26 @@ public sealed class Lexer
         }
 
         return new Token(kind, text, span);
+    }
+
+    /// <summary>
+    /// The compound assignment an operator has where an <c>=</c> follows it, taking the <c>=</c> too;
+    /// otherwise the operator (spec 9.2).
+    /// </summary>
+    /// <remarks>
+    /// Asked once the operator's own characters are consumed, so the longest spelling wins: <c>&lt;&lt;=</c>
+    /// is one token, never <c>&lt;&lt;</c> and <c>=</c>. An <c>=</c> cannot begin an operand, so no
+    /// program that parsed before had an operator followed directly by one, and none lexes differently
+    /// for the ten compound spellings being tokens.
+    /// </remarks>
+    private TokenKind OrCompound(TokenKind plain, TokenKind compound)
+    {
+        if (Current != '=')
+        {
+            return plain;
+        }
+
+        Advance();
+        return compound;
     }
 }

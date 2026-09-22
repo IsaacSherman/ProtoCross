@@ -142,6 +142,9 @@ public sealed class SemanticModel
     /// <para>
     /// Where several IR nodes share one span, this answers with the outermost, which is the node
     /// standing for what was written; the inner ones are what the binder introduced underneath it.
+    /// The one pair that shares a span without nesting is a compound assignment's target and the read
+    /// of it in the operation the assignment stands for, and the answer is the target, which is
+    /// reached first.
     /// The reverse direction, <see cref="SourceOf"/>, therefore maps several IR nodes onto one syntax
     /// node, and that is correct rather than lossy.
     /// </para>

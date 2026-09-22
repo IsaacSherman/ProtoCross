@@ -95,8 +95,10 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
 7. **Bind.** [`Binder.Bind`](src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
-   descriptors and produces typed IR. It does **not** throw on bad input: an unresolved name becomes
-   `ErrorType` (`PC0037`) and binding continues, a name the parser never saw resolves to `ErrorType`
+   descriptors and produces typed IR. Sugar ends here: a compound assignment `x += y` is bound as the
+   assignment of `x + y` to `x`, so the IR has no node for one and no backend knows it exists. It does
+   **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
+   continues, a name the parser never saw resolves to `ErrorType`
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
    message to bind against. Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a

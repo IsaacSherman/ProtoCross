@@ -263,6 +263,37 @@ public class HoverTests
         Assert.DoesNotContain("Overflow", card, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A compound assignment is the operation it stands for (spec 9.2), so its operator's card says
+    /// what that operation does, and says nothing about overflow where no policy governs it.
+    /// </summary>
+    [Theory]
+    [InlineData("total += count;", "+=", "Overflow wraps, two's complement (spec 10.1).")]
+    [InlineData("total /= count on_zero 0;", "/=", "A zero divisor yields the declared `on_zero` value")]
+    public async Task ACompoundAssignmentSaysWhatTheOperationItStandsForDoes(
+        string statement, string marker, string expected)
+    {
+        var card = await CompoundAssignmentCardAsync(statement, marker);
+
+        Assert.Contains(Fenced("int64"), card, StringComparison.Ordinal);
+        Assert.Contains(expected, card, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ACompoundShiftDoesNotClaimAnOverflowPolicy()
+        => Assert.DoesNotContain(
+            "Overflow",
+            await CompoundAssignmentCardAsync("total <<= 3;", "<<="),
+            StringComparison.Ordinal);
+
+    private static Task<string> CompoundAssignmentCardAsync(string statement, string marker)
+    {
+        var text = "import proto \"fixtures.proto\";\n"
+            + "extend Outer { fn f() -> int64 { var total: int64 = 1; " + statement + " return total; } }";
+
+        return TextAsync(text, EditorFixture.At(text, marker));
+    }
+
     /// <summary>A floating-point target preserves NaN and does not truncate a fraction to an integer.</summary>
     [Theory]
     [InlineData("double", "ratio as double", "as double")]

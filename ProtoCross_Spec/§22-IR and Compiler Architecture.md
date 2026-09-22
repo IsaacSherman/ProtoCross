@@ -48,7 +48,11 @@ The IR preserves:
 - Presence checks. `IrFieldPresence` carries the field descriptor rather than a lowered boolean,
   because the two targets spell the test in unrelated ways.
 - Field access semantics.
-- Local assignment intent.
+- Local assignment intent. A compound assignment is not a node of its own: `x += y` is the
+  assignment of `x + y` to `x`, whose operation reads the target at the target's own span. It is
+  the one place two nodes share a span without one standing inside the other, and a position query
+  there answers with the target, which comes first. Which form was written is the syntax tree's to
+  say.
 - Terminal-failure behavior for `on_zero fail`.
 - Evaluation order.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful

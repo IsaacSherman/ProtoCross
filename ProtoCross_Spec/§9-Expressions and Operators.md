@@ -35,6 +35,7 @@ and or not
 &  |  ^  ~  <<  >>
 has
 =
++=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 ```
 
 `has` is a prefix operator on a field, producing `bool` ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). It sits at the same precedence as
@@ -44,7 +45,7 @@ value is exactly what it must not do.
 Normative Requirements:
 
 - Both word and symbolic boolean operators are accepted: `and`/`&&`, `or`/`||`, and `not`/`!`.
-- Assignment is a statement only.
+- Assignment is a statement only, and so is a compound assignment.
 - On integer operands, `%` follows the same `on_zero` rule as integer `/`. On floating-point
   operands it is the truncated remainder of [10.2](./§10-Numeric%20Semantics.md#102-division), which cannot fail and takes no clause.
 
@@ -96,6 +97,35 @@ Normative Requirements:
   is reported is that the result is not a `double`, rather than that `&` cannot take one.
 - No overflow policy governs any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
 
+**Decided: compound assignment is sugar for its long form.**
+
+`x op= y` stores `x op y` in `x`, for each arithmetic, bitwise and shift operator: `+=`, `-=`, `*=`,
+`/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=`.
+
+Normative Requirements:
+
+- A compound assignment means exactly what its long form `x = x op (y)` means: the same operand
+  rules, the same literal typing, the same overflow policy ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) and the same
+  refusals. It is bound as that long form, so no backend sees anything else, and each emits for it
+  what it emits for the long form.
+- **The right side is one operand**, however loosely its own operators bind: `x *= a + b` is
+  `x = x * (a + b)`, and `x &= a | b` is `x = x & (a | b)`.
+- The target rule is `=`'s. Only a local variable can be assigned ([18](./§18-Mutability.md#18-mutability)), and any other
+  target is `PC0034`.
+- An integer `/=` or `%=` takes an `on_zero` clause after its divisor, as `/` and `%` do
+  ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)): `x /= d on_zero 0;`. The clause binds to the division it follows,
+  so a divisor with an operator of its own is parenthesized. In `x /= a + b on_zero 0` the clause
+  follows the `+`, which cannot take one (`PC0015`), and leaves the `/=` without one (`PC0054`);
+  `x /= (a + b) on_zero 0` is what was meant. A divisor that is a non-zero literal needs no clause.
+- A literal on the right takes the target's type, as it would beside the target in the long form,
+  and a shift count keeps its own ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- A diagnostic about the operation names the operator as it was written:
+  `Cannot apply '+=' to 'int64' and 'double'`. No logical operator and no comparison has a
+  compound form, so `&=`, `|=` and `^=` on two `bool`s are `PC0085`, and the help writes the long
+  form out with `and`, `or` or `!=`.
+- The target is one name written once, and is recorded once, as a write
+  ([22.3](./§22-IR%20and%20Compiler%20Architecture.md#223-what-a-compilation-answers)), although the operation it stands for reads it too.
+
 ### 9.3 Evaluation Order
 
 Normative Requirement:
@@ -108,6 +138,8 @@ Current defined subset:
 - Method call arguments evaluate left to right.
 - Boolean `and` and `or` short-circuit left to right.
 - Assignment evaluates the right-hand side before storing the result.
+- A compound assignment reads its target, evaluates its right side, and then stores. Reading a
+  local cannot fail and nothing on the right can change one, so no program can observe that order.
 
 Open Question:
 

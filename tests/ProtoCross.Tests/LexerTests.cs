@@ -68,6 +68,47 @@ public class LexerTests
     }
 
     [Fact]
+    public void RecognizesTheCompoundAssignmentOperators()
+    {
+        var tokens = Tokenize("+= -= *= /= %= &= |= ^= <<= >>=", out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [
+                TokenKind.PlusEquals, TokenKind.MinusEquals, TokenKind.StarEquals, TokenKind.SlashEquals,
+                TokenKind.PercentEquals, TokenKind.AmpersandEquals, TokenKind.PipeEquals,
+                TokenKind.CaretEquals, TokenKind.LessLessEquals, TokenKind.GreaterGreaterEquals,
+                TokenKind.EndOfFile,
+            ],
+            tokens.Select(t => t.Kind));
+    }
+
+    /// <summary>
+    /// With no spaces to separate them, each operator is the longest spelling that fits: <c>&gt;&gt;=</c>
+    /// is one token rather than <c>&gt;</c> and <c>&gt;=</c>, and <c>&amp;&amp;=</c>, which is not an
+    /// operator, is <c>&amp;&amp;</c> and <c>=</c> rather than <c>&amp;</c> and <c>&amp;=</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("a>>=b", new[] { TokenKind.GreaterGreaterEquals })]
+    [InlineData("a<<=b", new[] { TokenKind.LessLessEquals })]
+    [InlineData("a> >=b", new[] { TokenKind.Greater, TokenKind.GreaterEquals })]
+    [InlineData("a&&=b", new[] { TokenKind.AmpersandAmpersand, TokenKind.Equals })]
+    [InlineData("a||=b", new[] { TokenKind.PipePipe, TokenKind.Equals })]
+    [InlineData("a-=b", new[] { TokenKind.MinusEquals })]
+    [InlineData("a->b", new[] { TokenKind.Arrow })]
+    [InlineData("a/=b", new[] { TokenKind.SlashEquals })]
+    [InlineData("a+==b", new[] { TokenKind.PlusEquals, TokenKind.Equals })]
+    public void TheLongestSpellingOfAnOperatorWins(string text, TokenKind[] operators)
+    {
+        var tokens = Tokenize(text, out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [TokenKind.Identifier, .. operators, TokenKind.Identifier, TokenKind.EndOfFile],
+            tokens.Select(t => t.Kind));
+    }
+
+    [Fact]
     public void ParsesIntegerLiteralValue()
     {
         var tokens = Tokenize("1234", out var diagnostics);
