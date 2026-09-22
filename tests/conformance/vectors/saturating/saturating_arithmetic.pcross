@@ -58,6 +58,16 @@ extend SaturatingOverflowCase {
     fn u64_product() -> uint64 {
         return u64_left * u64_right;
     }
+
+    // Shifts are not governed by the overflow policy (spec 10.1): a left shift discards the bits
+    // that pass the width under this policy exactly as under the default, rather than clamping.
+    fn i32_shifted_left() -> int32 {
+        return i32_left << i32_right;
+    }
+
+    fn u64_shifted_left() -> uint64 {
+        return u64_left << u64_right;
+    }
 }
 
 // --- values that fit are untouched by the policy ---
@@ -236,4 +246,33 @@ test SaturatingOverflowCase.u32_difference "an unsigned subtraction that fits is
     }
 
     expect return 6;
+}
+
+// --- shifts are not governed by the policy ---
+
+test SaturatingOverflowCase.i32_shifted_left "int32 MAX shifted left discards the top bit rather than clamping" {
+    receiver {
+        i32_left = 2147483647;
+        i32_right = 1;
+    }
+
+    expect return -2;
+}
+
+test SaturatingOverflowCase.i32_shifted_left "1 shifted into the sign bit of an int32 is MIN rather than clamping" {
+    receiver {
+        i32_left = 1;
+        i32_right = 31;
+    }
+
+    expect return -2147483648;
+}
+
+test SaturatingOverflowCase.u64_shifted_left "uint64 MAX shifted left discards the top bit rather than clamping" {
+    receiver {
+        u64_left = 18446744073709551615;
+        u64_right = 1;
+    }
+
+    expect return 18446744073709551614;
 }

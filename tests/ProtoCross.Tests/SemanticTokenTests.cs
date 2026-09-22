@@ -113,6 +113,23 @@ public class SemanticTokenTests
         Assert.Contains(painted, token => token.Type == SemanticTokenLegend.Operator && TextOf(Source, token) == "=");
     }
 
+    /// <summary>
+    /// Each bitwise operator is one operator token, so a two-character one is never painted as two
+    /// comparisons side by side.
+    /// </summary>
+    [Fact]
+    public void EveryBitwiseAndShiftOperatorIsOneOperatorToken()
+    {
+        const string Source = "var x = ~a & b | c ^ d << 1 >> 2;";
+        string[] expected = ["=", "~", "&", "|", "^", "<<", ">>"];
+
+        var painted = Paint(Source)
+            .Where(token => token.Type == SemanticTokenLegend.Operator)
+            .Select(token => TextOf(Source, token));
+
+        Assert.Equal(expected, painted);
+    }
+
     [Fact]
     public void LexicalTokensAreProducedForAFileThatDoesNotParse()
     {

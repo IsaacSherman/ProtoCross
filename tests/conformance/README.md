@@ -1,4 +1,3 @@
-| `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
 # ProtoCross Conformance Vectors
 
 This directory is the answer to the question in spec 25.2: does every backend produce the *same*
@@ -78,9 +77,9 @@ One constraint is worth knowing before writing one:
 
 ## Generated vectors
 
-The `sweep/` directories hold vectors nobody wrote by hand: every numeric operator and every
-conversion over the values where each can go wrong, several thousand rows in all. They and their
-schemas are written by
+The `sweep/` directories hold vectors nobody wrote by hand: every numeric and bitwise operator and
+every conversion over the values where each can go wrong, several thousand rows in all. They and
+their schemas are written by
 [`tests/ProtoCross.Tests/Conformance/Sweep/`](../ProtoCross.Tests/Conformance/Sweep), and each file
 says so on its first line. **Do not edit them.** Change the generator, then rewrite them:
 
@@ -102,7 +101,8 @@ The expected values do not come from either backend:
 - **Integer results** are computed exactly, in arbitrary precision, and only then brought into range
   as the policy says: reduced modulo 2^N, clamped, or, under `Checked`, left out of the table. Each
   way an operator can overflow under `Checked` is a test of its own instead, expecting termination,
-  using the narrowest overflow among the boundary values.
+  using the narrowest overflow among the boundary values. A shift reduces its count modulo the width
+  first, and keeps the low bits of its result whatever the policy, since none governs it.
 - **Floating-point results** are C#'s own arithmetic, which is the reference (spec 10), done in the
   type's own precision. A row expecting NaN sets `nan` rather than a value, and every other row is
   compared by `1 / x` as well as `==`, which is what tells `0.0` from `-0.0`.
@@ -150,13 +150,16 @@ failing. A fully equipped machine should report no skips.
 | `keyword_types` | Messages, enums, and enum values whose names C++ cannot use as they stand -- a keyword, a generated member's name, a nested type under an escaped parent, and keyword and macro values of a top-level and a nested enum -- as receivers, locals, parameters, returns, and fixture values (spec 24.2) |
 | `keyword_package` | A package whose components are C++ keywords: the namespace the generated functions live in, a call between them, and a message and an enum value qualified with it (spec 24.2) |
 | `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
+| `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
+| `bitwise` | `&` `\|` `^` `~` `<<` `>>`: where each binds among the other operators, the type a literal beside one takes -- the value shifted takes the type expected of the shift and never the count's, and a count literal keeps its own -- a count reduced modulo the width whatever its type and sign, a signed right shift copying the sign bit in and an unsigned one zero-filling, a left shift discarding what passes the width, and the idioms of testing, clearing and packing bits (spec 9.2, 10.1) |
 | `sweep/integer_sweep` | Every integer `+ - * / %` and unary `-` over every pair of boundary values of each integer type, with the fallback for a zero divisor, and every comparison of the same pairs, under the default wrapping policy (spec 10.1, 10.2). Generated |
+| `sweep/bitwise_sweep` | Every `&` `\|` `^` over every pair of boundary values of each integer type, `~` of each one, and `<<` and `>>` of each one by every count worth trying, in the value's own type; and one value shifted by every count in each other integer type (spec 9.2, 10.1). Generated |
 | `sweep/floating_sweep` | Every floating-point `+ - * / %`, unary `-` and comparison, in `float` and `double`, over both zeros, an inexact fraction, the largest finite value, the smallest subnormal, both infinities and NaN (spec 10.2). Generated |
 | `sweep/conversion_sweep` | Every `as` between the six numeric types, over each integer type's boundary values and rounding ties, and the floating-point values either side of each integer type's range and of `float`'s (spec 10.3). Generated |
 | `checked/sweep/checked_integer_sweep` | The integer sweep under the checked policy: every result that fits, and the narrowest overflow in each direction each operator can overflow terminating (spec 10.1). Generated |
 | `saturating/sweep/saturating_integer_sweep` | The integer sweep under the saturating policy, every result clamped (spec 10.1). Generated |
-| `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and `MIN % -1` does not (spec 10.1, 10.4) |
-| `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width (spec 10.1, 10.4) |
+| `checked/checked_arithmetic` | The checked overflow policy: overflow at each width terminates with exit code 70, and neither `MIN % -1` nor a left shift past MAX does (spec 10.1, 10.4) |
+| `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width, and a left shift past MAX left unclamped (spec 10.1, 10.4) |
 
 ## Adding a backend
 

@@ -5,7 +5,7 @@ namespace ProtoCross.Tests.Conformance.Sweep;
 
 /// <summary>
 /// One of the four integer types, with what spec 10.1 and 10.3 say happens to a value that does not
-/// fit it, worked out in arbitrary precision.
+/// fit it and to one that is shifted, worked out in arbitrary precision.
 /// </summary>
 /// <remarks>
 /// The sweep's expectations have to come from somewhere other than the code under test, or a wrong
@@ -60,6 +60,31 @@ internal sealed record IntegerType(string Name, int Bits, bool IsSigned)
 
     /// <summary>The bound the value passed, if it passed one.</summary>
     public BigInteger Saturate(BigInteger value) => BigInteger.Clamp(value, Min, Max);
+
+    /// <summary>
+    /// How far spec 10.1 shifts a value of this type for a count: the count's low bits, which is the
+    /// count modulo the width, whatever type the count has and whatever its sign.
+    /// </summary>
+    public int ShiftCount(BigInteger count) => (int)(((count % Bits) + Bits) % Bits);
+
+    /// <summary>
+    /// The value shifted left, with whatever passes the width discarded: its low N bits, the same
+    /// reduction as <see cref="Wrap"/>, since a shift is not governed by the overflow policy.
+    /// </summary>
+    public BigInteger ShiftLeft(BigInteger value, BigInteger count) => Wrap(value << ShiftCount(count));
+
+    /// <summary>
+    /// The value shifted right: arithmetic for a signed type, which copies the sign bit in, and
+    /// logical for an unsigned one, which has no sign to copy.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="BigInteger"/>'s own shift floors, which is what copying the sign bit in amounts to
+    /// for a negative value, and an unsigned value is never negative.
+    /// </remarks>
+    public BigInteger ShiftRight(BigInteger value, BigInteger count) => value >> ShiftCount(count);
+
+    /// <summary>Every bit flipped: <c>-value - 1</c> in two's complement, brought back into range.</summary>
+    public BigInteger Complement(BigInteger value) => Wrap(-value - 1);
 
     /// <summary>
     /// Spec 10.3's floating-point to integer conversion: truncated toward zero, clamped to the range,

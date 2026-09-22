@@ -13,8 +13,12 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Type inference policy.~~ Decided: local variables may state an explicit type or infer from the
   initializer ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), [8](./§8-Type%20System.md#8-type-system)).
 - Helper functions and whether top-level functions belong in the language.
+- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
+  comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)).
 - ~~Complete scalar type support.~~ Decided: all protobuf scalar spellings map into the supported
   ProtoCross value domains ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
+- 8- and 16-bit integer types. **Post-1.0.** Protobuf has no scalar of either width, so no field
+  could hold one ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - Decimal support.
 - ~~Nullability and presence syntax.~~ Decided: `has <field>`, with the field's own presence
   rules taken from the protobuf descriptor ([8.4](./§8-Type%20System.md#84-nullability-and-presence)).
@@ -29,6 +33,10 @@ This section should be maintained as the authoritative list of open decisions.
   the user trusts the workspace, and keeps serving everything else ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)).
 - ~~Boolean operator spelling.~~ Decided: both word and symbolic forms are accepted ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - ~~Assignment expression vs statement.~~ Decided: assignment is statement-only ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- ~~Bitwise and shift operators.~~ Decided: `&`, `|`, `^`, `~`, `<<` and `>>` on integers only, with a
+  shift count of any integer type ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), whose low bits are used, and no
+  overflow policy governing any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
+- ~~Operator precedence.~~ Decided: the C-family order, C#'s and C++'s ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - Evaluation order details for non-short-circuit binary operators.
 - ~~Integer overflow model.~~ Decided: wrapping ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
 - ~~Division and modulo by zero.~~ Decided: mandatory `on_zero` clause, with `fail` for the case

@@ -724,6 +724,14 @@ public sealed class CppBackend : ITestProjectScaffold
             return $"::std::divides<{TypeName(binary.ResultType)}>{{}}({left}, {right})";
         }
 
+        // C++20 defines a shift of a signed value, left and right, but only by a count from zero to
+        // one less than the width: anything else is undefined behavior. The mask is what brings every
+        // count into that range, which is also what spec 10.1 says a count means.
+        if (binary.ShiftCountMask is { } mask)
+        {
+            return $"({left} {OperatorText(binary.Operator)} ({right} & {mask}))";
+        }
+
         return $"({left} {OperatorText(binary.Operator)} {right})";
     }
 
@@ -862,7 +870,7 @@ public sealed class CppBackend : ITestProjectScaffold
                 : $"(-{operand})";
         }
 
-        return $"(!{operand})";
+        return unary.Operator == IrUnaryOperator.BitwiseNot ? $"(~{operand})" : $"(!{operand})";
     }
 
     private static string ArithmeticHelperName(IrBinaryOperator op) => op switch
@@ -1069,6 +1077,11 @@ public sealed class CppBackend : ITestProjectScaffold
         IrBinaryOperator.GreaterThanOrEqual => ">=",
         IrBinaryOperator.LogicalAnd => "&&",
         IrBinaryOperator.LogicalOr => "||",
+        IrBinaryOperator.BitwiseAnd => "&",
+        IrBinaryOperator.BitwiseOr => "|",
+        IrBinaryOperator.BitwiseXor => "^",
+        IrBinaryOperator.ShiftLeft => "<<",
+        IrBinaryOperator.ShiftRight => ">>",
         _ => throw new ArgumentOutOfRangeException(nameof(op), op, "Unhandled operator."),
     };
 

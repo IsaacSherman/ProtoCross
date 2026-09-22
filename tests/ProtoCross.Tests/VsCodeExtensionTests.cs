@@ -131,6 +131,7 @@ public class VsCodeExtensionTests
         var dotted = receiver.value.count; // trailing
         var unterminated = "no closing quote
         var android = 3 % 2 - -1;
+        var bits = ~mask & 0xFF | flags ^ 1 << 2 >> 1 & 4 < 5 > 6;
         var literals = 0xFF + 0b1010 + 1_000 + 1.5e-3 + 2E+8 + 0xE-1 - __INF * __NAN + __inf;
         var malformed = 0x_FF + 5u + 1e + 0b102 + 1_.5e+3 + 0X1F + 7.e;
         /* runs to the end

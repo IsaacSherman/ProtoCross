@@ -523,6 +523,8 @@ public sealed class Lexer
             case '*': Advance(); kind = TokenKind.Star; break;
             case '/': Advance(); kind = TokenKind.Slash; break;
             case '%': Advance(); kind = TokenKind.Percent; break;
+            case '^': Advance(); kind = TokenKind.Caret; break;
+            case '~': Advance(); kind = TokenKind.Tilde; break;
 
             case '-':
                 Advance();
@@ -573,6 +575,11 @@ public sealed class Lexer
                     Advance();
                     kind = TokenKind.LessEquals;
                 }
+                else if (Current == '<')
+                {
+                    Advance();
+                    kind = TokenKind.LessLess;
+                }
                 else
                 {
                     kind = TokenKind.Less;
@@ -580,12 +587,19 @@ public sealed class Lexer
 
                 break;
 
+            // There are no angle-bracketed type arguments for '>>' to be two closers of, so it is one
+            // token wherever it appears, as '<<' is.
             case '>':
                 Advance();
                 if (Current == '=')
                 {
                     Advance();
                     kind = TokenKind.GreaterEquals;
+                }
+                else if (Current == '>')
+                {
+                    Advance();
+                    kind = TokenKind.GreaterGreater;
                 }
                 else
                 {
@@ -603,7 +617,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Unknown;
+                    kind = TokenKind.Ampersand;
                 }
 
                 break;
@@ -617,7 +631,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Unknown;
+                    kind = TokenKind.Pipe;
                 }
 
                 break;

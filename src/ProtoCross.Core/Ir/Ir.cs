@@ -371,12 +371,18 @@ public enum IrBinaryOperator
     GreaterThanOrEqual,
     LogicalAnd,
     LogicalOr,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    ShiftLeft,
+    ShiftRight,
 }
 
 public enum IrUnaryOperator
 {
     Negate,
     LogicalNot,
+    BitwiseNot,
 }
 
 /// <summary>
@@ -399,6 +405,30 @@ public sealed record IrBinary(
     /// <inheritdoc cref="IrUnary.OverflowingType"/>
     public ScalarType? OverflowingType
         => IsArithmetic && ResultType is ScalarType { IsInteger: true } scalar ? scalar : null;
+
+    public bool IsShift => Operator is IrBinaryOperator.ShiftLeft or IrBinaryOperator.ShiftRight;
+
+    /// <summary>
+    /// What a shift's count is masked with before it is applied: the width of the value shifted,
+    /// less one. Null for anything that is not a shift of an integer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Spec 10.1 uses the count's low bits, which is the count modulo the width, whatever type the
+    /// count has and whatever its sign. The width is the value's, not the count's: <see cref="Right"/>
+    /// may have any integer type, and only the result's type says how many bits there are. C# masks
+    /// for itself but takes only an <c>int</c> count, and C++ leaves a count at or past the width
+    /// undefined, so both backends emit this mask, which is 10.1's third rule, and both ask for it
+    /// here rather than each working out the width again.
+    /// </para>
+    /// <para>
+    /// A shift carries an <see cref="ArithmeticBehavior"/> like every binary node and is governed by
+    /// none: <see cref="IsArithmetic"/> is false for it, so <see cref="OverflowingType"/> is null and
+    /// no policy is ever claimed for one.
+    /// </para>
+    /// </remarks>
+    public int? ShiftCountMask
+        => IsShift && ResultType is ScalarType { IsInteger: true } scalar ? scalar.IntegerWidth - 1 : null;
 }
 
 /// <summary>What an integer division does when its divisor is zero.</summary>

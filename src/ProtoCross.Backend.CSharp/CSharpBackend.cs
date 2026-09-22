@@ -626,8 +626,27 @@ public sealed class CSharpBackend : ITestProjectScaffold
             return $"{CSharpRuntime.TypeName}.{CSharpRuntime.Stem(binary.Behavior)}{helper}({left}, {right})";
         }
 
+        if (binary.ShiftCountMask is { } mask)
+        {
+            return $"({left} {op} {ShiftCount(binary.Right, right, mask)})";
+        }
+
         return $"({left} {op} {right})";
     }
+
+    /// <summary>A shift's count, reduced to its low bits and made the <c>int</c> C# shifts by.</summary>
+    /// <remarks>
+    /// C# masks a count itself, but only an <c>int</c> one, and a <c>long</c> or <c>ulong</c> count
+    /// has to be narrowed to reach it. Narrowing first would throw under a consumer's
+    /// <c>CheckForOverflowUnderflow</c>, so the mask comes first and the cast after it, when what is
+    /// cast is already small enough for any context. The mask is written even for an <c>int</c> count,
+    /// which C# would mask the same way unaided, because spec 10.1 puts the rule in the generated code
+    /// rather than in the target's default.
+    /// </remarks>
+    private static string ShiftCount(IrExpression count, string emitted, int mask)
+        => count.Type is ScalarType { Kind: ScalarKind.Int32 }
+            ? $"({emitted} & {mask})"
+            : $"(int)({emitted} & {mask})";
 
     private static string EmitIntegerDivision(IrIntegerDivision division, string receiverName)
     {
@@ -665,7 +684,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 : $"{CSharpRuntime.TypeName}.{CSharpRuntime.Stem(unary.Behavior)}Negate({operand})";
         }
 
-        return $"(!{operand})";
+        return unary.Operator == IrUnaryOperator.BitwiseNot ? $"(~{operand})" : $"(!{operand})";
     }
 
     /// <summary>
@@ -845,6 +864,11 @@ public sealed class CSharpBackend : ITestProjectScaffold
         IrBinaryOperator.GreaterThanOrEqual => ">=",
         IrBinaryOperator.LogicalAnd => "&&",
         IrBinaryOperator.LogicalOr => "||",
+        IrBinaryOperator.BitwiseAnd => "&",
+        IrBinaryOperator.BitwiseOr => "|",
+        IrBinaryOperator.BitwiseXor => "^",
+        IrBinaryOperator.ShiftLeft => "<<",
+        IrBinaryOperator.ShiftRight => ">>",
         _ => throw new ArgumentOutOfRangeException(nameof(op), op, "Unhandled operator."),
     };
 

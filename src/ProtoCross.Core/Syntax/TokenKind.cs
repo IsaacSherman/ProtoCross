@@ -79,4 +79,10 @@ public enum TokenKind
     GreaterEquals,
     AmpersandAmpersand,
     PipePipe,
+    Ampersand,
+    Pipe,
+    Caret,
+    Tilde,
+    LessLess,
+    GreaterGreater,
 }
