@@ -52,9 +52,11 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    more than one line.
 4. **Parse.** [`Parser.ParseCompilationUnit`](src/ProtoCross.Core/Syntax/Parser.cs) → the AST in
    [Ast.cs](src/ProtoCross.Core/Syntax/Ast.cs). Recursive descent, error-recovering, depth-budgeted
-   (`MaxNestingDepth`) because a `StackOverflowException` cannot be caught. A name it expected and
-   did not find is a [`SyntaxName`](src/ProtoCross.Core/Syntax/SyntaxName.cs) that says so, carrying
-   the empty range where the name would go.
+   (`MaxNestingDepth`) because a `StackOverflowException` cannot be caught. The budget bounds the
+   tree as well as the recursion: an expression built by a loop -- `a.b.c`, `1 + 2 + 3` -- is held
+   to it by height, because every later stage recurses over what the parser builds. A name it
+   expected and did not find is a [`SyntaxName`](src/ProtoCross.Core/Syntax/SyntaxName.cs) that
+   says so, carrying the empty range where the name would go.
 5. **No gate.** Parse errors do not stop the pipeline. A buffer being typed into is broken most of
    the time an editor asks anything about it, and what it most often asks — what may follow this
    dot — only the binder can answer.

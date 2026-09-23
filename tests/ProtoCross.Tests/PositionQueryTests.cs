@@ -547,12 +547,12 @@ public class PositionQueryTests
     }
 
     /// <summary>
-    /// The deep tree no well-formed file produces and an editor produces by accident. The parser
-    /// caps the depth it recurses to, but its postfix loop builds calls and member accesses
-    /// iteratively, so nothing caps the depth of what recovery leaves behind: 5000 unbalanced
-    /// parentheses come back as an invocation chain 2436 nodes deep. Both queries have to answer
-    /// over it without walking the stack out -- a <see cref="StackOverflowException"/> cannot be
-    /// caught, and a language server that meets one is gone rather than degraded.
+    /// The deep input no well-formed file contains and an editor produces by accident. Until #69,
+    /// 5000 unbalanced parentheses came back from recovery as an invocation chain 2436 nodes deep;
+    /// the parser now refuses that chain at its height budget, and what it leaves has to be just as
+    /// answerable. Both queries have to answer over it without walking the stack out -- a
+    /// <see cref="StackOverflowException"/> cannot be caught, and a language server that meets one
+    /// is gone rather than degraded.
     /// </summary>
     [Fact]
     public void ADeeplyRecoveredTreeIsStillAnswerable()

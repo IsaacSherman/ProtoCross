@@ -73,6 +73,9 @@ Normative Requirement:
   the block is parsed.
 - Parser recovery synthesizes missing tokens and missing names so later compiler stages can continue
   reporting useful diagnostics and editor tooling can still anchor completion points.
+- How deeply a construct may nest is bounded, and a chain of member accesses, calls, conversions,
+  operators or `else if` branches counts one level per link; see
+  [28](./§28-Security%20and%20Determinism.md#28-security-and-determinism).
 
 Open Questions:
 
