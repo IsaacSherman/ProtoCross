@@ -130,6 +130,24 @@ public class MultiSourceBindingTests
             Assert.Single(diagnostics).Message);
     }
 
+    /// <summary>
+    /// A declaration is identified by its source and its offset, so two sources with one identity
+    /// would be one source to everything downstream. That is a caller's mistake, not the program's.
+    /// </summary>
+    [Fact]
+    public void TwoSourcesWithOneIdentityAreRefused()
+    {
+        var diagnostics = new DiagnosticBag();
+        var document = SourceIdentity.Unsaved("same.pcross");
+        SourceTree[] sources =
+        [
+            Parse(document, Extend("fn a() -> int64 { return 1; }"), diagnostics),
+            Parse(document, Extend("fn b() -> int64 { return 2; }"), diagnostics),
+        ];
+
+        Assert.Throws<ArgumentException>(() => new Binder(LoadedSchemas.ExampleAndConformance, diagnostics).Bind(sources));
+    }
+
     // ------- each part knows its source
 
     /// <summary>
@@ -147,13 +165,15 @@ public class MultiSourceBindingTests
     [Fact]
     public void ASourceBoundAlongsideOthersIsExactlyWhatItIsBoundAlone()
     {
-        var byPolicy = ConformanceVectors.HandWritten.GroupBy(vector => PolicyOf(vector).Path ?? string.Empty);
+        var byPolicy = ConformanceVectors.HandWritten
+            .Select(vector => (Vector: vector, Config: PolicyOf(vector)))
+            .GroupBy(entry => entry.Config.Path ?? string.Empty);
         var swept = 0;
 
         foreach (var group in byPolicy)
         {
-            var config = PolicyOf(group.First());
-            var sources = group.Select(vector => ParseVector(vector)).ToList();
+            var config = group.First().Config;
+            var sources = group.Select(entry => ParseVector(entry.Vector)).ToList();
 
             var jointDiagnostics = new DiagnosticBag();
             var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config).Bind(sources);

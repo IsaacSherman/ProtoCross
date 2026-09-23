@@ -97,8 +97,8 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
 7. **Bind.** [`Binder.Bind`](src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
-   descriptors and produces typed IR. It binds several [`SourceTree`](src/ProtoCross.Core/SourceTree.cs)s
-   into one module as readily as one: every source's methods are declared before any body is bound,
+   descriptors and produces typed IR. It binds several sources, each a
+   [`SourceTree`](src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
    so a call or a test may reach from one source into another, and `IrModule.DeclaredIn` divides the
    module back into what each source declares. Sugar ends here: a compound assignment `x += y` is bound as the
    assignment of `x + y` to `x`, so the IR has no node for one and no backend knows it exists. It does

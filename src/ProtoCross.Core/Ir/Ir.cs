@@ -113,6 +113,10 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// it may name a declaration it does not hold. A backend needs nothing more than the call
     /// carries: the callee's signature, which says the name and receiver it is emitted by.
     /// </para>
+    /// <para>
+    /// A test with no <see cref="IrTest.Document"/>, which only a test built by hand can be, is in
+    /// no source and so in no part.
+    /// </para>
     /// </remarks>
     public IrModule DeclaredIn(SourceIdentity document)
     {

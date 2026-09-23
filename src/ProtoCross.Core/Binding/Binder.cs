@@ -126,14 +126,27 @@ public sealed partial class Binder
     /// into a file named later is the same as a call to a method written further down.
     /// </para>
     /// <para>
-    /// The second pass goes a source at a time, its bodies and then its tests, so the diagnostics
-    /// one source earns are reported together, and one source bound alone reports them in the order
-    /// it always has.
+    /// The second pass goes a source at a time, its bodies and then its tests, so what binding one
+    /// source's bodies and tests reports comes together, after what declaring every source reported.
+    /// One source bound alone reports in the order it always has.
     /// </para>
     /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// Two sources carry one identity. A declaration is identified by its source and its offset, so
+    /// two sources that are one source to the binder would share identities and could not be divided
+    /// back apart; spec 22.2 asks every caller for distinct ones.
+    /// </exception>
     public IrModule Bind(IReadOnlyList<SourceTree> sources)
     {
         ArgumentNullException.ThrowIfNull(sources);
+
+        if (sources.GroupBy(source => source.Document).FirstOrDefault(group => group.Count() > 1) is { } shared)
+        {
+            throw new ArgumentException(
+                $"'{shared.Key.Path ?? shared.Key.Name}' was given as more than one source. Give each source "
+                + "an identity of its own.",
+                nameof(sources));
+        }
 
         var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
 
