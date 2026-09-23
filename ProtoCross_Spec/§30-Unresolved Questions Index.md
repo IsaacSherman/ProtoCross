@@ -79,7 +79,10 @@ This section should be maintained as the authoritative list of open decisions.
 - Diagnostic compatibility.
 - Language version declaration.
 - Generated API compatibility.
-- Recursion and resource limits.
+- ~~Recursion and resource limits.~~ Decided for the compiler: nesting is bounded at 128 levels,
+  and a chain counts one level per link
+  ([28](./§28-Security%20and%20Determinism.md#28-security-and-determinism)). Runtime limits on
+  generated methods, and whether recursion is allowed, remain open.
 - Partial semantic model policy after descriptor-load failures and unresolved imports. Current
   implementation does not bind without usable descriptors; whether to produce a lighter semantic
   model for unresolved imports remains open.

@@ -1713,15 +1713,16 @@ public sealed partial class Binder
     {
         descriptor = null;
 
-        if (!TryFlattenName(receiver, out var typeName, out var leadingName))
+        // The leading name is settled before anything is joined, because this runs at every link of
+        // a member chain and most chains start at a value: a chain that only reads fields would
+        // otherwise build its whole dotted spelling once per link, to throw every copy away.
+        if (LeadingNameOf(receiver) is not { } leadingName
+            || IsValueName(leadingName.Name.Text, scope, context))
         {
             return false;
         }
 
-        if (IsValueName(leadingName, scope, context))
-        {
-            return false;
-        }
+        var typeName = DottedName(receiver);
 
         // A fully qualified name is unambiguous by construction, so it is tried before the
         // simple-name lookup that could report a false ambiguity.
@@ -1783,13 +1784,11 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Flattens a chain of member accesses over a bare identifier back into a dotted name, and
-    /// reports the leading identifier separately. Returns false for anything else, such as a call
-    /// or a literal at the root.
+    /// The bare identifier a chain of member accesses starts from, when the chain is a dotted name;
+    /// null for anything else, such as a call or a literal at the root.
     /// </summary>
-    private static bool TryFlattenName(Expression expression, out string name, out string leadingName)
+    private static NameExpression? LeadingNameOf(Expression expression)
     {
-        var parts = new List<string>();
         var current = expression;
 
         while (current is MemberAccessExpression member)
@@ -1798,26 +1797,33 @@ public sealed partial class Binder
             // flattened into one that happens to have an empty segment.
             if (member.Name.IsMissing)
             {
-                name = string.Empty;
-                leadingName = string.Empty;
-                return false;
+                return null;
             }
 
-            parts.Insert(0, member.Name.Text);
             current = member.Receiver;
         }
 
-        if (current is not NameExpression root)
+        return current as NameExpression;
+    }
+
+    /// <summary>
+    /// Spells a chain of member accesses over a bare identifier as the dotted name it is, once
+    /// <see cref="LeadingNameOf"/> has found that it is one.
+    /// </summary>
+    private static string DottedName(Expression expression)
+    {
+        var parts = new List<string>();
+        var current = expression;
+
+        while (current is MemberAccessExpression member)
         {
-            name = string.Empty;
-            leadingName = string.Empty;
-            return false;
+            parts.Add(member.Name.Text);
+            current = member.Receiver;
         }
 
-        parts.Insert(0, root.Name.Text);
-        name = string.Join('.', parts);
-        leadingName = root.Name.Text;
-        return true;
+        parts.Add(((NameExpression)current).Name.Text);
+        parts.Reverse();
+        return string.Join('.', parts);
     }
 
     /// <summary>Whether an identifier names a value in scope, using the same order as BindName.</summary>
@@ -1967,12 +1973,12 @@ public sealed partial class Binder
                     invocation.Span,
                     "Calling target-language functions is not permitted (spec 20).");
 
-                // The callee is deliberately not bound. It is the author's expression and a position
-                // query would like it, but descending it is not safe: the parser's nesting budget
-                // bounds its own recursion and not the chain its postfix loop builds, so a file of
-                // 5000 unbalanced parentheses recovers into 2436 nested invocations, and binding
-                // through them turns a 183ms bind into one that does not finish. The syntax tree
-                // answers about a callee that cannot be called; the IR stops at the call.
+                // The callee is not bound: it is not a receiver, and the node has no other place to
+                // hold it. It was once left alone for safety as well, when recovery from 5000
+                // unbalanced parentheses built 2436 nested invocations and binding through them
+                // did not finish. The parser now holds every expression to its height budget
+                // (spec 28), so that chain is refused rather than built. The syntax tree answers
+                // about a callee that cannot be called; the IR stops at the call.
                 return Uncallable(null);
         }
 

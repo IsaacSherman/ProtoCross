@@ -66,13 +66,14 @@ internal static class PositionSearch
     /// which is what makes ancestry free: the walk already holds it.
     /// </para>
     /// <para id="depth">
-    /// <b>The walk carries its own stack rather than using the call stack.</b> The parser's nesting
-    /// budget bounds the depth it recurses to and not the depth of the tree it produces: its postfix
-    /// loop builds member accesses and calls iteratively, so a file of 5000 unbalanced parentheses
-    /// recovers into an invocation chain 2436 nodes deep. Recursing over that is how a language
-    /// server meets a <see cref="StackOverflowException"/>, which cannot be caught and takes the
-    /// process with it. An explicit stack also keeps the cost linear: nested iterators would ask each
-    /// node for its children once per level above it.
+    /// <b>The walk carries its own stack rather than using the call stack.</b> The parser holds an
+    /// expression's height to its budget (spec 28), but it did not always: until #69, a file of 5000
+    /// unbalanced parentheses recovered into an invocation chain 2436 nodes deep, and recursing over
+    /// that is how a language server meets a <see cref="StackOverflowException"/>, which cannot be
+    /// caught and takes the process with it. A walk that owes its safety to how tall the parser lets
+    /// a tree grow is one parser change away from that crash, and this one owes it nothing. An
+    /// explicit stack also keeps the cost linear: nested iterators would ask each node for its
+    /// children once per level above it.
     /// </para>
     /// </remarks>
     public static IReadOnlyList<TNode>? Find<TNode>(

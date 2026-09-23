@@ -388,7 +388,7 @@ public static class DiagnosticCodes
 
     // ------------------------------------------------------- limits and the toolchain
 
-    /// <summary>A construct nested deeper than the parser will descend (spec 7.1).</summary>
+    /// <summary>A construct nested deeper than the parser will descend or build (spec 28).</summary>
     public static readonly DiagnosticDescriptor NestingIsTooDeep =
         new("PC0081", DiagnosticSeverity.Error, "nesting is too deep");
 
