@@ -87,26 +87,6 @@ public class MethodSignatureTests
         Assert.Equal("fn explicit() -> void", MethodNamed(module, "explicit").Signature.DisplayName);
     }
 
-    /// <summary>
-    /// Virtual says how a method is dispatched rather than how it is called, so it is not part of
-    /// the signature and must not appear in one.
-    /// </summary>
-    [Fact]
-    public void WhetherAMethodIsVirtualIsNoPartOfHowItIsCalled()
-    {
-        var module = Bind(
-            """
-            extend Outer {
-                virtual fn overridable() -> int64 { return count; }
-            }
-            """);
-
-        var method = MethodNamed(module, "overridable");
-
-        Assert.True(method.IsVirtual, "the fixture declares this method virtual");
-        Assert.DoesNotContain("virtual", method.Signature.DisplayName, StringComparison.Ordinal);
-    }
-
     [Fact]
     public void EveryMethodDescribesItselfWithItsOwnNameAndEveryParameterItTakes()
     {

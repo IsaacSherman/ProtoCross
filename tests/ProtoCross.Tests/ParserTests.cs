@@ -36,22 +36,29 @@ public class ParserTests
 
         var method = Assert.Single(extend.Methods);
         Assert.Equal("line_total_cents", method.Name.Text);
-        Assert.False(method.IsVirtual);
         Assert.Equal("int64", method.ReturnType?.Name.Text);
     }
 
+    /// <summary>
+    /// <c>virtual</c> is not a keyword (spec 17), so written before <c>fn</c> it is an identifier where a
+    /// member was expected: reported on that word alone, with the method after it parsed as usual.
+    /// </summary>
     [Fact]
-    public void ParsesVirtualMethods()
+    public void AVirtualPrefixIsAnUnexpectedMember()
     {
-        var unit = Parse(
+        const string text =
             """
             import proto "x.proto";
             extend M { virtual fn f() -> double { return 1.0; } }
-            """,
-            out var diagnostics);
+            """;
 
-        Assert.Empty(diagnostics);
-        Assert.True(unit.Extends[0].Methods[0].IsVirtual);
+        var unit = Parse(text, out var diagnostics);
+
+        var unexpected = Assert.Single(diagnostics);
+        Assert.Equal("PC0012", unexpected.Code);
+        Assert.Equal(text.IndexOf("virtual", StringComparison.Ordinal), unexpected.Span.Start.Offset);
+        Assert.Equal("virtual".Length, unexpected.Span.Length);
+        Assert.Equal("f", Assert.Single(unit.Extends[0].Methods).Name.Text);
     }
 
     [Fact]
@@ -182,8 +189,8 @@ public class ParserTests
     [Fact]
     public void ReportsFieldDeclarationInsideExtendBlock()
     {
-        // Spec 17.1 shows a field declared inside an extend block, but a ProtoCross-only field has
-        // no wire representation, so this compiler rejects it.
+        // A ProtoCross-only field would have no wire representation, so a field declared inside an
+        // extend block is rejected rather than generated.
         Parse(
             """
             import proto "x.proto";
@@ -817,6 +824,22 @@ public class ParserTests
                 foreach (var name in Names(assignment.Target).Concat(Names(assignment.Value)))
                 {
                     yield return name;
+                }
+
+                break;
+
+            case CompoundAssignmentStatement assignment:
+                foreach (var name in Names(assignment.Target).Concat(Names(assignment.Value)))
+                {
+                    yield return name;
+                }
+
+                if (assignment.OnZero?.Fallback is { } compoundFallback)
+                {
+                    foreach (var name in Names(compoundFallback))
+                    {
+                        yield return name;
+                    }
                 }
 
                 break;

@@ -8,7 +8,7 @@ The language currently includes:
 - Local, loop-binding, parameter, and implicit receiver field references.
 - Field access through `.`.
 - Method calls on message receivers.
-- Arithmetic, boolean, and comparison expressions.
+- Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
 - Parenthesized expressions.
@@ -19,6 +19,9 @@ Not implemented:
 - Indexing.
 - Message literals in ordinary method bodies.
 - Bytes literals.
+- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Each can be written today with a
+  comparison, and how an intrinsic is named and found belongs with the open question of top-level
+  functions ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar)).
 
 ### 9.2 Operators
 
@@ -29,8 +32,10 @@ Implemented operator set:
 == != < <= > >=
 and or not
 && || !
+&  |  ^  ~  <<  >>
 has
 =
++=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 ```
 
 `has` is a prefix operator on a field, producing `bool` ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). It sits at the same precedence as
@@ -40,8 +45,86 @@ value is exactly what it must not do.
 Normative Requirements:
 
 - Both word and symbolic boolean operators are accepted: `and`/`&&`, `or`/`||`, and `not`/`!`.
-- Assignment is a statement only.
-- `%` is included and follows the same `on_zero` rule as integer `/`.
+- Assignment is a statement only, and so is a compound assignment.
+- On integer operands, `%` follows the same `on_zero` rule as integer `/`. On floating-point
+  operands it is the truncated remainder of [10.2](./§10-Numeric%20Semantics.md#102-division), which cannot fail and takes no clause.
+
+**Decided: the C-family precedence order.**
+
+From the tightest binding to the loosest. Every binary operator is left-associative.
+
+| Operators | Kind |
+|---|---|
+| `-` `not` `!` `~` `has` | Prefix |
+| `as` | Conversion ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)) |
+| `*` `/` `%` | Multiplicative |
+| `+` `-` | Additive |
+| `<<` `>>` | Shift |
+| `<` `<=` `>` `>=` | Relational |
+| `==` `!=` | Equality |
+| `&` | Bitwise and |
+| `^` | Bitwise exclusive or |
+| `\|` | Bitwise or |
+| `and` `&&` | Logical and |
+| `or` `\|\|` | Logical or |
+
+It is the order C# and C++ both use, so an expression means what a reader of either target already
+takes it to mean. The cost is the one C pays: a comparison binds tighter than `&`, `^` and `|`, so
+`x & mask == 0` is `x & (mask == 0)`. That is a type error rather than a change of meaning, because a
+comparison is a `bool` and a bitwise operand is an integer (`PC0085`), and its help says to write
+`(x & mask) == 0`.
+
+**Decided: bitwise and shift operators on integers only.**
+
+Normative Requirements:
+
+- `&`, `|`, `^` and `~` take integer operands, and nothing else: `PC0085` for a binary operator and
+  `PC0086` for `~`. A `bool` is not a bit, and two of them combine through the logical operators,
+  which a `bool` operand's help names.
+- The two operands of `&`, `|` and `^` must have the same type, as for every other binary operator
+  (`PC0048`), and the result has that type.
+- `<<` and `>>` shift an integer value by an integer count. **The count may have any integer type,
+  whatever the value's is**, because it is a count and not an operand of the arithmetic. The result
+  has the value's type. What a count means, and what a shift does at the width, is
+  [10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)'s.
+- Neither side of a shift is offered the other's type. A literal value adopts the type expected of
+  the shift, and a literal count takes its natural type
+  ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). So in `1 << bit`, where `bit` is
+  an `int32` and a `uint64` is expected, the `1` is a `uint64`; and where `x` is an `int32`,
+  `x << 3000000001` shifts it by 1, where a count that took the value's type would be out of range.
+- A literal operand of a bitwise or shift operator adopts the type expected of the result only where
+  that is an integer type. Where a `double` is expected of `1 & 3`, the literals stay `int64`, and what
+  is reported is that the result is not a `double`, rather than that `&` cannot take one.
+- No overflow policy governs any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
+
+**Decided: compound assignment is sugar for its long form.**
+
+`x op= y` stores `x op y` in `x`, for each arithmetic, bitwise and shift operator: `+=`, `-=`, `*=`,
+`/=`, `%=`, `&=`, `|=`, `^=`, `<<=` and `>>=`.
+
+Normative Requirements:
+
+- A compound assignment means exactly what its long form `x = x op (y)` means: the same operand
+  rules, the same literal typing, the same overflow policy ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) and the same
+  refusals. It is bound as that long form, so no backend sees anything else, and each emits for it
+  what it emits for the long form.
+- **The right side is one operand**, however loosely its own operators bind: `x *= a + b` is
+  `x = x * (a + b)`, and `x &= a | b` is `x = x & (a | b)`.
+- The target rule is `=`'s. Only a local variable can be assigned ([18](./§18-Mutability.md#18-mutability)), and any other
+  target is `PC0034`.
+- An integer `/=` or `%=` takes an `on_zero` clause after its divisor, as `/` and `%` do
+  ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)): `x /= d on_zero 0;`. The clause binds to the division it follows,
+  so a divisor with an operator of its own is parenthesized. In `x /= a + b on_zero 0` the clause
+  follows the `+`, which cannot take one (`PC0015`), and leaves the `/=` without one (`PC0054`);
+  `x /= (a + b) on_zero 0` is what was meant. A divisor that is a non-zero literal needs no clause.
+- A literal on the right takes the target's type, as it would beside the target in the long form,
+  and a shift count keeps its own ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- A diagnostic about the operation names the operator as it was written:
+  `Cannot apply '+=' to 'int64' and 'double'`. No logical operator and no comparison has a
+  compound form, so `&=`, `|=` and `^=` on two `bool`s are `PC0085`, and the help writes the long
+  form out with `and`, `or` or `!=`.
+- The target is one name written once, and is recorded once, as a write
+  ([22.3](./§22-IR%20and%20Compiler%20Architecture.md#223-what-a-compilation-answers)), although the operation it stands for reads it too.
 
 ### 9.3 Evaluation Order
 
@@ -55,6 +138,8 @@ Current defined subset:
 - Method call arguments evaluate left to right.
 - Boolean `and` and `or` short-circuit left to right.
 - Assignment evaluates the right-hand side before storing the result.
+- A compound assignment reads its target, evaluates its right side, and then stores. Reading a
+  local cannot fail and nothing on the right can change one, so no program can observe that order.
 
 Open Question:
 

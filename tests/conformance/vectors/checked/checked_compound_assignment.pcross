@@ -1,0 +1,131 @@
+// Conformance vectors for compound assignment under the checked overflow policy (spec 9.2, 10.1).
+//
+// A compound assignment is the operation it abbreviates, so the policy governing that operation
+// governs it too: past a bound it terminates, and where no policy governs the operation -- a shift --
+// it does not. Every target starts from a fixture field, so the compiler cannot fold the overflow
+// away.
+
+import proto "checked_compound_assignment.proto";
+
+extend CheckedCompoundCase {
+    fn i32_increased() -> int32 {
+        var total = i32;
+        total += amount;
+        return total;
+    }
+
+    fn u32_decreased() -> uint32 {
+        var total = u32;
+        total -= 1;
+        return total;
+    }
+
+    fn i64_doubled() -> int64 {
+        var total = i64;
+        total *= 2;
+        return total;
+    }
+
+    // MIN / -1 is the one division that overflows. A zero divisor is not an overflow, and takes the
+    // fallback under every policy.
+    fn i64_divided() -> int64 {
+        var total = i64;
+        total /= divisor on_zero 0;
+        return total;
+    }
+
+    fn u64_increased() -> uint64 {
+        var total = u64;
+        total += u64;
+        return total;
+    }
+
+    fn i32_shifted_left() -> int32 {
+        var total = i32;
+        total <<= 1;
+        return total;
+    }
+}
+
+// --- values that fit are stored ---
+
+test CheckedCompoundCase.i32_increased "an addition that reaches MAX is stored" {
+    receiver {
+        i32 = 2147483646;
+        amount = 1;
+    }
+
+    expect return 2147483647;
+}
+
+test CheckedCompoundCase.i64_divided "a zero divisor stores the fallback" {
+    receiver {
+        i64 = -9223372036854775808;
+        divisor = 0;
+    }
+
+    expect return 0;
+}
+
+// --- values that do not fit stop the process ---
+
+test CheckedCompoundCase.i32_increased "int32 addition past MAX terminates" {
+    receiver {
+        i32 = 2147483647;
+        amount = 1;
+    }
+
+    expect fail;
+}
+
+test CheckedCompoundCase.i32_increased "int32 addition past MIN terminates" {
+    receiver {
+        i32 = -2147483648;
+        amount = -1;
+    }
+
+    expect fail;
+}
+
+test CheckedCompoundCase.u32_decreased "uint32 subtraction below zero terminates" {
+    receiver {
+        u32 = 0;
+    }
+
+    expect fail;
+}
+
+test CheckedCompoundCase.i64_doubled "int64 multiplication past MAX terminates" {
+    receiver {
+        i64 = 4611686018427387904;
+    }
+
+    expect fail;
+}
+
+test CheckedCompoundCase.i64_divided "int64 MIN divided by -1 terminates" {
+    receiver {
+        i64 = -9223372036854775808;
+        divisor = -1;
+    }
+
+    expect fail;
+}
+
+test CheckedCompoundCase.u64_increased "uint64 addition past MAX terminates" {
+    receiver {
+        u64 = 9223372036854775808;
+    }
+
+    expect fail;
+}
+
+// --- a shift is governed by no policy ---
+
+test CheckedCompoundCase.i32_shifted_left "int32 MAX shifted left discards the top bit" {
+    receiver {
+        i32 = 2147483647;
+    }
+
+    expect return -2;
+}

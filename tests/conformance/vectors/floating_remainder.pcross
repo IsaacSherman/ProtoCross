@@ -1,0 +1,129 @@
+// Conformance vectors for % on floating-point operands.
+//
+// The remainder is the one a truncating division leaves: x - trunc(x / y) * y, computed exactly,
+// so it carries the sign of the dividend. Like floating-point division it cannot fail, so no
+// on_zero clause is allowed; a zero divisor or an infinite dividend yields NaN, and an infinite
+// divisor leaves the dividend unchanged. A NaN operand yields NaN.
+//
+// Infinities and NaN are fixture values, written as __INF and __NAN (spec 6.6), so every operand
+// still arrives at run time and these vectors stay about the remainder. Negative zero is checked
+// through the property that identifies it, because an expectation of 0.0 is met by -0.0 (spec
+// 25.3): a zero is negative when dividing by it yields a negative infinity.
+
+import proto "floating_remainder.proto";
+
+extend RemainderCase {
+    fn remainder() -> double {
+        return dividend % divisor;
+    }
+
+    fn narrow_remainder() -> float {
+        return narrow_dividend % narrow_divisor;
+    }
+
+    fn is_negative_zero() -> bool {
+        var r: double = dividend % divisor;
+        return r == 0.0 and 1.0 / r < 0.0;
+    }
+}
+
+test RemainderCase.remainder "the remainder of positive operands" {
+    receiver {
+        dividend = 7.5;
+        divisor = 2.0;
+    }
+
+    expect return 1.5;
+}
+
+test RemainderCase.remainder "the remainder takes the sign of a negative dividend" {
+    receiver {
+        dividend = -7.5;
+        divisor = 2.0;
+    }
+
+    expect return -1.5;
+}
+
+test RemainderCase.remainder "the sign of the divisor does not reach the remainder" {
+    receiver {
+        dividend = 7.5;
+        divisor = -2.0;
+    }
+
+    expect return 1.5;
+}
+
+// 10^20 is exactly representable and leaves 1 when divided by 3. Computing x - trunc(x / y) * y
+// in floating point rounds the quotient and gets this wrong, so it pins an exact remainder.
+test RemainderCase.remainder "the remainder is exact for a dividend far larger than the divisor" {
+    receiver {
+        dividend = 1e20;
+        divisor = 3.0;
+    }
+
+    expect return 1.0;
+}
+
+test RemainderCase.is_negative_zero "an exact negative multiple leaves a negative zero" {
+    receiver {
+        dividend = -4.0;
+        divisor = 2.0;
+    }
+
+    expect return true;
+}
+
+test RemainderCase.remainder "the remainder by zero is NaN" {
+    receiver {
+        dividend = 7.5;
+        divisor = 0.0;
+    }
+
+    expect return __NAN;
+}
+
+test RemainderCase.remainder "the remainder of an infinity is NaN" {
+    receiver {
+        dividend = __INF;
+        divisor = 2.0;
+    }
+
+    expect return __NAN;
+}
+
+test RemainderCase.remainder "the remainder by an infinity is the dividend" {
+    receiver {
+        dividend = -7.5;
+        divisor = __INF;
+    }
+
+    expect return -7.5;
+}
+
+test RemainderCase.remainder "the sign of an infinite divisor does not matter" {
+    receiver {
+        dividend = 7.5;
+        divisor = -__INF;
+    }
+
+    expect return 7.5;
+}
+
+test RemainderCase.remainder "the remainder of a NaN is NaN" {
+    receiver {
+        dividend = __NAN;
+        divisor = 2.0;
+    }
+
+    expect return __NAN;
+}
+
+test RemainderCase.narrow_remainder "float remainder follows the same rules as double" {
+    receiver {
+        narrow_dividend = -7.5;
+        narrow_divisor = 2.0;
+    }
+
+    expect return -1.5;
+}

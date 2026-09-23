@@ -1,0 +1,161 @@
+// Conformance vectors for messages, enums, and enum values whose names C++ cannot use as they stand
+// (spec 24.2).
+//
+// Nothing here is special to ProtoCross: New, Swap, union and a value called new are names like any
+// other. They are special to protoc's C++ generator, which escapes a type's flattened name when it
+// is a keyword or a member every generated message declares, names a nested type after its escaped
+// parent, and escapes each enum value before prefixing it. A backend that spells these after the
+// .proto file instead of after the generated header emits C++ that does not compile.
+//
+// So every place the C++ backend writes a type or a value is reached: the receiver of every method
+// and fixture, a nested message and a keyword-named message as locals, a top-level and a nested
+// enum as parameters, returns and comparands, and each kind of value set in a fixture.
+
+import proto "keyword_types.proto";
+
+extend New {
+    // A nested enum under an escaped parent, and a value that is a keyword: New__Kind_class_.
+    fn kind_is_class() -> bool {
+        return kind == Kind.class;
+    }
+
+    // A top-level enum's values sit at namespace scope, bare but each one escaped: new_.
+    fn mode_is_new() -> bool {
+        return mode == Swap.new;
+    }
+
+    fn mode_is_null() -> bool {
+        return mode == Swap.NULL;
+    }
+
+    // The enum as a parameter type, and a call that passes a keyword-named value to it.
+    fn mode_matches(candidate: Swap) -> bool {
+        return candidate == mode;
+    }
+
+    fn mode_is_delete() -> bool {
+        return mode_matches(Swap.delete);
+    }
+
+    // The enum as a return type, from a branch that names both of its keyword values.
+    fn flipped_mode() -> Swap {
+        if mode == Swap.new {
+            return Swap.delete;
+        }
+
+        return Swap.new;
+    }
+
+    fn current_kind() -> Kind {
+        return kind;
+    }
+
+    // A nested message under an escaped parent, as an explicitly typed local: New__Inner.
+    fn inner_value() -> int64 {
+        if not has inner {
+            return -1;
+        }
+
+        var copy: Inner = inner;
+        return copy.value;
+    }
+
+    // A message whose own name is a keyword, as an explicitly typed local: union_.
+    fn pair_value() -> int64 {
+        if not has pair {
+            return -1;
+        }
+
+        var copy: union = pair;
+        return copy.value;
+    }
+}
+
+test New.kind_is_class "a nested enum value named class compares equal to itself" {
+    receiver {
+        kind = Kind.class;
+    }
+
+    expect return true;
+}
+
+test New.kind_is_class "a nested enum value named class is told apart from another" {
+    receiver {
+        kind = Kind.KIND_PLAIN;
+    }
+
+    expect return false;
+}
+
+test New.mode_is_new "a top-level enum value named new is the default" {
+    receiver {
+        inner { value = 1; }
+    }
+
+    expect return true;
+}
+
+test New.mode_is_null "a top-level enum value named NULL is set and read back" {
+    receiver {
+        mode = Swap.NULL;
+    }
+
+    expect return true;
+}
+
+test New.mode_is_delete "a value named delete is passed as an argument" {
+    receiver {
+        mode = Swap.delete;
+    }
+
+    expect return true;
+}
+
+test New.mode_matches "a value named delete is given as a test argument" {
+    receiver {
+        mode = Swap.delete;
+    }
+
+    arg candidate = Swap.delete;
+    expect return true;
+}
+
+test New.flipped_mode "a value named delete is returned" {
+    receiver {
+        mode = Swap.new;
+    }
+
+    expect return Swap.delete;
+}
+
+test New.flipped_mode "a value named new is returned" {
+    receiver {
+        mode = Swap.delete;
+    }
+
+    expect return Swap.new;
+}
+
+test New.current_kind "a nested enum value named class is returned" {
+    receiver {
+        kind = Kind.class;
+    }
+
+    expect return Kind.class;
+}
+
+test New.inner_value "reads a nested message whose parent's name is escaped" {
+    receiver {
+        inner { value = 5; }
+    }
+
+    expect return 5;
+}
+
+test New.pair_value "reads a message whose own name is a keyword" {
+    receiver {
+        pair { value = 7; }
+    }
+
+    expect return 7;
+}

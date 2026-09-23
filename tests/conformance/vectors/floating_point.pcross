@@ -1,45 +1,22 @@
 // Conformance vectors for IEEE 754 floating-point division.
 //
 // Unlike integer division, floating-point division by zero has a defined answer, so ProtoCross
-// leaves it alone and no on_zero clause is allowed. The answer is an infinity or a NaN, and
-// ProtoCross has no literal for either, so each vector returns a predicate instead. That also keeps
-// the declared expectation language-independent, which is what spec 25.2 asks for.
-//
-// The infinity predicate is 'q == q * 2.0', which no finite non-zero value satisfies, guarded by
-// the sign so positive and negative infinity are told apart. The NaN predicates use the defining
-// property that every comparison involving a NaN is false, including equality with itself.
+// leaves it alone and no on_zero clause is allowed. The answer is an infinity or a NaN, and each
+// vector expects it as the literal it is: __INF, -__INF or __NAN (spec 6.6). A NaN expectation is
+// met by any NaN (spec 25.3), which is why what a NaN does in a comparison is pinned separately,
+// by a predicate: an expectation cannot be used to ask about ==.
 
-import proto "conformance.proto";
+import proto "floating_point.proto";
 
 extend FloatCase {
-    fn is_positive_infinity() -> bool {
-        var q: double = numerator / denominator;
-        return q > 0.0 and q == q * 2.0;
-    }
-
-    fn is_negative_infinity() -> bool {
-        var q: double = numerator / denominator;
-        return q < 0.0 and q == q * 2.0;
-    }
-
-    fn is_nan() -> bool {
-        var q: double = numerator / denominator;
-        return q != q;
-    }
-
-    // Every ordered comparison against a NaN is false, and so is equality.
+    // Every ordered comparison against a NaN is false, and so is equality, even with itself.
     fn nan_compares_false() -> bool {
         var q: double = numerator / denominator;
-        return not (q < 0.0) and not (q > 0.0) and not (q == 0.0);
+        return not (q < 0.0) and not (q > 0.0) and not (q == 0.0) and q != q;
     }
 
     fn quotient() -> double {
         return numerator / denominator;
-    }
-
-    fn narrow_is_nan() -> bool {
-        var q: float = narrow_numerator / narrow_denominator;
-        return q != q;
     }
 
     fn narrow_quotient() -> float {
@@ -47,31 +24,31 @@ extend FloatCase {
     }
 }
 
-test FloatCase.is_positive_infinity "dividing a positive value by zero yields positive infinity" {
+test FloatCase.quotient "dividing a positive value by zero yields positive infinity" {
     receiver {
         numerator = 1.0;
         denominator = 0.0;
     }
 
-    expect return true;
+    expect return __INF;
 }
 
-test FloatCase.is_negative_infinity "dividing a negative value by zero yields negative infinity" {
+test FloatCase.quotient "dividing a negative value by zero yields negative infinity" {
     receiver {
         numerator = -1.0;
         denominator = 0.0;
     }
 
-    expect return true;
+    expect return -__INF;
 }
 
-test FloatCase.is_nan "zero divided by zero yields NaN" {
+test FloatCase.quotient "zero divided by zero yields NaN" {
     receiver {
         numerator = 0.0;
         denominator = 0.0;
     }
 
-    expect return true;
+    expect return __NAN;
 }
 
 test FloatCase.nan_compares_false "every comparison against NaN is false" {
@@ -83,24 +60,6 @@ test FloatCase.nan_compares_false "every comparison against NaN is false" {
     expect return true;
 }
 
-test FloatCase.is_positive_infinity "an ordinary quotient is not an infinity" {
-    receiver {
-        numerator = 1.0;
-        denominator = 4.0;
-    }
-
-    expect return false;
-}
-
-test FloatCase.is_nan "an ordinary quotient is not a NaN" {
-    receiver {
-        numerator = 1.0;
-        denominator = 4.0;
-    }
-
-    expect return false;
-}
-
 test FloatCase.quotient "double division is exact for a power of two" {
     receiver {
         numerator = 1.0;
@@ -110,13 +69,13 @@ test FloatCase.quotient "double division is exact for a power of two" {
     expect return 0.25;
 }
 
-test FloatCase.narrow_is_nan "float division follows the same rules as double" {
+test FloatCase.narrow_quotient "float division follows the same rules as double" {
     receiver {
         narrow_numerator = 0.0;
         narrow_denominator = 0.0;
     }
 
-    expect return true;
+    expect return __NAN;
 }
 
 test FloatCase.narrow_quotient "float division is exact for a power of two" {

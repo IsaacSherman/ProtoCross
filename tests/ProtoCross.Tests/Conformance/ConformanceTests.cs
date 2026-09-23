@@ -18,6 +18,23 @@ public class ConformanceVectorTests
             $"No conformance vectors were found under {ConformanceVectors.VectorDirectory}.");
     }
 
+    /// <summary>
+    /// Every schema the corpus generates must load before individual vectors can prove their own
+    /// behavior. A malformed shared schema otherwise turns each vector's binding failure into the
+    /// first indication of the same problem.
+    /// </summary>
+    [Fact]
+    public void EveryConformanceSchemaLoads()
+    {
+        var imports = ConformanceVectors.SchemaFileNames
+            .Select(name => $"import proto \"{name}\";{Environment.NewLine}");
+        var result = Compilation.Compile(
+            TestPaths.WriteTempScript(string.Concat(imports)),
+            [ConformanceVectors.ProtoDirectory]);
+
+        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+    }
+
     [Theory]
     [MemberData(nameof(Names))]
     public void EveryVectorCompilesAndDeclaresTests(string name)
@@ -39,27 +56,36 @@ public class ConformanceVectorTests
     {
         // Every vector is compiled into one C# assembly, and the backend names its extension class
         // after the receiver. Two vectors sharing a receiver would emit that class twice.
-        var receivers = ConformanceVectors.Compile(ConformanceVectors.ByName(name))
-            .Module!.Methods
-            .Select(method => method.Receiver.FullName)
-            .Distinct(StringComparer.Ordinal);
-
-        var others = ConformanceVectors.All
-            .Where(vector => !string.Equals(vector.Name, name, StringComparison.Ordinal))
-            .SelectMany(vector => ConformanceVectors.Compile(vector).Module!.Methods)
-            .Select(method => method.Receiver.FullName)
+        var others = Receivers.Value
+            .Where(entry => !string.Equals(entry.Key, name, StringComparison.Ordinal))
+            .SelectMany(entry => entry.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var receiver in receivers)
+        foreach (var receiver in Receivers.Value[name])
         {
             Assert.False(
                 others.Contains(receiver),
                 $"'{name}' extends '{receiver}', which another vector also extends. Give each vector "
-                + "its own message in conformance.proto.");
+                + "its own message, in its own schema.");
         }
     }
 
     public static TheoryData<string> Names => ConformanceVectors.Names;
+
+    /// <summary>The messages each vector extends, by vector name.</summary>
+    /// <remarks>
+    /// Compiled once for the whole theory. Each case compiling every other vector made the theory
+    /// quadratic in the corpus, which went unnoticed until the generated vectors made compiling one
+    /// take a noticeable fraction of a second.
+    /// </remarks>
+    private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> Receivers = new(() =>
+        ConformanceVectors.All.ToDictionary(
+            vector => vector.Name,
+            vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
+                .Select(method => method.Receiver.FullName)
+                .Distinct(StringComparer.Ordinal)
+                .ToList(),
+            StringComparer.Ordinal));
 }
 
 /// <summary>

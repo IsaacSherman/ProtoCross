@@ -49,7 +49,7 @@ public class MissingProtocTests
         var diagnostics = new DiagnosticBag();
         var failure = new DescriptorLoadException("Could not find a 'protoc' executable.");
 
-        diagnostics.Error("PC0003", "protobuf schema could not be loaded", failure.Message, SourceSpan.None);
+        diagnostics.Report(DiagnosticCodes.SchemaLoadFailed, failure.Message, SourceSpan.None);
 
         return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, [], [])
         {

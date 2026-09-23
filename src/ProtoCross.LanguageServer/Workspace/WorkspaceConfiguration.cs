@@ -402,9 +402,8 @@ public sealed record WorkspaceConfiguration
             return true;
         }
 
-        diagnostics.Warning(
-            "PC2105",
-            "protoc not found where it was named",
+        diagnostics.Report(
+            HostDiagnosticCodes.ProtocNotFoundWhereItWasNamed,
             $"'{stated}' does not name a protoc that exists, so {origin} is being ignored.",
             Span(scope),
             "Give the full path to a protoc executable, or remove the setting and let the compiler "
@@ -468,9 +467,8 @@ public sealed record WorkspaceConfiguration
 
             if (!File.Exists(path))
             {
-                diagnostics.Warning(
-                    "PC2104",
-                    "configuration file not found",
+                diagnostics.Report(
+                    HostDiagnosticCodes.ConfigurationFileNotFound,
                     $"'{stated}' does not name a file that exists, so {ProtoCrossSettings.ConfigPathKey} "
                         + "is being ignored.",
                     Span(scope),
@@ -561,9 +559,8 @@ public sealed record WorkspaceConfiguration
             ? "It was rejected without a reason being recorded, which is itself a defect worth reporting."
             : $"{Count(reasons.Count, "problem")} in it: {string.Join("; ", reasons.Select(Quote))}.";
 
-        diagnostics.Error(
-            "PC2106",
-            "configuration file refused",
+        diagnostics.Report(
+            HostDiagnosticCodes.ConfigurationFileRefused,
             $"'{path}', {howItWasChosen}, could not be read, so this document has no language policy. "
                 + $"{detail} Nothing is compiled for this document until the file is fixed -- falling "
                 + "back to the defaults would silently generate code the project did not ask for.",
@@ -603,9 +600,8 @@ public sealed record WorkspaceConfiguration
         {
             if (scope.BaseDirectory is not { } baseDirectory)
             {
-                diagnostics.Warning(
-                    "PC2103",
-                    "relative path has nothing to resolve against",
+                diagnostics.Report(
+                    HostDiagnosticCodes.PathCouldNotBeUsed,
                     $"'{stated}' in {origin} is relative, and {scope.Source.Describe()} has no directory "
                         + "to resolve it against, so it is being ignored.",
                     Span(scope),
@@ -625,9 +621,8 @@ public sealed record WorkspaceConfiguration
         catch (Exception ex)
             when (ex is ArgumentException or PathTooLongException or NotSupportedException or IOException)
         {
-            diagnostics.Warning(
-                "PC2103",
-                "path could not be used",
+            diagnostics.Report(
+                HostDiagnosticCodes.PathCouldNotBeUsed,
                 $"'{stated}' in {origin} could not be resolved to a path: {ex.Message} It is being ignored.",
                 Span(scope));
             return false;

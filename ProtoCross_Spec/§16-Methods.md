@@ -17,7 +17,8 @@ Normative Requirements:
 - All ProtoCross-defined methods are public.
 - Method behavior must not depend on target-language inheritance.
 - Method names share a namespace with protobuf fields on the receiver. A method whose name collides
-  with a field is `PC0023`.
+  with a field is `PC0023`. An extension declared inside the receiver is not one of its fields
+  ([13.4](./§13-Messages.md#134-extensions)), so a method may take its name.
 - Overloading is not supported. Two methods with the same name on the same receiver are `PC0022`,
   even if their parameter lists differ.
 - A method whose declaration is syntactically incomplete may still be bound into a partial semantic

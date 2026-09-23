@@ -4,8 +4,9 @@ namespace ProtoCross.Syntax;
 
 /// <summary>
 /// A lexed token. <paramref name="Text"/> is the raw source text; <paramref name="Value"/>
-/// carries the decoded value for literals (a <see cref="long"/>, <see cref="double"/>, or
-/// <see cref="string"/>) and is null otherwise.
+/// carries the decoded value for literals and is null otherwise: a <see cref="ulong"/> for an integer
+/// literal, which is its magnitude, since a sign is never part of the token; a
+/// <see cref="FloatingPointValue"/> for a floating-point one; and a <see cref="string"/> for a string.
 /// </summary>
 public sealed record Token(TokenKind Kind, string Text, SourceSpan Span, object? Value = null)
 {
@@ -40,6 +41,22 @@ public static class TokenKindExtensions
         [TokenKind.GreaterEquals] = ">=",
         [TokenKind.AmpersandAmpersand] = "&&",
         [TokenKind.PipePipe] = "||",
+        [TokenKind.Ampersand] = "&",
+        [TokenKind.Pipe] = "|",
+        [TokenKind.Caret] = "^",
+        [TokenKind.Tilde] = "~",
+        [TokenKind.LessLess] = "<<",
+        [TokenKind.GreaterGreater] = ">>",
+        [TokenKind.PlusEquals] = "+=",
+        [TokenKind.MinusEquals] = "-=",
+        [TokenKind.StarEquals] = "*=",
+        [TokenKind.SlashEquals] = "/=",
+        [TokenKind.PercentEquals] = "%=",
+        [TokenKind.AmpersandEquals] = "&=",
+        [TokenKind.PipeEquals] = "|=",
+        [TokenKind.CaretEquals] = "^=",
+        [TokenKind.LessLessEquals] = "<<=",
+        [TokenKind.GreaterGreaterEquals] = ">>=",
         [TokenKind.OnZero] = "on_zero",
         [TokenKind.Identifier] = "identifier",
         [TokenKind.IntegerLiteral] = "integer literal",

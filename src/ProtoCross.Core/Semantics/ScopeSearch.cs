@@ -1,4 +1,5 @@
 using Google.Protobuf.Reflection;
+using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Symbols;
@@ -141,7 +142,7 @@ internal static class ScopeSearch
     {
         var taken = declared.Select(name => name.Name).ToHashSet(StringComparer.Ordinal);
 
-        return receiver.Fields.InDeclarationOrder()
+        return MessageFields.InDeclarationOrder(receiver)
             .Where(field => !field.IsMap && !taken.Contains(field.Name))
             .Select(field => new VisibleName(
                 SymbolId.ForField(field),

@@ -275,9 +275,8 @@ public sealed record ProtoCrossSettings
 
         if (PolicyKeyFor(value.Key) is { } policyKey)
         {
-            diagnostics.Warning(
-                "PC2101",
-                "editor setting ignored",
+            diagnostics.Report(
+                HostDiagnosticCodes.EditorSettingIgnored,
                 $"'{value.Key}' is being ignored: language policy is stated in {ProjectConfig.FileName}, "
                     + "not in editor settings.",
                 span,
@@ -287,9 +286,8 @@ public sealed record ProtoCrossSettings
             return;
         }
 
-        diagnostics.Warning(
-            "PC2102",
-            "unknown editor setting",
+        diagnostics.Report(
+            HostDiagnosticCodes.UnknownEditorSetting,
             $"'{value.Key}' is not a setting this server understands, so it is being ignored.",
             span,
             $"Settings this server reads: {string.Join(", ", Keys)}.");

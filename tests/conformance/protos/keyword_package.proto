@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+// keyword_package.pcross -- a package whose components C++ cannot use as namespace names
+// (spec 24.2).
+//
+// protoc's C++ generator escapes each component of a package on its own, so everything declared
+// here lives in ::protocross::conformance::namespace_::default_. C# PascalCases the same components
+// into Protocross.Conformance.Namespace.Default, which needs no escaping at all.
+package protocross.conformance.namespace.default;
+
+enum PackageLevel {
+  PACKAGE_LEVEL_UNSPECIFIED = 0;
+  PACKAGE_LEVEL_HIGH = 1;
+}
+
+message KeywordPackageCase {
+  int64 count = 1;
+  PackageLevel level = 2;
+  KeywordPackageInner inner = 3;
+}
+
+message KeywordPackageInner {
+  int64 value = 1;
+}

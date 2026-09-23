@@ -47,6 +47,8 @@ Normative Requirements:
 - `bytes` is a valid type and field value type. The language currently has no bytes literal and no
   bytes-specific operators.
 - Floating-point behavior is covered by the numeric rules in 10.
+- There are no 8- or 16-bit integer types. **Post-1.0.** Protobuf has no scalar of either width, so
+  no field could hold one, and a value of one could exist only as a local between two conversions.
 
 Open Question:
 

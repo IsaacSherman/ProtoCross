@@ -1,0 +1,150 @@
+// Conformance vectors for protobuf fields whose C# property protoc renames (spec 24.1).
+//
+// None of these names means anything special to ProtoCross, and C# has no trouble with any of them
+// as identifiers. The trouble is that protoc's C# generator does not name the property after the
+// field alone: a property that would be called after its own message, or after a member every
+// generated message declares, gets an underscore -- 'Descriptor_', 'PropertyNameCase_' -- and a
+// letter after a digit is capitalized, so 'field1a' is 'Field1A'. The presence test is 'Has' on the
+// renamed property, 'HasClone_'. A backend that PascalCases the field name and stops there names a
+// property that does not exist.
+//
+// So each method reads one field by one shape, and the fixtures set every one of them through the
+// same renamed property.
+
+import proto "property_names.proto";
+
+extend PropertyNameCase {
+    fn own_name_value() -> int64 {
+        return property_name_case;
+    }
+
+    // A message-typed field named after a generated member, its presence, and a field inside it
+    // named after the message that declares it.
+    fn descriptor_inner() -> int64 {
+        if has descriptor {
+            return descriptor.property_name_inner;
+        }
+
+        return -1;
+    }
+
+    fn types_total() -> int64 {
+        var total: int64 = 0;
+
+        for value in types {
+            total = total + value;
+        }
+
+        return total;
+    }
+
+    fn parser_total() -> int64 {
+        var total: int64 = 0;
+
+        for entry in parser {
+            total = total + entry.property_name_inner;
+        }
+
+        return total;
+    }
+
+    // Explicit presence on a scalar, so 'has' reaches HasClone_ as well.
+    fn clone_is_set() -> bool {
+        return has clone;
+    }
+
+    fn after_digit_value() -> int64 {
+        return field1a;
+    }
+
+    fn retry2x_is_set() -> bool {
+        return has retry2x;
+    }
+
+    fn leading_digit_value() -> int64 {
+        return _1st;
+    }
+}
+
+test PropertyNameCase.own_name_value "reads a field named after its own message" {
+    receiver {
+        property_name_case = 3;
+    }
+
+    expect return 3;
+}
+
+test PropertyNameCase.descriptor_inner "reads through a message field named descriptor to a field named after its message" {
+    receiver {
+        descriptor { property_name_inner = 5; }
+    }
+
+    expect return 5;
+}
+
+test PropertyNameCase.descriptor_inner "an unset message field named descriptor takes the guard's other branch" {
+    receiver {
+        property_name_case = 1;
+    }
+
+    expect return -1;
+}
+
+test PropertyNameCase.types_total "iterates a repeated scalar field named types" {
+    receiver {
+        types = 2;
+        types = 3;
+        types = 4;
+    }
+
+    expect return 9;
+}
+
+test PropertyNameCase.parser_total "iterates a repeated message field named parser" {
+    receiver {
+        parser { property_name_inner = 10; }
+        parser { property_name_inner = 20; }
+    }
+
+    expect return 30;
+}
+
+test PropertyNameCase.clone_is_set "has clone is true for an explicit zero" {
+    receiver {
+        clone = 0;
+    }
+
+    expect return true;
+}
+
+test PropertyNameCase.clone_is_set "has clone is false when it was never set" {
+    receiver {
+        property_name_case = 1;
+    }
+
+    expect return false;
+}
+
+test PropertyNameCase.after_digit_value "a letter after a digit is capitalized" {
+    receiver {
+        field1a = 7;
+    }
+
+    expect return 7;
+}
+
+test PropertyNameCase.retry2x_is_set "presence is spelled from the capitalized name" {
+    receiver {
+        retry2x = 0;
+    }
+
+    expect return true;
+}
+
+test PropertyNameCase.leading_digit_value "an underscore before a leading digit is kept" {
+    receiver {
+        _1st = 11;
+    }
+
+    expect return 11;
+}

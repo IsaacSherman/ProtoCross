@@ -48,13 +48,73 @@ public class LexerTests
             tokens.Select(t => t.Kind));
     }
 
+    /// <summary>
+    /// Each bitwise operator is one token, a lone <c>&amp;</c> or <c>|</c> included, and each
+    /// two-character one is read whole rather than as two operators side by side.
+    /// </summary>
+    [Fact]
+    public void RecognizesTheBitwiseAndShiftOperators()
+    {
+        var tokens = Tokenize("& && | || ^ ~ << < <= >> > >=", out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [
+                TokenKind.Ampersand, TokenKind.AmpersandAmpersand, TokenKind.Pipe, TokenKind.PipePipe,
+                TokenKind.Caret, TokenKind.Tilde, TokenKind.LessLess, TokenKind.Less, TokenKind.LessEquals,
+                TokenKind.GreaterGreater, TokenKind.Greater, TokenKind.GreaterEquals, TokenKind.EndOfFile,
+            ],
+            tokens.Select(t => t.Kind));
+    }
+
+    [Fact]
+    public void RecognizesTheCompoundAssignmentOperators()
+    {
+        var tokens = Tokenize("+= -= *= /= %= &= |= ^= <<= >>=", out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [
+                TokenKind.PlusEquals, TokenKind.MinusEquals, TokenKind.StarEquals, TokenKind.SlashEquals,
+                TokenKind.PercentEquals, TokenKind.AmpersandEquals, TokenKind.PipeEquals,
+                TokenKind.CaretEquals, TokenKind.LessLessEquals, TokenKind.GreaterGreaterEquals,
+                TokenKind.EndOfFile,
+            ],
+            tokens.Select(t => t.Kind));
+    }
+
+    /// <summary>
+    /// With no spaces to separate them, each operator is the longest spelling that fits: <c>&gt;&gt;=</c>
+    /// is one token rather than <c>&gt;</c> and <c>&gt;=</c>, and <c>&amp;&amp;=</c>, which is not an
+    /// operator, is <c>&amp;&amp;</c> and <c>=</c> rather than <c>&amp;</c> and <c>&amp;=</c>.
+    /// </summary>
+    [Theory]
+    [InlineData("a>>=b", new[] { TokenKind.GreaterGreaterEquals })]
+    [InlineData("a<<=b", new[] { TokenKind.LessLessEquals })]
+    [InlineData("a> >=b", new[] { TokenKind.Greater, TokenKind.GreaterEquals })]
+    [InlineData("a&&=b", new[] { TokenKind.AmpersandAmpersand, TokenKind.Equals })]
+    [InlineData("a||=b", new[] { TokenKind.PipePipe, TokenKind.Equals })]
+    [InlineData("a-=b", new[] { TokenKind.MinusEquals })]
+    [InlineData("a->b", new[] { TokenKind.Arrow })]
+    [InlineData("a/=b", new[] { TokenKind.SlashEquals })]
+    [InlineData("a+==b", new[] { TokenKind.PlusEquals, TokenKind.Equals })]
+    public void TheLongestSpellingOfAnOperatorWins(string text, TokenKind[] operators)
+    {
+        var tokens = Tokenize(text, out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        Assert.Equal(
+            [TokenKind.Identifier, .. operators, TokenKind.Identifier, TokenKind.EndOfFile],
+            tokens.Select(t => t.Kind));
+    }
+
     [Fact]
     public void ParsesIntegerLiteralValue()
     {
         var tokens = Tokenize("1234", out var diagnostics);
 
         Assert.Empty(diagnostics);
-        Assert.Equal(1234L, tokens[0].Value);
+        Assert.Equal<object?>(1234UL, tokens[0].Value);
     }
 
     [Fact]
@@ -76,7 +136,7 @@ public class LexerTests
 
         Assert.Empty(diagnostics);
         Assert.Equal(TokenKind.FloatLiteral, tokens[0].Kind);
-        Assert.Equal(3.5d, tokens[0].Value);
+        Assert.Equal<object?>(new FloatingPointValue(3.5d, 3.5f), tokens[0].Value);
     }
 
     [Fact]

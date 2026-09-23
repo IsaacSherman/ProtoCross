@@ -13,7 +13,7 @@ namespace ProtoCross.Binding;
 /// IR. Runs in two passes so a method may call another method declared later in the file, or in a
 /// different extend block.
 /// </summary>
-public sealed class Binder
+public sealed partial class Binder
 {
     private readonly DiagnosticBag _diagnostics;
     private readonly SchemaTypes _types;
@@ -282,9 +282,8 @@ public sealed class Binder
             return;
         }
 
-        _diagnostics.Warning(
-            "PC0077",
-            "extending a well-known type",
+        _diagnostics.Report(
+            DiagnosticCodes.ExtendingAWellKnownType,
             $"'{receiver.Name}' comes from the protobuf runtime, so consumers have it without this "
             + "behavior. The generated extensions have to ship as their own library for anyone to "
             + "call them.",
@@ -309,9 +308,8 @@ public sealed class Binder
 
         if (candidates.Count > 0)
         {
-            _diagnostics.Error(
-                "PC0020",
-                "ambiguous message name",
+            _diagnostics.Report(
+                DiagnosticCodes.AmbiguousMessageName,
                 $"'{name}' matches {candidates.Count} messages: "
                 + string.Join(", ", candidates.Select(c => c.FullName)) + ".",
                 span,
@@ -319,9 +317,8 @@ public sealed class Binder
             return null;
         }
 
-        _diagnostics.Error(
-            "PC0021",
-            "unknown message type",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownMessageType,
             $"No protobuf message named '{name}' was found in the imported schemas.",
             span,
             "Check the 'import proto' declarations and the --proto_path include directories.");
@@ -354,20 +351,18 @@ public sealed class Binder
 
         if (_methods.ContainsKey(key))
         {
-            _diagnostics.Error(
-                "PC0022",
-                "duplicate method",
+            _diagnostics.Report(
+                DiagnosticCodes.DuplicateMethod,
                 $"'{receiver.FullName}' already defines a method named '{method.Name}'.",
                 method.Span,
                 "Overloading is not supported; give the method a distinct name.");
             return;
         }
 
-        if (receiver.FindFieldByName(method.Name.Text) is not null)
+        if (MessageFields.Named(receiver, method.Name.Text) is not null)
         {
-            _diagnostics.Error(
-                "PC0023",
-                "method name collides with a field",
+            _diagnostics.Report(
+                DiagnosticCodes.MethodNameCollidesWithField,
                 $"'{receiver.FullName}' has a field named '{method.Name}'.",
                 method.Span,
                 "Methods and protobuf fields share one name space on a message.");
@@ -391,9 +386,8 @@ public sealed class Binder
             var type = ResolveTypeReference(parameter.Type);
             if (type is VoidType)
             {
-                _diagnostics.Error(
-                    "PC0024",
-                    "void is not a value type",
+                _diagnostics.Report(
+                    DiagnosticCodes.VoidIsNotAValueType,
                     $"{Capitalized(Refer(parameter.Name, "parameter", "Parameter"))} cannot be "
                     + "declared void.",
                     parameter.Span,
@@ -445,9 +439,8 @@ public sealed class Binder
     {
         var ordered = fullNames.Order(StringComparer.Ordinal).ToList();
 
-        _diagnostics.Error(
-            "PC0074",
-            "ambiguous type name",
+        _diagnostics.Report(
+            DiagnosticCodes.AmbiguousTypeName,
             $"'{name}' matches {ordered.Count} types: " + string.Join(", ", ordered) + ".",
             span,
             "Qualify the name with its protobuf package.");
@@ -515,9 +508,8 @@ public sealed class Binder
             return NamedEnum(onlyEnum);
         }
 
-        _diagnostics.Error(
-            "PC0025",
-            "unknown type",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownType,
             $"'{reference.Name}' is not a protobuf scalar, message, or enum type.",
             reference.Span,
             "ProtoCross types come only from the protobuf type universe (spec 8.1).");
@@ -565,9 +557,8 @@ public sealed class Binder
 
             if (!scope.TryDeclareParameter(parameter))
             {
-                _diagnostics.Error(
-                    "PC0026",
-                    "duplicate parameter",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateParameter,
                     $"A parameter named '{parameter.Name}' is already declared.",
                     parameter.Declaration.Extent);
                 continue;
@@ -581,15 +572,14 @@ public sealed class Binder
 
         if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
         {
-            _diagnostics.Error(
-                "PC0027",
-                "missing return statement",
+            _diagnostics.Report(
+                DiagnosticCodes.MissingReturnStatement,
                 $"{Capitalized(Refer(method.Name, "method"))} declares a return type of "
                 + $"'{signature.ReturnType.DisplayName}' but not all paths return a value.",
                 method.Span);
         }
 
-        return new IrMethod(signature, body, method.IsVirtual);
+        return new IrMethod(signature, body);
     }
 
     private IrTest? BindTest(TestDeclaration test)
@@ -627,9 +617,8 @@ public sealed class Binder
 
         if (target.Receiver.IsMissing)
         {
-            _diagnostics.Error(
-                "PC0057",
-                "invalid test target",
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidTestTarget,
                 $"'{target.Method}' is not a method target.",
                 span,
                 "Write tests against a receiver method, for example 'test Invoice.total_cents'.");
@@ -655,9 +644,8 @@ public sealed class Binder
             return signature;
         }
 
-        _diagnostics.Error(
-            "PC0058",
-            "unknown test target",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownTestTarget,
             $"'{receiver.FullName}' has no ProtoCross method named '{target.Method}'.",
             span,
             "Tests can only target methods declared in an extend block.");
@@ -686,12 +674,11 @@ public sealed class Binder
                 continue;
             }
 
-            var descriptorField = descriptor.FindFieldByName(field.FieldName.Text);
+            var descriptorField = MessageFields.Named(descriptor, field.FieldName.Text);
             if (descriptorField is null)
             {
-                _diagnostics.Error(
-                    "PC0059",
-                    "unknown fixture field",
+                _diagnostics.Report(
+                    DiagnosticCodes.UnknownFixtureField,
                     $"'{descriptor.FullName}' has no field named '{field.FieldName}'.",
                     field.Span);
                 continue;
@@ -705,9 +692,8 @@ public sealed class Binder
 
             if (descriptorField.IsMap)
             {
-                _diagnostics.Error(
-                    "PC0060",
-                    "maps are not supported in test fixtures",
+                _diagnostics.Report(
+                    DiagnosticCodes.MapsAreNotSupportedInFixtures,
                     $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
                     field.Span);
                 continue;
@@ -715,9 +701,8 @@ public sealed class Binder
 
             if (!descriptorField.IsRepeated && !seenSingular.Add(descriptorField.Name))
             {
-                _diagnostics.Error(
-                    "PC0061",
-                    "duplicate fixture field",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateFixtureField,
                     $"Field '{descriptorField.Name}' is set more than once.",
                     field.Span,
                     "Repeated fields may be listed multiple times; singular fields may not.");
@@ -734,9 +719,8 @@ public sealed class Binder
                     // is an ordinary expression. PC0063 below catches one of the wrong enum type.
                     if (expectedType is MessageType)
                     {
-                        _diagnostics.Error(
-                            "PC0062",
-                            "fixture field requires a nested value",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldRequiresANestedValue,
                             $"Field '{descriptorField.Name}' is message '{expectedType.DisplayName}' and cannot be set from an expression.",
                             field.Span,
                             $"Write '{descriptorField.Name} {{ ... }}' to build the nested message.");
@@ -746,9 +730,8 @@ public sealed class Binder
                     var value = BindExpression(scalar.Value, NoNames(), context, expectedType);
                     if (value.Type is not ErrorType && !TypesMatch(expectedType, value.Type))
                     {
-                        _diagnostics.Error(
-                            "PC0063",
-                            "fixture field type mismatch",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldTypeMismatch,
                             $"Field '{descriptorField.Name}' expects '{expectedType.DisplayName}' but got '{value.Type.DisplayName}'.",
                             field.Span);
                     }
@@ -762,9 +745,8 @@ public sealed class Binder
                     var fieldType = TypeFactory.FromFieldValue(descriptorField);
                     if (fieldType is not MessageType messageType)
                     {
-                        _diagnostics.Error(
-                            "PC0064",
-                            "fixture field is not a message",
+                        _diagnostics.Report(
+                            DiagnosticCodes.FixtureFieldIsNotAMessage,
                             $"Field '{descriptorField.Name}' has type '{fieldType.DisplayName}' and cannot contain nested fields.",
                             field.Span);
                         continue;
@@ -802,9 +784,8 @@ public sealed class Binder
 
             if (!declared.TryAdd(argument.Name.Text, argument))
             {
-                _diagnostics.Error(
-                    "PC0065",
-                    "duplicate test argument",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateTestArgument,
                     $"Argument '{argument.Name}' is supplied more than once.",
                     argument.Span);
             }
@@ -834,9 +815,8 @@ public sealed class Binder
             {
                 if (argumentNamesAreComplete)
                 {
-                    _diagnostics.Error(
-                        "PC0066",
-                        "missing test argument",
+                    _diagnostics.Report(
+                        DiagnosticCodes.MissingTestArgument,
                         $"Test '{test.Name}' does not supply argument '{name}'.",
                         test.Span);
                 }
@@ -864,9 +844,8 @@ public sealed class Binder
             var value = BindExpression(declaration.Value, NoNames(), context, expectedType);
             if (value.Type is not ErrorType && !TypesMatch(expectedType, value.Type))
             {
-                _diagnostics.Error(
-                    "PC0067",
-                    "test argument type mismatch",
+                _diagnostics.Report(
+                    DiagnosticCodes.TestArgumentTypeMismatch,
                     $"Argument '{name}' expects '{expectedType.DisplayName}' but got '{value.Type.DisplayName}'.",
                     declaration.Span);
             }
@@ -876,9 +855,8 @@ public sealed class Binder
 
         foreach (var extra in declared.Keys.Except(NamedParametersOf(signature), StringComparer.Ordinal))
         {
-            _diagnostics.Error(
-                "PC0068",
-                "unknown test argument",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownTestArgument,
                 $"'{signature.Name}' has no parameter named '{extra}'.",
                 declared[extra].Span);
         }
@@ -906,9 +884,8 @@ public sealed class Binder
             {
                 if (signature.ReturnType is VoidType)
                 {
-                    _diagnostics.Error(
-                        "PC0069",
-                        "void method cannot expect a return value",
+                    _diagnostics.Report(
+                        DiagnosticCodes.VoidMethodCannotExpectAReturnValue,
                         $"'{signature.Name}' does not return a value.",
                         returns.Span);
                 }
@@ -918,9 +895,8 @@ public sealed class Binder
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
-                    _diagnostics.Error(
-                        "PC0070",
-                        "test expectation type mismatch",
+                    _diagnostics.Report(
+                        DiagnosticCodes.TestExpectationTypeMismatch,
                         $"'{signature.Name}' returns '{signature.ReturnType.DisplayName}' but the expectation is '{value.Type.DisplayName}'.",
                         returns.Span);
                 }
@@ -1128,6 +1104,7 @@ public sealed class Binder
         ContinueStatement continueStatement => BindContinue(continueStatement, context),
         ForInStatement forIn => BindForIn(forIn, scope, context),
         AssignmentStatement assignment => BindAssignment(assignment, scope, context),
+        CompoundAssignmentStatement assignment => BindCompoundAssignment(assignment, scope, context),
         ExpressionStatement expression => new IrExpressionStatement(
             BindExpression(expression.Expression, scope, context, null),
             expression.Span),
@@ -1145,9 +1122,8 @@ public sealed class Binder
 
         if (declaredType is VoidType)
         {
-            _diagnostics.Error(
-                "PC0024",
-                "void is not a value type",
+            _diagnostics.Report(
+                DiagnosticCodes.VoidIsNotAValueType,
                 $"{Capitalized(Refer(declaration.Name, "variable", "Variable"))} cannot be "
                 + "declared void.",
                 declaration.Span,
@@ -1162,9 +1138,8 @@ public sealed class Binder
             && initializer.Type is not ErrorType
             && !TypesMatch(declaredType, initializer.Type))
         {
-            _diagnostics.Error(
-                "PC0028",
-                "type mismatch in variable initializer",
+            _diagnostics.Report(
+                DiagnosticCodes.VariableInitializerTypeMismatch,
                 $"Cannot initialize {Refer(declaration.Name, "variable")} of type "
                 + $"'{declaredType.DisplayName}' with a value of type "
                 + $"'{initializer.Type.DisplayName}'.",
@@ -1192,9 +1167,8 @@ public sealed class Binder
         }
         else
         {
-            _diagnostics.Error(
-                "PC0029",
-                "duplicate variable",
+            _diagnostics.Report(
+                DiagnosticCodes.DuplicateVariable,
                 $"A variable named '{declaration.Name}' is already in scope.",
                 declaration.Span);
         }
@@ -1208,9 +1182,8 @@ public sealed class Binder
         {
             if (context.ReturnType is not VoidType)
             {
-                _diagnostics.Error(
-                    "PC0030",
-                    "missing return value",
+                _diagnostics.Report(
+                    DiagnosticCodes.MissingReturnValue,
                     $"This method must return a value of type '{context.ReturnType.DisplayName}'.",
                     statement.Span);
             }
@@ -1222,17 +1195,15 @@ public sealed class Binder
 
         if (context.ReturnType is VoidType)
         {
-            _diagnostics.Error(
-                "PC0031",
-                "unexpected return value",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedReturnValue,
                 "This method does not declare a return type.",
                 statement.Span);
         }
         else if (value.Type is not ErrorType && !TypesMatch(context.ReturnType, value.Type))
         {
-            _diagnostics.Error(
-                "PC0032",
-                "return type mismatch",
+            _diagnostics.Report(
+                DiagnosticCodes.ReturnTypeMismatch,
                 $"Cannot return a value of type '{value.Type.DisplayName}' from a method "
                 + $"declared '{context.ReturnType.DisplayName}'.",
                 statement.Span,
@@ -1255,9 +1226,8 @@ public sealed class Binder
         {
             if (collection.Type is not ErrorType)
             {
-                _diagnostics.Error(
-                    "PC0033",
-                    "not iterable",
+                _diagnostics.Report(
+                    DiagnosticCodes.NotIterable,
                     $"Cannot iterate a value of type '{collection.Type.DisplayName}'.",
                     statement.Collection.Span,
                     "'for' iterates protobuf repeated fields (spec 14).");
@@ -1290,9 +1260,8 @@ public sealed class Binder
             }
             else
             {
-                _diagnostics.Error(
-                    "PC0029",
-                    "duplicate variable",
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateVariable,
                     $"A variable named '{statement.VariableName}' is already in scope.",
                     statement.Span);
             }
@@ -1343,9 +1312,8 @@ public sealed class Binder
 
         if (bound.Type is not ErrorType && !TypesMatch(bound.Type, ScalarType.BoolType))
         {
-            _diagnostics.Error(
-                "PC0071",
-                "condition must be bool",
+            _diagnostics.Report(
+                DiagnosticCodes.ConditionMustBeBool,
                 $"The '{keyword}' condition has type '{bound.Type.DisplayName}'.",
                 condition.Span,
                 "ProtoCross does not treat non-bool values as true or false; compare explicitly.");
@@ -1358,9 +1326,8 @@ public sealed class Binder
     {
         if (context.LoopDepth == 0)
         {
-            _diagnostics.Error(
-                "PC0072",
-                "'break' outside a loop",
+            _diagnostics.Report(
+                DiagnosticCodes.BreakOutsideALoop,
                 "'break' can only appear inside a 'for' or 'while' loop.",
                 statement.Span);
         }
@@ -1372,9 +1339,8 @@ public sealed class Binder
     {
         if (context.LoopDepth == 0)
         {
-            _diagnostics.Error(
-                "PC0073",
-                "'continue' outside a loop",
+            _diagnostics.Report(
+                DiagnosticCodes.ContinueOutsideALoop,
                 "'continue' can only appear inside a 'for' or 'while' loop.",
                 statement.Span);
         }
@@ -1386,38 +1352,7 @@ public sealed class Binder
     {
         if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
         {
-            _diagnostics.Error(
-                "PC0034",
-                "invalid assignment target",
-                "Only local variables can be assigned.",
-                statement.Target.Span,
-                "Whether methods may mutate the receiver is still an open question (spec 16.1).");
-
-            // The target is bound even though nothing may be assigned to it. What PC0034 refuses is
-            // the assignment, not the expression on its left: `quantity`, `factor` and `line.quantity`
-            // all name something that resolves, and leaving them unbound put those names in the index
-            // nowhere and left an editor with nothing at a position the author is looking straight at.
-            // It is the same rule the map field in a fixture and the presence test on a field without
-            // presence already follow, and it is why binding a call that cannot be made keeps its
-            // arguments.
-            //
-            // Both halves in a block, because a statement has one slot and the alternative is to bind
-            // an expression and throw it away. No backend sees this: PC0034 has been reported, so the
-            // compilation has errors and EmittableModule is null.
-            var refusedTarget = new IrExpressionStatement(
-                BindExpression(statement.Target, scope, context, null),
-                statement.Target.Span);
-
-            MarkWritten(AssignedNameOf(statement.Target));
-
-            return new IrBlock(
-                [
-                    refusedTarget,
-                    new IrExpressionStatement(
-                        BindExpression(statement.Value, scope, context, null),
-                        statement.Value.Span),
-                ],
-                statement.Span);
+            return BindRefusedAssignment(statement.Target, [statement.Value], statement.Span, scope, context);
         }
 
         Use(local.Id, name.Name.Span, ReferenceKind.Write);
@@ -1426,9 +1361,8 @@ public sealed class Binder
 
         if (value.Type is not ErrorType && local.Type is not ErrorType && !TypesMatch(local.Type, value.Type))
         {
-            _diagnostics.Error(
-                "PC0035",
-                "type mismatch in assignment",
+            _diagnostics.Report(
+                DiagnosticCodes.AssignmentTypeMismatch,
                 $"Cannot assign a value of type '{value.Type.DisplayName}' to '{local.Name}' "
                 + $"of type '{local.Type.DisplayName}'.",
                 statement.Span,
@@ -1438,17 +1372,118 @@ public sealed class Binder
         return new IrAssignment(new IrLocalReference(local, name.Span), value, statement.Span);
     }
 
+    /// <summary>Binds <c>x op= y</c> as <c>x = x op y</c> (spec 9.2).</summary>
+    /// <remarks>
+    /// <para>
+    /// The long form is built as syntax and bound by the code that binds <c>x op y</c> anywhere else,
+    /// so a compound assignment cannot come to mean something its long form does not: how a literal
+    /// is typed, the <c>on_zero</c> rule, the overflow policy and every refusal are the operator's
+    /// own. What comes out is the long form's IR, so neither backend knows compound assignment exists,
+    /// and each emits what it emits for the long form.
+    /// </para>
+    /// <para>
+    /// The target is recorded once, as a write, although the operation reads it too. It is one name
+    /// written once, and a read and a write at the same span would list it twice in every search for
+    /// references. LSP's highlight kinds have no read-and-write, and the write is what makes the
+    /// target worth telling apart.
+    /// </para>
+    /// <para>
+    /// No check that the result suits the target follows, as one follows <c>=</c>. Every operator
+    /// with a compound form produces the type of its left operand, and that operand is the target.
+    /// </para>
+    /// </remarks>
+    private IrStatement BindCompoundAssignment(
+        CompoundAssignmentStatement statement,
+        Scope scope,
+        MethodContext context)
+    {
+        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        {
+            return BindRefusedAssignment(
+                statement.Target,
+                statement.OnZero?.Fallback is { } fallback ? [statement.Value, fallback] : [statement.Value],
+                statement.Span,
+                scope,
+                context);
+        }
+
+        var operation = BindBinary(LongFormOf(statement), scope, context, local.Type, OperatorForm.Compound);
+        MarkWritten(name.Name);
+
+        return new IrAssignment(new IrLocalReference(local, name.Span), operation, statement.Span);
+    }
+
+    /// <summary>The operation a compound assignment stands for: <c>x op y</c>, for <c>x op= y</c>.</summary>
+    /// <remarks>
+    /// It spans the target through the right side and any clause after it, which is the whole
+    /// statement but its semicolon. That is what a reader takes the operation to be, and it lies inside
+    /// the assignment's own span, as every IR node's span lies inside its parent's.
+    /// </remarks>
+    private static BinaryExpression LongFormOf(CompoundAssignmentStatement statement)
+        => new(
+            statement.Operator,
+            statement.Target,
+            statement.Value,
+            SourceSpan.Union(statement.Target.Span, statement.OnZero?.Span ?? statement.Value.Span),
+            statement.OnZero);
+
+    /// <summary>
+    /// Binds an assignment to something that may not be assigned: <c>PC0034</c>, with the target and
+    /// every operand bound all the same.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The target is bound even though nothing may be assigned to it. What PC0034 refuses is the
+    /// assignment, not the expression on its left: <c>quantity</c>, <c>factor</c> and
+    /// <c>line.quantity</c> all name something that resolves, and leaving them unbound put those names
+    /// in the index nowhere and left an editor with nothing at a position the author is looking
+    /// straight at. It is the same rule the map field in a fixture and the presence test on a field
+    /// without presence already follow, and it is why binding a call that cannot be made keeps its
+    /// arguments.
+    /// </para>
+    /// <para>
+    /// Everything goes in a block, because a statement has one slot and the alternative is to bind an
+    /// expression and throw it away. No backend sees this: PC0034 has been reported, so the
+    /// compilation has errors and <c>EmittableModule</c> is null.
+    /// </para>
+    /// </remarks>
+    private IrStatement BindRefusedAssignment(
+        Expression target,
+        IReadOnlyList<Expression> operands,
+        SourceSpan span,
+        Scope scope,
+        MethodContext context)
+    {
+        _diagnostics.Report(
+            DiagnosticCodes.InvalidAssignmentTarget,
+            "Only local variables can be assigned.",
+            target.Span,
+            "Whether methods may mutate the receiver is still an open question (spec 16.1).");
+
+        var refusedTarget = new IrExpressionStatement(
+            BindExpression(target, scope, context, null),
+            target.Span);
+
+        MarkWritten(AssignedNameOf(target));
+
+        return new IrBlock(
+            [
+                refusedTarget,
+                .. operands.Select(operand => new IrExpressionStatement(
+                    BindExpression(operand, scope, context, null),
+                    operand.Span)),
+            ],
+            span);
+    }
+
     private IrExpression BindExpression(
         Expression expression,
         Scope scope,
         MethodContext context,
         PlType? expectedType) => expression switch
         {
-            IntegerLiteralExpression literal => BindIntegerLiteral(literal, expectedType),
-            FloatLiteralExpression literal => new IrLiteral(
-                literal.Value,
-                expectedType is ScalarType { Kind: ScalarKind.Float } ? ScalarType.FloatType : ScalarType.DoubleType,
-                literal.Span),
+            _ when IntegerLiteralOf(expression) is { } written => BindIntegerLiteral(written, expression.Span, expectedType),
+            FloatLiteralExpression literal => BindFloatLiteral(literal, expectedType),
             BooleanLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.BoolType, literal.Span),
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
@@ -1470,9 +1505,9 @@ public sealed class Binder
     /// <remarks>
     /// The operand is bound with no expected type. The cast already states the target, so the
     /// operand keeps whatever type it has on its own: an integer literal takes its natural
-    /// <c>int64</c> and a float literal its natural <c>double</c>. That is what makes
-    /// <c>3000000000 as int32</c> a narrowing conversion that wraps, rather than a literal that
-    /// silently retypes itself and then reports PC0036 for not fitting.
+    /// <c>int64</c>, or <c>uint64</c> where only that holds it, and a float literal its natural
+    /// <c>double</c>. That is what makes <c>3000000000 as int32</c> a narrowing conversion that wraps,
+    /// rather than a literal that silently retypes itself and then reports PC0036 for not fitting.
     /// </remarks>
     private IrExpression BindCast(CastExpression cast, Scope scope, MethodContext context)
     {
@@ -1489,9 +1524,8 @@ public sealed class Binder
         if (operand.Type is not ScalarType { IsNumeric: true } source
             || target is not ScalarType { IsNumeric: true } destination)
         {
-            _diagnostics.Error(
-                "PC0075",
-                "invalid conversion",
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidConversion,
                 $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
                 cast.Span,
                 "'as' converts between numeric scalar types only (spec 10.3).");
@@ -1521,47 +1555,6 @@ public sealed class Binder
         return destination.IsInteger ? ConversionKind.FloatToInteger : ConversionKind.FloatToFloat;
     }
 
-    /// <summary>
-    /// Integer literals adopt the expected integer type when the value fits, so
-    /// <c>var total: int64 = 0;</c> does not require a suffix or a cast.
-    /// </summary>
-    private IrExpression BindIntegerLiteral(IntegerLiteralExpression literal, PlType? expectedType)
-    {
-        if (expectedType is ScalarType scalar)
-        {
-            if (scalar.IsFloatingPoint)
-            {
-                return new IrLiteral((double)literal.Value, scalar, literal.Span);
-            }
-
-            if (scalar.IsInteger && FitsIn(literal.Value, scalar))
-            {
-                return new IrLiteral(literal.Value, scalar, literal.Span);
-            }
-
-            if (scalar.IsInteger)
-            {
-                _diagnostics.Error(
-                    "PC0036",
-                    "integer literal out of range",
-                    $"{literal.Value} is outside the range of '{scalar.DisplayName}'.",
-                    literal.Span);
-                return new IrLiteral(literal.Value, scalar, literal.Span);
-            }
-        }
-
-        return new IrLiteral(literal.Value, ScalarType.Int64Type, literal.Span);
-    }
-
-    private static bool FitsIn(long value, ScalarType scalar) => scalar.Kind switch
-    {
-        ScalarKind.Int32 => value is >= int.MinValue and <= int.MaxValue,
-        ScalarKind.Int64 => true,
-        ScalarKind.UInt32 => value is >= 0 and <= uint.MaxValue,
-        ScalarKind.UInt64 => value >= 0,
-        _ => false,
-    };
-
     private IrExpression BindName(NameExpression name, Scope scope, MethodContext context)
     {
         if (scope.LookupLocal(name.Name.Text) is { } local)
@@ -1579,7 +1572,7 @@ public sealed class Binder
         if (context.AllowImplicitReceiverFields)
         {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            var field = context.Receiver.FindFieldByName(name.Name.Text);
+            var field = MessageFields.Named(context.Receiver, name.Name.Text);
             if (field is not null)
             {
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
@@ -1590,9 +1583,8 @@ public sealed class Binder
             }
         }
 
-        _diagnostics.Error(
-            "PC0037",
-            "unknown name",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownName,
             $"'{name.Name}' is not a variable, parameter, or field of "
             + $"'{context.Receiver.FullName}'.",
             name.Span);
@@ -1624,9 +1616,8 @@ public sealed class Binder
     {
         if (field.IsMap)
         {
-            _diagnostics.Error(
-                "PC0038",
-                "maps are not supported",
+            _diagnostics.Report(
+                DiagnosticCodes.MapsAreNotSupported,
                 $"Field '{field.Name}' is a map, which this compiler version does not support.",
                 span);
             return new IrLiteral(null, ErrorType.Instance, span);
@@ -1638,9 +1629,8 @@ public sealed class Binder
 
             if (path is null)
             {
-                _diagnostics.Error(
-                    "PC0078",
-                    "message field may be unset",
+                _diagnostics.Report(
+                    DiagnosticCodes.MessageFieldMayBeUnset,
                     $"'{field.Name}' is reached through a value that has no name, so its presence "
                     + "cannot be established.",
                     span,
@@ -1649,9 +1639,8 @@ public sealed class Binder
             }
             else if (!context.Present.Contains(path))
             {
-                _diagnostics.Error(
-                    "PC0078",
-                    "message field may be unset",
+                _diagnostics.Report(
+                    DiagnosticCodes.MessageFieldMayBeUnset,
                     $"'{field.Name}' is a message field, which may be unset. Reading it would mean "
                     + "different things in different backends.",
                     span,
@@ -1687,9 +1676,8 @@ public sealed class Binder
         var value = descriptor.FindValueByName(member.Name.Text);
         if (value is null)
         {
-            _diagnostics.Error(
-                "PC0076",
-                "unknown enum value",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownEnumValue,
                 $"'{member.Name}' is not a value of enum '{descriptor.FullName}'.",
                 member.Span,
                 "Enum values are written exactly as the .proto file spells them.");
@@ -1836,7 +1824,7 @@ public sealed class Binder
     private static bool IsValueName(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is not null
         || scope.LookupParameter(name) is not null
-        || (context.AllowImplicitReceiverFields && context.Receiver.FindFieldByName(name) is not null);
+        || (context.AllowImplicitReceiverFields && MessageFields.Named(context.Receiver, name) is not null);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -1851,7 +1839,7 @@ public sealed class Binder
         {
             return new IrMissingMemberAccess(
                 BindReceiverAwaitingAMember(member, scope, context),
-                member.Name.Span);
+                member.Span);
         }
 
         // A member access whose receiver is a plain dotted name may be naming an enum constant
@@ -1872,15 +1860,14 @@ public sealed class Binder
 
         if (receiver.Type is not MessageType messageType)
         {
-            _diagnostics.Error(
-                "PC0039",
-                "member access on a non-message value",
+            _diagnostics.Report(
+                DiagnosticCodes.MemberAccessOnANonMessage,
                 $"Type '{receiver.Type.DisplayName}' has no members.",
                 member.Span);
             return new IrLiteral(null, ErrorType.Instance, member.Span);
         }
 
-        var field = messageType.Descriptor.FindFieldByName(member.Name.Text);
+        var field = MessageFields.Named(messageType.Descriptor, member.Name.Text);
         if (field is not null)
         {
             Use(SymbolId.ForField(field), member.Name.Span);
@@ -1889,18 +1876,16 @@ public sealed class Binder
 
         if (_methods.ContainsKey((messageType.Descriptor.FullName, member.Name.Text)))
         {
-            _diagnostics.Error(
-                "PC0040",
-                "method used as a value",
+            _diagnostics.Report(
+                DiagnosticCodes.MethodUsedAsAValue,
                 $"'{member.Name}' is a method and must be called.",
                 member.Span,
                 $"Write '{member.Name}()'.");
             return new IrLiteral(null, ErrorType.Instance, member.Span);
         }
 
-        _diagnostics.Error(
-            "PC0041",
-            "unknown field",
+        _diagnostics.Report(
+            DiagnosticCodes.UnknownField,
             $"'{messageType.Descriptor.FullName}' has no field named '{member.Name}'.",
             member.Span);
         return new IrLiteral(null, ErrorType.Instance, member.Span);
@@ -1954,9 +1939,8 @@ public sealed class Binder
 
                 if (boundReceiver.Type is not MessageType messageType)
                 {
-                    _diagnostics.Error(
-                        "PC0042",
-                        "method call on a non-message value",
+                    _diagnostics.Report(
+                        DiagnosticCodes.MethodCallOnANonMessage,
                         $"Type '{boundReceiver.Type.DisplayName}' has no methods.",
                         invocation.Span);
                     return Uncallable(boundReceiver);
@@ -1977,9 +1961,8 @@ public sealed class Binder
                 break;
 
             default:
-                _diagnostics.Error(
-                    "PC0043",
-                    "expression is not callable",
+                _diagnostics.Report(
+                    DiagnosticCodes.ExpressionIsNotCallable,
                     "Only ProtoCross methods can be called.",
                     invocation.Span,
                     "Calling target-language functions is not permitted (spec 20).");
@@ -1995,9 +1978,8 @@ public sealed class Binder
 
         if (!_methods.TryGetValue((receiverDescriptor.FullName, methodName), out var signature))
         {
-            _diagnostics.Error(
-                "PC0044",
-                "unknown method",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownMethod,
                 $"'{receiverDescriptor.FullName}' has no ProtoCross method named '{methodName}'.",
                 invocation.Span,
                 "Methods must be defined in an extend block for that message.");
@@ -2015,9 +1997,8 @@ public sealed class Binder
 
         if (arguments.Count != signature.Parameters.Count)
         {
-            _diagnostics.Error(
-                "PC0045",
-                "wrong number of arguments",
+            _diagnostics.Report(
+                DiagnosticCodes.WrongNumberOfArguments,
                 $"'{methodName}' takes {signature.Parameters.Count} argument(s) "
                 + $"but {arguments.Count} were supplied.",
                 invocation.Span);
@@ -2037,9 +2018,8 @@ public sealed class Binder
 
             if (!TypesMatch(signature.Parameters[i].Type, arguments[i].Type))
             {
-                _diagnostics.Error(
-                    "PC0046",
-                    "argument type mismatch",
+                _diagnostics.Report(
+                    DiagnosticCodes.ArgumentTypeMismatch,
                     $"Argument {i + 1} of '{methodName}' expects "
                     + $"'{signature.Parameters[i].Type.DisplayName}' but got "
                     + $"'{arguments[i].Type.DisplayName}'.",
@@ -2097,7 +2077,7 @@ public sealed class Binder
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
                 receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
-                field = context.Receiver.FindFieldByName(bare.Name.Text);
+                field = MessageFields.Named(context.Receiver, bare.Name.Text);
                 name = bare.Name.Text;
                 fieldNameSpan = bare.Name.Span;
                 break;
@@ -2113,25 +2093,23 @@ public sealed class Binder
 
                 if (target.Type is not MessageType message)
                 {
-                    _diagnostics.Error(
-                        "PC0080",
-                        "'has' needs a field",
+                    _diagnostics.Report(
+                        DiagnosticCodes.HasNeedsAField,
                         $"'{target.Type.DisplayName}' is not a message, so it has no fields to test.",
                         has.Span);
                     return new IrLiteral(null, ErrorType.Instance, has.Span);
                 }
 
                 receiver = target;
-                field = message.Descriptor.FindFieldByName(member.Name.Text);
+                field = MessageFields.Named(message.Descriptor, member.Name.Text);
                 name = member.Name.Text;
                 fieldNameSpan = member.Name.Span;
                 break;
             }
 
             default:
-                _diagnostics.Error(
-                    "PC0080",
-                    "'has' needs a field",
+                _diagnostics.Report(
+                    DiagnosticCodes.HasNeedsAField,
                     "The operand of 'has' must name a protobuf field.",
                     has.Span,
                     "Only a field can be unset. A local, a parameter, and a method result always "
@@ -2141,9 +2119,8 @@ public sealed class Binder
 
         if (field is null)
         {
-            _diagnostics.Error(
-                "PC0041",
-                "unknown field",
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownField,
                 $"'{name}' is not a field of '{(receiver.Type as MessageType)?.Descriptor.FullName}'.",
                 has.Span);
             return new IrLiteral(null, ErrorType.Instance, has.Span);
@@ -2157,9 +2134,8 @@ public sealed class Binder
 
         if (field.IsMap)
         {
-            _diagnostics.Error(
-                "PC0038",
-                "maps are not supported",
+            _diagnostics.Report(
+                DiagnosticCodes.MapsAreNotSupported,
                 $"'{name}' is a map field.",
                 has.Span);
             return new IrLiteral(null, ErrorType.Instance, has.Span);
@@ -2167,9 +2143,8 @@ public sealed class Binder
 
         if (!field.HasPresence)
         {
-            _diagnostics.Error(
-                "PC0079",
-                "field has no presence",
+            _diagnostics.Report(
+                DiagnosticCodes.FieldHasNoPresence,
                 $"'{name}' cannot be tested for presence.",
                 has.Span,
                 field.IsRepeated
@@ -2184,22 +2159,35 @@ public sealed class Binder
         return new IrFieldPresence(receiver, field, has.Span);
     }
 
+    /// <param name="form">
+    /// How the operator was written, which is what every diagnostic below names. See
+    /// <see cref="OperatorForm"/>.
+    /// </param>
     private IrExpression BindBinary(
         BinaryExpression binary,
         Scope scope,
         MethodContext context,
-        PlType? expectedType)
+        PlType? expectedType,
+        OperatorForm form = OperatorForm.Infix)
     {
-        var isComparison = binary.Operator
-            is BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual
-            or BinaryOperatorKind.LessThan or BinaryOperatorKind.LessThanOrEqual
-            or BinaryOperatorKind.GreaterThan or BinaryOperatorKind.GreaterThanOrEqual;
+        var symbol = Spell(binary.Operator, form);
 
+        if (binary.Operator is BinaryOperatorKind.ShiftLeft or BinaryOperatorKind.ShiftRight)
+        {
+            return BindShift(binary, symbol, scope, context, expectedType);
+        }
+
+        var isComparison = IsComparison(binary.Operator);
         var isLogical = binary.Operator is BinaryOperatorKind.LogicalAnd or BinaryOperatorKind.LogicalOr;
+        var isBitwise = binary.Operator
+            is BinaryOperatorKind.BitwiseAnd or BinaryOperatorKind.BitwiseOr or BinaryOperatorKind.BitwiseXor;
 
         // Comparisons and logical operators produce bool, so the outer expectation says nothing
-        // about the operands.
-        var operandHint = isComparison || isLogical ? null : expectedType;
+        // about the operands. A bitwise operator produces an integer, so only an integer expectation
+        // says anything about its operands.
+        var operandHint = isComparison || isLogical ? null
+            : isBitwise ? IntegerOrNull(expectedType)
+            : expectedType;
 
         var left = BindExpression(binary.Left, scope, context, operandHint);
 
@@ -2217,8 +2205,13 @@ public sealed class Binder
         var right = BindExpression(
             binary.Right, scope, rightContext, left.Type is ErrorType ? operandHint : left.Type);
 
-        // An untyped integer literal on the left should take its type from the right operand.
-        if (binary.Left is IntegerLiteralExpression && right.Type is ScalarType && !TypesMatch(left.Type, right.Type))
+        // A literal on the left takes its type from the right operand, the way one on the right takes
+        // it from the left (spec 10.3). One that failed to bind at all has already said why, and
+        // binding it again would say so twice.
+        if (IsNumericLiteral(binary.Left)
+            && left.Type is not ErrorType
+            && right.Type is ScalarType
+            && !TypesMatch(left.Type, right.Type))
         {
             left = BindExpression(binary.Left, scope, context, right.Type);
         }
@@ -2240,10 +2233,9 @@ public sealed class Binder
         {
             if (!TypesMatch(left.Type, ScalarType.BoolType) || !TypesMatch(right.Type, ScalarType.BoolType))
             {
-                _diagnostics.Error(
-                    "PC0047",
-                    "logical operator requires bool operands",
-                    $"Cannot apply '{Describe(binary.Operator)}' to "
+                _diagnostics.Report(
+                    DiagnosticCodes.LogicalOperatorRequiresBoolOperands,
+                    $"Cannot apply '{symbol}' to "
                     + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                     binary.Span);
             }
@@ -2251,12 +2243,24 @@ public sealed class Binder
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
         }
 
+        // Asked before the operands are compared with each other, because the likeliest way to reach
+        // here is an integer beside a bool, which is a question of precedence and not of conversion.
+        if (isBitwise && (!IsInteger(left.Type) || !IsInteger(right.Type)))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"Cannot apply '{symbol}' to "
+                + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
+                binary.Span,
+                BitwiseHelp(binary, form, left, right));
+            return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
         if (!TypesMatch(left.Type, right.Type))
         {
-            _diagnostics.Error(
-                "PC0048",
-                "operand type mismatch",
-                $"Cannot apply '{Describe(binary.Operator)}' to "
+            _diagnostics.Report(
+                DiagnosticCodes.OperandTypeMismatch,
+                $"Cannot apply '{symbol}' to "
                 + $"'{left.Type.DisplayName}' and '{right.Type.DisplayName}'.",
                 binary.Span,
                 "ProtoCross does not apply implicit numeric conversions; both operands must "
@@ -2269,10 +2273,9 @@ public sealed class Binder
             var ordered = binary.Operator is not (BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual);
             if (ordered && left.Type is not ScalarType { IsNumeric: true })
             {
-                _diagnostics.Error(
-                    "PC0049",
-                    "operands are not ordered",
-                    $"'{Describe(binary.Operator)}' requires numeric operands, "
+                _diagnostics.Report(
+                    DiagnosticCodes.OperandsAreNotOrdered,
+                    $"'{symbol}' requires numeric operands, "
                     + $"but both are '{left.Type.DisplayName}'.",
                     binary.Span);
             }
@@ -2280,12 +2283,18 @@ public sealed class Binder
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
         }
 
+        // The overflow policy governs none of the bitwise operators (spec 10.1), so each carries the
+        // same placeholder behavior a comparison does, and the policy is never asked about one.
+        if (isBitwise)
+        {
+            return new IrBinary(op, left, right, left.Type, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
         if (left.Type is not ScalarType { IsNumeric: true } resultType)
         {
-            _diagnostics.Error(
-                "PC0050",
-                "arithmetic on a non-numeric type",
-                $"Cannot apply '{Describe(binary.Operator)}' to '{left.Type.DisplayName}'.",
+            _diagnostics.Report(
+                DiagnosticCodes.ArithmeticOnANonNumericType,
+                $"Cannot apply '{symbol}' to '{left.Type.DisplayName}'.",
                 binary.Span);
             return new IrBinary(op, left, right, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
         }
@@ -2295,22 +2304,154 @@ public sealed class Binder
         // NaN, which needs no declaration.
         if (op is (IrBinaryOperator.Divide or IrBinaryOperator.Modulo) && resultType.IsInteger)
         {
-            return BindIntegerDivision(binary, op, left, right, resultType, scope, context);
+            return BindIntegerDivision(binary, symbol, op, left, right, resultType, scope, context);
         }
 
-        if (binary.OnZero is not null)
+        // Only for a division, because the parser has already rejected 'on_zero' on anything that is
+        // not one, and reporting it again here would say the same thing twice -- in a message about
+        // IEEE 754 that is not even true of the operator the author wrote.
+        if (binary.OnZero is not null && op is (IrBinaryOperator.Divide or IrBinaryOperator.Modulo))
         {
-            _diagnostics.Error(
-                "PC0015",
-                "on_zero is only valid on integer division",
-                $"'{resultType.DisplayName}' division follows IEEE 754 and yields infinity or NaN "
-                + "rather than failing.",
+            // Named rather than called division, because '%' reaches here too and yields NaN rather
+            // than an infinity: a message about division would describe an operator the author did
+            // not write and an outcome theirs cannot produce.
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroOutsideIntegerDivision,
+                $"'{symbol}' on '{resultType.DisplayName}' follows IEEE 754 and "
+                + "yields infinity or NaN rather than failing.",
                 binary.OnZero.Span);
         }
 
         return new IrBinary(
             op, left, right, resultType, _policy.ResolveArithmetic(op, resultType), binary.Span);
     }
+
+    /// <summary>
+    /// Binds <c>&lt;&lt;</c> or <c>&gt;&gt;</c>, whose operands are not alike: a value, and a count
+    /// of how far to shift it (spec 10.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The count may have any integer type, because it is a count and not an operand of the
+    /// arithmetic, so neither operand's type is offered to the other. A literal value takes the type
+    /// expected of the shift, where that is an integer type, and a literal count takes its natural
+    /// type. Handing the count's type to the value would make <c>1 &lt;&lt; bit</c> an
+    /// <c>int32</c> wherever <c>bit</c> is one, whatever the shift was meant to produce; handing the
+    /// value's type to the count would reject a count literal the value's type cannot hold, although
+    /// only its low bits are ever used.
+    /// </para>
+    /// <para>
+    /// The result has the value's type. Like the other bitwise operators it is governed by no
+    /// overflow policy: a left shift discards what passes the width whatever the project chose.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindShift(
+        BinaryExpression binary,
+        string symbol,
+        Scope scope,
+        MethodContext context,
+        PlType? expectedType)
+    {
+        var op = ToIrOperator(binary.Operator);
+        var value = BindExpression(binary.Left, scope, context, IntegerOrNull(expectedType));
+        var count = BindExpression(binary.Right, scope, context, null);
+
+        if (value.Type is ErrorType || count.Type is ErrorType)
+        {
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        if (value.Type is not ScalarType { IsInteger: true } shifted)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"'{symbol}' shifts an integer, but the value here is "
+                + $"'{value.Type.DisplayName}'.",
+                binary.Span);
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        if (!IsInteger(count.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseOperatorRequiresIntegerOperands,
+                $"'{symbol}' shifts by an integer count, but the count here is "
+                + $"'{count.Type.DisplayName}'.",
+                binary.Span,
+                "The count can be any integer type, whatever the value's is. Convert it with 'as'.");
+            return new IrBinary(op, value, count, ErrorType.Instance, ArithmeticBehavior.Wrap, binary.Span);
+        }
+
+        return new IrBinary(op, value, count, shifted, ArithmeticBehavior.Wrap, binary.Span);
+    }
+
+    /// <summary>What to do about a bitwise operator given something other than two integers.</summary>
+    /// <remarks>
+    /// Two cases have a better answer than the message's. An integer beside a comparison is nearly
+    /// always <c>x &amp; mask == 0</c>, which C-family precedence groups as <c>x &amp; (mask == 0)</c>
+    /// (spec 9.2), so what is wanted is parentheses. Two bools are an author reaching for C#'s
+    /// <c>&amp;</c> and <c>|</c> on bools, which ProtoCross does not have, so what is wanted is the
+    /// logical operator -- written out in full after a compound assignment, since no logical operator
+    /// has a compound form.
+    /// </remarks>
+    private static string? BitwiseHelp(
+        BinaryExpression binary,
+        OperatorForm form,
+        IrExpression left,
+        IrExpression right)
+    {
+        var symbol = Spell(binary.Operator, form);
+
+        if (TypesMatch(left.Type, ScalarType.BoolType) && TypesMatch(right.Type, ScalarType.BoolType))
+        {
+            var logical = LogicalCounterpart(binary.Operator);
+            return form == OperatorForm.Compound
+                ? $"'{symbol}' works on the bits of integers. For two bools, write the assignment out "
+                    + $"with '{logical}': 'a = a {logical} b'."
+                : $"'{symbol}' works on the bits of integers. For two bools, write '{logical}'.";
+        }
+
+        // The right side of a compound assignment is one operand whatever it holds, so a comparison
+        // there is not one precedence put there.
+        if (form == OperatorForm.Infix
+            && (ComparisonIn(binary.Left) ?? ComparisonIn(binary.Right)) is { } comparison)
+        {
+            var compared = Describe(comparison);
+            return $"'{compared}' binds tighter than '{symbol}', as it does in C# and C++, so the "
+                + $"comparison is an operand of '{symbol}'. To compare the result of '{symbol}', "
+                + $"parenthesize it: '(a {symbol} b) {compared} c'.";
+        }
+
+        return null;
+    }
+
+    private static BinaryOperatorKind? ComparisonIn(Expression expression)
+        => expression is BinaryExpression { Operator: var op } && IsComparison(op) ? op : null;
+
+    private static string LogicalCounterpart(BinaryOperatorKind kind) => kind switch
+    {
+        BinaryOperatorKind.BitwiseAnd => "and",
+        BinaryOperatorKind.BitwiseOr => "or",
+        BinaryOperatorKind.BitwiseXor => "!=",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a bitwise operator."),
+    };
+
+    private static bool IsComparison(BinaryOperatorKind kind)
+        => kind is BinaryOperatorKind.Equal or BinaryOperatorKind.NotEqual
+            or BinaryOperatorKind.LessThan or BinaryOperatorKind.LessThanOrEqual
+            or BinaryOperatorKind.GreaterThan or BinaryOperatorKind.GreaterThanOrEqual;
+
+    private static bool IsInteger(PlType? type) => type is ScalarType { IsInteger: true };
+
+    /// <summary>An expectation, kept only where it is an integer type.</summary>
+    /// <remarks>
+    /// For an operator that makes an integer from integers, a <c>double</c> expected of the result
+    /// says nothing its operands can use: a literal handed it would become a <c>double</c> and be
+    /// refused by the operator, where left alone it stays an integer and the mismatch is reported
+    /// where it really is, between the result and what was expected of it.
+    /// </remarks>
+    private static PlType? IntegerOrNull(PlType? expectedType)
+        => IsInteger(expectedType) ? expectedType : null;
 
     /// <summary>
     /// Binds integer <c>/</c> or <c>%</c>. The divisor must either be a literal that is provably
@@ -2320,6 +2461,7 @@ public sealed class Binder
     /// </summary>
     private IrExpression BindIntegerDivision(
         BinaryExpression binary,
+        string symbol,
         IrBinaryOperator op,
         IrExpression left,
         IrExpression right,
@@ -2327,15 +2469,14 @@ public sealed class Binder
         Scope scope,
         MethodContext context)
     {
-        var divisorIsProvenNonZero = right is IrLiteral { Value: long literal } && literal != 0;
+        var divisorIsProvenNonZero = right is IrLiteral { Value: (long and not 0L) or (ulong and not 0UL) };
 
         if (divisorIsProvenNonZero)
         {
             if (binary.OnZero is not null)
             {
-                _diagnostics.Warning(
-                    "PC0056",
-                    "unnecessary on_zero clause",
+                _diagnostics.Report(
+                    DiagnosticCodes.UnnecessaryOnZeroClause,
                     "The divisor is a non-zero literal, so this clause is unreachable.",
                     binary.OnZero.Span);
             }
@@ -2347,14 +2488,13 @@ public sealed class Binder
 
         if (binary.OnZero is null)
         {
-            _diagnostics.Error(
-                "PC0054",
-                "integer division requires an on_zero clause",
-                $"'{Describe(binary.Operator)}' on '{resultType.DisplayName}' must state what to "
+            _diagnostics.Report(
+                DiagnosticCodes.MissingOnZeroClause,
+                $"'{symbol}' on '{resultType.DisplayName}' must state what to "
                 + "produce when the divisor is zero.",
                 binary.Span,
-                $"Write '{Describe(binary.Operator)} <divisor> on_zero <fallback>', or "
-                + $"'{Describe(binary.Operator)} <divisor> on_zero fail' if no value is correct.");
+                $"Write '{symbol} <divisor> on_zero <fallback>', or "
+                + $"'{symbol} <divisor> on_zero fail' if no value is correct.");
 
             return new IrIntegerDivision(
                 op, left, right, ZeroDivisorBehavior.Fallback, null, ErrorType.Instance,
@@ -2372,9 +2512,8 @@ public sealed class Binder
 
         if (onZero.Type is not ErrorType && !TypesMatch(resultType, onZero.Type))
         {
-            _diagnostics.Error(
-                "PC0055",
-                "on_zero type mismatch",
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroTypeMismatch,
                 $"The fallback has type '{onZero.Type.DisplayName}' but the division produces "
                 + $"'{resultType.DisplayName}'.",
                 binary.OnZero.Span,
@@ -2392,25 +2531,29 @@ public sealed class Binder
         MethodContext context,
         PlType? expectedType)
     {
-        var operand = BindExpression(unary.Operand, scope, context, expectedType);
+        var operand = BindExpression(
+            unary.Operand,
+            scope,
+            context,
+            unary.Operator == UnaryOperatorKind.BitwiseNot ? IntegerOrNull(expectedType) : expectedType);
 
         if (operand.Type is ErrorType)
         {
             return new IrUnary(
-                unary.Operator == UnaryOperatorKind.Negate ? IrUnaryOperator.Negate : IrUnaryOperator.LogicalNot,
-                operand,
-                ErrorType.Instance,
-                ArithmeticBehavior.Wrap,
-                unary.Span);
+                ToIrOperator(unary.Operator), operand, ErrorType.Instance, ArithmeticBehavior.Wrap, unary.Span);
+        }
+
+        if (unary.Operator == UnaryOperatorKind.BitwiseNot)
+        {
+            return BindComplement(unary, operand);
         }
 
         if (unary.Operator == UnaryOperatorKind.Negate)
         {
             if (operand.Type is not ScalarType { IsNumeric: true } scalar)
             {
-                _diagnostics.Error(
-                    "PC0051",
-                    "negation requires a numeric operand",
+                _diagnostics.Report(
+                    DiagnosticCodes.NegationRequiresANumericOperand,
                     $"Cannot negate a value of type '{operand.Type.DisplayName}'.",
                     unary.Span);
                 return new IrUnary(
@@ -2419,9 +2562,8 @@ public sealed class Binder
 
             if (scalar.IsInteger && !scalar.IsSigned)
             {
-                _diagnostics.Error(
-                    "PC0052",
-                    "negation of an unsigned type",
+                _diagnostics.Report(
+                    DiagnosticCodes.NegationOfAnUnsignedType,
                     $"'{scalar.DisplayName}' is unsigned and cannot be negated.",
                     unary.Span);
             }
@@ -2432,9 +2574,8 @@ public sealed class Binder
 
         if (!TypesMatch(operand.Type, ScalarType.BoolType))
         {
-            _diagnostics.Error(
-                "PC0053",
-                "logical not requires a bool operand",
+            _diagnostics.Report(
+                DiagnosticCodes.LogicalNotRequiresABoolOperand,
                 $"Cannot apply 'not' to a value of type '{operand.Type.DisplayName}'.",
                 unary.Span);
         }
@@ -2442,6 +2583,33 @@ public sealed class Binder
         return new IrUnary(
             IrUnaryOperator.LogicalNot, operand, ScalarType.BoolType, ArithmeticBehavior.Wrap, unary.Span);
     }
+
+    /// <summary>Binds <c>~</c>, which flips every bit of an integer and is governed by no policy.</summary>
+    private IrUnary BindComplement(UnaryExpression unary, IrExpression operand)
+    {
+        if (operand.Type is not ScalarType { IsInteger: true } scalar)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.BitwiseNotRequiresAnIntegerOperand,
+                $"Cannot apply '~' to a value of type '{operand.Type.DisplayName}'.",
+                unary.Span,
+                TypesMatch(operand.Type, ScalarType.BoolType)
+                    ? "'~' flips the bits of an integer. For a bool, write 'not'."
+                    : null);
+            return new IrUnary(
+                IrUnaryOperator.BitwiseNot, operand, ErrorType.Instance, ArithmeticBehavior.Wrap, unary.Span);
+        }
+
+        return new IrUnary(IrUnaryOperator.BitwiseNot, operand, scalar, ArithmeticBehavior.Wrap, unary.Span);
+    }
+
+    private static IrUnaryOperator ToIrOperator(UnaryOperatorKind kind) => kind switch
+    {
+        UnaryOperatorKind.Negate => IrUnaryOperator.Negate,
+        UnaryOperatorKind.LogicalNot => IrUnaryOperator.LogicalNot,
+        UnaryOperatorKind.BitwiseNot => IrUnaryOperator.BitwiseNot,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unhandled operator."),
+    };
 
     private static IrBinaryOperator ToIrOperator(BinaryOperatorKind kind) => kind switch
     {
@@ -2458,6 +2626,11 @@ public sealed class Binder
         BinaryOperatorKind.GreaterThanOrEqual => IrBinaryOperator.GreaterThanOrEqual,
         BinaryOperatorKind.LogicalAnd => IrBinaryOperator.LogicalAnd,
         BinaryOperatorKind.LogicalOr => IrBinaryOperator.LogicalOr,
+        BinaryOperatorKind.BitwiseAnd => IrBinaryOperator.BitwiseAnd,
+        BinaryOperatorKind.BitwiseOr => IrBinaryOperator.BitwiseOr,
+        BinaryOperatorKind.BitwiseXor => IrBinaryOperator.BitwiseXor,
+        BinaryOperatorKind.ShiftLeft => IrBinaryOperator.ShiftLeft,
+        BinaryOperatorKind.ShiftRight => IrBinaryOperator.ShiftRight,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unhandled operator."),
     };
 
@@ -2476,8 +2649,31 @@ public sealed class Binder
         BinaryOperatorKind.GreaterThanOrEqual => ">=",
         BinaryOperatorKind.LogicalAnd => "and",
         BinaryOperatorKind.LogicalOr => "or",
+        BinaryOperatorKind.BitwiseAnd => "&",
+        BinaryOperatorKind.BitwiseOr => "|",
+        BinaryOperatorKind.BitwiseXor => "^",
+        BinaryOperatorKind.ShiftLeft => "<<",
+        BinaryOperatorKind.ShiftRight => ">>",
         _ => kind.ToString(),
     };
+
+    /// <summary>A binary operator as the author wrote it: a compound assignment's is followed by '='.</summary>
+    private static string Spell(BinaryOperatorKind kind, OperatorForm form)
+        => form == OperatorForm.Compound ? $"{Describe(kind)}=" : Describe(kind);
+
+    /// <summary>How a binary operator was written, which the operation it binds to does not say.</summary>
+    /// <remarks>
+    /// A compound assignment is bound as the operation it abbreviates, so the binder holds the same
+    /// syntax whichever the author wrote, and this is what tells the two apart. A diagnostic names the
+    /// operator as it was written -- <c>+=</c> where that is what was typed -- and precedence is blamed
+    /// only where precedence did the grouping, which it never does for the right side of a compound
+    /// assignment.
+    /// </remarks>
+    private enum OperatorForm
+    {
+        Infix,
+        Compound,
+    }
 
     private static bool TypesMatch(PlType left, PlType right) => left.Equals(right);
 

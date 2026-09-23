@@ -1,0 +1,39 @@
+// Conformance vectors for an extension declared inside a message.
+//
+// Such an extension has the message's full name in front of its own, which is what made the
+// compiler take it for one of the message's fields: it bound as one, and it refused a method of the
+// same name as a collision with it. It is neither. It extends another message entirely, and what
+// each generated API keeps under its name is not a member of this one -- C# puts it on the nested
+// static class ExtensionScopeCase.Extensions, and C++ makes it a static member identifier that no
+// instance reads through. So a method may be called what the extension is called, and what this
+// pins is that both backends build that method and call it.
+
+import proto "extension_scope.proto";
+
+extend ExtensionScopeCase {
+    fn extension_scope_tag() -> int64 {
+        return held;
+    }
+
+    // Called from a sibling, because while the name was taken for the extension's the method was
+    // never registered, so a call to it was an unknown method rather than a collision.
+    fn tag_twice() -> int64 {
+        return extension_scope_tag() * 2;
+    }
+}
+
+test ExtensionScopeCase.extension_scope_tag "a method may take the name of an extension its receiver declares" {
+    receiver {
+        held = 7;
+    }
+
+    expect return 7;
+}
+
+test ExtensionScopeCase.tag_twice "a sibling calls that method rather than the extension" {
+    receiver {
+        held = 7;
+    }
+
+    expect return 14;
+}

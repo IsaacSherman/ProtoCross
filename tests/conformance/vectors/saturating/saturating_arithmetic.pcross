@@ -8,7 +8,7 @@
 // overflow when its operands share a sign, a product's sign is the exclusive-or of its operands' --
 // so both directions are covered for each operation rather than just the one that overflows upward.
 
-import proto "conformance.proto";
+import proto "saturating_arithmetic.proto";
 
 extend SaturatingOverflowCase {
     fn i32_sum() -> int32 {
@@ -57,6 +57,16 @@ extend SaturatingOverflowCase {
 
     fn u64_product() -> uint64 {
         return u64_left * u64_right;
+    }
+
+    // Shifts are not governed by the overflow policy (spec 10.1): a left shift discards the bits
+    // that pass the width under this policy exactly as under the default, rather than clamping.
+    fn i32_shifted_left() -> int32 {
+        return i32_left << i32_right;
+    }
+
+    fn u64_shifted_left() -> uint64 {
+        return u64_left << u64_right;
     }
 }
 
@@ -111,7 +121,7 @@ test SaturatingOverflowCase.i32_product "int32 multiplication past MAX clamps to
 
 test SaturatingOverflowCase.i32_negated "negating int32 MIN clamps to MAX" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
     }
 
     expect return 2147483647;
@@ -137,7 +147,7 @@ test SaturatingOverflowCase.i64_product "int64 multiplication past MAX clamps to
 
 test SaturatingOverflowCase.i64_negated "negating int64 MIN clamps to MAX" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
     }
 
     expect return 9223372036854775807;
@@ -146,7 +156,7 @@ test SaturatingOverflowCase.i64_negated "negating int64 MIN clamps to MAX" {
 // The one division that overflows. Its quotient is 2^63, so it lands on MAX.
 test SaturatingOverflowCase.i64_quotient "MIN / -1 clamps to MAX" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -156,7 +166,7 @@ test SaturatingOverflowCase.i64_quotient "MIN / -1 clamps to MAX" {
 // The remainder of that same division is 0, which is representable, so no policy touches it.
 test SaturatingOverflowCase.i64_remainder "MIN % -1 is zero under saturation too" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -172,15 +182,13 @@ test SaturatingOverflowCase.u32_sum "uint32 addition past MAX clamps to MAX" {
     expect return 4294967295;
 }
 
-// uint64 MAX has no literal form -- it is above int64 MAX -- so it is built the way casts.pcross
-// builds values it cannot write: 2 * int64 MAX is one short of it.
 test SaturatingOverflowCase.u64_product "uint64 multiplication past MAX clamps to MAX" {
     receiver {
         u64_left = 4294967296;
         u64_right = 4294967296;
     }
 
-    expect return 9223372036854775807 as uint64 * 2 + 1;
+    expect return 18446744073709551615;
 }
 
 // --- clamping downward ---
@@ -191,16 +199,16 @@ test SaturatingOverflowCase.i32_difference "int32 subtraction past MIN clamps to
         i32_right = 2;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i32_sum "int32 addition past MIN clamps to MIN" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
         i32_right = -1;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i32_product "a negative product past MIN clamps to MIN" {
@@ -209,16 +217,16 @@ test SaturatingOverflowCase.i32_product "a negative product past MIN clamps to M
         i32_right = -2;
     }
 
-    expect return -2147483647 - 1;
+    expect return -2147483648;
 }
 
 test SaturatingOverflowCase.i64_product "a negative product past MIN clamps to MIN" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = 2;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 // Unsigned arithmetic can only leave the range at one end, so the lower clamp is zero.
@@ -238,4 +246,33 @@ test SaturatingOverflowCase.u32_difference "an unsigned subtraction that fits is
     }
 
     expect return 6;
+}
+
+// --- shifts are not governed by the policy ---
+
+test SaturatingOverflowCase.i32_shifted_left "int32 MAX shifted left discards the top bit rather than clamping" {
+    receiver {
+        i32_left = 2147483647;
+        i32_right = 1;
+    }
+
+    expect return -2;
+}
+
+test SaturatingOverflowCase.i32_shifted_left "1 shifted into the sign bit of an int32 is MIN rather than clamping" {
+    receiver {
+        i32_left = 1;
+        i32_right = 31;
+    }
+
+    expect return -2147483648;
+}
+
+test SaturatingOverflowCase.u64_shifted_left "uint64 MAX shifted left discards the top bit rather than clamping" {
+    receiver {
+        u64_left = 18446744073709551615;
+        u64_right = 1;
+    }
+
+    expect return 18446744073709551614;
 }

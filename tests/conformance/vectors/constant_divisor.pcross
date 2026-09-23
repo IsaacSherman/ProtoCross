@@ -1,0 +1,174 @@
+// Conformance vectors for a floating-point division both of whose operands are written out.
+//
+// The answers here are the ones floating_point.pcross already pins: IEEE 754 division by zero is an
+// infinity, and zero over zero is a NaN. What is different is where the operands come from. Those
+// vectors divide one field by another, so the quotient is computed when the generated code runs;
+// these write both operands into the source, so the C++ front end computes it while compiling --
+// and MSVC rejects a division it folds to a zero divisor outright, as error C2124, before anything
+// can run. The rule the language states is therefore unreachable in one backend for the most direct
+// way an author can write it, which is what these vectors are here to prevent.
+//
+// A constant divisor alone is not enough to provoke it: a fold needs both operands, so
+// 'numerator / 0.0' compiles where '1.0 / 0.0' does not. Each vector below is written to be one node
+// kind the fold can reach through -- a literal, a negation, an arithmetic operator, a conversion --
+// because whether a quotient compiles has to follow the shape of the expression rather than a list
+// of the spellings somebody thought of.
+//
+// Each case returns its quotient and expects the literal it should be: __INF, -__INF or __NAN
+// (spec 6.6).
+
+import proto "constant_divisor.proto";
+
+extend ConstantDivisorCase {
+    fn constant_over_zero() -> double {
+        return 1.0 / 0.0;
+    }
+
+    fn negated_constant_over_zero() -> double {
+        return -1.0 / 0.0;
+    }
+
+    fn constant_zero_over_zero() -> double {
+        return 0.0 / 0.0;
+    }
+
+    // The divisor is an integer literal that adopts 'double' from the operand beside it (10.3), so
+    // this is the same division as the first one, written the way an author is likely to reach for.
+    fn over_integer_zero() -> double {
+        return 1.0 / 0;
+    }
+
+    // A conversion, which is a cast in the generated C++ and folds like any other constant.
+    fn over_converted_zero() -> double {
+        return 1.0 / (0 as double);
+    }
+
+    // A negation, which is where the sign of the zero decides the sign of the infinity.
+    fn over_negative_zero() -> double {
+        return 1.0 / -0.0;
+    }
+
+    // An arithmetic operator: the divisor is zero only once the multiplication is worked out, so a
+    // rule about literal zeros would not see it.
+    fn over_computed_zero() -> double {
+        return 1.0 / (0.0 * 2.0);
+    }
+
+    // The case that must keep dividing the way it always has: nothing can be folded, because the
+    // numerator is only known when this runs.
+    fn field_over_constant_zero() -> double {
+        return numerator / 0.0;
+    }
+
+    fn narrow_constant_over_zero() -> float {
+        return 1.0 / 0.0;
+    }
+
+    fn narrow_field_over_constant_zero() -> float {
+        return narrow_numerator / 0.0;
+    }
+
+    // A constant quotient that is not an infinity at all. It is folded exactly as the others are, so
+    // it is the one that says the repair leaves an ordinary division's answer alone.
+    fn constant_quotient() -> double {
+        return 1.0 / 4.0;
+    }
+
+    fn narrow_constant_quotient() -> float {
+        return 1.0 / 4.0;
+    }
+}
+
+test ConstantDivisorCase.constant_over_zero "a constant one over a constant zero is positive infinity" {
+    receiver {
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.negated_constant_over_zero "a negated constant numerator carries its sign into the infinity" {
+    receiver {
+    }
+
+    expect return -__INF;
+}
+
+test ConstantDivisorCase.constant_zero_over_zero "a constant zero over a constant zero is NaN" {
+    receiver {
+    }
+
+    expect return __NAN;
+}
+
+test ConstantDivisorCase.over_integer_zero "an integer zero divisor adopts double and divides the same way" {
+    receiver {
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.over_converted_zero "a converted zero divides the same way" {
+    receiver {
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.over_negative_zero "a constant negative zero divisor yields negative infinity" {
+    receiver {
+    }
+
+    expect return -__INF;
+}
+
+test ConstantDivisorCase.over_computed_zero "a divisor that is zero only once computed divides the same way" {
+    receiver {
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.field_over_constant_zero "a field over a constant zero is positive infinity" {
+    receiver {
+        numerator = 1.0;
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.field_over_constant_zero "a zero field over a constant zero is NaN" {
+    receiver {
+        numerator = 0.0;
+    }
+
+    expect return __NAN;
+}
+
+test ConstantDivisorCase.narrow_constant_over_zero "float constants divide the way double constants do" {
+    receiver {
+    }
+
+    expect return __INF;
+}
+
+test ConstantDivisorCase.narrow_field_over_constant_zero "a zero float field over a constant zero is NaN" {
+    receiver {
+        narrow_numerator = 0.0;
+    }
+
+    expect return __NAN;
+}
+
+test ConstantDivisorCase.constant_quotient "a constant quotient that is not an infinity keeps its value" {
+    receiver {
+    }
+
+    expect return 0.25;
+}
+
+test ConstantDivisorCase.narrow_constant_quotient "a narrow constant quotient keeps its value" {
+    receiver {
+    }
+
+    expect return 0.25;
+}

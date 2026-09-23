@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// floating_remainder.pcross -- % on floating-point operands, including by zero and infinity.
+message RemainderCase {
+  double dividend = 1;
+  double divisor = 2;
+  float narrow_dividend = 3;
+  float narrow_divisor = 4;
+}

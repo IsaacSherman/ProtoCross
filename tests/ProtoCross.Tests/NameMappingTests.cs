@@ -1,7 +1,11 @@
+using System.Text.RegularExpressions;
+using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
+using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
+using ProtoCross.Tests.Harness;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -10,7 +14,13 @@ namespace ProtoCross.Tests;
 /// Covers the mapping from protobuf names and ProtoCross literals into each target language.
 /// These are the cases where emitting something plausible-looking still fails to compile.
 /// </summary>
-public class NameMappingTests
+/// <remarks>
+/// One partial file per section: enum values, conversions, C++ fields and types, C# properties and
+/// namespaces, and the pinned-protoc helpers they share. Each naming rule tends to arrive in its own
+/// branch, and branches that all appended to one long file met at its end and were merged into each
+/// other. A new rule gets a new file.
+/// </remarks>
+public partial class NameMappingTests
 {
     private static string Emit(IBackend backend, string source, string fileSuffix)
     {
@@ -325,291 +335,5 @@ public class NameMappingTests
             source,
             StringComparison.Ordinal);
         Assert.DoesNotContain("return self.Clone();", source, StringComparison.Ordinal);
-    }
-
-    // --- enum values ---
-    //
-    // protoc names an enum value completely differently in the two targets: C# strips the enum name
-    // off the front and PascalCases the rest, while C++ keeps the .proto spelling and prefixes
-    // nested enums with the flattened type name. Neither is derivable from the other, and a
-    // near-miss emits an identifier that does not exist.
-
-    private static string EmitEnumValue(
-        IBackend backend,
-        string prelude,
-        string receiver,
-        string returnType,
-        string value,
-        string suffix)
-        => Emit(backend, prelude + $"extend {receiver} {{ fn f() -> {returnType} {{ return {value}; }} }}", suffix);
-
-    [Fact]
-    public void CSharpStripsTheEnumPrefixAndPascalCasesTheValue()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(),
-            FixturePrelude,
-            "Outer",
-            "TopLevelStatus",
-            "TopLevelStatus.TOP_LEVEL_STATUS_OK",
-            "test.g.cs");
-
-        Assert.Contains("return global::ProtoCross.Tests.TopLevelStatus.Ok;", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CSharpQualifiesANestedEnumValueThroughTheTypesClass()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(), FixturePrelude, "Outer", "Nested", "Nested.NESTED_SOME", "test.g.cs");
-
-        Assert.Contains(
-            "return global::ProtoCross.Tests.Outer.Types.Nested.Some;",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CSharpQualifiesADeeplyNestedEnumValue()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(),
-            FixturePrelude,
-            "Outer",
-            "protocross.tests.Outer.Inner.Deep",
-            "protocross.tests.Outer.Inner.Deep.DEEP_NONE",
-            "test.g.cs");
-
-        Assert.Contains(
-            "return global::ProtoCross.Tests.Outer.Types.Inner.Types.Deep.None;",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// protoc only strips a prefix the value actually carries, so a value named independently of
-    /// its enum keeps every part of its name.
-    /// </summary>
-    [Fact]
-    public void CSharpKeepsTheWholeNameOfAValueWithoutTheEnumPrefix()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(),
-            FixturePrelude,
-            "Outer",
-            "TopLevelStatus",
-            "TopLevelStatus.OTHER_RESULT",
-            "test.g.cs");
-
-        Assert.Contains(
-            "return global::ProtoCross.Tests.TopLevelStatus.OtherResult;",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Stripping the enum name from TOP_LEVEL_STATUS_2 leaves "2", which is not an identifier, so
-    /// protoc prefixes an underscore. Emitting the bare digit would not compile.
-    /// </summary>
-    [Fact]
-    public void CSharpUnderscoresAValueThatStripsToALeadingDigit()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(),
-            FixturePrelude,
-            "Outer",
-            "TopLevelStatus",
-            "TopLevelStatus.TOP_LEVEL_STATUS_2",
-            "test.g.cs");
-
-        Assert.Contains("return global::ProtoCross.Tests.TopLevelStatus._2;", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CppLeavesATopLevelEnumValueUnprefixed()
-    {
-        var source = EmitEnumValue(
-            new CppBackend(),
-            FixturePrelude,
-            "Outer",
-            "TopLevelStatus",
-            "TopLevelStatus.TOP_LEVEL_STATUS_OK",
-            "test.pc.h");
-
-        Assert.Contains("return ::protocross::tests::TOP_LEVEL_STATUS_OK;", source, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// A nested enum has its values at namespace scope prefixed with the flattened enum name,
-    /// rather than as members of the enum, so the qualification goes on the value and not the type.
-    /// </summary>
-    [Fact]
-    public void CppPrefixesANestedEnumValueWithTheFlattenedEnumName()
-    {
-        var source = EmitEnumValue(
-            new CppBackend(), FixturePrelude, "Outer", "Nested", "Nested.NESTED_SOME", "test.pc.h");
-
-        Assert.Contains(
-            "return ::protocross::tests::Outer_Nested_NESTED_SOME;",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CppFlattensADeeplyNestedEnumValue()
-    {
-        var source = EmitEnumValue(
-            new CppBackend(),
-            FixturePrelude,
-            "Outer",
-            "protocross.tests.Outer.Inner.Deep",
-            "protocross.tests.Outer.Inner.Deep.DEEP_NONE",
-            "test.pc.h");
-
-        Assert.Contains(
-            "return ::protocross::tests::Outer_Inner_Deep_DEEP_NONE;",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CSharpHandlesEnumValuesInAFileWithNoPackage()
-    {
-        var source = EmitEnumValue(
-            new CSharpBackend(),
-            BarePrelude,
-            "BareMessage",
-            "BareStatus",
-            "BareStatus.BARE_STATUS_SET",
-            "test.g.cs");
-
-        Assert.Contains("return global::BareStatus.Set;", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("global::.", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CppHandlesEnumValuesInAFileWithNoPackage()
-    {
-        var source = EmitEnumValue(
-            new CppBackend(),
-            BarePrelude,
-            "BareMessage",
-            "BareStatus",
-            "BareStatus.BARE_STATUS_SET",
-            "test.pc.h");
-
-        Assert.Contains("return ::BARE_STATUS_SET;", source, StringComparison.Ordinal);
-        Assert.DoesNotContain(":::", source, StringComparison.Ordinal);
-    }
-
-    // --- explicit conversions ---
-
-    private static string EmitConversion(IBackend backend, string returnType, string expression, string suffix)
-        => Emit(
-            backend,
-            FixturePrelude + $"extend Outer {{ fn f() -> {returnType} {{ return {expression}; }} }}",
-            suffix);
-
-    /// <summary>
-    /// A narrowing conversion has to be unchecked. The conformance harness builds generated code
-    /// with CheckForOverflowUnderflow, where a bare cast throws instead of wrapping.
-    /// </summary>
-    [Fact]
-    public void CSharpNarrowsIntegersInsideUnchecked()
-    {
-        var source = EmitConversion(new CSharpBackend(), "int32", "count as int32", "test.g.cs");
-
-        Assert.Contains("return unchecked((int)self.Count);", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CSharpConvertsToFloatingPointWithAPlainCast()
-    {
-        var source = EmitConversion(new CSharpBackend(), "double", "count as double", "test.g.cs");
-
-        Assert.Contains("return (double)self.Count;", source, StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Floating point to integer is the one conversion C# leaves unspecified when out of range, and
-    /// throws on under a checked build, so it cannot be a cast in either context.
-    /// </summary>
-    [Fact]
-    public void CSharpRoutesFloatToIntegerThroughTheRuntime()
-    {
-        var source = EmitConversion(new CSharpBackend(), "int32", "amount as int32", "test.g.cs");
-
-        Assert.Contains(
-            "return global::ProtoCross.Runtime.ProtoCrossArithmetic.ToInt32((double)self.Amount);",
-            source,
-            StringComparison.Ordinal);
-        Assert.DoesNotContain("(int)self.Amount", source, StringComparison.Ordinal);
-    }
-
-    /// <summary>A float source widens to double first, so one helper serves both widths.</summary>
-    [Fact]
-    public void CSharpWidensAFloatSourceBeforeConvertingToAnInteger()
-    {
-        var source = EmitConversion(new CSharpBackend(), "int64", "ratio as int64", "test.g.cs");
-
-        Assert.Contains(
-            "return global::ProtoCross.Runtime.ProtoCrossArithmetic.ToInt64((double)self.Ratio);",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CppNarrowsIntegersWithStaticCast()
-    {
-        var source = EmitConversion(new CppBackend(), "int32", "count as int32", "test.pc.h");
-
-        Assert.Contains("return static_cast<::std::int32_t>(self.count());", source, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void CppRoutesFloatToIntegerThroughTheRuntime()
-    {
-        var source = EmitConversion(new CppBackend(), "int32", "amount as int32", "test.pc.h");
-
-        Assert.Contains(
-            "return ::protocross_runtime::trunc_sat_f64_to_i32(static_cast<double>(self.amount()));",
-            source,
-            StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Narrowing a double past the range of float is undefined behavior in C++, so that direction
-    /// needs a helper even though widening does not.
-    /// </summary>
-    [Fact]
-    public void CppRoutesDoubleToFloatThroughTheRuntimeButNotTheReverse()
-    {
-        var narrowing = EmitConversion(new CppBackend(), "float", "amount as float", "test.pc.h");
-        var widening = EmitConversion(new CppBackend(), "double", "ratio as double", "test.pc.h");
-
-        Assert.Contains(
-            "return ::protocross_runtime::narrow_f64_to_f32(self.amount());",
-            narrowing,
-            StringComparison.Ordinal);
-        Assert.Contains("return static_cast<double>(self.ratio());", widening, StringComparison.Ordinal);
-    }
-
-    /// <summary>A conversion to the type a value already has emits nothing at all.</summary>
-    [Theory]
-    [InlineData("csharp")]
-    [InlineData("cpp")]
-    public void AnIdentityConversionEmitsTheOperandUnchanged(string target)
-    {
-        var isCSharp = target == "csharp";
-        var source = EmitConversion(
-            isCSharp ? new CSharpBackend() : new CppBackend(),
-            "int64",
-            "count as int64",
-            isCSharp ? "test.g.cs" : "test.pc.h");
-
-        Assert.Contains(
-            isCSharp ? "return self.Count;" : "return self.count();",
-            source,
-            StringComparison.Ordinal);
     }
 }

@@ -12,7 +12,7 @@
 // prefixes nested enums with the flattened type name. A top-level enum and a nested one are both
 // exercised because those two C++ spellings differ.
 
-import proto "conformance.proto";
+import proto "enum_types.proto";
 
 extend EnumCase {
     fn levels_match() -> bool {

@@ -121,6 +121,27 @@ public class CompilationTests
         Assert.IsType<IrThis>(left.Receiver);
     }
 
+    /// <summary>
+    /// <c>virtual</c> was removed from the language (spec 17) rather than kept reserved, so it is a
+    /// name like any other: a parameter, a local, and a method may all be called it.
+    /// </summary>
+    [Fact]
+    public void VirtualIsAnOrdinaryName()
+    {
+        var result = CompileSource(Prelude +
+            """
+            extend InvoiceItem {
+                fn virtual(virtual: int64) -> int64 {
+                    var doubled: int64 = virtual * 2;
+                    return doubled;
+                }
+            }
+            """);
+
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        Assert.Single(result.Module!.Methods, method => method.Name == "virtual");
+    }
+
     [Fact]
     public void ResolvesForwardReferencesBetweenExtendBlocks()
     {
@@ -427,13 +448,19 @@ public class CompilationTests
         Assert.Contains(result.Diagnostics, d => d.Code == "PC0015");
     }
 
+    /// <remarks>
+    /// Once, and titled for the rule rather than for the site: the parser rejects the clause and the
+    /// binder used to reject the same clause again on its way past, so one mistake was reported twice
+    /// and the two reports disagreed about what <c>on_zero</c> is valid on.
+    /// </remarks>
     [Fact]
-    public void RejectsOnZeroOnNonDivisionOperators()
+    public void RejectsOnZeroOnNonDivisionOperatorsOnce()
     {
         var result = CompileSource(
             Prelude + "extend InvoiceItem { fn f() -> int64 { return quantity + 1 on_zero 0; } }");
 
-        Assert.Contains(result.Diagnostics, d => d.Code == "PC0015");
+        var rejection = Assert.Single(result.Diagnostics, d => d.Code == "PC0015");
+        Assert.Equal("on_zero is only valid on integer division", rejection.Title);
     }
 
     [Fact]

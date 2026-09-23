@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// bitwise.pcross -- the bitwise and shift operators, where they bind, and how a literal beside one is typed.
+message BitwiseCase {
+  int32 narrow = 1;
+  int64 wide = 2;
+  uint32 narrow_unsigned = 3;
+  uint64 wide_unsigned = 4;
+  int32 count = 5;
+  uint64 wide_count = 6;
+  int64 flags = 7;
+}

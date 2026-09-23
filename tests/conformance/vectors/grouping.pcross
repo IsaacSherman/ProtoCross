@@ -13,7 +13,7 @@
 // the other; and the parentheses the grammar needs for an 'on_zero' fallback or a cast operand do
 // not become part of the value.
 
-import proto "conformance.proto";
+import proto "grouping.proto";
 
 extend GroupingCase {
     // The whole point of the file, in one method: a receiver with parentheses around it. There is no

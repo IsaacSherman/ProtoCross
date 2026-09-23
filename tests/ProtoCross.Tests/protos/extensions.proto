@@ -1,0 +1,25 @@
+syntax = "proto2";
+
+package protocross.tests.extensions;
+
+// Extensions, which are declared in one scope and extend a message somewhere else. The shape that
+// matters is `scoped`: its full name is protocross.tests.extensions.Host.scoped, which is exactly
+// what a lookup by name inside Host asks the descriptor pool for, and yet it is not a field of Host.
+
+message Extendable {
+  extensions 100 to 200;
+
+  optional int64 own = 1;
+}
+
+message Host {
+  optional int64 held = 1;
+
+  extend Extendable {
+    optional int64 scoped = 100;
+  }
+}
+
+extend Extendable {
+  optional int64 file_level = 101;
+}

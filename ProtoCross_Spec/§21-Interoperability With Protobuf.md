@@ -18,8 +18,9 @@ Implementation Note:
   info is where a schema's declaration sites and doc comments live, so discarding it meant paying
   `protoc` to produce the one thing the compiler then threw away.
 - That source info is answered, not merely kept. Given a message, enum, field, or enum value
-  descriptor reachable from a compilation -- a field an `extend` block declares included, since it
-  is a field like any other -- the compiler reports the schema that declares it, the
+  descriptor reachable from a compilation -- an extension included, since protobuf describes one with
+  a field descriptor like any other, though it is not a field of any message
+  ([13.4](./§13-Messages.md#134-extensions)) -- the compiler reports the schema that declares it, the
   range of the whole declaration, the range of the declared name inside it, and the leading,
   trailing, and detached comments written about it with the comment markers already removed.
   Missing information is ordinary rather than an error: a schema with no comments, a descriptor set
@@ -95,7 +96,21 @@ The current implementation defines:
 - C# behavior is emitted as extension methods in generated static classes.
 - C++ behavior is emitted as header-only free functions in the protobuf namespace.
 - Target method names are mapped by the backend's protobuf naming convention helpers.
-- Namespace/package mapping follows the generated protobuf target's conventions.
+- Namespace/package mapping follows the generated protobuf target's conventions exactly: a file's
+  namespace is the one that generator declares for it. [24.1](./§24-Generated%20API%20Strategy.md#241-c)
+  states the C# rule and [24.2](./§24-Generated%20API%20Strategy.md#242-c) the C++ one.
+- Fields are read and written through the accessors the target's protobuf generator declares, spelled
+  as that generator spells them. A field name the target language cannot use as it stands, such as
+  `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
+  accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
+- Behavior extended onto a message that comes from the protobuf runtime -- a well-known type such as
+  `Timestamp` -- is `PC0077`, a warning rather than an error. The code is legal and generates, but a
+  consumer already has that message from the runtime and will not have the extensions, which have to
+  ship as a library of their own before anyone can call them.
+- Messages, enums, enum values and package components are named the same way: as the target's
+  protobuf generator names them, escaped where it escapes them. A message called `New`, an enum value
+  called `new` and a package component called `default` are ordinary in ProtoCross and are not
+  rejected. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
 
 Open Question:
 

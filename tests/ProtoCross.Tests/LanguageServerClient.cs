@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
@@ -19,7 +20,8 @@ namespace ProtoCross.Tests;
 /// </para>
 /// <para>
 /// It answers <c>workspace/configuration</c> itself, because a server that asks a question and is
-/// never answered waits forever, and a test that hangs teaches nothing.
+/// never answered waits forever, and a test that hangs teaches nothing. A test about what the server
+/// does <em>while</em> it waits can <see cref="Withhold"/> a method and answer it later.
 /// </para>
 /// </remarks>
 public sealed class LanguageServerClient : IAsyncDisposable
@@ -39,6 +41,9 @@ public sealed class LanguageServerClient : IAsyncDisposable
     private readonly Task _serving;
     private readonly Task _receiving;
     private readonly Func<ConfigurationParams, object?> _configuration;
+
+    /// <summary>Methods of server-to-client request left for a test to answer.</summary>
+    private readonly ConcurrentDictionary<string, bool> _withheld = new(StringComparer.Ordinal);
 
     private readonly Lock _writing = new();
 
@@ -135,6 +140,18 @@ public sealed class LanguageServerClient : IAsyncDisposable
     };
 
     // ------------------------------------------------------- the opening exchange
+
+    /// <summary>
+    /// Leaves every request of one method unanswered until a test hands it to <see cref="Answer"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called between <see cref="Create"/> and <see cref="InitializeAsync"/>, because the requests
+    /// worth withholding are the ones a server sends as it starts -- a registration, which is a client
+    /// that has not yet got round to what it was asked -- and by the time the handshake returns they
+    /// have already been answered. The request still reaches the inbox, so a test finds it the way it
+    /// finds any other.
+    /// </remarks>
+    public void Withhold(string method) => _withheld[method] = true;
 
     public async Task<InitializeResult> InitializeAsync(
         ClientCapabilities capabilities,
@@ -408,7 +425,8 @@ public sealed class LanguageServerClient : IAsyncDisposable
 
     /// <remarks>
     /// Server-to-client requests are answered here rather than waiting on a test, so that a handler
-    /// awaiting an answer gets one. Everything, requests included, goes to the inbox for a test to find.
+    /// awaiting an answer gets one -- except those of a method the test has withheld. Everything,
+    /// requests included, goes to the inbox for a test to find.
     /// </remarks>
     private async Task ReceiveAsync()
     {
@@ -451,7 +469,7 @@ public sealed class LanguageServerClient : IAsyncDisposable
 
             // A request is answered at once and still delivered, so a test can ask what the server asked
             // for -- a registration, say -- without anything waiting on the test to reply.
-            if (message.IsRequest)
+            if (message.IsRequest && !(message.Method is { } method && _withheld.ContainsKey(method)))
             {
                 Answer(message);
             }
@@ -462,7 +480,8 @@ public sealed class LanguageServerClient : IAsyncDisposable
         _inbox.Writer.TryComplete();
     }
 
-    private void Answer(IncomingMessage request)
+    /// <summary>Answers a request from the server the way this client answers every one it does not withhold.</summary>
+    public void Answer(IncomingMessage request)
     {
         var result = request.Method == Methods.Configuration
             ? _configuration(LspJson.Read<ConfigurationParams>(request.Params) ?? new ConfigurationParams())

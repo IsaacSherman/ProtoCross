@@ -13,7 +13,7 @@
 // reachable: a non-zero literal divisor is proof the on_zero clause is dead, and the compiler
 // warns about it.
 
-import proto "conformance.proto";
+import proto "integer_division.proto";
 
 extend DivisionCase {
     fn quotient() -> int64 {
@@ -90,16 +90,16 @@ test DivisionCase.remainder "yields the on_zero fallback for a zero divisor" {
 
 test DivisionCase.quotient "wraps MIN divided by minus one to MIN" {
     receiver {
-        numerator = -9223372036854775807 - 1;
+        numerator = -9223372036854775808;
         divisor = -1;
     }
 
-    expect return -9223372036854775807 - 1;
+    expect return -9223372036854775808;
 }
 
 test DivisionCase.remainder "gives zero for MIN remainder minus one" {
     receiver {
-        numerator = -9223372036854775807 - 1;
+        numerator = -9223372036854775808;
         divisor = -1;
     }
 

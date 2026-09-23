@@ -22,6 +22,12 @@ internal sealed record CorpusSource(string Name, string Text, CompilationResult 
 /// is here for the same reason the others are: error recovery is what puts nodes in surprising
 /// places, so a sweep that only ever sees well-formed files is a sweep over the easy half.
 /// </para>
+/// <para>
+/// The vectors the arithmetic sweep generates are left out. Between them they are a few constructs
+/// repeated several thousand times, so they hold nothing a sweep over constructs would not already
+/// meet in the written ones, and a sweep that visits every offset or every node costs in proportion
+/// to their size: with them in, the sweeps that run every time took ten times as long.
+/// </para>
 /// </remarks>
 internal static class CompiledCorpus
 {
@@ -156,7 +162,7 @@ internal static class CompiledCorpus
 
     /// <summary>
     /// The example, the broken buffer, the unfinished one, the qualified names, and every
-    /// conformance vector.
+    /// conformance vector someone wrote.
     /// </summary>
     public static IReadOnlyList<CorpusSource> All { get; } =
     [
@@ -164,7 +170,7 @@ internal static class CompiledCorpus
         Broken,
         Unclosed,
         Qualified,
-        .. ConformanceVectors.All.Select(vector => new CorpusSource(
+        .. ConformanceVectors.HandWritten.Select(vector => new CorpusSource(
             vector.Name,
             File.ReadAllText(vector.SourcePath),
             ConformanceVectors.Compile(vector))),

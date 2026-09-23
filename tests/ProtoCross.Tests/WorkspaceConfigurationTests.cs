@@ -530,6 +530,7 @@ public class WorkspaceConfigurationTests
 
         var refusal = Assert.Single(resolved.Diagnostics, diagnostic => diagnostic.Code == "PC2103");
         Assert.Equal(DiagnosticSeverity.Warning, refusal.Severity);
+        Assert.Equal("path could not be used", refusal.Title);
         Assert.Contains("schemas", refusal.Message);
         Assert.Equal(ConfigurationSource.UserSetting.Label(), refusal.Span.File);
     }

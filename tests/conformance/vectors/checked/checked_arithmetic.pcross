@@ -10,7 +10,7 @@
 // field rather than a literal, so the compiler cannot fold the overflow away and decide the
 // terminating path is unreachable.
 
-import proto "conformance.proto";
+import proto "checked_arithmetic.proto";
 
 extend CheckedOverflowCase {
     fn i32_sum() -> int32 {
@@ -62,6 +62,16 @@ extend CheckedOverflowCase {
 
     fn u64_product() -> uint64 {
         return u64_left * u64_right;
+    }
+
+    // Shifts are not governed by the overflow policy (spec 10.1): a left shift discards the bits
+    // that pass the width under this policy exactly as under the default, rather than terminating.
+    fn i32_shifted_left() -> int32 {
+        return i32_left << i32_right;
+    }
+
+    fn u64_shifted_left() -> uint64 {
+        return u64_left << u64_right;
     }
 }
 
@@ -115,7 +125,7 @@ test CheckedOverflowCase.i64_quotient "a zero divisor still takes the on_zero fa
 // MIN % -1 is 0 under every policy, because 0 is representable. Only the quotient overflows.
 test CheckedOverflowCase.i64_remainder "MIN % -1 is zero, not an overflow" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -162,7 +172,7 @@ test CheckedOverflowCase.i32_product "int32 multiplication past MAX terminates" 
 
 test CheckedOverflowCase.i32_negated "negating int32 MIN terminates" {
     receiver {
-        i32_left = -2147483647 - 1;
+        i32_left = -2147483648;
     }
 
     expect fail;
@@ -188,7 +198,7 @@ test CheckedOverflowCase.i64_product "int64 multiplication past MAX terminates" 
 
 test CheckedOverflowCase.i64_negated "negating int64 MIN terminates" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
     }
 
     expect fail;
@@ -196,7 +206,7 @@ test CheckedOverflowCase.i64_negated "negating int64 MIN terminates" {
 
 test CheckedOverflowCase.i64_quotient "MIN / -1 terminates" {
     receiver {
-        i64_left = -9223372036854775807 - 1;
+        i64_left = -9223372036854775808;
         i64_right = -1;
     }
 
@@ -228,4 +238,33 @@ test CheckedOverflowCase.u64_product "uint64 multiplication past MAX terminates"
     }
 
     expect fail;
+}
+
+// --- shifts are not governed by the policy ---
+
+test CheckedOverflowCase.i32_shifted_left "int32 MAX shifted left discards the top bit rather than terminating" {
+    receiver {
+        i32_left = 2147483647;
+        i32_right = 1;
+    }
+
+    expect return -2;
+}
+
+test CheckedOverflowCase.i32_shifted_left "1 shifted into the sign bit of an int32 is MIN rather than terminating" {
+    receiver {
+        i32_left = 1;
+        i32_right = 31;
+    }
+
+    expect return -2147483648;
+}
+
+test CheckedOverflowCase.u64_shifted_left "uint64 MAX shifted left discards the top bit rather than terminating" {
+    receiver {
+        u64_left = 18446744073709551615;
+        u64_right = 1;
+    }
+
+    expect return 18446744073709551614;
 }

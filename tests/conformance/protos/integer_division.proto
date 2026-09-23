@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// integer_division.pcross -- truncation, on_zero, and the MIN / -1 pair (spec 10.2, 10.2.1).
+message DivisionCase {
+  int64 numerator = 1;
+  int64 divisor = 2;
+}

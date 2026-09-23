@@ -96,9 +96,8 @@ public sealed class Parser
             return true;
         }
 
-        _diagnostics.Error(
-            "PC0010",
-            "unexpected token",
+        _diagnostics.Report(
+            DiagnosticCodes.UnexpectedToken,
             $"Expected {kind.Describe()} but found {Current.Kind.Describe()}.",
             Current.Span);
 
@@ -157,9 +156,8 @@ public sealed class Parser
         if (!_reportedNesting)
         {
             _reportedNesting = true;
-            _diagnostics.Error(
-                "PC0081",
-                "nesting is too deep",
+            _diagnostics.Report(
+                DiagnosticCodes.NestingIsTooDeep,
                 $"This construct nests more than {MaxNestingDepth} levels deep, which the compiler "
                 + "does not parse.",
                 Current.Span,
@@ -196,9 +194,8 @@ public sealed class Parser
                     break;
 
                 default:
-                    _diagnostics.Error(
-                        "PC0011",
-                        "unexpected top-level declaration",
+                    _diagnostics.Report(
+                        DiagnosticCodes.UnexpectedTopLevelDeclaration,
                         $"Expected 'import', 'extend', or 'test' but found {Current.Kind.Describe()}.",
                         Current.Span,
                         "A ProtoCross file contains proto imports, extend blocks, and test declarations.");
@@ -240,20 +237,19 @@ public sealed class Parser
         var methods = new List<MethodDeclaration>();
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
         {
-            if (Current.Kind is TokenKind.Fn or TokenKind.Virtual)
+            if (Current.Kind == TokenKind.Fn)
             {
                 methods.Add(ParseMethodDeclaration());
                 continue;
             }
 
-            _diagnostics.Error(
-                "PC0012",
-                "unexpected member in extend block",
-                $"Expected 'fn' or 'virtual' but found {Current.Kind.Describe()}.",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedExtendMember,
+                $"Expected 'fn' but found {Current.Kind.Describe()}.",
                 Current.Span,
                 "Extend blocks contain methods. Fields belong in the .proto schema.");
 
-            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile or TokenKind.Fn or TokenKind.Virtual))
+            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile or TokenKind.Fn))
             {
                 Advance();
             }
@@ -295,9 +291,8 @@ public sealed class Parser
                     break;
 
                 default:
-                    _diagnostics.Error(
-                        "PC0016",
-                        "unexpected member in test block",
+                    _diagnostics.Report(
+                        DiagnosticCodes.UnexpectedTestMember,
                         $"Expected 'receiver', 'arg', or 'expect' but found {Current.Kind.Describe()}.",
                         Current.Span);
 
@@ -316,9 +311,8 @@ public sealed class Parser
 
         if (receiver is null)
         {
-            _diagnostics.Error(
-                "PC0017",
-                "test is missing a receiver",
+            _diagnostics.Report(
+                DiagnosticCodes.TestHasNoReceiver,
                 "A ProtoCross unit test must declare the protobuf receiver fixture.",
                 Spanning(start, end),
                 "Add a 'receiver { ... }' block.");
@@ -333,9 +327,8 @@ public sealed class Parser
 
         if (expectation is null)
         {
-            _diagnostics.Error(
-                "PC0018",
-                "test is missing an expectation",
+            _diagnostics.Report(
+                DiagnosticCodes.TestHasNoExpectation,
                 "A ProtoCross unit test must declare 'expect return <value>;' or 'expect fail;'.",
                 Spanning(start, end));
 
@@ -447,9 +440,8 @@ public sealed class Parser
             return new TestFailExpectation(Spanning(start, end));
         }
 
-        _diagnostics.Error(
-            "PC0019",
-            "expected a test expectation",
+        _diagnostics.Report(
+            DiagnosticCodes.ExpectedTestExpectation,
             $"Expected 'return' or 'fail' but found {Current.Kind.Describe()}.",
             Current.Span);
         Advance();
@@ -544,10 +536,7 @@ public sealed class Parser
 
     private MethodDeclaration ParseMethodDeclaration()
     {
-        var start = Current.Span;
-        var isVirtual = Match(TokenKind.Virtual);
-
-        Expect(TokenKind.Fn);
+        var start = Expect(TokenKind.Fn).Span;
         var name = ExpectName();
 
         Expect(TokenKind.OpenParen);
@@ -577,7 +566,7 @@ public sealed class Parser
         }
 
         var body = ParseBlock();
-        return new MethodDeclaration(name, isVirtual, parameters, returnType, body, Spanning(start, body.Span));
+        return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span));
     }
 
     private TypeReference ParseTypeReference()
@@ -602,9 +591,8 @@ public sealed class Parser
 
         var insertionPoint = InsertionPointAfterPreviousToken();
 
-        _diagnostics.Error(
-            "PC0013",
-            "expected a type",
+        _diagnostics.Report(
+            DiagnosticCodes.ExpectedType,
             $"Expected a type name but found {token.Kind.Describe()}.",
             token.Span);
         Advance();
@@ -812,8 +800,30 @@ public sealed class Parser
             return new AssignmentStatement(expression, value, Spanning(start, assignEnd));
         }
 
+        if (OperatorOfCompound(Current.Kind) is { } compound)
+        {
+            return ParseCompoundAssignment(start, expression, ToBinaryOperator(compound));
+        }
+
         var end = Expect(TokenKind.Semicolon).Span;
         return new ExpressionStatement(expression, Spanning(start, end));
+    }
+
+    /// <summary>Parses the rest of <c>x op= y;</c>, from the operator on (spec 9.2).</summary>
+    /// <remarks>
+    /// The right side is a whole expression, so it is one operand however loosely its own operators
+    /// bind: <c>x *= a + b</c> multiplies by the sum. An <c>on_zero</c> clause after it is the
+    /// compound's, taken as one after <c>/</c> is and refused where one after <c>+</c> would be. A
+    /// clause inside the right side belongs to the division it follows there.
+    /// </remarks>
+    private Statement ParseCompoundAssignment(SourceSpan start, Expression target, BinaryOperatorKind op)
+    {
+        var operatorToken = Advance();
+        var value = ParseExpression();
+        var onZero = ParseOnZeroClause(op, operatorToken);
+        var end = Expect(TokenKind.Semicolon).Span;
+
+        return new CompoundAssignmentStatement(target, op, value, Spanning(start, end), onZero);
     }
 
     private Expression ParseExpression()
@@ -849,13 +859,27 @@ public sealed class Parser
         return new ErrorExpression(span);
     }
 
-    /// <summary>Binding power for infix operators; higher binds tighter.</summary>
+    /// <summary>Binding power for infix operators; higher binds tighter (spec 9.2).</summary>
+    /// <remarks>
+    /// The C-family order, which is C#'s and C++'s, so an expression means what a reader of either
+    /// target already takes it to mean, and a backend can emit it without regrouping. The price is
+    /// the one C pays: a comparison binds tighter than <c>&amp;</c>, <c>^</c> and <c>|</c>, so
+    /// <c>x &amp; mask == 0</c> is <c>x &amp; (mask == 0)</c>. That is a type error rather than a
+    /// silent regrouping, because a comparison is a <c>bool</c> and a bitwise operand is an integer,
+    /// and the binder's help for it says to parenthesize. Rust's order, with the bitwise operators
+    /// above the comparisons, was the alternative, and would have made the same expression mean one
+    /// thing here and another in both targets.
+    /// </remarks>
     private static int GetBinaryPrecedence(TokenKind kind) => kind switch
     {
-        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 5,
-        TokenKind.Plus or TokenKind.Minus => 4,
-        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals => 3,
-        TokenKind.EqualsEquals or TokenKind.BangEquals => 2,
+        TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 9,
+        TokenKind.Plus or TokenKind.Minus => 8,
+        TokenKind.LessLess or TokenKind.GreaterGreater => 7,
+        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals => 6,
+        TokenKind.EqualsEquals or TokenKind.BangEquals => 5,
+        TokenKind.Ampersand => 4,
+        TokenKind.Caret => 3,
+        TokenKind.Pipe => 2,
         TokenKind.AmpersandAmpersand or TokenKind.And => 1,
         TokenKind.PipePipe or TokenKind.Or => 0,
         _ => -1,
@@ -876,7 +900,42 @@ public sealed class Parser
         TokenKind.GreaterEquals => BinaryOperatorKind.GreaterThanOrEqual,
         TokenKind.AmpersandAmpersand or TokenKind.And => BinaryOperatorKind.LogicalAnd,
         TokenKind.PipePipe or TokenKind.Or => BinaryOperatorKind.LogicalOr,
+        TokenKind.Ampersand => BinaryOperatorKind.BitwiseAnd,
+        TokenKind.Pipe => BinaryOperatorKind.BitwiseOr,
+        TokenKind.Caret => BinaryOperatorKind.BitwiseXor,
+        TokenKind.LessLess => BinaryOperatorKind.ShiftLeft,
+        TokenKind.GreaterGreater => BinaryOperatorKind.ShiftRight,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a binary operator."),
+    };
+
+    /// <summary>
+    /// The operator a compound assignment token applies, or null for a token that is not one.
+    /// </summary>
+    /// <remarks>
+    /// Answers with the operator's token rather than its operation, so that which operation a token
+    /// means is said once, in <see cref="ToBinaryOperator"/>, for both spellings.
+    /// </remarks>
+    private static TokenKind? OperatorOfCompound(TokenKind kind) => kind switch
+    {
+        TokenKind.PlusEquals => TokenKind.Plus,
+        TokenKind.MinusEquals => TokenKind.Minus,
+        TokenKind.StarEquals => TokenKind.Star,
+        TokenKind.SlashEquals => TokenKind.Slash,
+        TokenKind.PercentEquals => TokenKind.Percent,
+        TokenKind.AmpersandEquals => TokenKind.Ampersand,
+        TokenKind.PipeEquals => TokenKind.Pipe,
+        TokenKind.CaretEquals => TokenKind.Caret,
+        TokenKind.LessLessEquals => TokenKind.LessLess,
+        TokenKind.GreaterGreaterEquals => TokenKind.GreaterGreater,
+        _ => null,
+    };
+
+    private static UnaryOperatorKind ToUnaryOperator(TokenKind kind) => kind switch
+    {
+        TokenKind.Minus => UnaryOperatorKind.Negate,
+        TokenKind.Bang or TokenKind.Not => UnaryOperatorKind.LogicalNot,
+        TokenKind.Tilde => UnaryOperatorKind.BitwiseNot,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a prefix operator."),
     };
 
     private Expression ParseBinaryExpression(int minPrecedence)
@@ -930,12 +989,11 @@ public sealed class Parser
 
         if (op is not (BinaryOperatorKind.Divide or BinaryOperatorKind.Modulo))
         {
-            _diagnostics.Error(
-                "PC0015",
-                "on_zero is only valid on division",
+            _diagnostics.Report(
+                DiagnosticCodes.OnZeroOutsideIntegerDivision,
                 $"'on_zero' cannot be applied to '{operatorToken.Text}'.",
                 onZeroToken.Span,
-                "Only '/' and '%' can fail on a zero operand.");
+                "Only integer '/' and '%' can fail on a zero operand.");
         }
 
         // 'on_zero fail' says there is no correct value to substitute, so the program stops.
@@ -987,7 +1045,7 @@ public sealed class Parser
             return new HasExpression(target, Spanning(token.Span, target.Span));
         }
 
-        if (token.Kind is TokenKind.Minus or TokenKind.Bang or TokenKind.Not)
+        if (token.Kind is TokenKind.Minus or TokenKind.Bang or TokenKind.Not or TokenKind.Tilde)
         {
             Advance();
 
@@ -1008,8 +1066,7 @@ public sealed class Parser
                 ExitNesting();
             }
 
-            var op = token.Kind == TokenKind.Minus ? UnaryOperatorKind.Negate : UnaryOperatorKind.LogicalNot;
-            return new UnaryExpression(op, operand, Spanning(token.Span, operand.Span));
+            return new UnaryExpression(ToUnaryOperator(token.Kind), operand, Spanning(token.Span, operand.Span));
         }
 
         return ParsePostfixExpression();
@@ -1064,11 +1121,14 @@ public sealed class Parser
         {
             case TokenKind.IntegerLiteral:
                 Advance();
-                return new IntegerLiteralExpression((long)(token.Value ?? 0L), token.Span);
+                return new IntegerLiteralExpression((ulong)(token.Value ?? 0UL), token.Span);
 
             case TokenKind.FloatLiteral:
+            {
                 Advance();
-                return new FloatLiteralExpression((double)(token.Value ?? 0d), token.Span);
+                var value = (FloatingPointValue)(token.Value ?? default(FloatingPointValue));
+                return new FloatLiteralExpression(value.Double, token.Span) { SingleValue = value.Single };
+            }
 
             case TokenKind.StringLiteral:
                 Advance();
@@ -1095,9 +1155,8 @@ public sealed class Parser
             }
 
             default:
-                _diagnostics.Error(
-                    "PC0014",
-                    "expected an expression",
+                _diagnostics.Report(
+                    DiagnosticCodes.ExpectedExpression,
                     $"Expected an expression but found {token.Kind.Describe()}.",
                     token.Span);
                 Advance();

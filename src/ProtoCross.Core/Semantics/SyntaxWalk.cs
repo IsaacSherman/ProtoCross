@@ -59,6 +59,9 @@ public static class SyntaxWalk
                 : [branch.Condition, branch.Then],
             WhileStatement loop => [loop.Condition, loop.Body],
             AssignmentStatement assignment => [assignment.Target, assignment.Value],
+            CompoundAssignmentStatement assignment => assignment.OnZero is { } onZero
+                ? [assignment.Target, assignment.Value, onZero]
+                : [assignment.Target, assignment.Value],
             ExpressionStatement statement => [statement.Expression],
 
             MemberAccessExpression member => [member.Receiver],

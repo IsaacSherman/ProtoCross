@@ -373,10 +373,17 @@ public class PositionQueryTests
 
     /// <summary>
     /// Span identity was assumed to be unique and is not, so what is established here is the weaker
-    /// property the tie-break actually needs: nodes that share a span are always one inside another,
-    /// which makes "the first one reached" mean "the outermost one" rather than "whichever the walk
+    /// property the tie-break actually needs: nodes that share a span are one inside another, which
+    /// makes "the first one reached" mean "the outermost one" rather than "whichever the walk
     /// happened to see first".
     /// </summary>
+    /// <remarks>
+    /// One pair shares a span without nesting: the target of a compound assignment, and the read of
+    /// it in the operation the assignment stands for (spec 9.2). Both are one local at one name the
+    /// author wrote once, and the target is the assignment's first child, so it is the one reached
+    /// first -- the node for what was written, with the read the binder added after it. Nothing else
+    /// is excused.
+    /// </remarks>
     [Fact]
     public void IrNodesThatShareASpanAlwaysStandInsideOneAnother()
     {
@@ -384,6 +391,8 @@ public class PositionQueryTests
         {
             var module = source.Result.Module;
             Assert.NotNull(module);
+
+            var compoundReads = CompoundTargetsAndReads(module);
 
             foreach (var sharing in IrWalk.DescendantsAndSelf(module)
                          .GroupBy(node => node.Span)
@@ -394,11 +403,36 @@ public class PositionQueryTests
 
                 foreach (var node in sharing)
                 {
-                    Assert.Contains(inside, held => ReferenceEquals(held, node));
+                    Assert.True(
+                        inside.Any(held => ReferenceEquals(held, node))
+                            || compoundReads.Any(pair =>
+                                ReferenceEquals(pair.Target, outermost) && ReferenceEquals(pair.Read, node)),
+                        $"{source.Name}: a {node.GetType().Name} at {node.Span} shares its span with a "
+                        + $"{outermost.GetType().Name} without standing inside it");
                 }
             }
         }
     }
+
+    /// <summary>
+    /// Each assignment's target, with the read of the same local its value opens with, where that
+    /// read carries the target's span -- which only a compound assignment's does.
+    /// </summary>
+    private static List<(IrNode Target, IrNode Read)> CompoundTargetsAndReads(IrModule module)
+        => [
+            .. IrWalk.DescendantsAndSelf(module)
+                .OfType<IrAssignment>()
+                .Select(assignment => (assignment.Target, Read: assignment.Value switch
+                {
+                    IrBinary binary => binary.Left,
+                    IrIntegerDivision division => division.Left,
+                    _ => null,
+                }))
+                .Where(pair => pair.Read is IrLocalReference read
+                    && read.Local.Id == pair.Target.Local.Id
+                    && read.Span == pair.Target.Span)
+                .Select(pair => ((IrNode)pair.Target, (IrNode)pair.Read!)),
+        ];
 
     // ------- a call that could not be made
 

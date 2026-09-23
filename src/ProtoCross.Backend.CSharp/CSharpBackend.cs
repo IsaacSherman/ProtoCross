@@ -49,21 +49,6 @@ public sealed class CSharpBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        foreach (var method in module.Methods.Where(m => m.IsVirtual))
-        {
-            diagnostics.Error(
-                "PC1001",
-                "virtual methods are not supported by the C# backend",
-                $"'{method.Name}' is declared virtual. Override semantics are still an open "
-                + "design question (spec 17), so this backend rejects them rather than guessing.",
-                method.Span);
-        }
-
-        if (diagnostics.HasErrors)
-        {
-            return [];
-        }
-
         var writer = new SourceWriter();
         WriteHeader(writer, options);
 
@@ -353,7 +338,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         foreach (var group in message.Fields.GroupBy(v => v.Field.FieldNumber).OrderBy(g => g.Key))
         {
             var field = group.First().Field;
-            var property = NameConventions.ToPascalCase(field.Name);
+            var property = NameConventions.GetCSharpPropertyName(field);
 
             if (field.IsRepeated)
             {
@@ -552,7 +537,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         IrThis => receiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, receiverName)}.{NameConventions.ToPascalCase(field.Field.Name)}",
+        IrFieldAccess field => $"{Expression(field.Receiver, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
             IrFieldPresence presence => EmitPresence(presence, receiverName),
         IrMethodCall call => EmitCall(call, receiverName),
         IrBinary binary => EmitBinary(binary, receiverName),
@@ -605,7 +590,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
     private static string EmitPresence(IrFieldPresence presence, string receiverName)
     {
         var receiver = Expression(presence.Receiver, receiverName);
-        var property = NameConventions.ToPascalCase(presence.Field.Name);
+        var property = NameConventions.GetCSharpPropertyName(presence.Field);
 
         return presence.Field.FieldType is FieldType.Message or FieldType.Group
             ? $"({receiver}.{property} != null)"
@@ -641,8 +626,27 @@ public sealed class CSharpBackend : ITestProjectScaffold
             return $"{CSharpRuntime.TypeName}.{CSharpRuntime.Stem(binary.Behavior)}{helper}({left}, {right})";
         }
 
+        if (binary.ShiftCountMask is { } mask)
+        {
+            return $"({left} {op} {ShiftCount(binary.Right, right, mask)})";
+        }
+
         return $"({left} {op} {right})";
     }
+
+    /// <summary>A shift's count, reduced to its low bits and made the <c>int</c> C# shifts by.</summary>
+    /// <remarks>
+    /// C# masks a count itself, but only an <c>int</c> one, and a <c>long</c> or <c>ulong</c> count
+    /// has to be narrowed to reach it. Narrowing first would throw under a consumer's
+    /// <c>CheckForOverflowUnderflow</c>, so the mask comes first and the cast after it, when what is
+    /// cast is already small enough for any context. The mask is written even for an <c>int</c> count,
+    /// which C# would mask the same way unaided, because spec 10.1 puts the rule in the generated code
+    /// rather than in the target's default.
+    /// </remarks>
+    private static string ShiftCount(IrExpression count, string emitted, int mask)
+        => count.Type is ScalarType { Kind: ScalarKind.Int32 }
+            ? $"({emitted} & {mask})"
+            : $"(int)({emitted} & {mask})";
 
     private static string EmitIntegerDivision(IrIntegerDivision division, string receiverName)
     {
@@ -680,7 +684,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 : $"{CSharpRuntime.TypeName}.{CSharpRuntime.Stem(unary.Behavior)}Negate({operand})";
         }
 
-        return $"(!{operand})";
+        return unary.Operator == IrUnaryOperator.BitwiseNot ? $"(~{operand})" : $"(!{operand})";
     }
 
     /// <summary>
@@ -742,6 +746,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         long value => literal.LiteralType is ScalarType scalar
             ? FormatInteger(value, scalar)
             : value.ToString(CultureInfo.InvariantCulture),
+        ulong value when literal.LiteralType is ScalarType scalar => FormatInteger(value, scalar),
         double value => FormatFloatingPoint(value, literal.LiteralType),
         string value => FormatString(value),
         _ => throw new ArgumentOutOfRangeException(nameof(literal), literal.Value, "Unhandled literal."),
@@ -772,7 +777,13 @@ public sealed class CSharpBackend : ITestProjectScaffold
             return $"{typeName}.NegativeInfinity";
         }
 
-        return value.ToString("R", CultureInfo.InvariantCulture) + (isFloat ? "f" : "d");
+        // A float is spelled as the float it is, in the fewest digits that give it back, rather than as
+        // the double that holds it: both round-trip, but only the first is what an author wrote.
+        var text = isFloat
+            ? ((float)value).ToString("R", CultureInfo.InvariantCulture) + "f"
+            : value.ToString("R", CultureInfo.InvariantCulture) + "d";
+
+        return double.IsNegative(value) ? $"({text})" : text;
     }
 
     /// <summary>
@@ -813,17 +824,30 @@ public sealed class CSharpBackend : ITestProjectScaffold
         return builder.ToString();
     }
 
+    /// <summary>Formats a signed integer literal with the suffix its type requires.</summary>
+    /// <remarks>
+    /// A negative one is parenthesized, so that every expression this backend emits stays
+    /// self-delimiting (see <see cref="EmitConversion"/>). Bare, <c>-5L</c> under a negation would read
+    /// <c>--5L</c>, which is a decrement. int32 MIN and int64 MIN need nothing more than that: C# reads
+    /// a <c>-</c> directly before <c>2147483648</c>, or before <c>9223372036854775808L</c>, as the one
+    /// constant each spells.
+    /// </remarks>
     private static string FormatInteger(long value, ScalarType scalar)
     {
-        var text = value.ToString(CultureInfo.InvariantCulture);
-        return scalar.Kind switch
-        {
-            ScalarKind.Int64 => text + "L",
-            ScalarKind.UInt64 => text + "UL",
-            ScalarKind.UInt32 => text + "U",
-            _ => text,
-        };
+        var text = value.ToString(CultureInfo.InvariantCulture) + IntegerSuffix(scalar);
+        return value < 0 ? $"({text})" : text;
     }
+
+    private static string FormatInteger(ulong value, ScalarType scalar)
+        => value.ToString(CultureInfo.InvariantCulture) + IntegerSuffix(scalar);
+
+    private static string IntegerSuffix(ScalarType scalar) => scalar.Kind switch
+    {
+        ScalarKind.Int64 => "L",
+        ScalarKind.UInt64 => "UL",
+        ScalarKind.UInt32 => "U",
+        _ => string.Empty,
+    };
 
     private static string OperatorText(IrBinaryOperator op) => op switch
     {
@@ -840,6 +864,11 @@ public sealed class CSharpBackend : ITestProjectScaffold
         IrBinaryOperator.GreaterThanOrEqual => ">=",
         IrBinaryOperator.LogicalAnd => "&&",
         IrBinaryOperator.LogicalOr => "||",
+        IrBinaryOperator.BitwiseAnd => "&",
+        IrBinaryOperator.BitwiseOr => "|",
+        IrBinaryOperator.BitwiseXor => "^",
+        IrBinaryOperator.ShiftLeft => "<<",
+        IrBinaryOperator.ShiftRight => ">>",
         _ => throw new ArgumentOutOfRangeException(nameof(op), op, "Unhandled operator."),
     };
 

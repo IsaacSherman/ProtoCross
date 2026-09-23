@@ -18,8 +18,6 @@ internal sealed record ConformanceVector(string Name, string SourcePath);
 /// </remarks>
 internal static class ConformanceVectors
 {
-    public const string SchemaFileName = "conformance.proto";
-
     public static string RootDirectory { get; } =
         Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance");
 
@@ -27,8 +25,36 @@ internal static class ConformanceVectors
 
     public static string VectorDirectory { get; } = Path.Combine(RootDirectory, "vectors");
 
+    /// <summary>
+    /// Every schema in <see cref="ProtoDirectory"/>, in a stable order. protoc generates all of
+    /// them in one run per language.
+    /// </summary>
+    /// <remarks>
+    /// Each vector owns a schema named after it. A shared one collected every new vector at its end, so
+    /// two branches adding vectors in parallel always conflicted there, however unrelated they were.
+    /// Generating whatever is in the directory rather than a list kept here means a schema is added the
+    /// way a vector is: by dropping the file in.
+    /// </remarks>
+    public static IReadOnlyList<string> SchemaFileNames { get; } =
+        Directory.GetFiles(ProtoDirectory, "*.proto")
+            .Select(path => Path.GetFileName(path))
+            .OrderBy(name => name, StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>The C++ source protoc writes for each of <see cref="SchemaFileNames"/>, which every driver links.</summary>
+    public static IReadOnlyList<string> CppSchemaSources { get; } =
+        SchemaFileNames.Select(name => Path.ChangeExtension(name, ".pb.cc")).ToList();
+
     /// <summary>Every vector, in a stable order so failures reproduce.</summary>
     public static IReadOnlyList<ConformanceVector> All { get; } = Discover();
+
+    /// <summary>
+    /// Every vector someone wrote: <see cref="All"/>, leaving out the ones
+    /// <see cref="Sweep.ArithmeticSweep"/> generates into its own directories.
+    /// </summary>
+    public static IReadOnlyList<ConformanceVector> HandWritten { get; } =
+        All.Where(vector => Path.GetFileName(Path.GetDirectoryName(vector.SourcePath)) != Sweep.ArithmeticSweep.Directory)
+            .ToList();
 
     /// <summary>Vector names, for a theory that runs one case per vector.</summary>
     public static TheoryData<string> Names

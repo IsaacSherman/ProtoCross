@@ -13,7 +13,6 @@ The conformance suite should include:
 - Presence/default-value tests.
 - Repeated field and map tests.
 - Error handling tests.
-- Virtual/override behavior tests, if supported.
 - Partial-binding and diagnostic-recovery tests.
 - Symbol identity tests for editor-facing semantic data.
 
@@ -29,8 +28,8 @@ declaration ([25.3](#253-author-written-protocross-unit-tests)) in a `.pcross` f
   to say the same thing would have to re-earn all of that.
 - **Expected results.** ProtoCross literals bound to the method's return type. Being bound to the
   IR rather than to a serialization makes them language-independent without a wire format of their
-  own. The cost is that values with no ProtoCross literal -- `int64` MIN, `uint64` above `int64`
-  MAX, infinity, NaN -- must be written as expressions or asserted through a predicate.
+  own. Every value of every numeric type has a literal ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)), `int64` MIN, `uint64` MAX,
+  the infinities and NaN among them, so an expectation never has to be computed.
 - **Compile and execute, not inspect.** Golden assertions over emitted source only state that a
   backend emits what it emitted last time, one language at a time. The suite compiles the generated
   code with a real compiler and runs it, and requires every backend to have run the same set of
@@ -53,6 +52,10 @@ Normative Requirements:
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
   declares the expected return value or expected terminal failure.
+- An `expect return` is met when the returned value equals the expected one under `==`, with one
+  exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
+  exception no test could say that a result is not a number; and which NaN it is cannot matter,
+  because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
 - Test declarations are not emitted into production behavior output unless test generation is
   explicitly requested.
 - The compiler generates target-language test source files into a user-selected output directory.

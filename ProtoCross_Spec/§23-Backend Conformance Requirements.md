@@ -23,12 +23,13 @@ time rather than emitting something whose semantics differ.
 | Compile-time policy file | Yes | Yes | — | `protocross.config.xml`, found by walking up from the source ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)). |
 | Checked division (`on_zero`) | Yes | Yes | — | Runtime zero check in both; see 10.2.1. |
 | `on_zero fail` | Yes | Yes | — | `Environment.Exit(70)` / `std::_Exit(70)`, after a diagnostic on stderr ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). |
-| IEEE 754 float division | Yes | Yes | — | Native in both. Python will need a helper. |
+| IEEE 754 float division | Yes | Yes | — | Native in both, except a quotient whose operands are all written out: C++ emits `std::divides<T>`, because a division it can work out for itself is one a compiler may refuse rather than emit ([10.2](./§10-Numeric%20Semantics.md#102-division)). Python will need a helper. |
+| Floating-point remainder | Yes | Yes | — | C# `%`; C++ `std::fmod`, since C++ defines `%` on integers only ([10.2](./§10-Numeric%20Semantics.md#102-division)). |
 | Repeated iteration | Yes | Yes | — | `foreach` / range-`for` over the protobuf container. |
 | Cross-message method calls | Yes | Yes | — | C++ emits all declarations before any definition. |
 | Local variables and assignment | Yes | Yes | — | Only locals can be assigned. |
+| Compound assignment | Yes | Yes | — | Bound as its long form ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so neither backend sees one. |
 | Mutable methods | No | No | — | Blocked on the open question in 16.1. |
-| Virtual methods | No | No | — | Blocked on 17; both backends reject. |
 | Maps | No | No | — | Blocked on 14.2. |
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |

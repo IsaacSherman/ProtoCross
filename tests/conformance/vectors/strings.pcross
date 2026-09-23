@@ -5,7 +5,7 @@
 // message. These vectors check that equality and the returned value agree across that difference,
 // and that a literal containing characters each backend has to escape survives code generation.
 
-import proto "conformance.proto";
+import proto "strings.proto";
 
 extend StringCase {
     fn matches() -> bool {

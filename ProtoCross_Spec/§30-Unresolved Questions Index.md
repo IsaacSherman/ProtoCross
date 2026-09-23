@@ -13,8 +13,12 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Type inference policy.~~ Decided: local variables may state an explicit type or infer from the
   initializer ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), [8](./§8-Type%20System.md#8-type-system)).
 - Helper functions and whether top-level functions belong in the language.
+- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
+  comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)).
 - ~~Complete scalar type support.~~ Decided: all protobuf scalar spellings map into the supported
   ProtoCross value domains ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
+- 8- and 16-bit integer types. **Post-1.0.** Protobuf has no scalar of either width, so no field
+  could hold one ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - Decimal support.
 - ~~Nullability and presence syntax.~~ Decided: `has <field>`, with the field's own presence
   rules taken from the protobuf descriptor ([8.4](./§8-Type%20System.md#84-nullability-and-presence)).
@@ -29,6 +33,10 @@ This section should be maintained as the authoritative list of open decisions.
   the user trusts the workspace, and keeps serving everything else ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)).
 - ~~Boolean operator spelling.~~ Decided: both word and symbolic forms are accepted ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - ~~Assignment expression vs statement.~~ Decided: assignment is statement-only ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- ~~Bitwise and shift operators.~~ Decided: `&`, `|`, `^`, `~`, `<<` and `>>` on integers only, with a
+  shift count of any integer type ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), whose low bits are used, and no
+  overflow policy governing any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
+- ~~Operator precedence.~~ Decided: the C-family order, C#'s and C++'s ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - Evaluation order details for non-short-circuit binary operators.
 - ~~Integer overflow model.~~ Decided: wrapping ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
 - ~~Division and modulo by zero.~~ Decided: mandatory `on_zero` clause, with `fail` for the case
@@ -36,6 +44,10 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Explicit cast syntax.~~ Decided: `x as int64`, numeric scalars only ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
 - ~~Numeric conversion rules.~~ Decided: integer targets wrap, floating point to integer
   truncates and saturates with NaN mapping to zero ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+- ~~Numeric literal forms.~~ Decided: `0x` and `0b` integers, `_` between digits, exponents, and
+  `__INF` and `__NAN`, with no type suffixes ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)); a `-` written on an integer literal is
+  part of it, and a literal with no expected type is `int64` or else `uint64` ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
+  Whether there is a `bytes` literal remains open ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - String indexing and comparison semantics.
 - ~~How protobuf enum values are referenced.~~ Decided: `EnumType.VALUE_NAME` ([12](./§12-Enums.md#12-enums)).
 - Enum unknown-value behavior, and whether an enum converts to or from an integer.
@@ -44,11 +56,15 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: no repeated mutation;
   only locals can be assigned ([14](./§14-Repeated%20Fields%20and%20Collections.md#14-repeated-fields-and-collections), [18](./§18-Mutability.md#18-mutability)). Future mutation syntax remains open.
 - Map support and map iteration order.
+- Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
+  and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
 - Switch support.
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 - Receiver mutation and possible const/mut method split.
-- Virtual method inclusion in version 1.
-- Portable override registration model.
+- ~~Virtual method inclusion in version 1.~~ Decided: no virtual methods; `virtual` is an ordinary
+  identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
+- ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to
+  register ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - Error result model.
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).

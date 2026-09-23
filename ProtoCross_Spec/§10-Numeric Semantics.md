@@ -60,6 +60,40 @@ Wrapping remains the default because it is what unmodified C# does. `checked` ar
 described as C#'s behavior, but a C# author reaches it only through the `checked` keyword or a
 `CheckForOverflowUnderflow` build property.
 
+**Decided: a shift uses the low bits of its count, and no overflow policy governs a shift or a
+bitwise operator.**
+
+Normative Requirements:
+
+- A shift uses the low bits of its count: the count modulo N, where N is the width of the value
+  shifted. So `1 << 33` on an `int32` is `2`, and a count of `-1` shifts an `int32` by 31. The count's
+  own type and sign make no other difference
+  ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- `<<` discards the bits shifted past the width. `>>` copies the sign bit in for a signed value and
+  zeroes for an unsigned one, so on a signed value it rounds toward negative infinity: `-7 >> 1` is
+  `-4`, where `-7 / 2` is `-3`.
+- **The overflow policy does not govern a shift, `&`, `|`, `^` or `~`.** Under `Checked`,
+  `MAX << 1` does not terminate, and under `Saturating` it does not clamp: each keeps the low bits, as
+  `Wrapping` does. A shift discards bits by definition, which is what building a mask with one relies
+  on, and treating the bits it discards as an overflow would make `1 << 31` terminate a checked
+  program. The other four cannot leave the range of their type at all.
+- Backends emit the mask explicitly, by the third rule above, even where the target masks for
+  itself.
+
+| Target | Native shift by a count at or past the width | Why the default is not enough |
+|---|---|---|
+| C# | Masks the count to its low 5 or 6 bits, but takes only an `int` count. | A `long` or `ulong` count has to be narrowed to reach the operator, and narrowing first throws under a consumer's `CheckForOverflowUnderflow`. |
+| C++ | **Undefined behavior**, as is a negative count. | Not "whatever the hardware masks to": the optimizer may assume the count is in range. |
+| Python | Arbitrary precision: `<<` never discards a bit, and a negative count raises. | The width has to be reconstructed by masking, as for arithmetic. |
+
+Backend obligations:
+
+- **C#** emits `x << (int)(count & (N-1))`, masking before the cast so that nothing is ever narrowed
+  that does not fit. An `int` count is masked and not cast.
+- **C++** emits `x << (count & (N-1))`. C++20 defines both shifts of a signed value for every count
+  below the width, the left one as two's complement.
+- **Python** must mask the count, mask the result to N bits, and sign-correct.
+
 Open Question:
 
 - Whether a non-default behavior should also be declarable per file, per method, or per expression,
@@ -73,6 +107,11 @@ Defined behavior:
 - Integer division truncates toward zero.
 - Floating-point division follows IEEE 754: `x / 0.0` is `±inf`, `0.0 / 0.0` is `NaN`. No
   declaration is required, because the operation cannot fail.
+- Floating-point `%` is the remainder of a truncating division, `x - trunc(x / y) * y`, computed
+  exactly rather than through a rounded quotient. It carries the sign of the dividend, so
+  `-7.5 % 2.0` is `-1.5` and `7.5 % -2.0` is `1.5`, and an exact negative multiple leaves `-0.0`.
+  `x % 0.0`, `±inf % y`, and any `NaN` operand yield `NaN`; `x % ±inf` is `x`. Like division, it
+  cannot fail, so no declaration is required and an `on_zero` clause is `PC0015`.
 - Signed division overflow (`MIN / -1`, `MIN % -1`) wraps per 10.1: the results are `MIN` and `0`.
 - **Integer division by zero is not left to the target. The author must state what happens.**
 
@@ -113,7 +152,9 @@ Normative Requirements:
   `x + (a / b on_zero 0)`. The fallback parses at unary precedence, so anything more involved than a
   literal, name, or call must be parenthesized.
 - `on_zero` is rejected on any other operator, and on floating-point division, where it is
-  meaningless (`PC0015`).
+  meaningless (`PC0015`). One rule, one code, and one report: a clause the parser has already
+  rejected is not rejected a second time by the binder, which would otherwise explain a `+` in terms
+  of IEEE 754 division.
 - Backends emit a runtime zero check for every integer division except the proven-literal case.
 
 `fail` is deliberately blunt. A catchable exception would let a consumer resume from a state the
@@ -157,8 +198,36 @@ Normative Requirements:
   operator must already have the same type, and a returned value must already have the declared
   return type. This is what makes the overflow rule in 10.1 well-defined: the width the result wraps
   to is never the product of a promotion the author did not write.
-- Integer literals are the single exception: a literal adopts the expected type at its use site when
-  the value fits, so `var total: int64 = 0;` needs no suffix or conversion.
+- **Literals are the single exception** ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)): a literal adopts the expected type at its use site,
+  so `var total: int64 = 0;` needs no suffix or conversion.
+  - An integer literal adopts any numeric type. In an integer type its value must fit, or it is
+    `PC0036`; in a floating-point type it is rounded. A floating-point literal adopts `float` where a
+    `float` is expected, and is a `double` everywhere else.
+  - Where nothing is expected, an integer literal is `int64`, or `uint64` if only `uint64` can hold
+    its value; a floating-point literal is `double`. An integer literal below int64 MIN fits neither
+    and is `PC0036`.
+  - A literal on the left of a binary operator adopts the type of the operand on its right, as one on
+    the right adopts the type of the operand on its left. So `-1 < count` and `1.5 < ratio` both
+    type-check where `count` is an `int32` and `ratio` a `float`. A shift is the exception: its value
+    and its count are typed apart ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- **A `-` written directly on an integer literal is part of the literal**, and the literal is
+  range-checked as the negative value. That is what makes `-2147483648` an `int32` and
+  `-9223372036854775808` an `int64`: the magnitude of each is one more than its type's MAX, so a
+  literal that took the type first and was negated afterwards could never reach it.
+  - It takes one `-` only. In `-(-5)` the outer one negates a negative literal, as ordinary
+    arithmetic under 10.1. Parentheses between the `-` and the digits make no difference.
+  - A negative literal does not fit an unsigned type: `-1` where a `uint32` is expected is `PC0036`,
+    and `-1 as uint32` is the conversion that wraps it.
+  - A negative literal is a literal wherever a literal matters: `x / -2` needs no `on_zero` clause
+    (10.2.1), exactly as `x / 2` does not.
+- **A literal is rounded once**, from its exact decimal value straight to the type it adopts, to
+  nearest with ties to even. A `float` literal is never rounded to a `double` on the way, which
+  would round twice, and differently for a decimal close enough to the midpoint between two floats.
+  An integer literal adopting a floating-point type is rounded the same way, and its sign applies
+  afterwards, so `-0` where a `double` is expected is negative zero, the same value as `-0.0`.
+- A floating-point literal too large for the type it adopts is `PC0084` rather than an infinity:
+  `1e39` is in range as a `double` and out of range as a `float`. One too small to represent rounds to
+  zero or to a subnormal, as rounding does. `__INF` is never out of range.
 - An explicit conversion is written `<expression> as <type>`.
 
 ```protocross
@@ -174,9 +243,9 @@ extend Order {
   `a as int64 * b` is `(a as int64) * b`, and `-a as int32` negates in the source type and converts
   the result. Conversions chain left to right.
 - The operand of a conversion carries no type expectation into itself. An integer literal in that
-  position takes its natural `int64` and a floating-point literal its natural `double`, so
-  `3000000000 as int32` is a narrowing conversion that wraps rather than a literal reported as out
-  of range.
+  position takes its natural `int64` or `uint64`, and a floating-point literal its natural
+  `double`, so `3000000000 as int32` is a narrowing conversion that wraps rather than a literal
+  reported as out of range.
 - Both the source and the target must be numeric scalar types: the four integer types, `float`, and
   `double`. Anything else is `PC0075`, including `bool`, `string`, `bytes`, messages, and enums.
   Whether an enum can convert to or from an integer is left open in 12, and proto3's open enums make
@@ -300,8 +369,9 @@ Normative Requirements:
   arithmetic wraps in two's complement. Likewise a conversion carries one behavior and 10.3 gives it
   five rows, so the row is chosen by the source and the target together: only a floating-point
   source reaching an integer truncates, clamps and maps NaN to zero, and claiming that of
-  `ratio as double` is false twice over. Where the language states no rule, the honest explanation
-  is the type and nothing further.
+  `ratio as double` is false twice over. A shift or a bitwise operator carries a behavior as a
+  comparison does and is governed by none (10.1), so its explanation is its type. Where the language
+  states no rule, the honest explanation is the type and nothing further.
 
 Settings with a single legal value are listed anyway. The file's purpose is to enumerate every
 language-dependent preference, including the settled ones, so the whole contract is readable in one

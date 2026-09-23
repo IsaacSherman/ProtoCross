@@ -12,7 +12,7 @@ import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
-method_decl       = [ "virtual" ] "fn" identifier
+method_decl       = "fn" identifier
                     "(" [ parameter_list ] ")"
                     [ "->" type_ref ]
                     block;
@@ -31,6 +31,7 @@ statement         = var_decl
                   | continue_stmt
                   | block
                   | assignment_stmt
+                  | compound_stmt
                   | expression_stmt;
 
 var_decl          = "var" identifier [ ":" type_ref ] "=" expression ";";
@@ -41,6 +42,9 @@ for_in_stmt       = "for" identifier "in" expression block;
 break_stmt        = "break" ";";
 continue_stmt     = "continue" ";";
 assignment_stmt   = expression "=" expression ";";
+compound_stmt     = expression compound_op expression
+                    [ "on_zero" ( expression | "fail" ) ] ";";
+compound_op       = "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=";
 expression_stmt   = expression ";";
 
 test_decl         = "test" qualified_name string_literal
@@ -55,10 +59,15 @@ Normative Requirement:
 - The final grammar must be unambiguous.
 - Backend code generation must not depend on parser quirks or target-language parsing.
 - Semicolons are mandatory after imports, variable declarations, `return`, `break`, `continue`,
-  assignment statements, expression statements, scalar fixture fields, test arguments, and test
-  expectations.
+  assignment and compound assignment statements, expression statements, scalar fixture fields, test
+  arguments, and test expectations.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
+- Every binary operator is left-associative, and operators bind in the order
+  [9.2](./§9-Expressions%20and%20Operators.md#92-operators) gives.
+- A compound operator is one token, the longest spelling that fits, so `a>>=b` is `>>=` and never
+  `>` followed by `>=`. The right side of a compound assignment is a whole expression, and its
+  `on_zero` clause binds as [10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause) says a division's does.
 - A test declaration must contain a receiver fixture and an expectation. The parser accepts
   `receiver`, `arg`, and `expect` members in any order and reports missing required members after
   the block is parsed.

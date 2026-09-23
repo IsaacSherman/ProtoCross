@@ -16,7 +16,8 @@ namespace ProtoCross.Tests;
 /// #45 calls a schema that changed while its errors did not the most common way an editor lies. Every
 /// test here that expects diagnostics to move writes the file and then says so exactly as a client's
 /// watcher would, and nothing else; a server that needed a keystroke to notice would wait out the
-/// client's patience and fail.
+/// client's patience and fail. The one exception is a save made before the client was watching,
+/// which nothing reports, and where agreeing to watch is the only thing the client does.
 /// </remarks>
 public class WatchedFileTests
 {
@@ -65,6 +66,28 @@ public class WatchedFileTests
         return (directory, new Uri(Path.Combine(directory, "source.pcross")).AbsoluteUri);
     }
 
+    /// <summary>A server whose client can watch files and has not yet agreed to, with a folder open.</summary>
+    /// <remarks>
+    /// The registration is withheld because agreeing to it recompiles everything open -- see
+    /// <see cref="ASchemaSavedBeforeTheClientIsWatchingIsSeenOnceItIs"/> -- and a test about what a
+    /// reported change moves must not be able to pass, or break its silence, because of that instead.
+    /// Nothing else differs: a server handles a report of a change whether or not it has heard back.
+    /// </remarks>
+    private static async Task<LanguageServerClient> WatchingAsync(string directory)
+    {
+        var client = LanguageServerClient.Create();
+        client.Withhold(Methods.RegisterCapability);
+
+        await client.InitializeAsync(Watching, [directory]);
+
+        return client;
+    }
+
+    private static Task<IncomingMessage> RegistrationAsync(LanguageServerClient client)
+        => client.WaitForAsync(
+            message => message.IsRequest && message.Method == Methods.RegisterCapability,
+            "a capability registration");
+
     private static DidOpenTextDocumentParams Open(string uri, string text) => new()
     {
         TextDocument = new TextDocumentItem { Uri = uri, LanguageId = "protocross", Version = 1, Text = text },
@@ -86,9 +109,7 @@ public class WatchedFileTests
     {
         await using var client = await LanguageServerClient.StartAsync(capabilities: Watching);
 
-        var request = await client.WaitForAsync(
-            message => message.IsRequest && message.Method == Methods.RegisterCapability,
-            "a capability registration");
+        var request = await RegistrationAsync(client);
 
         var registration = Assert.Single(LspJson.Read<RegistrationParams>(request.Params)!.Registrations);
         var options = JsonSerializer.SerializeToElement(registration.RegisterOptions, LspJson.Options)
@@ -120,6 +141,31 @@ public class WatchedFileTests
             "a client that did not declare dynamic registration for watched files must not be asked to watch any");
     }
 
+    /// <summary>A schema saved before the client is watching is seen once it is.</summary>
+    /// <remarks>
+    /// Nothing reports such a save, because the client's watcher did not exist to see it. The window is
+    /// the server's first second or two, and a save inside it left an error on screen that the schema no
+    /// longer caused, until the next change to that schema (#118). So the client here says nothing about
+    /// the file at all: the save lands after the first compile has read the schema, and agreeing to
+    /// watch is the only thing that happens afterwards.
+    /// </remarks>
+    [Fact]
+    public async Task ASchemaSavedBeforeTheClientIsWatchingIsSeenOnceItIs()
+    {
+        var (directory, uri) = Workspace();
+
+        await using var client = await WatchingAsync(directory);
+        var registration = await RegistrationAsync(client);
+
+        client.Notify(Methods.DidOpen, Open(uri, ReadsWidth));
+        Assert.True(HasErrors(await client.DiagnosticsAsync(uri)), "a field the schema lacks must be an error to begin with");
+
+        File.WriteAllText(Path.Combine(directory, SchemaFile), WithWidth);
+        client.Answer(registration);
+
+        await client.DiagnosticsAsync(uri, published => !HasErrors(published));
+    }
+
     // ------------------------------------------------------- what a change moves
 
     /// <summary>Saving an imported schema republishes the diagnostics of the document that imports it.</summary>
@@ -128,7 +174,7 @@ public class WatchedFileTests
     {
         var (directory, uri) = Workspace();
 
-        await using var client = await LanguageServerClient.StartAsync(capabilities: Watching, folders: [directory]);
+        await using var client = await WatchingAsync(directory);
 
         client.Notify(Methods.DidOpen, Open(uri, ReadsWidth));
         Assert.True(HasErrors(await client.DiagnosticsAsync(uri)), "a field the schema lacks must be an error to begin with");
@@ -151,7 +197,7 @@ public class WatchedFileTests
         var policy = Path.Combine(directory, ProjectConfig.FileName);
         File.WriteAllText(policy, "<this is not a configuration file");
 
-        await using var client = await LanguageServerClient.StartAsync(capabilities: Watching, folders: [directory]);
+        await using var client = await WatchingAsync(directory);
 
         client.Notify(Methods.DidOpen, Open(uri, ReadsWidth));
         var refused = await client.DiagnosticsAsync(uri);
@@ -169,7 +215,7 @@ public class WatchedFileTests
     {
         var (directory, uri) = Workspace(WithWidth);
 
-        await using var client = await LanguageServerClient.StartAsync(capabilities: Watching, folders: [directory]);
+        await using var client = await WatchingAsync(directory);
 
         client.Notify(Methods.DidOpen, Open(uri, ReadsWidth));
         await client.DiagnosticsAsync(uri);

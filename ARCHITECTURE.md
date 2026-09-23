@@ -2,8 +2,9 @@
 
 A map for a cold start: what exists, where it lives, and which invariants constrain a change. The
 language itself is specified in [ProtoCross_Spec/](ProtoCross_Spec/README.md); how to write code here is in
-[CLAUDE.md](CLAUDE.md); the per-issue process for the editor-support epic is in
-[docs/epic-47-workflow.md](docs/epic-47-workflow.md); what the server is held to for latency, and
+[CLAUDE.md](CLAUDE.md); the per-issue process is in
+[docs/language-1-workflow.md](docs/language-1-workflow.md) for the 1.0 language epic and
+[docs/epic-47-workflow.md](docs/epic-47-workflow.md) for the editor-support epic; what the server is held to for latency, and
 what that was measured to be, is in [docs/performance.md](docs/performance.md).
 
 ProtoCross compiles small methods written against protobuf messages into equivalent C# and C++.
@@ -94,8 +95,10 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
 7. **Bind.** [`Binder.Bind`](src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
-   descriptors and produces typed IR. It does **not** throw on bad input: an unresolved name becomes
-   `ErrorType` (`PC0037`) and binding continues, a name the parser never saw resolves to `ErrorType`
+   descriptors and produces typed IR. Sugar ends here: a compound assignment `x += y` is bound as the
+   assignment of `x + y` to `x`, so the IR has no node for one and no backend knows it exists. It does
+   **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
+   continues, a name the parser never saw resolves to `ErrorType`
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
    message to bind against. Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
@@ -199,6 +202,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Where a declaration is | `DeclarationSite` | [Symbols/DeclarationSite.cs](src/ProtoCross.Core/Symbols/DeclarationSite.cs) |
 | Where a `.proto` declared it, and what it said | `SchemaDeclaration`, `SchemaSite`, `SchemaComments` | [Symbols/SchemaDeclaration.cs](src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) |
 | Everything a schema declares, once | `SchemaSymbols` | [Binding/SchemaSymbols.cs](src/ProtoCross.Core/Binding/SchemaSymbols.cs) |
+| Which fields a name reaches on a message, never an extension | `MessageFields` | [Binding/MessageFields.cs](src/ProtoCross.Core/Binding/MessageFields.cs) |
 | Which symbol a reference means | `SymbolId` | [Symbols/SymbolId.cs](src/ProtoCross.Core/Symbols/SymbolId.cs) |
 | Where a symbol is used | `SymbolReference`, `ReferenceKind` | [Symbols/SymbolReference.cs](src/ProtoCross.Core/Symbols/SymbolReference.cs) |
 | What a name is in scope over | `ScopeEntry` | [Symbols/ScopeEntry.cs](src/ProtoCross.Core/Symbols/ScopeEntry.cs) |
@@ -212,7 +216,11 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 ### Diagnostics
 
 `Diagnostic` is `(Code, Severity, Title, Message, Span, Help?)` — very nearly the LSP diagnostic
-shape already, `Help` included. Codes are `PL####`. Rendering is
+shape already, `Help` included. Codes are `PC####`, and a raise site names a `DiagnosticDescriptor`
+rather than spelling one: the code, the severity and the title belong to the rule and live in
+[DiagnosticCodes](src/ProtoCross.Core/Diagnostics/DiagnosticCodes.cs), or in `HostDiagnosticCodes`
+for the editor host's own `PC21##` range. The message and the help belong to the occurrence and stay
+at the site. Rendering is
 `CODE: title` / `file:line:column` / message / optional `help:` line, per spec 26. **That rendering
 is published output**; a change to it moves what users see.
 
@@ -406,8 +414,9 @@ nothing did was *ask*: diagnostics are published when a compile runs, and saving
 tab is not a keystroke in this one. So once initialized the server asks a client that can watch files
 to report `**/*.proto` and `**/protocross.config.xml`
 ([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
-reschedules every open document. Each compile asks `DocumentSemantics` first, so a document whose schemas
-still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
+reschedules every open document. So does the client agreeing to watch, since a save before its watcher
+was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
+schemas still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
 an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
 
 When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
@@ -523,7 +532,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
-`TreeWalkTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
+`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
 and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`
@@ -561,6 +570,10 @@ three suites on Windows, Linux and macOS, before and after a `protoc` is install
 5. **Backends see the IR only**, and cannot branch on policy.
 6. **Do not assume single-file forever.** #27 proposes multi-file compilation units; `Compilation`
    already holds a *set* of sources for that reason.
+7. **The IR keeps the contract in spec 22.2**, invariants included: a node lies inside the node
+   holding it, an expression's type is an error type only after an error, a reference resolves or is
+   no reference, and one walk reaches every construct. `IrContractTests` sweeps the corpus for each,
+   because the backends and the editor are written against them and neither checks.
 
 ## Where the editor-support epic lands
 

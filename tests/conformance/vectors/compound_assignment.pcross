@@ -1,0 +1,430 @@
+// Conformance vectors for compound assignment (spec 9.2): 'x op= y' stores 'x op y' in x, for each of
+// the ten operators that have a compound form.
+//
+// Each method writes the compound form, and each test expects what the long form computes. The right
+// side is one operand however loosely its own operators bind, and each of those cases says which
+// answer any other reading would give. The checked and saturating directories each have a vector
+// showing that the project's overflow policy reaches the operation a compound assignment stands for.
+
+import proto "compound_assignment.proto";
+
+extend CompoundCase {
+    // ------------------------------------------------------- each operator
+
+    fn added(amount: int32) -> int32 {
+        var total = narrow;
+        total += amount;
+        return total;
+    }
+
+    fn subtracted(amount: int32) -> int32 {
+        var total = narrow;
+        total -= amount;
+        return total;
+    }
+
+    fn multiplied(factor: int64) -> int64 {
+        var total = wide;
+        total *= factor;
+        return total;
+    }
+
+    // An integer division takes its 'on_zero' clause after the divisor, as '/' and '%' do.
+    fn divided() -> int32 {
+        var quotient = narrow;
+        quotient /= divisor on_zero -1;
+        return quotient;
+    }
+
+    fn divided_or_failed() -> int32 {
+        var quotient = narrow;
+        quotient /= divisor on_zero fail;
+        return quotient;
+    }
+
+    fn reduced_modulo() -> int32 {
+        var rest = narrow;
+        rest %= divisor on_zero 0;
+        return rest;
+    }
+
+    // A divisor that is a non-zero literal needs no clause, as it needs none after '/'.
+    fn halved() -> int64 {
+        var half = wide;
+        half /= 2;
+        return half;
+    }
+
+    // A floating-point division takes no clause, and a zero divisor yields an infinity.
+    fn divided_as_double(denominator: double) -> double {
+        var quotient = real;
+        quotient /= denominator;
+        return quotient;
+    }
+
+    fn masked() -> uint64 {
+        var bits = wide_unsigned;
+        bits &= 0xFF;
+        return bits;
+    }
+
+    fn combined() -> uint32 {
+        var bits = narrow_unsigned;
+        bits |= 0x8000_0000;
+        return bits;
+    }
+
+    fn toggled() -> int64 {
+        var bits = wide;
+        bits ^= -1;
+        return bits;
+    }
+
+    fn shifted_left() -> int32 {
+        var shifted = narrow;
+        shifted <<= count;
+        return shifted;
+    }
+
+    fn shifted_right() -> uint64 {
+        var shifted = wide_unsigned;
+        shifted >>= count;
+        return shifted;
+    }
+
+    // ------------------------------------------------------- the right side is one operand
+
+    // Read as 'product * 2 + 3', this would be 11 where product is 4.
+    fn multiplied_by_a_sum() -> int32 {
+        var product = narrow;
+        product *= 2 + 3;
+        return product;
+    }
+
+    // Read as 'difference - 5 - 3', this would be 2 where difference is 10.
+    fn less_a_difference() -> int64 {
+        var difference = wide;
+        difference -= 5 - 3;
+        return difference;
+    }
+
+    // Read as '(bits & 0xF0) | 0x0F', this would be 0x0F where bits is 0x100.
+    fn masked_by_a_union() -> int64 {
+        var bits = wide;
+        bits &= 0xF0 | 0x0F;
+        return bits;
+    }
+
+    // The clause follows the divisor, as it does after '/'. A clause after 'divisor + 1' would follow
+    // the '+', which cannot take one, so a divisor with an operator of its own is parenthesized.
+    fn divided_by_a_sum() -> int32 {
+        var quotient = narrow;
+        quotient /= (divisor + 1) on_zero -1;
+        return quotient;
+    }
+
+    // ------------------------------------------------------- how a literal is typed
+
+    // A literal on the right takes the target's type, as it would beside the target in the long form.
+    // Here that is uint32, so 1 less than 0 wraps to uint32's MAX; typed on its own the literal would be
+    // an int64, and the method would not compile.
+    fn one_less_unsigned() -> uint32 {
+        var total = narrow_unsigned;
+        total -= 1;
+        return total;
+    }
+
+    fn a_float_increased() -> float {
+        var total = single;
+        total += 0.5;
+        return total;
+    }
+
+    // A shift count keeps its own type, as it does after '<<', so a count no int32 can hold is still
+    // a count: an int32 shifted by 3000000001 is shifted by 1.
+    fn shifted_by_a_count_no_int32_can_hold() -> int32 {
+        var shifted = narrow;
+        shifted <<= 3000000001;
+        return shifted;
+    }
+
+    // ------------------------------------------------------- the target
+
+    // The target is read before it is written, so it can be its own operand.
+    fn doubled() -> int64 {
+        var total = wide;
+        total += total;
+        return total;
+    }
+
+    // A local declared outside a loop accumulates across it.
+    fn sum() -> int64 {
+        var total: int64 = 0;
+        for amount in amounts {
+            total += amount;
+        }
+
+        return total;
+    }
+
+    // Wrapping is the default policy, and a compound assignment wraps as its operation does.
+    fn incremented() -> int32 {
+        var total = narrow;
+        total += 1;
+        return total;
+    }
+}
+
+// --- each operator ---
+
+test CompoundCase.added "adds to the target" {
+    receiver {
+        narrow = 40;
+    }
+
+    arg amount = 2;
+    expect return 42;
+}
+
+test CompoundCase.subtracted "subtracts from the target" {
+    receiver {
+        narrow = 40;
+    }
+
+    arg amount = 42;
+    expect return -2;
+}
+
+test CompoundCase.multiplied "multiplies the target" {
+    receiver {
+        wide = 3;
+    }
+
+    arg factor = -4;
+    expect return -12;
+}
+
+test CompoundCase.divided "divides the target, truncating toward zero" {
+    receiver {
+        narrow = -7;
+        divisor = 2;
+    }
+
+    expect return -3;
+}
+
+test CompoundCase.divided "a zero divisor stores the fallback" {
+    receiver {
+        narrow = 7;
+        divisor = 0;
+    }
+
+    expect return -1;
+}
+
+test CompoundCase.divided_or_failed "a zero divisor under 'on_zero fail' terminates" {
+    receiver {
+        narrow = 7;
+        divisor = 0;
+    }
+
+    expect fail;
+}
+
+test CompoundCase.divided_or_failed "a non-zero divisor under 'on_zero fail' divides" {
+    receiver {
+        narrow = 7;
+        divisor = 2;
+    }
+
+    expect return 3;
+}
+
+test CompoundCase.reduced_modulo "the remainder carries the sign of the dividend" {
+    receiver {
+        narrow = -7;
+        divisor = 3;
+    }
+
+    expect return -1;
+}
+
+test CompoundCase.reduced_modulo "a zero divisor stores the fallback" {
+    receiver {
+        narrow = 7;
+        divisor = 0;
+    }
+
+    expect return 0;
+}
+
+test CompoundCase.halved "a non-zero literal divisor divides" {
+    receiver {
+        wide = -9;
+    }
+
+    expect return -4;
+}
+
+test CompoundCase.divided_as_double "a floating-point division" {
+    receiver {
+        real = 3.0;
+    }
+
+    arg denominator = 2.0;
+    expect return 1.5;
+}
+
+test CompoundCase.divided_as_double "a floating-point division by zero is an infinity" {
+    receiver {
+        real = 1.0;
+    }
+
+    arg denominator = 0.0;
+    expect return __INF;
+}
+
+test CompoundCase.masked "keeps the low byte" {
+    receiver {
+        wide_unsigned = 0x1234;
+    }
+
+    expect return 0x34;
+}
+
+test CompoundCase.combined "sets the top bit" {
+    receiver {
+        narrow_unsigned = 1;
+    }
+
+    expect return 0x8000_0001;
+}
+
+test CompoundCase.toggled "flips every bit" {
+    receiver {
+        wide = 5;
+    }
+
+    expect return -6;
+}
+
+test CompoundCase.shifted_left "a count of 33 shifts an int32 by 1" {
+    receiver {
+        narrow = 3;
+        count = 33;
+    }
+
+    expect return 6;
+}
+
+test CompoundCase.shifted_right "an int32 count of -1 shifts a uint64 by 63" {
+    receiver {
+        wide_unsigned = 0x8000_0000_0000_0000;
+        count = -1;
+    }
+
+    expect return 1;
+}
+
+// --- the right side is one operand ---
+
+test CompoundCase.multiplied_by_a_sum "multiplies by the whole sum" {
+    receiver {
+        narrow = 4;
+    }
+
+    expect return 20;
+}
+
+test CompoundCase.less_a_difference "subtracts the whole difference" {
+    receiver {
+        wide = 10;
+    }
+
+    expect return 8;
+}
+
+test CompoundCase.masked_by_a_union "masks with the whole union" {
+    receiver {
+        wide = 0x100;
+    }
+
+    expect return 0;
+}
+
+test CompoundCase.divided_by_a_sum "divides by a parenthesized sum" {
+    receiver {
+        narrow = 12;
+        divisor = 2;
+    }
+
+    expect return 4;
+}
+
+test CompoundCase.divided_by_a_sum "takes the fallback where the sum is zero" {
+    receiver {
+        narrow = 12;
+        divisor = -1;
+    }
+
+    expect return -1;
+}
+
+// --- how a literal is typed ---
+
+test CompoundCase.one_less_unsigned "a literal takes the target's type" {
+    receiver {
+        narrow_unsigned = 0;
+    }
+
+    expect return 4294967295;
+}
+
+test CompoundCase.a_float_increased "a floating-point literal takes the target's type" {
+    receiver {
+        single = 1.25;
+    }
+
+    expect return 1.75;
+}
+
+test CompoundCase.shifted_by_a_count_no_int32_can_hold "a count literal keeps its own type" {
+    receiver {
+        narrow = 1;
+    }
+
+    expect return 2;
+}
+
+// --- the target ---
+
+test CompoundCase.doubled "the target is its own operand" {
+    receiver {
+        wide = 21;
+    }
+
+    expect return 42;
+}
+
+test CompoundCase.sum "accumulates across a loop" {
+    receiver {
+        amounts = 1;
+        amounts = 2;
+        amounts = 39;
+    }
+
+    expect return 42;
+}
+
+test CompoundCase.sum "an empty loop leaves the target as it was" {
+    receiver { }
+    expect return 0;
+}
+
+test CompoundCase.incremented "wraps past MAX under the default policy" {
+    receiver {
+        narrow = 2147483647;
+    }
+
+    expect return -2147483648;
+}

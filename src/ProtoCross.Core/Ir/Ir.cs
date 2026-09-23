@@ -7,8 +7,8 @@ namespace ProtoCross.Ir;
 
 /// <summary>
 /// The typed intermediate representation. Per spec 22.2 this preserves source locations, resolved
-/// protobuf type references, exact numeric operation kinds, evaluation order, and virtual
-/// annotations. Backends consume only this; they never see the AST.
+/// protobuf type references, exact numeric operation kinds, and evaluation order. Backends consume
+/// only this; they never see the AST.
 /// </summary>
 public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrTest> Tests)
 {
@@ -159,10 +159,6 @@ public sealed record IrMethodSignature(
     /// whether it may be used as a value, so a rendering that omitted it would be silent about the
     /// thing most worth knowing before writing the call.
     /// </para>
-    /// <para>
-    /// <c>virtual</c> is absent because it is not part of the signature -- <see cref="IrMethod"/>
-    /// carries it, since it says how a method is dispatched rather than how it is called.
-    /// </para>
     /// </remarks>
     public string DisplayName
         => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}";
@@ -254,7 +250,7 @@ public sealed record IrLocal(DeclarationSite Declaration, PlType Type)
 /// something needs to, it should build a new one rather than amend this.
 /// </para>
 /// </remarks>
-public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body, bool IsVirtual)
+public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body)
     : IrNode(Signature.Declaration.Extent)
 {
     public MessageDescriptor Receiver => Signature.Receiver;
@@ -375,12 +371,18 @@ public enum IrBinaryOperator
     GreaterThanOrEqual,
     LogicalAnd,
     LogicalOr,
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
+    ShiftLeft,
+    ShiftRight,
 }
 
 public enum IrUnaryOperator
 {
     Negate,
     LogicalNot,
+    BitwiseNot,
 }
 
 /// <summary>
@@ -403,6 +405,30 @@ public sealed record IrBinary(
     /// <inheritdoc cref="IrUnary.OverflowingType"/>
     public ScalarType? OverflowingType
         => IsArithmetic && ResultType is ScalarType { IsInteger: true } scalar ? scalar : null;
+
+    public bool IsShift => Operator is IrBinaryOperator.ShiftLeft or IrBinaryOperator.ShiftRight;
+
+    /// <summary>
+    /// What a shift's count is masked with before it is applied: the width of the value shifted,
+    /// less one. Null for anything that is not a shift of an integer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Spec 10.1 uses the count's low bits, which is the count modulo the width, whatever type the
+    /// count has and whatever its sign. The width is the value's, not the count's: <see cref="Right"/>
+    /// may have any integer type, and only the result's type says how many bits there are. C# masks
+    /// for itself but takes only an <c>int</c> count, and C++ leaves a count at or past the width
+    /// undefined, so both backends emit this mask, which is 10.1's third rule, and both ask for it
+    /// here rather than each working out the width again.
+    /// </para>
+    /// <para>
+    /// A shift carries an <see cref="ArithmeticBehavior"/> like every binary node and is governed by
+    /// none: <see cref="IsArithmetic"/> is false for it, so <see cref="OverflowingType"/> is null and
+    /// no policy is ever claimed for one.
+    /// </para>
+    /// </remarks>
+    public int? ShiftCountMask
+        => IsShift && ResultType is ScalarType { IsInteger: true } scalar ? scalar.IntegerWidth - 1 : null;
 }
 
 /// <summary>What an integer division does when its divisor is zero.</summary>
@@ -522,6 +548,22 @@ public enum ConversionKind
     FloatToInteger,
 }
 
+/// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
+/// <remarks>
+/// <para>
+/// <paramref name="Value"/> is a <see cref="long"/> for a signed integer type and a
+/// <see cref="ulong"/> for an unsigned one, whatever the width; a <see cref="double"/> for
+/// <c>float</c> and <c>double</c> alike; a <see cref="bool"/> or a <see cref="string"/> for those types;
+/// and null for a node of <see cref="ErrorType"/>, or for an enum type standing in for its receiver.
+/// </para>
+/// <para>
+/// A <c>float</c> literal's double is exactly a float: the one its decimal rounds to, reached in one
+/// rounding. A backend spells that float, and never needs to round anything itself. A negative
+/// integer literal is one literal, not a negation, which is what lets int32 MIN and int64 MIN be
+/// literals, so a backend has to spell a negative value in a way that still reads as one expression
+/// wherever it lands.
+/// </para>
+/// </remarks>
 public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Span)
     : IrExpression(LiteralType, Span);
 
@@ -538,8 +580,12 @@ public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Spa
 /// throws exactly that away.
 /// </para>
 /// <para>
-/// <paramref name="Span"/> is the empty range where the member name would go, so a client can anchor
-/// its list under the caret rather than over whatever token recovery landed on.
+/// <paramref name="Span"/> is the access as far as it was written -- the receiver, the dot, and the
+/// empty point after it where the name would go -- which is the span its syntax node carries. So it
+/// <em>ends</em> at the point a client anchors its list to, and not at whatever token recovery landed
+/// on. It spanned that empty point alone until 22.2 stated that a node lies inside the node holding
+/// it, which this was the one exception to: the receiver is written before the point the name would
+/// be typed at.
 /// </para>
 /// <para>
 /// No backend handles this, and none has to. One exists only when the parser reported a missing

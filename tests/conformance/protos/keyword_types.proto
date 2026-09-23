@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// keyword_types.pcross -- messages, enums, and enum values whose names C++ cannot use as they stand
+// (spec 24.2).
+//
+// protoc's C++ generator appends an underscore to a message's or a top-level enum's flattened name
+// when it is a C++ keyword or the name of a member every generated message declares, so New is the
+// class New_ and Swap the enum Swap_. A nested type is named after its already-escaped parent, which
+// makes New.Inner the class New__Inner. Enum values are escaped one at a time, before any prefix:
+// Swap's new is new_ at namespace scope, and New.Kind's class is New__Kind_class_. protoc's C#
+// generator keeps every one of these names, which is what lets the same schema check both sides.
+message New {
+  enum Kind {
+    class = 0;
+    KIND_PLAIN = 1;
+  }
+
+  message Inner {
+    int64 value = 1;
+  }
+
+  Kind kind = 1;
+  Inner inner = 2;
+  Swap mode = 3;
+  union pair = 4;
+}
+
+// A top-level enum, escaped like a message. Its values live at namespace scope in C++, where new
+// and delete are keywords and NULL is a macro.
+enum Swap {
+  new = 0;
+  delete = 1;
+  NULL = 2;
+}
+
+// A keyword as the type's own name, rather than a generated member's.
+message union {
+  int64 value = 1;
+}

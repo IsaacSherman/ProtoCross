@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// Nothing names where these live: both protoc runs are expected to find them on their own.
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// well_known.pcross -- reading through message-typed fields that neither backend generates,
+// because the protobuf runtime already carries them.
+message WellKnownCase {
+  google.protobuf.Timestamp starts_at = 1;
+  google.protobuf.Duration length = 2;
+  repeated google.protobuf.Timestamp checkpoints = 3;
+  int64 nanos_per_second = 4;
+}

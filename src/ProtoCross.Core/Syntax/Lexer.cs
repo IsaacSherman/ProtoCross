@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using ProtoCross.Diagnostics;
 
@@ -60,7 +59,6 @@ public sealed class Lexer
         ["uint32"] = TokenKind.UInt32,
         ["uint64"] = TokenKind.UInt64,
         ["var"] = TokenKind.Var,
-        ["virtual"] = TokenKind.Virtual,
         ["void"] = TokenKind.Void,
         ["while"] = TokenKind.While,
     };
@@ -234,9 +232,8 @@ public sealed class Lexer
 
         if (!closed)
         {
-            _diagnostics.Error(
-                "PC0004",
-                "unterminated block comment",
+            _diagnostics.Report(
+                DiagnosticCodes.UnterminatedBlockComment,
                 "Reached end of file while scanning a block comment.",
                 SourceSpan.SingleLine(_file, start.Offset, start.Line, start.Column, 2),
                 "Close the comment with '*/'.");
@@ -273,61 +270,149 @@ public sealed class Lexer
         }
 
         var text = _text[start.._position];
-        var kind = KeywordKinds.TryGetValue(text, out var keyword) ? keyword : TokenKind.Identifier;
-        return new Token(kind, text, SourceSpan.SingleLine(_file, start, line, column, text.Length));
-    }
+        var span = SourceSpan.SingleLine(_file, start, line, column, text.Length);
 
-    private Token LexNumber(int start, int line, int column)
-    {
-        while (_position < _text.Length && char.IsDigit(Current))
+        // __INF and __NAN are spelled like names and are literals. Deciding that here, rather than in
+        // the parser, is what makes one a number everywhere a token is asked what it is -- to the
+        // parser, to an editor colouring source, and to anything that asks whether a caret is inside a
+        // literal.
+        if (NumericLiteralSpelling.NamedValue(text) is { } named)
         {
-            Advance();
+            return new Token(TokenKind.FloatLiteral, text, span, named);
         }
 
-        var isFloat = false;
+        var kind = KeywordKinds.TryGetValue(text, out var keyword) ? keyword : TokenKind.Identifier;
+        return new Token(kind, text, span);
+    }
+
+    /// <summary>
+    /// Lexes a numeric literal (spec 6.6): decimal digits with an optional fraction and exponent, or
+    /// <c>0x</c> or <c>0b</c> and digits of that base.
+    /// </summary>
+    /// <remarks>
+    /// Where the literal ends is decided first, and whether it is one second, by
+    /// <see cref="NumericLiteralSpelling"/>. Every letter, digit and underscore glued to the end of a
+    /// number belongs to it, so a malformed spelling is one token with one diagnostic. The alternative
+    /// -- stopping at the first character that does not fit -- makes <c>5u</c> the number 5 followed
+    /// by a name, and the parser then complains about the name, which says nothing about the suffix
+    /// the author reached for.
+    /// </remarks>
+    private Token LexNumber(int start, int line, int column)
+    {
+        var isFloatingPoint = ScanNumber();
+        var text = _text[start.._position];
+        var span = SourceSpan.SingleLine(_file, start, line, column, text.Length);
+
+        return isFloatingPoint ? FloatingPointToken(text, span) : IntegerToken(text, span);
+    }
+
+    /// <summary>
+    /// Advances over one numeric literal, and says whether it is floating-point: whether it has a
+    /// fraction or an exponent.
+    /// </summary>
+    private bool ScanNumber()
+    {
+        if (Current == '0' && Lookahead is 'x' or 'b')
+        {
+            Advance();
+            Advance();
+            ScanWhile(IsWordCharacter);
+            return false;
+        }
+
+        ScanWhile(IsDigitOrSeparator);
+
+        var isFloatingPoint = false;
 
         // A '.' only begins a fractional part when a digit follows it; otherwise it is member
         // access on an integer-looking expression and belongs to the next token.
         if (Current == '.' && char.IsDigit(Lookahead))
         {
-            isFloat = true;
+            isFloatingPoint = true;
             Advance();
-            while (_position < _text.Length && char.IsDigit(Current))
+            ScanWhile(IsDigitOrSeparator);
+        }
+
+        // An exponent is the one place a literal takes a sign. Only a digit after the 'e', or after
+        // its sign, makes it one; anything else is glued on below and read as a malformed literal.
+        if (Current is 'e' or 'E'
+            && (char.IsDigit(Lookahead) || (Lookahead is '+' or '-' && char.IsDigit(Peek(2)))))
+        {
+            isFloatingPoint = true;
+            Advance();
+
+            if (Current is '+' or '-')
             {
                 Advance();
             }
+
+            ScanWhile(IsDigitOrSeparator);
         }
 
-        var text = _text[start.._position];
-        var span = SourceSpan.SingleLine(_file, start, line, column, text.Length);
-
-        if (isFloat)
-        {
-            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var floatValue))
-            {
-                _diagnostics.Error(
-                    "PC0005",
-                    "invalid float literal",
-                    $"'{text}' is not a valid floating-point literal.",
-                    span);
-                floatValue = 0d;
-            }
-
-            return new Token(TokenKind.FloatLiteral, text, span, floatValue);
-        }
-
-        if (!long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var intValue))
-        {
-            _diagnostics.Error(
-                "PC0006",
-                "integer literal out of range",
-                $"'{text}' does not fit in a 64-bit signed integer.",
-                span);
-            intValue = 0L;
-        }
-
-        return new Token(TokenKind.IntegerLiteral, text, span, intValue);
+        ScanWhile(IsWordCharacter);
+        return isFloatingPoint;
     }
+
+    private void ScanWhile(Func<char, bool> belongs)
+    {
+        while (_position < _text.Length && belongs(Current))
+        {
+            Advance();
+        }
+    }
+
+    private static bool IsDigitOrSeparator(char c) => char.IsDigit(c) || c == '_';
+
+    private static bool IsWordCharacter(char c) => char.IsLetterOrDigit(c) || c == '_';
+
+    private Token IntegerToken(string text, SourceSpan span)
+    {
+        switch (NumericLiteralSpelling.ReadInteger(text, out var magnitude))
+        {
+            case LiteralReading.Malformed:
+                ReportMalformedNumber(text, span);
+                break;
+
+            case LiteralReading.OutOfRange:
+                _diagnostics.Report(
+                    DiagnosticCodes.IntegerLiteralOutOfRange,
+                    $"'{text}' is larger than any integer type can hold.",
+                    span,
+                    "The largest integer literal is uint64 MAX, 18446744073709551615 (spec 6.6).");
+                break;
+        }
+
+        return new Token(TokenKind.IntegerLiteral, text, span, magnitude);
+    }
+
+    private Token FloatingPointToken(string text, SourceSpan span)
+    {
+        switch (NumericLiteralSpelling.ReadFloatingPoint(text, out var value))
+        {
+            case LiteralReading.Malformed:
+                ReportMalformedNumber(text, span);
+                break;
+
+            case LiteralReading.OutOfRange:
+                _diagnostics.Report(
+                    DiagnosticCodes.FloatingPointLiteralOutOfRange,
+                    $"'{text}' is outside the range of 'double'.",
+                    span,
+                    "The largest double is 1.7976931348623157e308. If an infinity is what you mean, write __INF.");
+                break;
+        }
+
+        return new Token(TokenKind.FloatLiteral, text, span, value);
+    }
+
+    private void ReportMalformedNumber(string text, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.InvalidNumericLiteral,
+            $"'{text}' is not a numeric literal.",
+            span,
+            "A numeric literal is decimal digits with an optional fraction and exponent, or 0x or 0b and "
+            + "digits of that base. '_' may stand between two digits. There are no type suffixes: a "
+            + "literal takes its type from where it is used, or from 'as' (spec 6.6).");
 
     private Token LexString(int start, int line, int column)
     {
@@ -390,9 +475,8 @@ public sealed class Lexer
                         // The span covers the backslash and the character it escapes, which is what
                         // the author actually wrote. Pointing at the escape character alone also ran
                         // the range one position past the end of a text that ended mid-escape.
-                        _diagnostics.Error(
-                            "PC0007",
-                            "unrecognized escape sequence",
+                        _diagnostics.Report(
+                            DiagnosticCodes.UnrecognizedEscapeSequence,
                             $"'\\{escape}' is not a recognized escape sequence.",
                             SourceSpan.SingleLine(_file, _position - 1, line, Column - 1, 2));
                         Advance();
@@ -411,9 +495,8 @@ public sealed class Lexer
 
         if (!terminated)
         {
-            _diagnostics.Error(
-                "PC0008",
-                "unterminated string literal",
+            _diagnostics.Report(
+                DiagnosticCodes.UnterminatedStringLiteral,
                 "String literals must be closed before the end of the line.",
                 span);
         }
@@ -436,10 +519,12 @@ public sealed class Lexer
             case ',': Advance(); kind = TokenKind.Comma; break;
             case ':': Advance(); kind = TokenKind.Colon; break;
             case '.': Advance(); kind = TokenKind.Dot; break;
-            case '+': Advance(); kind = TokenKind.Plus; break;
-            case '*': Advance(); kind = TokenKind.Star; break;
-            case '/': Advance(); kind = TokenKind.Slash; break;
-            case '%': Advance(); kind = TokenKind.Percent; break;
+            case '+': Advance(); kind = OrCompound(TokenKind.Plus, TokenKind.PlusEquals); break;
+            case '*': Advance(); kind = OrCompound(TokenKind.Star, TokenKind.StarEquals); break;
+            case '/': Advance(); kind = OrCompound(TokenKind.Slash, TokenKind.SlashEquals); break;
+            case '%': Advance(); kind = OrCompound(TokenKind.Percent, TokenKind.PercentEquals); break;
+            case '^': Advance(); kind = OrCompound(TokenKind.Caret, TokenKind.CaretEquals); break;
+            case '~': Advance(); kind = TokenKind.Tilde; break;
 
             case '-':
                 Advance();
@@ -450,7 +535,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Minus;
+                    kind = OrCompound(TokenKind.Minus, TokenKind.MinusEquals);
                 }
 
                 break;
@@ -490,6 +575,11 @@ public sealed class Lexer
                     Advance();
                     kind = TokenKind.LessEquals;
                 }
+                else if (Current == '<')
+                {
+                    Advance();
+                    kind = OrCompound(TokenKind.LessLess, TokenKind.LessLessEquals);
+                }
                 else
                 {
                     kind = TokenKind.Less;
@@ -497,12 +587,20 @@ public sealed class Lexer
 
                 break;
 
+            // There are no angle-bracketed type arguments for '>>' to be two closers of, so it is one
+            // token wherever it appears, as '<<' is. For the same reason '>>=' is one token, and never
+            // '>' followed by '>='.
             case '>':
                 Advance();
                 if (Current == '=')
                 {
                     Advance();
                     kind = TokenKind.GreaterEquals;
+                }
+                else if (Current == '>')
+                {
+                    Advance();
+                    kind = OrCompound(TokenKind.GreaterGreater, TokenKind.GreaterGreaterEquals);
                 }
                 else
                 {
@@ -520,7 +618,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Unknown;
+                    kind = OrCompound(TokenKind.Ampersand, TokenKind.AmpersandEquals);
                 }
 
                 break;
@@ -534,7 +632,7 @@ public sealed class Lexer
                 }
                 else
                 {
-                    kind = TokenKind.Unknown;
+                    kind = OrCompound(TokenKind.Pipe, TokenKind.PipeEquals);
                 }
 
                 break;
@@ -550,13 +648,33 @@ public sealed class Lexer
 
         if (kind == TokenKind.Unknown)
         {
-            _diagnostics.Error(
-                "PC0009",
-                "unexpected character",
+            _diagnostics.Report(
+                DiagnosticCodes.UnexpectedCharacter,
                 $"'{text}' is not valid ProtoCross syntax.",
                 span);
         }
 
         return new Token(kind, text, span);
+    }
+
+    /// <summary>
+    /// The compound assignment an operator has where an <c>=</c> follows it, taking the <c>=</c> too;
+    /// otherwise the operator (spec 9.2).
+    /// </summary>
+    /// <remarks>
+    /// Asked once the operator's own characters are consumed, so the longest spelling wins: <c>&lt;&lt;=</c>
+    /// is one token, never <c>&lt;&lt;</c> and <c>=</c>. An <c>=</c> cannot begin an operand, so no
+    /// program that parsed before had an operator followed directly by one, and none lexes differently
+    /// for the ten compound spellings being tokens.
+    /// </remarks>
+    private TokenKind OrCompound(TokenKind plain, TokenKind compound)
+    {
+        if (Current != '=')
+        {
+            return plain;
+        }
+
+        Advance();
+        return compound;
     }
 }

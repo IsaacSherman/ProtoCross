@@ -65,3 +65,39 @@ Open Questions:
 - Should the binder reject equality on message and repeated values until this is settled? The
   current type rule permits equality for operands of the same type, while the semantic meaning for
   messages and repeated collections is not specified here.
+
+### 13.4 Extensions
+
+**Decided for 1.0: an extension is not a field of any message, and no name reaches one.**
+
+A protobuf extension is declared in one scope and extends a message somewhere else, and it is a
+field of neither. It is not a field of the message it extends, whose generated class has no accessor
+for it: both runtimes read one through `GetExtension` and the extension's identifier. And it is not
+a field of the message whose scope declares it, which gives the extension its full name and nothing
+else. C# keeps that name on a nested static class, and C++ keeps it as a static identifier member,
+so neither is something an instance of the declaring message can be read through.
+
+Normative Requirements:
+
+- The fields of a message are the fields it declares. An extension, whether it is declared at file
+  level or inside a message, is never one of them.
+- A name written where a field could be meant is resolved against those fields alone. An
+  extension's name is reported as any name that is not a field is reported: `PC0037` for a bare
+  name, `PC0041` for a member access or the operand of `has`, and `PC0059` for a test fixture field.
+- An extension declared inside a message takes nothing from that message's name space. A method on
+  the message may have the extension's name ([16.1](./§16-Methods.md#161-method-attachment)).
+
+Implementation Note:
+
+- Google.Protobuf's `MessageDescriptor.FindFieldByName` looks the name up in the descriptor pool
+  under the message's full name. That full name is also the prefix of an extension declared inside
+  the message, so the lookup finds that extension too. The compiler asks a single lookup that
+  excludes extensions, and the fields an editor offers are listed from that same place, so what
+  completion offers and what the binder accepts cannot disagree about one.
+
+Open Questions:
+
+- Reading an extension is deferred past 1.0. It needs its own syntax, because an extension is named
+  by its full name on the message it *extends*. Protobuf's text format writes that as
+  `[pkg.Host.scoped]` and its option syntax as `(pkg.Host.scoped)`. It also needs presence and
+  repeated rules, and `GetExtension` in both backends.

@@ -52,6 +52,33 @@ public class TreeWalkTests
     }
 
     /// <summary>
+    /// The test above checks the walker against each node the corpus holds, so a kind of node the
+    /// corpus never holds is one it never checks. This is what makes "every construct" mean every
+    /// construct: each kind of IR node the compiler declares turns up somewhere in the corpus.
+    /// </summary>
+    /// <remarks>
+    /// The kinds are read off the assembly, so a node added to the IR fails this until a source in
+    /// the corpus produces one -- which is the moment to add it, since every sweep over the corpus
+    /// is otherwise silently passing over it.
+    /// </remarks>
+    [Fact]
+    public void EveryKindOfIrNodeOccursSomewhereInTheCorpus()
+    {
+        var occurring = CompiledCorpus.All
+            .SelectMany(source => IrWalk.DescendantsAndSelf(source.Result.Module!))
+            .Select(node => node.GetType())
+            .ToHashSet();
+
+        var kinds = typeof(IrNode).Assembly.GetTypes()
+            .Where(type => type.IsSubclassOf(typeof(IrNode)) && !type.IsAbstract);
+
+        foreach (var kind in kinds)
+        {
+            Assert.True(occurring.Contains(kind), $"no source in the corpus produces an {kind.Name}");
+        }
+    }
+
+    /// <summary>
     /// Nothing in the IR is reachable twice or from two parents, which is what lets a walk be a tree
     /// walk rather than a graph traversal with a visited set.
     /// </summary>
