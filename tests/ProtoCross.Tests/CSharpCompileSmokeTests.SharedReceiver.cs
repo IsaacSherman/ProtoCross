@@ -48,7 +48,9 @@ public partial class CSharpCompileSmokeTests
         var result = Compilation.Compile(TestPaths.WriteTempScript(source), [TestPaths.ExampleProtoDirectory]);
         Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
 
-        var files = new CSharpBackend().Emit(result.EmittableModule!, new BackendOptions(sourceName), new DiagnosticBag());
+        var diagnostics = new DiagnosticBag();
+        var files = new CSharpBackend().Emit(result.EmittableModule!, new BackendOptions(sourceName), diagnostics);
+        Assert.Empty(diagnostics);
 
         // Without this the build could pass because a source declared no class at all, and prove
         // nothing about two declaring the same one.

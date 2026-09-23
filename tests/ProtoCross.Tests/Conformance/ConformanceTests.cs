@@ -1,3 +1,4 @@
+using ProtoCross.Backend;
 using ProtoCross.Tests.Harness;
 using Xunit;
 
@@ -51,13 +52,15 @@ public class ConformanceVectorTests
     }
 
     /// <summary>
-    /// Every vector is compiled into one C# assembly, so two vectors declaring the same method on
-    /// the same message would declare it twice there.
+    /// Every vector is compiled into one C# assembly, so two vectors declaring a method of one name
+    /// on the same message would declare it twice there.
     /// </summary>
     /// <remarks>
     /// Two vectors sharing a message is not itself a collision: each receiver's extension class is
     /// <c>partial</c> (spec 24.1), so each vector's file declares a part of it. The corpus still gives
-    /// each vector a schema of its own, for the reason the conformance README gives.
+    /// each vector a schema of its own, for the reason the conformance README gives. Methods are
+    /// compared by the name C# declares them under, because that is where they would collide:
+    /// <c>line_total</c> and <c>lineTotal</c> are two methods here and one there.
     /// </remarks>
     [Theory]
     [MemberData(nameof(Names))]
@@ -79,7 +82,10 @@ public class ConformanceVectorTests
 
     public static TheoryData<string> Names => ConformanceVectors.Names;
 
-    /// <summary>The methods each vector declares, as <c>receiver.method</c>, by vector name.</summary>
+    /// <summary>
+    /// The methods each vector declares, as <c>receiver.Method</c> with the method named as C# names
+    /// it, by vector name.
+    /// </summary>
     /// <remarks>
     /// Compiled once for the whole theory. Each case compiling every other vector made the theory
     /// quadratic in the corpus, which went unnoticed until the generated vectors made compiling one
@@ -89,7 +95,7 @@ public class ConformanceVectorTests
         ConformanceVectors.All.ToDictionary(
             vector => vector.Name,
             vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
-                .Select(method => $"{method.Receiver.FullName}.{method.Name}")
+                .Select(method => $"{method.Receiver.FullName}.{NameConventions.ToPascalCase(method.Name)}")
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
             StringComparer.Ordinal));
