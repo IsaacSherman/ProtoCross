@@ -50,39 +50,46 @@ public class ConformanceVectorTests
             $"'{name}' declares no test blocks, so running it would assert nothing.");
     }
 
+    /// <summary>
+    /// Every vector is compiled into one C# assembly, so two vectors declaring the same method on
+    /// the same message would declare it twice there.
+    /// </summary>
+    /// <remarks>
+    /// Two vectors sharing a message is not itself a collision: each receiver's extension class is
+    /// <c>partial</c> (spec 24.1), so each vector's file declares a part of it. The corpus still gives
+    /// each vector a schema of its own, for the reason the conformance README gives.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(Names))]
-    public void EveryVectorExtendsItsOwnMessage(string name)
+    public void NoTwoVectorsDeclareOneMethod(string name)
     {
-        // Every vector is compiled into one C# assembly, and the backend names its extension class
-        // after the receiver. Two vectors sharing a receiver would emit that class twice.
-        var others = Receivers.Value
+        var others = Methods.Value
             .Where(entry => !string.Equals(entry.Key, name, StringComparison.Ordinal))
             .SelectMany(entry => entry.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var receiver in Receivers.Value[name])
+        foreach (var method in Methods.Value[name])
         {
             Assert.False(
-                others.Contains(receiver),
-                $"'{name}' extends '{receiver}', which another vector also extends. Give each vector "
+                others.Contains(method),
+                $"'{name}' declares '{method}', which another vector also declares. Give each vector "
                 + "its own message, in its own schema.");
         }
     }
 
     public static TheoryData<string> Names => ConformanceVectors.Names;
 
-    /// <summary>The messages each vector extends, by vector name.</summary>
+    /// <summary>The methods each vector declares, as <c>receiver.method</c>, by vector name.</summary>
     /// <remarks>
     /// Compiled once for the whole theory. Each case compiling every other vector made the theory
     /// quadratic in the corpus, which went unnoticed until the generated vectors made compiling one
     /// take a noticeable fraction of a second.
     /// </remarks>
-    private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> Receivers = new(() =>
+    private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> Methods = new(() =>
         ConformanceVectors.All.ToDictionary(
             vector => vector.Name,
             vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
-                .Select(method => method.Receiver.FullName)
+                .Select(method => $"{method.Receiver.FullName}.{method.Name}")
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
             StringComparer.Ordinal));

@@ -49,11 +49,10 @@ serialization format of their own.
 1. Add a schema for it to `protos/`, named after the vector (`foo.proto` for `foo.pcross`), in
    `package protocross.conformance` unless the package is the subject. Every schema there is
    generated and linked, so dropping the file in is enough. **Give it a message of its own.** Every
-   vector is compiled into a single C# assembly, and the C# backend names its extension class after
-   the receiver, so two vectors extending the same message would emit that class twice.
-   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this. A schema per vector, rather
-   than one they all share, is what lets two branches add vectors at once without meeting at the end
-   of the same file.
+   vector is compiled into a single C# assembly, so two vectors declaring the same method on the
+   same message would declare it twice there; `ConformanceVectorTests.NoTwoVectorsDeclareOneMethod`
+   enforces this. A schema per vector, rather than one they all share, is what lets two branches add
+   vectors at once without meeting at the end of the same file.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
 3. Run `dotnet test ProtoCross.slnx`.
