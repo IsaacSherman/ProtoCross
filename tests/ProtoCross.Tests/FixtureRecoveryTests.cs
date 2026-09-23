@@ -1,4 +1,5 @@
 using ProtoCross.Diagnostics;
+using ProtoCross.Semantics;
 using ProtoCross.Syntax;
 using ProtoCross.Tests.Conformance;
 using Xunit;
@@ -70,6 +71,17 @@ public class FixtureRecoveryTests
         var fixture = unit.Tests[0].Receiver;
 
         Assert.Equal(["quantity", "unit_price"], fixture.Fields.Select(field => field.FieldName.Text));
+    }
+
+    [Fact]
+    public void AForgottenSemicolonKeepsTheFieldAfterIt()
+    {
+        var text = Test("quantity = 1 unit_price = 2;");
+
+        var (unit, diagnostics) = Parse(text);
+
+        Assert.Equal(text.IndexOf("unit_price", StringComparison.Ordinal), Assert.Single(diagnostics).Span.Start.Offset);
+        Assert.Equal(["quantity", "unit_price"], unit.Tests[0].Receiver.Fields.Select(field => field.FieldName.Text));
     }
 
     [Fact]
@@ -161,7 +173,68 @@ public class FixtureRecoveryTests
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures.Take(20)));
     }
 
+    /// <summary>
+    /// A forgotten semicolon is the commonest slip in a fixture, and the one a recovery that skips
+    /// to the next semicolon gets wrong: it takes the next field with it. Deleting each semicolon of
+    /// every fixture in the corpus costs one diagnostic and not one field.
+    /// </summary>
+    [Fact]
+    public void AForgottenSemicolonInAnyFixtureCostsOneDiagnosticAndNoField()
+    {
+        var failures = new List<string>();
+        var swept = 0;
+
+        foreach (var path in CorpusSources())
+        {
+            var original = File.ReadAllText(path);
+            var (originalUnit, _) = Parse(original);
+            var fieldCount = FieldCount(originalUnit);
+
+            foreach (var (at, fixtureEnd) in PositionsInsideFixtures(original).Where(position => original[position.InsertAt] == ';'))
+            {
+                swept++;
+                var (unit, diagnostics) = Parse(original.Remove(at, 1));
+
+                var wrong = diagnostics.Count != 1 ? $"{diagnostics.Count} diagnostics"
+                    : diagnostics.Single().Span.Start.Offset > fixtureEnd ? "the diagnostic landed after the fixture"
+                    : FieldCount(unit) != fieldCount ? $"{fieldCount - FieldCount(unit)} fields went missing"
+                    : unit.Tests.Count != originalUnit.Tests.Count ? "test declarations went missing"
+                    : null;
+
+                if (wrong is not null)
+                {
+                    failures.Add($"{Path.GetFileName(path)} at offset {at}: {wrong}");
+                }
+            }
+        }
+
+        Assert.True(swept > 100, $"the corpus must give the sweep semicolons to delete; it found {swept}");
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures.Take(20)));
+    }
+
+    [Fact]
+    public void AFixtureMissingItsClosingBraceEndsAtTheTestsNextMember()
+    {
+        var text = """
+            import proto "invoice.proto";
+
+            test InvoiceItem.f "unclosed" {
+                receiver { quantity = 1;
+                expect return 1;
+            }
+            """;
+
+        var (unit, diagnostics) = Parse(text);
+
+        var only = Assert.Single(diagnostics);
+        Assert.Equal(text.IndexOf("expect", StringComparison.Ordinal), only.Span.Start.Offset);
+        Assert.IsType<TestReturnExpectation>(unit.Tests[0].Expectation);
+    }
+
     // ------- helpers
+
+    private static int FieldCount(CompilationUnit unit)
+        => SyntaxWalk.DescendantsAndSelf(unit).OfType<TestFieldInitializer>().Count();
 
     private static IEnumerable<string> CorpusSources()
         => ConformanceVectors.HandWritten.Select(vector => vector.SourcePath).Append(TestPaths.SimpleScript);

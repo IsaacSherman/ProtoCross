@@ -96,15 +96,20 @@ public sealed class Parser
             return true;
         }
 
-        _diagnostics.Report(
-            DiagnosticCodes.UnexpectedToken,
-            $"Expected {kind.Describe()} but found {Current.Kind.Describe()}.",
-            Current.Span);
+        ReportUnexpectedToken(kind.Describe());
 
         // A synthetic token so callers can continue building a tree.
         token = new Token(kind, string.Empty, Current.Span);
         return false;
     }
+
+    /// <summary>Reports that the current token is not what the grammar wanted here.</summary>
+    /// <param name="expected">What was wanted, as <see cref="TokenKindExtensions.Describe"/> spells a token.</param>
+    private void ReportUnexpectedToken(string expected)
+        => _diagnostics.Report(
+            DiagnosticCodes.UnexpectedToken,
+            $"Expected {expected} but found {Current.Kind.Describe()}.",
+            Current.Span);
 
     /// <summary>
     /// Parses an identifier into a <see cref="SyntaxName"/>, modelling its absence rather than
@@ -359,7 +364,7 @@ public sealed class Parser
     {
         var fields = new List<TestFieldInitializer>();
 
-        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !EndsAFixture(Current.Kind))
         {
             var before = _position;
 
@@ -422,7 +427,13 @@ public sealed class Parser
                 return new TestScalarFieldInitializer(fieldName, value, Spanning(start, semicolon.Span));
             }
 
-            SkipRestOfFixtureField();
+            // A name after the value is most likely the next field, written after a forgotten
+            // semicolon, and skipping to the next semicolon would take that field with it.
+            if (Current.Kind != TokenKind.Identifier)
+            {
+                SkipRestOfFixtureField();
+            }
+
             return new TestScalarFieldInitializer(fieldName, value, Spanning(start, Peek(-1).Span));
         }
 
@@ -431,11 +442,7 @@ public sealed class Parser
             return ParseTestMessageFieldInitializer(fieldName, start);
         }
 
-        _diagnostics.Report(
-            DiagnosticCodes.UnexpectedToken,
-            $"Expected {TokenKind.Equals.Describe()} or {TokenKind.OpenBrace.Describe()} but found "
-            + $"{Current.Kind.Describe()}.",
-            Current.Span);
+        ReportUnexpectedToken($"{TokenKind.Equals.Describe()} or {TokenKind.OpenBrace.Describe()}");
         SkipRestOfFixtureField();
         return null;
     }
@@ -477,7 +484,7 @@ public sealed class Parser
     /// </remarks>
     private void SkipRestOfFixtureField()
     {
-        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !EndsAFixture(Current.Kind))
         {
             if (Match(TokenKind.Semicolon))
             {
@@ -493,6 +500,19 @@ public sealed class Parser
             Advance();
         }
     }
+
+    /// <summary>
+    /// Whether a token cannot appear in a fixture but can follow one: the next member of the test,
+    /// or the next declaration.
+    /// </summary>
+    /// <remarks>
+    /// Meeting one means the fixture's closing brace is missing, and the fixture ends there rather
+    /// than reading on. Read as a field, <c>expect return 1;</c> would be skipped through its
+    /// semicolon, and the test would be reported as missing the expectation it has.
+    /// </remarks>
+    private static bool EndsAFixture(TokenKind kind) => kind is
+        TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect
+        or TokenKind.Test or TokenKind.Extend or TokenKind.Import;
 
     private TestArgumentDeclaration ParseTestArgument()
     {
