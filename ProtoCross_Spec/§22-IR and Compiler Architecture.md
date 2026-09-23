@@ -62,6 +62,12 @@ The IR preserves:
   identities. Every source in one compilation carries a distinct identity of its own -- a path, or
   the name its caller gave an unsaved buffer -- because a declaration site is only unique within a
   source.
+- **Which source each method and each test is declared in.** A module binds every source of a
+  compilation together, because a call or a test may reach from one source into another, and it is
+  divided back into its sources to emit each to a file of its own. A method says which source it is
+  in through its declaration site; a test, which declares nothing a name could refer to, carries its
+  source itself. A part divided out this way is not a module its source could have produced alone:
+  a call in it may name a method another source declares.
 - **A literal's value in one stated representation**: a 64-bit signed integer for a signed type and
   a 64-bit unsigned one for an unsigned type, whatever the width; a double-precision value for both
   floating-point types, and for a `float` literal the value its decimal rounds to in one rounding;

@@ -10,8 +10,8 @@ namespace ProtoCross.Binding;
 
 /// <summary>
 /// Resolves names against protobuf descriptors, type-checks the AST, and lowers it to the typed
-/// IR. Runs in two passes so a method may call another method declared later in the file, or in a
-/// different extend block.
+/// IR. Runs in two passes so a method may call another method declared later in the file, in a
+/// different extend block, or in another source of the compilation.
 /// </summary>
 public sealed partial class Binder
 {
@@ -55,15 +55,25 @@ public sealed partial class Binder
     private readonly List<ScopeEntry> _scope = [];
     private readonly NumericPolicy _policy;
     private readonly ProjectConfig _config;
-    private readonly SourceIdentity _document;
+
+    /// <summary>The source whose declarations and names are being bound.</summary>
+    /// <remarks>
+    /// Mutable, and set by <see cref="Bind(IReadOnlyList{SourceTree})"/> before anything in a source
+    /// is bound, because every declaration site and every reference recorded below is stamped with
+    /// it. Threading it through every method that records one instead would put a parameter on
+    /// most of this class for the sake of a value that changes only between sources.
+    /// </remarks>
+    private SourceIdentity _document;
 
     /// <param name="document">
-    /// What the source being bound is, which every declaration site records so that a reference can
-    /// say not just where its declaration is but which file that is in. Optional because a caller
-    /// that only wants diagnostics -- the resilience suite binds thousands of generated trees --
-    /// has nothing to say here and no one to say it to. Omitting it leaves every declaration keyed
-    /// under one anonymous buffer, which is sound for a single compilation and useless to index
-    /// across several, so anything building an index must supply it. The pipeline always does.
+    /// What the source handed to <see cref="Bind(CompilationUnit)"/> is, which every declaration
+    /// site records so that a reference can say not just where its declaration is but which file
+    /// that is in. Optional because a caller that only wants diagnostics -- the resilience suite
+    /// binds thousands of generated trees -- has nothing to say here and no one to say it to.
+    /// Omitting it leaves every declaration keyed under one anonymous buffer, which is sound for one
+    /// source and useless to index across several, so anything building an index must supply it.
+    /// <see cref="Bind(IReadOnlyList{SourceTree})"/> takes each source's identity from its tree
+    /// instead, and the pipeline always supplies one.
     /// </param>
     public Binder(
         IReadOnlyList<FileDescriptor> files,
@@ -103,12 +113,58 @@ public sealed partial class Binder
     /// requires no errors as well as a module, and the diagnostics are still there.
     /// </para>
     /// </remarks>
-    public IrModule Bind(CompilationUnit unit)
+    public IrModule Bind(CompilationUnit unit) => Bind([new SourceTree(_document, unit)]);
+
+    /// <summary>
+    /// Binds several compilation units into one module, as one program: a method in any of them
+    /// may call a method declared in any other, and a test in any of them may target it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every source is declared before any body is bound, which is the two passes a single file
+    /// always had, widened to the compilation. Nothing in the language orders sources, so a call
+    /// into a file named later is the same as a call to a method written further down.
+    /// </para>
+    /// <para>
+    /// The second pass goes a source at a time, its bodies and then its tests, so the diagnostics
+    /// one source earns are reported together, and one source bound alone reports them in the order
+    /// it always has.
+    /// </para>
+    /// </remarks>
+    public IrModule Bind(IReadOnlyList<SourceTree> sources)
     {
-        // Pass 1: resolve extend targets and collect signatures.
+        ArgumentNullException.ThrowIfNull(sources);
+
+        var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
+
+        var methods = new List<IrMethod>();
+        var tests = new List<IrTest>();
+
+        foreach (var (source, extends) in declared)
+        {
+            _document = source.Document;
+            methods.AddRange(BindMethods(extends));
+            tests.AddRange(BindTests(source.Unit));
+        }
+
+        return new IrModule(methods, tests)
+        {
+            References = SymbolReference.InSourceOrder(_references),
+            Scope = [.. _scope],
+        };
+    }
+
+    /// <summary>
+    /// The first pass over one source: resolves what each <c>extend</c> names, and declares every
+    /// method in it so that any source may call it.
+    /// </summary>
+    /// <returns>The <c>extend</c> blocks whose receiver resolved, which are the ones with bodies to bind.</returns>
+    private List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> Declare(SourceTree source)
+    {
+        _document = source.Document;
         var resolvedExtends = new List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)>();
 
-        foreach (var extend in unit.Extends)
+        foreach (var extend in source.Unit.Extends)
         {
             if (extend.MessageName.IsMissing)
             {
@@ -131,10 +187,15 @@ public sealed partial class Binder
             }
         }
 
-        // Pass 2: bind bodies now that every signature is visible.
+        return resolvedExtends;
+    }
+
+    /// <summary>The second pass over one source's methods, now that every signature is visible.</summary>
+    private List<IrMethod> BindMethods(IEnumerable<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> extends)
+    {
         var methods = new List<IrMethod>();
 
-        foreach (var (declaration, receiver) in resolvedExtends)
+        foreach (var (declaration, receiver) in extends)
         {
             foreach (var method in declaration.Methods)
             {
@@ -146,21 +207,22 @@ public sealed partial class Binder
             }
         }
 
+        return methods;
+    }
+
+    private List<IrTest> BindTests(CompilationUnit unit)
+    {
         var tests = new List<IrTest>();
+
         foreach (var test in unit.Tests)
         {
-            var bound = BindTest(test);
-            if (bound is not null)
+            if (BindTest(test) is { } bound)
             {
                 tests.Add(bound);
             }
         }
 
-        return new IrModule(methods, tests)
-        {
-            References = SymbolReference.InSourceOrder(_references),
-            Scope = [.. _scope],
-        };
+        return tests;
     }
 
     /// <summary>Records that a name at <paramref name="span"/> resolved to <paramref name="symbol"/>.</summary>
@@ -349,11 +411,11 @@ public sealed partial class Binder
 
         var key = (receiver.FullName, method.Name.Text);
 
-        if (_methods.ContainsKey(key))
+        if (_methods.TryGetValue(key, out var first))
         {
             _diagnostics.Report(
                 DiagnosticCodes.DuplicateMethod,
-                $"'{receiver.FullName}' already defines a method named '{method.Name}'.",
+                $"'{receiver.FullName}' already defines a method named '{method.Name}'{WhereElse(first)}.",
                 method.Span,
                 "Overloading is not supported; give the method a distinct name.");
             return;
@@ -371,6 +433,18 @@ public sealed partial class Binder
 
         _methods[key] = _signatures[method];
     }
+
+    /// <summary>
+    /// Where <paramref name="first"/> is declared, as a clause to end a sentence with, when that is
+    /// in another source; nothing when it is in this one.
+    /// </summary>
+    /// <remarks>
+    /// Only across sources. The diagnostic stands on the second declaration, so across sources the
+    /// message is the one thing that can say where the first one is. Within one source the first is
+    /// in the file being read, and that message is published output that has never named a place.
+    /// </remarks>
+    private string WhereElse(IrMethodSignature first)
+        => first.Declaration.Document == _document ? string.Empty : $", at {first.Declaration.Name.Span}";
 
     /// <summary>Resolves what a method declares into the signature the IR carries.</summary>
     private IrMethodSignature DescribeMethod(MessageDescriptor receiver, MethodDeclaration method)
@@ -598,7 +672,10 @@ public sealed partial class Binder
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
 
-        return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span);
+        return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span)
+        {
+            Document = _document,
+        };
     }
 
     /// <remarks>

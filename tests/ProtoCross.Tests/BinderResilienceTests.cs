@@ -1,9 +1,7 @@
-using Google.Protobuf.Reflection;
 using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
-using ProtoCross.Tests.Conformance;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -32,15 +30,13 @@ public class BinderResilienceTests
     private static readonly TimeSpan BindBudget = TimeSpan.FromSeconds(60);
     private const int DeletionBatchSize = 128;
 
-    private static readonly Lazy<IReadOnlyList<FileDescriptor>> Schemas = new(LoadSchemas);
-
     private static IrModule Bind(string text)
     {
         var diagnostics = new DiagnosticBag();
         var tokens = new Lexer(text, "fuzz.pcross", diagnostics).Tokenize();
         var unit = new Parser(tokens, "fuzz.pcross", diagnostics).ParseCompilationUnit();
 
-        return new Binder(Schemas.Value, diagnostics).Bind(unit);
+        return new Binder(LoadedSchemas.ExampleAndConformance, diagnostics).Bind(unit);
     }
 
     /// <summary>Runs a sweep under a time limit, failing rather than hanging the test run.</summary>
@@ -177,14 +173,4 @@ public class BinderResilienceTests
 
         await WithinBudget($"{Depth} levels of parentheses", _ => Assert.NotNull(Bind(source)));
     }
-
-    /// <remarks>
-    /// Every schema the corpus imports: the example's and each conformance vector's. Loaded together
-    /// in one <c>protoc</c> run, because the sweeps above bind tens of thousands of trees and must not
-    /// pay for a process each.
-    /// </remarks>
-    private static IReadOnlyList<FileDescriptor> LoadSchemas()
-        => DescriptorLoader.CreateDefault().Load(
-            ["invoice.proto", .. ConformanceVectors.SchemaFileNames],
-            [TestPaths.ExampleProtoDirectory, ConformanceVectors.ProtoDirectory]);
 }
