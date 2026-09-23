@@ -919,7 +919,7 @@ public sealed class Parser
     {
         var operatorToken = Advance();
         var value = ParseExpression();
-        var onZero = ParseOnZeroClause(op, operatorToken);
+        var onZero = ParseOnZeroClause(op, operatorToken, out _);
         var end = Expect(TokenKind.Semicolon).Span;
 
         return new CompoundAssignmentStatement(target, op, value, Spanning(start, end), onZero);
@@ -972,16 +972,28 @@ public sealed class Parser
 
     /// <summary>Steps over what is left of an expression, stopping at whatever ends it.</summary>
     /// <remarks>
+    /// <para>
     /// No expression contains a brace or a semicolon (see <see cref="ParseIfStatement"/>), so either
     /// ends it wherever it stands. A <c>)</c> or <c>,</c> that closes nothing opened here belongs to
     /// what the expression is inside -- a parenthesized operand, or a call's arguments -- and ends it
     /// too. None of these is consumed: each is for the enclosing construct to read.
+    /// </para>
+    /// <para>
+    /// A keyword that only begins a statement or a declaration ends it as well, because it cannot be
+    /// part of one. Without it, an expression missing its semicolon would take the next statement
+    /// with it, and whatever was wrong there would go unreported.
+    /// </para>
+    /// <para>
+    /// Message literals (#80) put braces inside an expression, and this skip has to learn them when
+    /// they arrive, as the condition of an <c>if</c> does.
+    /// </para>
     /// </remarks>
     private void SkipRestOfExpression()
     {
         var openParentheses = 0;
 
-        while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Semicolon or TokenKind.OpenBrace or TokenKind.CloseBrace))
+        while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Semicolon or TokenKind.OpenBrace or TokenKind.CloseBrace)
+            && !BeginsAStatementOrDeclaration(Current.Kind))
         {
             if (openParentheses == 0 && Current.Kind is (TokenKind.CloseParen or TokenKind.Comma))
             {
@@ -1014,6 +1026,13 @@ public sealed class Parser
     /// terminator; the loops that could be left where they started have progress guards of their
     /// own.
     /// </remarks>
+    /// <summary>Whether a token can only start a statement or a declaration, never continue an expression.</summary>
+    private static bool BeginsAStatementOrDeclaration(TokenKind kind) => kind is
+        TokenKind.Var or TokenKind.Return or TokenKind.If or TokenKind.Else or TokenKind.While
+        or TokenKind.For or TokenKind.Break or TokenKind.Continue
+        or TokenKind.Import or TokenKind.Extend or TokenKind.Fn or TokenKind.Test
+        or TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect;
+
     private ErrorExpression AbandonExpression()
     {
         var first = Current.Span;
@@ -1153,9 +1172,6 @@ public sealed class Parser
     /// <c>a / b on_zero 0 as int32</c> converts the fallback rather than the quotient; parenthesize
     /// the division to convert its result.
     /// </remarks>
-    private OnZeroClause? ParseOnZeroClause(BinaryOperatorKind op, Token operatorToken) =>
-        ParseOnZeroClause(op, operatorToken, out _);
-
     /// <param name="fallbackHeight">
     /// How tall the fallback is, or zero where there is none to count: no clause, or
     /// <c>on_zero fail</c>.

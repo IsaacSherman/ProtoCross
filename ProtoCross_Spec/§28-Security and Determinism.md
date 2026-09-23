@@ -15,8 +15,10 @@ Normative Requirements:
   - Parenthesized and argument expressions, blocks, message fixtures, and each `else if` of a chain
     nest to the same bound.
   - A construct past the bound is `PC0081`. It is reported once per file, at the token where the
-    construct went too deep. The compiler steps over the rest of that construct and goes on to
-    parse what follows, so that one diagnostic is the only one it causes.
+    construct went too deep. The compiler steps over the rest of that construct, diagnoses nothing
+    inside it, and goes on to parse what follows. A check that needs what was skipped cannot see
+    it: a method whose every `return` was in skipped branches is also told that not every path
+    returns.
 - Runtime loops and recursive method calls are not currently resource-limited.
 
 Open Questions:

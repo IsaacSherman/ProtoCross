@@ -208,6 +208,46 @@ public class ChainDepthTests
             result.Diagnostics.Single(d => d.Code == DiagnosticCodes.UnknownName.Code).Span.Start.Offset);
     }
 
+    /// <summary>
+    /// An expression too deep for the parser to descend into is stepped over to where it ends, as
+    /// a chain too tall is. It used to be abandoned one token at a time, and the rest of it came
+    /// back as a chain of thousands of calls and a string of unexpected tokens.
+    /// </summary>
+    [Theory]
+    [InlineData("parentheses")]
+    [InlineData("a condition")]
+    public void AnExpressionTooDeepToDescendIsOneDiagnostic(string construct)
+    {
+        var deep = new string('(', Links) + "quantity" + new string(')', Links);
+        var statements = construct switch
+        {
+            "parentheses" => $"return {deep};",
+            "a condition" => $"if {deep} == 0 {{ return 1; }} return 0;",
+            _ => throw new ArgumentOutOfRangeException(nameof(construct), construct, "Unknown construct."),
+        };
+
+        var result = Compile(Method(statements));
+
+        Assert.Equal([NestingIsTooDeep], result.Diagnostics.Select(d => d.Code));
+    }
+
+    /// <summary>
+    /// A statement keyword ends an abandoned expression even when its semicolon is missing, so the
+    /// statement after it is not swallowed along with it.
+    /// </summary>
+    [Fact]
+    public void AnOverlongChainMissingItsSemicolonDoesNotSwallowTheNextStatement()
+    {
+        var text = Method($"var total: int64 = {Chain("binary operators", Links)}\n return missing;");
+
+        var result = Compile(text);
+
+        Assert.Contains(
+            result.Diagnostics,
+            d => d.Code == DiagnosticCodes.UnknownName.Code
+                && d.Span.Start.Offset == text.IndexOf("missing", StringComparison.Ordinal));
+    }
+
     // ------- helpers
 
     /// <summary>
