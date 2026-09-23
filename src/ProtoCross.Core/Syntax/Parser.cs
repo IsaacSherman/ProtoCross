@@ -362,48 +362,15 @@ public sealed class Parser
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
         {
             var before = _position;
-            var start = Current.Span;
-            var fieldName = ExpectName();
 
-            if (Match(TokenKind.Equals))
+            if (ParseTestFieldInitializer() is { } field)
             {
-                var value = ParseExpression();
-                var end = Expect(TokenKind.Semicolon).Span;
-                fields.Add(new TestScalarFieldInitializer(fieldName, value, Spanning(start, end)));
-            }
-            else if (!TryEnterNesting())
-            {
-                // Message fixtures nest, so they carry the same budget as blocks and expressions.
-                // Whether the closer was found does not change a fixture: it declares no name, so
-                // nothing's visibility ends at its brace.
-                var abandonedEnd = Current.Span;
-                if (Match(TokenKind.OpenBrace))
-                {
-                    TrySkipBalancedBlock(out abandonedEnd);
-                }
-
-                fields.Add(new TestMessageFieldInitializer(fieldName, [], Spanning(start, abandonedEnd)));
-            }
-            else
-            {
-                try
-                {
-                    Expect(TokenKind.OpenBrace);
-                    var nested = ParseTestFieldInitializers();
-                    var nestedEnd = Expect(TokenKind.CloseBrace).Span;
-                    fields.Add(
-                        new TestMessageFieldInitializer(fieldName, nested, Spanning(start, nestedEnd)));
-                }
-                finally
-                {
-                    ExitNesting();
-                }
+                fields.Add(field);
             }
 
-            // Guarantee forward progress, as ParseBlock does. Nothing above is obliged to consume a
-            // token: on a stray token every Expect fails without advancing, and the recursive call
-            // then re-enters on an unchanged position. That recursion has no base case, and the
-            // resulting StackOverflowException cannot be caught -- it takes the process with it.
+            // Guarantee forward progress, as ParseBlock does. Every path above consumes something
+            // on any token the loop admits, but the promise is kept here rather than argued there:
+            // a loop that can stand still once is a loop that can stand still forever.
             if (_position == before)
             {
                 Advance();
@@ -411,6 +378,120 @@ public sealed class Parser
         }
 
         return fields;
+    }
+
+    /// <summary>
+    /// Parses one field of a fixture: <c>name = value;</c>, or <c>name { ... }</c> for a nested
+    /// message. Null for a field too malformed to stand for anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A malformed field is reported once and stepped over to its end
+    /// (<see cref="SkipRestOfFixtureField"/>), so a stray token costs one diagnostic. It used to cost
+    /// hundreds, and the declarations after it besides (#127): a token that was neither <c>=</c>
+    /// nor a name sent the field down the nested-message path whether or not a <c>{</c> was there,
+    /// and the recursion re-entered on the same token until the nesting budget ran out. On the way
+    /// back, each of its 128 levels took a closing brace and whatever followed it, which swallowed
+    /// the test's expectation and then the declarations after the test.
+    /// </para>
+    /// <para>
+    /// A name followed by neither <c>=</c> nor <c>{</c> is dropped rather than kept. Kept, it would
+    /// have to be one kind of initializer or the other, and whichever it was, the binder would
+    /// report the field for not being that kind: a second diagnostic about a construct that already
+    /// has one. Completion does not miss it, because it answers from the message value around the
+    /// caret rather than from the field being typed.
+    /// </para>
+    /// </remarks>
+    private TestFieldInitializer? ParseTestFieldInitializer()
+    {
+        var start = Current.Span;
+        var fieldName = ExpectName();
+
+        if (fieldName.IsMissing)
+        {
+            SkipRestOfFixtureField();
+            return null;
+        }
+
+        if (Match(TokenKind.Equals))
+        {
+            var value = ParseExpression();
+
+            if (TryExpect(TokenKind.Semicolon, out var semicolon))
+            {
+                return new TestScalarFieldInitializer(fieldName, value, Spanning(start, semicolon.Span));
+            }
+
+            SkipRestOfFixtureField();
+            return new TestScalarFieldInitializer(fieldName, value, Spanning(start, Peek(-1).Span));
+        }
+
+        if (Current.Kind == TokenKind.OpenBrace)
+        {
+            return ParseTestMessageFieldInitializer(fieldName, start);
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.UnexpectedToken,
+            $"Expected {TokenKind.Equals.Describe()} or {TokenKind.OpenBrace.Describe()} but found "
+            + $"{Current.Kind.Describe()}.",
+            Current.Span);
+        SkipRestOfFixtureField();
+        return null;
+    }
+
+    private TestMessageFieldInitializer ParseTestMessageFieldInitializer(SyntaxName fieldName, SourceSpan start)
+    {
+        // Message fixtures nest, so they carry the same budget as blocks and expressions. Whether
+        // the closer was found does not change a fixture: it declares no name, so nothing's
+        // visibility ends at its brace.
+        if (!TryEnterNesting())
+        {
+            Expect(TokenKind.OpenBrace);
+            TrySkipBalancedBlock(out var abandonedEnd);
+            return new TestMessageFieldInitializer(fieldName, [], Spanning(start, abandonedEnd));
+        }
+
+        try
+        {
+            Expect(TokenKind.OpenBrace);
+            var nested = ParseTestFieldInitializers();
+            var nestedEnd = Expect(TokenKind.CloseBrace).Span;
+            return new TestMessageFieldInitializer(fieldName, nested, Spanning(start, nestedEnd));
+        }
+        finally
+        {
+            ExitNesting();
+        }
+    }
+
+    /// <summary>
+    /// Steps over the rest of a fixture field that did not parse, through the semicolon or the
+    /// braced block that ends it.
+    /// </summary>
+    /// <remarks>
+    /// A closing brace is left where it is, because it closes the fixture the field is in: a field
+    /// that swallowed it would take the fixture's end, and then the test's, with it. A brace that
+    /// opens a block is stepped over whole, since its own closer belongs to it rather than to the
+    /// fixture.
+    /// </remarks>
+    private void SkipRestOfFixtureField()
+    {
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        {
+            if (Match(TokenKind.Semicolon))
+            {
+                return;
+            }
+
+            if (Match(TokenKind.OpenBrace))
+            {
+                TrySkipBalancedBlock(out _);
+                return;
+            }
+
+            Advance();
+        }
     }
 
     private TestArgumentDeclaration ParseTestArgument()
