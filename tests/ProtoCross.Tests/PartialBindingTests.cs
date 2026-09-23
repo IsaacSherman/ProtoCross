@@ -1,5 +1,6 @@
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 using Xunit;
 
@@ -46,15 +47,39 @@ public class PartialBindingTests
             Assert.IsType<MessageType>(awaiting.Receiver.Type).Descriptor.FullName);
     }
 
+    /// <summary>
+    /// The access spans what was written and ends where the name would go, so a client anchoring a
+    /// list under the caret takes the end of it -- and so the node lies inside the node holding it,
+    /// which spec 22.2 promises of every node and this was the one exception to.
+    /// </summary>
     [Fact]
-    public void ATrailingDotIsAnchoredWhereTheMemberNameWouldGo()
+    public void ATrailingDotEndsWhereTheMemberNameWouldGo()
     {
         var awaiting = MissingMemberAccessIn(CompileSource(TrailingDot));
 
-        var afterTheDot = TrailingDot.IndexOf("line.", StringComparison.Ordinal) + "line.".Length;
+        var receiver = TrailingDot.IndexOf("line.", StringComparison.Ordinal);
 
-        Assert.True(awaiting.Span.IsEmpty, "an insertion point covers no text");
-        Assert.Equal(afterTheDot, awaiting.Span.Start.Offset);
+        Assert.Equal(receiver, awaiting.Span.Start.Offset);
+        Assert.Equal(receiver + "line.".Length, awaiting.Span.End.Offset);
+    }
+
+    /// <summary>
+    /// What spanning the written access buys: the two trees say the same thing about it, so a caller
+    /// holding the syntax of a half-written member access can ask what it bound to. While the node
+    /// stood at the empty point alone, nothing in the IR carried the span the syntax did and the
+    /// question answered null.
+    /// </summary>
+    [Fact]
+    public void ADotAwaitingANameIsTheSameRangeInBothTrees()
+    {
+        var result = CompileSource(TrailingDot);
+        var model = SemanticModel.For(result);
+
+        var syntax = model.SyntaxAt(TrailingDot.IndexOf("line.", StringComparison.Ordinal) + "line.".Length)!
+            .Enclosing<MemberAccessExpression>();
+
+        Assert.NotNull(syntax);
+        Assert.Same(MissingMemberAccessIn(result), model.BoundFrom(syntax));
     }
 
     /// <summary>

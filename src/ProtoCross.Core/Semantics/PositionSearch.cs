@@ -13,14 +13,14 @@ namespace ProtoCross.Semantics;
 /// differ only in what their children are, which is the delegate.
 /// </para>
 /// <para>
-/// The descent does not prune on containment, and cannot: the IR is not span-nested. An
-/// <see cref="Ir.IrMissingMemberAccess"/> is the empty point after a dot, while the receiver it
-/// carries lies before that point -- so a child can fall outside its parent, and refusing to look
-/// inside a parent that does not contain the offset would lose exactly the node an editor is asking
-/// about. Every node is visited and the best is kept, which is a linear scan of a method body per
-/// request. No index is built until something measures a need for one, and #57 measured: the answers
-/// that go through this are between 0.5 and 1.5 ms at p95 against budgets of 20 to 100 ms, so an
-/// index would be a structure to invalidate in exchange for nothing a reader could feel.
+/// The descent does not prune on containment. It could: spec 22.2 states that a node lies inside the
+/// node holding it, and <c>IrContractTests</c> sweeps the corpus for it. But pruning buys a fraction
+/// of a linear scan of one method body, and it would make a walker that loses one subtree answer
+/// plausibly instead of visibly, which is the failure this file exists to avoid. Every node is
+/// visited and the best is kept. No index is built until something measures a need for one, and #57
+/// measured: the answers that go through this are between 0.5 and 1.5 ms at p95 against budgets of
+/// 20 to 100 ms, so an index would be a structure to invalidate in exchange for nothing a reader
+/// could feel.
 /// </para>
 /// </remarks>
 internal static class PositionSearch

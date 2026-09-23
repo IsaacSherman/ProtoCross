@@ -532,7 +532,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
-`TreeWalkTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
+`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
 and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`
@@ -570,6 +570,10 @@ three suites on Windows, Linux and macOS, before and after a `protoc` is install
 5. **Backends see the IR only**, and cannot branch on policy.
 6. **Do not assume single-file forever.** #27 proposes multi-file compilation units; `Compilation`
    already holds a *set* of sources for that reason.
+7. **The IR keeps the contract in spec 22.2**, invariants included: a node lies inside the node
+   holding it, an expression's type is an error type only after an error, a reference resolves or is
+   no reference, and one walk reaches every construct. `IrContractTests` sweeps the corpus for each,
+   because the backends and the editor are written against them and neither checks.
 
 ## Where the editor-support epic lands
 
