@@ -23,8 +23,9 @@ while iterating (`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered
 
 Three checks are switched off by default, because none is what a person mid-iteration wants to wait
 for: `PROTOCROSS_SWEEP=1` runs the whole-corpus completion sweep, `PROTOCROSS_SOAK=1` runs the long
-editing soak, and `PROTOCROSS_BENCH=1` measures the latency budgets (which also needs `-c Release`,
-and refuses to run without it).
+editing soak, and `PROTOCROSS_BENCH=1` measures the latency budgets (which also needs `-c Release`
+and `DOTNET_gcServer=0`, and refuses to run without either: the suite runs the server garbage
+collector, and the language server ships with the workstation one).
 `.github/workflows/ci.yml` turns the first two on for every pull request to `main`, so what a local
 run skips is still checked before anything merges — and `report.ps1` fails the job when one of those
 is skipped there, since a gate that quietly stays shut looks exactly like a green build.

@@ -47,9 +47,15 @@ public class PerformanceBudgetTests
         // the optimizer moved most.
         Assert.True(
             Sampler.Optimized,
-            "A Debug build is not a measurement. Run `dotnet test ProtoCross.slnx -c Release "
-                + "--filter \"FullyQualifiedName~Performance\"` with PROTOCROSS_BENCH=1; see "
+            $"A Debug build is not a measurement. Run `{Sampler.Command}`; see "
                 + "docs/performance.md for why the difference is not a constant factor.");
+
+        // The same refusal for the same reason: the collector the suite runs for its own sake is not
+        // the one the server ships with, and a forgotten variable must not read as a fast server.
+        Assert.True(
+            Sampler.ShippedCollector,
+            $"The server garbage collector is not a measurement; the language server ships with the "
+                + $"workstation one. Run `{Sampler.Command}`; see docs/performance.md.");
 
         var report = new PerformanceReport();
 

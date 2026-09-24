@@ -74,7 +74,7 @@ To raise it, change `StressCorpus.Steps` and rewrite the committed file from the
 ## How to measure
 
 ```bash
-PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release --filter "FullyQualifiedName~Performance"
+PROTOCROSS_BENCH=1 DOTNET_gcServer=0 dotnet test ProtoCross.slnx -c Release --filter "FullyQualifiedName~Performance"
 ```
 
 **`-c Release` is not optional, and the benchmark refuses to run without it.** `dotnet test` builds
@@ -84,8 +84,15 @@ the ones on the larger corpus — which is to say, the rows the budgets are defi
 figures published for this file came out of a Debug build, and the row nearest its budget was the one
 the optimizer moved most. Every report now states the configuration it was taken on.
 
-In PowerShell the variable is set separately — `$env:PROTOCROSS_BENCH = 1` — and stays set for the
-rest of the session, so clear it with `$env:PROTOCROSS_BENCH = $null`.
+**`DOTNET_gcServer=0` is not optional either, and for the same reason.** The test project runs the
+server garbage collector, which the resilience sweeps need to use every core, and the language server
+ships with the workstation one. A collector is chosen once, when the process starts, so no test can
+switch it for itself: the variable starts the whole run on the workstation collector, the benchmark
+refuses to run on the other, and every report states which one it was taken under.
+
+In PowerShell the variables are set separately — `$env:PROTOCROSS_BENCH = 1` and
+`$env:DOTNET_gcServer = 0` — and stay set for the rest of the session, so clear both afterwards with
+`= $null`. Left set, the second makes every later run of the suite in that session slower.
 
 Every run writes `artifacts/perf/report.md`: every operation, both corpora, median, p95, min, max,
 and whether it was within budget. The report is written whether the run passes or fails, because the

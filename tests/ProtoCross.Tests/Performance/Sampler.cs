@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Globalization;
+using System.Runtime;
 using System.Text;
 using ProtoCross.LanguageServer.Hosting;
 
@@ -81,6 +82,31 @@ internal static class Sampler
 
     /// <summary>What the report says the measurement was taken on.</summary>
     public static string Configuration => Optimized ? "Release" : "Debug (not a measurement)";
+
+    /// <summary>Whether this process runs the garbage collector the language server ships with.</summary>
+    /// <remarks>
+    /// <para>
+    /// The test project asks for the server collector, because the resilience sweeps need it to use
+    /// every core, and the language server ships with the workstation one. The two collect at
+    /// different moments and pause for different lengths of time, and the pauses are where a p95
+    /// comes from, so a latency taken under the one the server does not run describes a process
+    /// nobody runs.
+    /// </para>
+    /// <para>
+    /// A collector is chosen once, when the process starts, so no test can switch it for itself. A
+    /// benchmark run starts the process with <c>DOTNET_gcServer=0</c>, which overrides the project,
+    /// and this is how the benchmark knows that it did.
+    /// </para>
+    /// </remarks>
+    public static bool ShippedCollector => !GCSettings.IsServerGC;
+
+    /// <summary>What the report says the measurement was taken under.</summary>
+    public static string Collector => ShippedCollector ? "workstation GC" : "server GC (not a measurement)";
+
+    /// <summary>The one command that measures, as every refusal to measure quotes it.</summary>
+    public const string Command =
+        "PROTOCROSS_BENCH=1 DOTNET_gcServer=0 dotnet test ProtoCross.slnx -c Release "
+        + "--filter \"FullyQualifiedName~Performance\"";
 
     /// <summary>Runs <paramref name="operation"/> and reports what it cost.</summary>
     public static Sample Time(
@@ -234,7 +260,7 @@ internal sealed class PerformanceReport
         heading.Append("# Performance measurement\n\n");
         heading.Append($"Taken {DateTime.Now:yyyy-MM-dd HH:mm} on {Environment.MachineName}, ");
         heading.Append($"{Environment.ProcessorCount} processors, {RuntimeName()}, ");
-        heading.Append($"**{Sampler.Configuration}**.\n\n");
+        heading.Append($"**{Sampler.Configuration}**, **{Sampler.Collector}**.\n\n");
         heading.Append("Normal corpus is `examples/simpleScript.pcross` at ");
         heading.Append(PerformanceCorpus.Lines(PerformanceCorpus.Normal).ToString(CultureInfo.InvariantCulture));
         heading.Append(" lines; stress is `tests/perf/corpus/wide.pcross` at ");

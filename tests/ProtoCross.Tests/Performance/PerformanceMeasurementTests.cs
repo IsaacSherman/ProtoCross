@@ -54,4 +54,38 @@ public class PerformanceMeasurementTests
     {
         Assert.Contains(Sampler.Configuration, PerformanceReport.Heading(), StringComparison.Ordinal);
     }
+
+    /// <summary>The report says which garbage collector it was taken under, for the same reason.</summary>
+    [Fact]
+    public void EveryReportStatesTheCollectorItWasTakenUnder()
+    {
+        Assert.Contains(Sampler.Collector, PerformanceReport.Heading(), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The suite runs the server collector unless its process was started asking for the other one,
+    /// which is what a benchmark run does.
+    /// </summary>
+    /// <remarks>
+    /// Pins that the project's setting reaches the runtime at all. Without it the resilience sweeps
+    /// still pass, only three times slower, and a regression that fails nothing is one nobody sees.
+    /// Asked of the environment rather than of the runtime configuration, because the variable
+    /// overrides the configuration without changing what it says.
+    /// </remarks>
+    [Fact]
+    public void TheSuiteRunsTheServerCollectorUnlessStartedWithoutIt()
+    {
+        if (Environment.ProcessorCount == 1)
+        {
+            Assert.Skip("On one processor the runtime runs the workstation collector whatever it is asked for.");
+        }
+
+        var declined = Environment.GetEnvironmentVariable("DOTNET_gcServer") == "0";
+
+        Assert.True(
+            Sampler.ShippedCollector == declined,
+            declined
+                ? "DOTNET_gcServer=0 must start the workstation collector, or a benchmark run measures the wrong one"
+                : "the test project asks for the server collector, and this process is not running it");
+    }
 }
