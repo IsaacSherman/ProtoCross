@@ -1,6 +1,7 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Syntax;
 using ProtoCross.Tests.Conformance;
+using ProtoCross.Tests.Harness;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -20,9 +21,11 @@ namespace ProtoCross.Tests;
 /// <para>
 /// These tests stay at the lexer-and-parser level rather than running whole compilations. They need
 /// no protoc, so they are fast enough to run thousands of inputs, which is what makes the sweeps
-/// below worth having.
+/// below worth having. The sweeps take every core, which is what puts this class in the
+/// timing-sensitive collection; <see cref="MutationSweep"/> says why.
 /// </para>
 /// </remarks>
+[Collection("Timing-sensitive regressions")]
 public class ParserResilienceTests
 {
     /// <summary>Guards against a hang. A parse this slow is a bug, not a slow machine.</summary>
@@ -39,7 +42,7 @@ public class ParserResilienceTests
     /// <summary>Runs a parse under a time limit, failing rather than hanging the test run.</summary>
     /// <remarks>
     /// The sweep is told to stop before the failure is reported, so a parse that is merely slow does
-    /// not go on grinding through the rest of the corpus, on a core the remaining tests want, long
+    /// not go on grinding through the rest of the corpus, on cores the remaining tests want, long
     /// after this one has already failed. A single parse that never returns at all is past the reach
     /// of anything here: the parser takes no cancellation token, and adding one to the compiler for
     /// a test to hold is what <c>#54</c> -- process supervision, cancellation, and timeouts -- is
@@ -94,13 +97,7 @@ public class ParserResilienceTests
 
         WithinBudget(
             $"truncations of {Path.GetFileName(path)}",
-            stop =>
-            {
-                for (var length = 0; length <= source.Length && !stop.IsCancellationRequested; length++)
-                {
-                    Parse(source[..length]);
-                }
-            });
+            stop => MutationSweep.For(0, source.Length + 1, stop, length => Parse(source[..length])));
     }
 
     /// <summary>
@@ -115,13 +112,7 @@ public class ParserResilienceTests
 
         WithinBudget(
             $"single-character deletions of {Path.GetFileName(path)}",
-            stop =>
-            {
-                for (var index = 0; index < source.Length && !stop.IsCancellationRequested; index++)
-                {
-                    Parse(source.Remove(index, 1));
-                }
-            });
+            stop => MutationSweep.For(0, source.Length, stop, index => Parse(source.Remove(index, 1))));
     }
 
     /// <summary>

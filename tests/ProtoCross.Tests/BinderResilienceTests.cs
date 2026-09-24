@@ -2,6 +2,7 @@ using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
+using ProtoCross.Tests.Harness;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -42,7 +43,7 @@ public class BinderResilienceTests
     /// <summary>Runs a sweep under a time limit, failing rather than hanging the test run.</summary>
     /// <remarks>
     /// The sweep is told to stop before the failure is reported, so a bind that is merely slow does
-    /// not go on grinding through the rest of the corpus, on a core the remaining tests want, long
+    /// not go on grinding through the rest of the corpus, on cores the remaining tests want, long
     /// after this one has already failed. A single bind that never returns at all is past the reach
     /// of anything here: the binder takes no cancellation token, and adding one to the compiler for
     /// a test to hold is what <c>#54</c> -- process supervision, cancellation, and timeouts -- is
@@ -81,22 +82,12 @@ public class BinderResilienceTests
         var boundaries = new Lexer(source, path, new DiagnosticBag())
             .Tokenize()
             .Select(token => token.Span.End.Offset)
-            .Distinct();
+            .Distinct()
+            .ToList();
 
         await WithinBudget(
             $"token-boundary truncations of {Path.GetFileName(path)}",
-            stop =>
-            {
-                foreach (var boundary in boundaries)
-                {
-                    if (stop.IsCancellationRequested)
-                    {
-                        return;
-                    }
-
-                    Assert.NotNull(Bind(source[..boundary]));
-                }
-            });
+            stop => MutationSweep.For(0, boundaries.Count, stop, index => Assert.NotNull(Bind(source[..boundaries[index]]))));
     }
 
     /// <summary>
@@ -117,13 +108,7 @@ public class BinderResilienceTests
             var end = Math.Min(first + DeletionBatchSize, source.Length);
             await WithinBudget(
                 $"single-character deletions of {Path.GetFileName(path)}, offsets {first} through {end - 1}",
-                stop =>
-                {
-                    for (var index = first; index < end && !stop.IsCancellationRequested; index++)
-                    {
-                        Assert.NotNull(Bind(source.Remove(index, 1)));
-                    }
-                });
+                stop => MutationSweep.For(first, end, stop, index => Assert.NotNull(Bind(source.Remove(index, 1)))));
         }
     }
 
