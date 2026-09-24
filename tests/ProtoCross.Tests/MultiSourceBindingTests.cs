@@ -186,7 +186,7 @@ public class MultiSourceBindingTests
                     .Bind(source.Unit);
                 Assert.Empty(aloneDiagnostics);
 
-                AssertSameModule(source.Document.Name, alone, joint.DeclaredIn(source.Document), config);
+                AssertSameModule(source.Document, alone, joint.DeclaredIn(source.Document), config);
                 swept++;
             }
         }
@@ -208,15 +208,16 @@ public class MultiSourceBindingTests
         => Compilation.ResolveConfig(Path.GetDirectoryName(vector.SourcePath), new DiagnosticBag())
             ?? throw new InvalidOperationException($"'{vector.Name}' has a configuration that does not load.");
 
-    private static void AssertSameModule(string name, IrModule expected, IrModule actual, ProjectConfig config)
+    private static void AssertSameModule(SourceIdentity document, IrModule expected, IrModule actual, ProjectConfig config)
     {
+        var name = document.Name;
         Assert.True(expected.References.SequenceEqual(actual.References), $"{name}: the names written in it differ");
         Assert.True(expected.Scope.SequenceEqual(actual.Scope), $"{name}: the names in scope differ");
         Assert.Equal(
             expected.Tests.Select(test => test.Identity),
             actual.Tests.Select(test => test.Identity));
 
-        var options = new BackendOptions(name) { PolicyDescription = config.DescribeForHeader() };
+        var options = BackendOptions.For(document, config);
         ITestBackend[] backends = [new CSharpBackend(), new CppBackend()];
         foreach (var backend in backends)
         {

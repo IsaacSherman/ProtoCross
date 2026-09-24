@@ -238,10 +238,7 @@ public sealed class ConformanceFixture
 
         foreach (var (vector, module, config) in modules)
         {
-            var options = new BackendOptions(Path.GetFileName(vector.SourcePath))
-            {
-                PolicyDescription = config.DescribeForHeader(),
-            };
+            var options = BackendOptions.For(SourceIdentity.FromPath(vector.SourcePath), config);
 
             foreach (var file in backend.Emit(module, options, diagnostics)
                 .Concat(backend.EmitTests(module, options, diagnostics)))

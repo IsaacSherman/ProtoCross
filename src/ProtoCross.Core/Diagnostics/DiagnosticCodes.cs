@@ -439,4 +439,20 @@ public static class DiagnosticCodes
     /// <summary>A configuration file stating one setting more than once (spec 10.4).</summary>
     public static readonly DiagnosticDescriptor DuplicateConfigurationSetting =
         new("PC2004", DiagnosticSeverity.Error, "duplicate configuration setting");
+
+    // ------------------------------------------------------- the driver
+
+    /// <summary>
+    /// Two sources of one compilation find different configuration files, or one finds a file and
+    /// another none (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SourcesDisagreeOnPolicy =
+        new("PC2005", DiagnosticSeverity.Error, "sources disagree on policy");
+
+    /// <summary>
+    /// Two sources of one compilation would be generated under the same names, or one source is
+    /// given twice (spec 5.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SourcesShareGeneratedNames =
+        new("PC2006", DiagnosticSeverity.Error, "sources share generated names");
 }

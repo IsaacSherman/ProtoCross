@@ -17,6 +17,13 @@ namespace ProtoCross.Backend.Cpp;
 /// chosen here because they subclass nothing, require no protoc insertion points, and work
 /// identically whether the protobuf codegen is regenerated or vendored. Declarations are emitted
 /// ahead of definitions so methods may call one another in any order.
+/// <para>
+/// A header has two layouts. One whose methods call no other source's declares and defines a
+/// namespace at a time, as every header always has. One whose methods do declares everything,
+/// includes the headers it calls, then defines everything, so two sources calling each other compile
+/// in either include order; see <c>WriteAroundSiblings</c>. Keeping the first layout for the common
+/// case is what keeps generating a single source from moving.
+/// </para>
 /// </remarks>
 public sealed class CppBackend : ITestProjectScaffold
 {
@@ -51,43 +58,30 @@ public sealed class CppBackend : ITestProjectScaffold
 
         WriteHeader(writer, options, guard, module);
 
-        var byNamespace = module.Methods
+        var namespaces = module.Methods
             .GroupBy(m => NameConventions.GetCppNamespace(m.Receiver.File))
-            .OrderBy(g => g.Key, StringComparer.Ordinal);
-
-        foreach (var namespaceGroup in byNamespace)
-        {
-            var methods = namespaceGroup.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+            .OrderBy(g => g.Key, StringComparer.Ordinal)
+            .Select(g => (Namespace: g.Key, Methods: g.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal)
                 .ThenBy(m => m.Name, StringComparer.Ordinal)
-                .ToList();
+                .ToList()))
+            .ToList();
 
-            var hasNamespace = !string.IsNullOrEmpty(namespaceGroup.Key);
-            IDisposable? namespaceScope = hasNamespace
-                ? writer.Block($"namespace {namespaceGroup.Key}", $"}}  // namespace {namespaceGroup.Key}")
-                : null;
-
-            writer.WriteLine("// Declarations precede definitions so methods may call one another");
-            writer.WriteLine("// regardless of the order they appear in the ProtoCross source.");
-            foreach (var method in methods)
+        var siblings = SiblingHeadersCalledFrom(module);
+        if (siblings.Count == 0)
+        {
+            foreach (var (name, methods) in namespaces)
             {
-                writer.WriteLine(Signature(method) + ";");
-            }
-
-            writer.WriteLine();
-
-            var first = true;
-            foreach (var method in methods)
-            {
-                if (!first)
+                using (OpenNamespace(writer, name))
                 {
+                    WriteDeclarations(writer, methods);
                     writer.WriteLine();
+                    WriteDefinitions(writer, methods);
                 }
-
-                first = false;
-                EmitMethod(writer, method);
             }
-
-            namespaceScope?.Dispose();
+        }
+        else
+        {
+            WriteAroundSiblings(writer, namespaces, siblings);
         }
 
         writer.WriteLine();
@@ -99,6 +93,107 @@ public sealed class CppBackend : ITestProjectScaffold
             new GeneratedFile(baseName + HeaderExtension, writer.ToString()),
         ];
     }
+
+    /// <summary>
+    /// Writes a header that calls into other sources' headers: every declaration, then those headers,
+    /// then every definition.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A method may call one declared in another source of the compilation (spec 5.3), and two
+    /// sources may call each other. Each header therefore declares everything it defines before it
+    /// includes anything it calls, so whichever of two such headers is included first, the other's
+    /// definitions find its declarations already written, and the guard stops the include going round
+    /// again. Including them at the top instead would leave the second header's definitions calling
+    /// functions the first had not yet declared.
+    /// </para>
+    /// <para>
+    /// Only a header that calls another source is laid out this way. One that calls none keeps the
+    /// layout it has always had, declarations and definitions a namespace at a time, so generating a
+    /// single source does not move.
+    /// </para>
+    /// </remarks>
+    private static void WriteAroundSiblings(
+        SourceWriter writer,
+        IReadOnlyList<(string Namespace, List<IrMethod> Methods)> namespaces,
+        IReadOnlyList<string> siblings)
+    {
+        foreach (var (name, methods) in namespaces)
+        {
+            using (OpenNamespace(writer, name))
+            {
+                WriteDeclarations(writer, methods);
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// The sources this one calls, included after its own declarations so that two sources");
+        writer.WriteLine("// calling one another compile whichever header is included first.");
+        foreach (var sibling in siblings)
+        {
+            writer.WriteLine($"#include \"{sibling}\"");
+        }
+
+        foreach (var (name, methods) in namespaces)
+        {
+            writer.WriteLine();
+            using (OpenNamespace(writer, name))
+            {
+                WriteDefinitions(writer, methods);
+            }
+        }
+    }
+
+    /// <summary>Opens a C++ namespace, or nothing for the global one.</summary>
+    private static IDisposable? OpenNamespace(SourceWriter writer, string name)
+        => string.IsNullOrEmpty(name) ? null : writer.Block($"namespace {name}", $"}}  // namespace {name}");
+
+    private static void WriteDeclarations(SourceWriter writer, IReadOnlyList<IrMethod> methods)
+    {
+        writer.WriteLine("// Declarations precede definitions so methods may call one another");
+        writer.WriteLine("// regardless of the order they appear in the ProtoCross source.");
+        foreach (var method in methods)
+        {
+            writer.WriteLine(Signature(method) + ";");
+        }
+    }
+
+    private static void WriteDefinitions(SourceWriter writer, IReadOnlyList<IrMethod> methods)
+    {
+        var first = true;
+        foreach (var method in methods)
+        {
+            if (!first)
+            {
+                writer.WriteLine();
+            }
+
+            first = false;
+            EmitMethod(writer, method);
+        }
+    }
+
+    /// <summary>
+    /// The headers of the other sources this module's methods call into, sorted, each once.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the IR: a call carries its callee's signature, and the signature says which source
+    /// declares it. A header is named after its source by the same rule this backend names its own
+    /// by, which <c>PC2006</c> keeps unambiguous within a compilation.
+    /// </remarks>
+    private static IReadOnlyList<string> SiblingHeadersCalledFrom(IrModule module)
+        => module.Methods
+            .SelectMany(method => IrWalk.DescendantsAndSelf(method)
+                .OfType<IrMethodCall>()
+                .Where(call => call.Target.Declaration.Document != method.Signature.Declaration.Document)
+                .Select(call => HeaderFor(call.Target.Declaration.Document)))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+    /// <summary>The header a source's behavior is generated into.</summary>
+    private static string HeaderFor(SourceIdentity document)
+        => Path.GetFileNameWithoutExtension(document.Name) + HeaderExtension;
 
     public IReadOnlyList<GeneratedFile> EmitTests(
         IrModule module,
@@ -121,7 +216,7 @@ public sealed class CppBackend : ITestProjectScaffold
         var hasFailTests = module.Tests.Any(t => t.Expectation is IrTestFailExpectation);
         var hasFloatingPointExpectations = module.Tests.Any(ExpectsFloatingPoint);
 
-        WriteTestHeader(writer, options, baseName, hasFailTests, hasFloatingPointExpectations);
+        WriteTestHeader(writer, options, HeadersTestedBy(module, baseName), hasFailTests, hasFloatingPointExpectations);
 
         foreach (var test in module.Tests)
         {
@@ -147,10 +242,29 @@ public sealed class CppBackend : ITestProjectScaffold
         DiagnosticBag diagnostics)
         => [new GeneratedFile(CppTestProject.FileName, CppTestProject.Build(options))];
 
+    /// <summary>
+    /// The headers declaring the methods this source's tests target, sorted, each once: this source's
+    /// own, and another source's wherever a test targets a method declared there.
+    /// </summary>
+    /// <param name="baseName">What this source's own header is named after.</param>
+    /// <remarks>
+    /// A test may target a method in any source of the compilation (spec 5.3), and the driver calls it,
+    /// so the driver includes whichever header declares it. A test whose target is in its own source
+    /// includes the header named for this source, as every driver always has.
+    /// </remarks>
+    private static IReadOnlyList<string> HeadersTestedBy(IrModule module, string baseName)
+        => module.Tests
+            .Select(test => test.Document is null || test.Target.Declaration.Document == test.Document
+                ? baseName + HeaderExtension
+                : HeaderFor(test.Target.Declaration.Document))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
     private static void WriteTestHeader(
         SourceWriter writer,
         BackendOptions options,
-        string baseName,
+        IReadOnlyList<string> headers,
         bool hasFailTests,
         bool hasFloatingPointExpectations)
     {
@@ -185,7 +299,11 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         writer.WriteLine();
-        writer.WriteLine($"#include \"{baseName}{HeaderExtension}\"");
+        foreach (var header in headers)
+        {
+            writer.WriteLine($"#include \"{header}\"");
+        }
+
         writer.WriteLine();
 
         writer.WriteLine("// Reported when '--run' names a test this driver does not have.");

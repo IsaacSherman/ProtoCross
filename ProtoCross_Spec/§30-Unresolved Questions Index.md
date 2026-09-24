@@ -5,6 +5,9 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~File extension.~~ Decided: `.pcross` ([5.1](./§5-Source%20Organization.md#51-files)).
 - ~~Direct import model.~~ Decided: `import proto "file.proto";` resolves `.proto` files through
   include paths and the source directory ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Descriptor-set input remains open.
+- ~~Compilation units of more than one file.~~ Decided: a compilation is one or more sources bound as
+  one program, each generated into files of its own, under one policy ([5.3](./§5-Source%20Organization.md#53-compilation-unit)).
+  How a project names its sources remains open.
 - ~~Package and namespace model for current source.~~ Decided: no independent ProtoCross package
   declaration; names come from protobuf descriptors ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Future embedded-in-proto design remains
   open.

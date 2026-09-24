@@ -79,6 +79,15 @@ protobuf namespace, taking the receiver as `const T&`. This subclasses nothing, 
 insertion points, and behaves the same whether the protobuf codegen is regenerated or vendored.
 All declarations are emitted before any definition so methods may call one another in any order.
 
+Every source of a compilation ([5.3](./§5-Source%20Organization.md#53-compilation-unit)) is generated
+into a header of its own, and a method may call one another source declares. A header whose methods
+do includes each such source's header after its own declarations and before its definitions. Two
+sources may therefore call each other, and whichever of their headers a translation unit includes
+first, the other's definitions find the functions they call already declared, while the include
+guard stops the inclusion going round again. A header that calls no other source includes none, and
+is laid out as it always was. A generated test driver includes the header of each source its tests
+target.
+
 Const-correctness follows from the read-only method model: every receiver is `const T&` and every
 message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be
 revisited along with the free-function shape.

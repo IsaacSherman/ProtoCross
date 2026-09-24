@@ -333,6 +333,13 @@ Normative Requirements:
 - The compiler searches for `protocross.config.xml` in the source file's directory and every
   directory above it, nearest first, the way `.editorconfig` is found. A project states its policy
   once; a subdirectory may state a different one.
+- **One compilation, one policy.** Every source of a compilation
+  ([5.3](./§5-Source%20Organization.md#53-compilation-unit)) that has a directory must find the same
+  file, or every one of them none; two that find different files are `PC2005`, and the compilation
+  stops. The same file is the same file however its path is spelled, and two files that say the same
+  thing are still two places the policy is stated. A source with no directory -- a buffer never
+  saved -- has nowhere to search from, states nothing, and compiles under what the others found. A
+  file named explicitly, as `--config` does, governs every source.
 - A setting absent from the file takes its default. A file absent entirely is the same as a file
   stating nothing.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value

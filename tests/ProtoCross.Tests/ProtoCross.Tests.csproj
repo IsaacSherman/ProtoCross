@@ -16,6 +16,20 @@
       forty-nine is the same edit spelled worse.
     -->
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+
+    <!--
+      The server collector, because the resilience sweeps compile tens of thousands of inputs across
+      every core and allocate as they go, and under the workstation collector each of those
+      allocations waits on collections every other core triggers: the four sweeps took 47 s in
+      Release on sixteen cores with it and 16 s without it. Nothing else in the suite measures
+      memory or depends on which collector runs.
+
+      The latency benchmark is the exception, because it describes the language server, which ships
+      with the workstation collector. A collector is chosen once, when the process starts, so a
+      benchmark run starts the process with DOTNET_gcServer=0 (which overrides this), and the
+      benchmark refuses to run without it; see docs/performance.md.
+    -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 
   <ItemGroup>

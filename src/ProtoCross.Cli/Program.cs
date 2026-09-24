@@ -40,7 +40,7 @@ PrintDiagnostics(result.Diagnostics);
 
 // The one module a compiler may write from. A partial one comes out of a buffer that did not
 // parse, which is what an editor asks for and what nothing here may emit.
-if (result.EmittableModule is not { } module)
+if (result.EmittableModule is null)
 {
     Console.Error.WriteLine($"compilation failed: {result.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error)} error(s)");
     return 1;
@@ -57,22 +57,14 @@ if (options.Targets.Contains("cpp"))
     backends.Add(new CppBackend());
 }
 
-// The resolved policy travels into the header of every generated file, so a reader can tell what
-// produced the code in front of them without re-running the compiler to find out.
-var backendOptions = new BackendOptions(Path.GetFileName(options.SourcePath))
-{
-    PolicyDescription = result.Config.DescribeForHeader(),
-};
-
 var backendDiagnostics = new DiagnosticBag();
 var written = new List<string>();
 
 foreach (var backend in backends)
 {
-    var files = backend.Emit(
-        module,
-        backendOptions,
-        backendDiagnostics);
+    // Each source into files named after it, with the policy it ran under in every header, so a
+    // reader can tell what produced the code in front of them without re-running the compiler.
+    var files = SourceEmission.Emit(result, backend, backendDiagnostics);
 
     var outputDirectory = Path.Combine(options.OutputDirectory, backend.Name);
     Directory.CreateDirectory(outputDirectory);
@@ -86,10 +78,7 @@ foreach (var backend in backends)
 
     if (options.TestOutputDirectory is not null && backend is ITestBackend testBackend)
     {
-        var testFiles = testBackend.EmitTests(
-            module,
-            backendOptions,
-            backendDiagnostics);
+        var testFiles = SourceEmission.EmitTests(result, testBackend, backendDiagnostics);
 
         var testOutputDirectory = Path.Combine(options.TestOutputDirectory, backend.Name);
         Directory.CreateDirectory(testOutputDirectory);

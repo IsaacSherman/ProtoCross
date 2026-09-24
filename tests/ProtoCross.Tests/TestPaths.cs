@@ -61,4 +61,17 @@ internal static class TestPaths
         File.WriteAllText(path, source);
         return path;
     }
+
+    /// <summary>
+    /// Writes each source into <paramref name="directory"/> under its name, which may include a
+    /// subdirectory, and returns their paths in the same order.
+    /// </summary>
+    public static IReadOnlyList<string> WriteSources(string directory, params (string Name, string Text)[] sources)
+        => [.. sources.Select(source =>
+        {
+            var path = Path.Combine(directory, source.Name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, source.Text);
+            return path;
+        })];
 }

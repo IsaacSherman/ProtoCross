@@ -24,16 +24,26 @@ namespace ProtoCross.Semantics;
 /// <see cref="Diagnostics.LineMap"/>, which is the same converter the rest of the compiler uses.
 /// </para>
 /// <para>
-/// <b>One source, for now.</b> A <see cref="CompilationResult"/> carries one syntax tree, so a
-/// position is enough to name a place in it. When a compilation holds several (#27), these queries
-/// take a document as well; that is an added parameter rather than a different shape, which is why
-/// the model is an object over the whole result rather than a function of a tree.
+/// <b>One document at a time.</b> An offset names a place only within one source, and a compilation
+/// may hold several, so a model answers for the document it was opened on. Its position questions --
+/// what is here, what is in scope here, which name is here -- look only at that source's tree and
+/// that source's part of the module. What a symbol is and where it is used are not questions about
+/// a position, and they answer for the whole compilation: find-all-references crosses into every
+/// source a call can.
 /// </para>
 /// </remarks>
 public sealed class SemanticModel
 {
     private readonly CompilationUnit? _syntaxTree;
+
+    /// <summary>What the binder produced for this document, which position questions walk.</summary>
     private readonly IrModule? _module;
+
+    /// <summary>
+    /// The document this model answers for, or null for the one source of a compilation that has only
+    /// one, where nothing needs telling apart.
+    /// </summary>
+    private readonly SourceIdentity? _document;
 
     /// <remarks>
     /// Lazy because a model is built per request and most requests never ask. Position queries walk
@@ -43,26 +53,52 @@ public sealed class SemanticModel
     /// </remarks>
     private readonly Lazy<ReferenceIndex?> _references;
 
-    private SemanticModel(CompilationUnit? syntaxTree, IrModule? module)
+    /// <param name="part">This document's part of the module, which position questions walk.</param>
+    /// <param name="whole">The whole module, which questions about a symbol ask.</param>
+    private SemanticModel(CompilationUnit? syntaxTree, IrModule? part, IrModule? whole, SourceIdentity? document)
     {
         _syntaxTree = syntaxTree;
-        _module = module;
+        _module = part;
+        _document = document;
         _references = new Lazy<ReferenceIndex?>(
-            () => module is null ? null : new ReferenceIndex(module));
+            () => whole is null ? null : new ReferenceIndex(whole));
     }
 
     /// <summary>Opens a compilation to position queries.</summary>
     /// <remarks>
+    /// <para>
     /// Takes the partial <see cref="CompilationResult.Module"/> deliberately, not
     /// <see cref="CompilationResult.EmittableModule"/>. A buffer being typed into is broken most of
     /// the time an editor asks anything about it, and the module bound from a broken file is exactly
     /// what it came for. Emission is the one consumer that must never see that one.
+    /// </para>
+    /// <para>
+    /// A compilation of several sources opens on the first; ask
+    /// <see cref="For(CompilationResult, SourceIdentity)"/> for any other.
+    /// </para>
     /// </remarks>
     public static SemanticModel For(CompilationResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
 
-        return new SemanticModel(result.SyntaxTree, result.Module);
+        return result.SyntaxTrees.Count > 1
+            ? For(result, result.SyntaxTrees[0].Document)
+            : new SemanticModel(result.SyntaxTree, result.Module, result.Module, document: null);
+    }
+
+    /// <summary>Opens one document of a compilation to position queries.</summary>
+    /// <remarks>
+    /// A document the compilation never parsed -- it stopped first, or the document is not one of its
+    /// sources -- answers every position question with nothing, the way a compilation that stopped
+    /// before parsing always has.
+    /// </remarks>
+    public static SemanticModel For(CompilationResult result, SourceIdentity document)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(document);
+
+        var tree = result.SyntaxTrees.FirstOrDefault(source => source.Document == document)?.Unit;
+        return new SemanticModel(tree, result.Module?.DeclaredIn(document), result.Module, document);
     }
 
     /// <summary>What is at <paramref name="offset"/> in the syntax tree, or null when nothing is.</summary>
@@ -213,12 +249,11 @@ public sealed class SemanticModel
     /// total rather than merely deterministic.
     /// </para>
     /// <para>
-    /// No document parameter, for the reason this whole type takes none: a
-    /// <see cref="CompilationResult"/> carries one source. When one carries several (#27) this takes
-    /// a document as well, which is an added parameter rather than a different shape.
+    /// Only this document's, because the caller is describing a file, and a name written in another
+    /// source stands at an offset that means nothing in this one.
     /// </para>
     /// </remarks>
-    public IReadOnlyList<SymbolReference> AllReferences => _references.Value?.All ?? [];
+    public IReadOnlyList<SymbolReference> AllReferences => _references.Value?.AllIn(_document) ?? [];
 
     /// <summary>
     /// Where <paramref name="symbol"/> was declared, or null when this compilation does not declare
@@ -255,7 +290,7 @@ public sealed class SemanticModel
     /// <see cref="SyntaxAt"/> for that; it can answer anywhere in the file.
     /// </para>
     /// </remarks>
-    public SymbolReference? ReferenceAt(int offset) => _references.Value?.ReferenceAt(offset);
+    public SymbolReference? ReferenceAt(int offset) => _references.Value?.ReferenceAt(_document, offset);
 
     /// <summary>
     /// What a bare identifier written at <paramref name="offset"/> could mean, or null when the
