@@ -307,7 +307,7 @@ public partial class NameMappingTests
             "test.g.cs");
 
         Assert.Contains(
-            "public static class Outer_InnerProtoCrossExtensions",
+            "public static partial class Outer_InnerProtoCrossExtensions",
             source,
             StringComparison.Ordinal);
         Assert.Contains(

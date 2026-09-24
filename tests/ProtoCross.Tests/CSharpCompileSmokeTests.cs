@@ -17,7 +17,7 @@ namespace ProtoCross.Tests;
 /// method naming, or integration shape is followed automatically rather than needing C# in this
 /// file to be edited to match.
 /// </remarks>
-public class CSharpCompileSmokeTests
+public partial class CSharpCompileSmokeTests
 {
     [Fact]
     public void GeneratedCSharpCompilesAgainstProtocOutput()
@@ -53,17 +53,7 @@ public class CSharpCompileSmokeTests
 
     private static CSharpTestWorkspace PrepareWorkspace(out string dotnet)
     {
-        dotnet = Toolchain.LocateDotnet() ?? string.Empty;
-        if (string.IsNullOrEmpty(dotnet))
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
-
-        var protoc = Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc.");
-        }
+        var protoc = RequireToolchain(out dotnet);
 
         var result = Compilation.Compile(TestPaths.SimpleScript, [TestPaths.ExampleProtoDirectory]);
         Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
@@ -83,8 +73,34 @@ public class CSharpCompileSmokeTests
         Assert.NotEmpty(testFiles);
         GeneratedSourceGuards.AssertExercisesControlFlow("C#", "foreach (", files);
 
-        var workspace = CSharpTestWorkspace.Create("csharp-smoke");
-        workspace.Write(files.Concat(testFiles));
+        return CreateWorkspace("csharp-smoke", protoc, files.Concat(testFiles));
+    }
+
+    /// <summary>The protoc these tests need, and the dotnet host, or a skip naming the one missing.</summary>
+    private static string RequireToolchain(out string dotnet)
+    {
+        dotnet = Toolchain.LocateDotnet() ?? string.Empty;
+        if (string.IsNullOrEmpty(dotnet))
+        {
+            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
+        }
+
+        var protoc = Toolchain.LocateProtoc();
+        if (protoc is null)
+        {
+            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc.");
+        }
+
+        return protoc;
+    }
+
+    /// <summary>
+    /// A project holding <paramref name="files"/> and protoc's C# output for the example schema.
+    /// </summary>
+    private static CSharpTestWorkspace CreateWorkspace(string label, string protoc, IEnumerable<GeneratedFile> files)
+    {
+        var workspace = CSharpTestWorkspace.Create(label);
+        workspace.Write(files);
 
         var protocResult = workspace.GenerateProtobuf(protoc, TestPaths.ExampleProtoDirectory, "invoice.proto");
         Assert.True(

@@ -388,6 +388,24 @@ public sealed class CSharpBackend : ITestProjectScaffold
         writer.WriteLine(closer);
     }
 
+    /// <summary>
+    /// Emits the extension class holding one receiver's methods from this source.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The class is <c>partial</c> because it is one receiver's class, not one source's. Each source
+    /// is emitted to a file of its own (#27), so two sources that extend one message each declare
+    /// the class, and a consumer compiles both into one assembly. A class per source was the
+    /// alternative, and would have put the file a method happens to be declared in into the name
+    /// every caller spells, so moving a method between files would break the callers of it.
+    /// </para>
+    /// <para>
+    /// Every part carries the summary, because no source can know whether another declares the
+    /// class too. The compiler accepts a summary on each part of a partial type without a warning,
+    /// under <c>GenerateDocumentationFile</c> and <c>TreatWarningsAsErrors</c> alike, and repeats it
+    /// in the documentation file.
+    /// </para>
+    /// </remarks>
     private static void EmitReceiverClass(
         SourceWriter writer,
         MessageDescriptor receiver,
@@ -396,7 +414,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         var className = ExtensionClassName(receiver);
 
         writer.WriteLine($"/// <summary>ProtoCross behavior for <c>{receiver.FullName}</c>.</summary>");
-        using var classScope = writer.Block($"public static class {className}");
+        using var classScope = writer.Block($"public static partial class {className}");
 
         var first = true;
         foreach (var method in methods)

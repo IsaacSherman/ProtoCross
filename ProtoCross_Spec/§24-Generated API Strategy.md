@@ -14,8 +14,11 @@ Potential strategies:
 **Decided for the current implementation: extension methods**, in a
 `{Message}ProtoCrossExtensions` static class per receiver. This imposes nothing on the protobuf
 codegen: the generated messages may live in a different assembly, and nothing depends on their
-being partial. Method names are PascalCased to match the C# protobuf generator, so
-`line_total_cents` becomes `LineTotalCents` and reads the same as a hand-written member.
+being partial. The extension class is `partial` itself, because it belongs to the receiver rather
+than to the source that extends it: two sources extending one message each emit a part of it, and a
+consumer compiles both into one assembly. Method names are PascalCased to match the C# protobuf
+generator, so `line_total_cents` becomes `LineTotalCents` and reads the same as a hand-written
+member.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
