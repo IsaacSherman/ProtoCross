@@ -114,6 +114,44 @@ public static class NameConventions
     }
 
     /// <summary>
+    /// What a source's name comes to once everything any backend derives from it has folded it: its
+    /// letters and digits, upper-cased, with a <c>T</c> in front when the first is not a letter.
+    /// Two sources whose names give one key cannot be generated side by side.
+    /// </summary>
+    /// <param name="sourceStem">The source's file name without its extension.</param>
+    /// <remarks>
+    /// <para>
+    /// Every generated name is derived from the source's, and each derivation throws something away.
+    /// The file names keep case, which a file system may not. A C++ include guard upper-cases and
+    /// turns punctuation into underscores, so <c>a-b</c> and <c>a_b</c> meet there. A C# test class
+    /// drops punctuation and capitalizes what follows, so <c>a_b</c> and <c>aB</c> meet there, and puts
+    /// a <c>T</c> in front of a name that does not start with a letter, so <c>1a</c> and <c>t1a</c>
+    /// meet there too. A CMake target turns punctuation into underscores and keeps case.
+    /// </para>
+    /// <para>
+    /// This key throws away all of that at once, so it is coarser than each of them: two names any
+    /// of them fold together fold together here. It also folds some that none of them does, such as
+    /// <c>ab</c> and <c>a_b</c>, and that is the price of one rule instead of four that each have to
+    /// be remembered when a fifth derived name is added.
+    /// </para>
+    /// </remarks>
+    public static string OutputKey(string sourceStem)
+    {
+        ArgumentNullException.ThrowIfNull(sourceStem);
+
+        var key = new StringBuilder(sourceStem.Length + 1);
+        foreach (var c in sourceStem)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                key.Append(char.ToUpperInvariant(c));
+            }
+        }
+
+        return key.Length > 0 && char.IsLetter(key[0]) ? key.ToString() : "T" + key;
+    }
+
+    /// <summary>
     /// The C# namespace protoc declares a file's classes in: the file's <c>csharp_namespace</c> option
     /// when it sets one, and otherwise its protobuf package PascalCased, so <c>acme.v1beta1</c> is
     /// <c>Acme.V1Beta1</c>. Empty for the global namespace.

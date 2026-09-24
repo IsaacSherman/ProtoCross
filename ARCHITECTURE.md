@@ -36,14 +36,18 @@ npm, and consuming the server only as a process it starts. See *The VS Code exte
 ## The pipeline
 
 Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into it: the constructor
-(hold it to recompile the same buffer), `Compile(SourceDocument, …)`, and `Compile(string path, …)`.
+(hold it to recompile the same buffer), `Compile(SourceDocument, …)`, and `Compile(string path, …)`,
+each with a form that takes a list of sources.
 
 1. **Source.** [`SourceDocument`](src/ProtoCross.Core/SourceDocument.cs) is text plus a
    `SourceIdentity` — the name diagnostics print, the directory that settles policy and anchors
    imports, and the path, which is `null` for a buffer that was never saved. `ReadFrom` is the only
-   place the compiler reads ProtoCross source from disk.
+   place the compiler reads ProtoCross source from disk. A compilation takes one source or several;
+   several are one program, and are refused (`PC2006`) when two would be generated under one name —
+   compared by `NameConventions.OutputKey`, which folds a name the way every generated name does.
 2. **Policy.** The nearest `protocross.config.xml` at or above the source directory
-   ([`ProjectConfig.Discover`/`Load`](src/ProtoCross.Core/Config/ProjectConfig.cs)). A config that
+   ([`ProjectConfig.Discover`/`Load`](src/ProtoCross.Core/Config/ProjectConfig.cs)). Every source of
+   a compilation must find the same one (`PC2005`). A config that
    exists and cannot be read **stops** the compilation rather than falling back to defaults. A host
    serving an editor settles this per document instead, through
    [`WorkspaceConfiguration`](src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) — see
@@ -60,7 +64,8 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
 5. **No gate.** Parse errors do not stop the pipeline. A buffer being typed into is broken most of
    the time an editor asks anything about it, and what it most often asks — what may follow this
    dot — only the binder can answer.
-6. **Descriptors.** Each import is resolved into an
+6. **Descriptors.** Every source's imports are loaded together, each schema once, and every source
+   binds against all of them. Each import is resolved into an
    [`ImportResolution`](src/ProtoCross.Core/ImportResolution.cs) — resolved, not found, or never
    written — against the roots
    [`SchemaCatalog.RootsFor`](src/ProtoCross.Core/Binding/SchemaCatalog.cs) settles: the search paths,
@@ -573,8 +578,10 @@ three suites on Windows, Linux and macOS, before and after a `protoc` is install
    diagnostics. A long-lived host must survive all of them, through binding as well as parsing.
    Neither stage may throw, hang, or recurse without bound on any input at all.
 5. **Backends see the IR only**, and cannot branch on policy.
-6. **Do not assume single-file forever.** #27 proposes multi-file compilation units; `Compilation`
-   already holds a *set* of sources for that reason.
+6. **A compilation is a set of sources.** Anything keyed by an offset is keyed by a document as well,
+   because an offset names a place only within one source: `SemanticModel.For(result, document)`
+   answers position questions for one source, and `IrModule.DeclaredIn` is one source's part of the
+   module.
 7. **The IR keeps the contract in spec 22.2**, invariants included: a node lies inside the node
    holding it, an expression's type is an error type only after an error, a reference resolves or is
    no reference, and one walk reaches every construct. `IrContractTests` sweeps the corpus for each,

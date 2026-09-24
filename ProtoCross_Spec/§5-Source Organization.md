@@ -32,7 +32,11 @@ extend InventoryItem {
 Normative Requirements:
 
 - Imports use `import proto "path/to/schema.proto";`.
-- The path is resolved against compiler include paths, then against the source file's own directory.
+- The path is resolved against compiler include paths, then against the directory of each source in
+  the compilation ([5.3](#53-compilation-unit)).
+- **A compilation's sources share their imports.** A type any source imports can be named in every
+  source, in the same way a type that an imported schema imports can already be named in the file
+  that imports the schema. A schema imported by several sources is loaded once.
 - **One directory is one search path, however it is spelled.** Include paths are searched in the
   order given, and a directory already in that order is not added again — whether the second
   spelling differs by case where the file system ignores case, by a trailing separator, by the
@@ -53,7 +57,9 @@ Normative Requirements:
   author did not name, and **nothing is suggested from a directory too broad to be read within a
   bounded amount of work** — a diagnostic that takes seconds to print is a worse failure than one that
   says less, and the nearest of a partial reading is not the nearest.
-- A file with no `import proto` declaration does not reach binding (`PC0001`).
+- A file with no `import proto` declaration is `PC0001`. A compilation stops before binding only when
+  none of its files imports anything; otherwise the file is still bound, against the others' imports,
+  so the rest of what is wrong with it is reported too.
 - ProtoCross does not define an independent package declaration. Message, enum, and field names come
   from protobuf descriptors.
 - One file may import schemas whose descriptors contain multiple protobuf packages; each `extend`
@@ -66,14 +72,33 @@ Open Questions:
 
 ### 5.3 Compilation Unit
 
-A compilation unit currently consists of:
+**Decided: a compilation is one or more source files compiled as one program, each generated into
+files of its own, under one policy.**
 
-- One ProtoCross source file.
+A compilation unit consists of:
+
+- One or more ProtoCross source files.
 - The protobuf descriptors referenced by those files.
 - Compiler options.
 - Backend target configuration.
 
+Normative Requirements:
+
+- The sources are one program. A method may call, and a `test` may target, a method declared in any
+  source of the compilation, and the sources are not ordered
+  ([16.1](./§16-Methods.md#161-method-attachment)).
+- Every source is generated into files of its own, named after it, as a compilation of that source
+  alone would be.
+- Two sources whose names would collide in anything generated from them are `PC2006`, and the
+  compilation stops. Every generated name drops something of the source's name -- case where a file
+  system ignores it, punctuation, a `T` placed before a name that does not start with a letter -- so
+  the names compared are the source names reduced to their letters and digits, upper-cased, with that
+  `T` in front where it would go. One source given twice is `PC2006` as well.
+- Every source compiles under one policy ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
+- Every source carries an identity of its own, a path or the name its caller gave an unsaved buffer
+  ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)).
+
 Implementation Note:
 
-- The `Compilation` object is internally shaped around a source set, but the public implementation
-  still binds only one source document. Multi-file binding is intentionally not exposed yet.
+- The command line still compiles one source; the `Compilation` API compiles several. Which sources
+  make up a project is not yet something a project can write down.

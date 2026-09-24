@@ -71,6 +71,13 @@ internal sealed class ReferenceIndex
     /// </remarks>
     internal IReadOnlyList<SymbolReference> All => _all;
 
+    /// <summary>
+    /// The references written in <paramref name="document"/>, or all of them when it is null, which
+    /// is what a model over a compilation of one source asks for.
+    /// </summary>
+    internal IReadOnlyList<SymbolReference> AllIn(SourceIdentity? document)
+        => document is null ? _all : [.. _all.Where(reference => reference.Document == document)];
+
     /// <inheritdoc cref="SemanticModel.ReferencesTo"/>
     internal IReadOnlyList<SymbolReference> ReferencesTo(SymbolId symbol)
         => _bySymbol.GetValueOrDefault(symbol) ?? [];
@@ -88,11 +95,15 @@ internal sealed class ReferenceIndex
     /// belongs to either -- so the comparison decides nothing today, and is here to stop the two
     /// answers drifting if that ever stops being true.
     /// </remarks>
-    internal SymbolReference? ReferenceAt(int offset)
+    /// <param name="document">
+    /// The document the offset is in, or null when the compilation has only one; see
+    /// <see cref="AllIn"/>. An offset means nothing in any other source.
+    /// </param>
+    internal SymbolReference? ReferenceAt(SourceIdentity? document, int offset)
     {
         SymbolReference? best = null;
 
-        foreach (var reference in _all)
+        foreach (var reference in AllIn(document))
         {
             if (PositionSearch.Contains(reference.Span, offset)
                 && (best is null || reference.Span.Length < best.Span.Length))
