@@ -119,6 +119,11 @@ public partial class BackendTests
     /// backend the module directly always produced, for every source in the corpus, both backends,
     /// behavior and tests.
     /// </summary>
+    /// <remarks>
+    /// The direct side builds its options the way every caller did before
+    /// <see cref="BackendOptions.For"/> existed, so a change to that factory cannot move both sides
+    /// together and pass.
+    /// </remarks>
     [Fact]
     public void GeneratingOneSourceThroughSourceEmissionIsGeneratingItDirectly()
     {
@@ -130,7 +135,7 @@ public partial class BackendTests
         {
             var result = Compilation.Compile(path, [protos]);
             var module = result.EmittableModule!;
-            var options = BackendOptions.For(SourceIdentity.FromPath(path), result.Config);
+            var options = new BackendOptions(Path.GetFileName(path)) { PolicyDescription = result.Config.DescribeForHeader() };
             var diagnostics = new DiagnosticBag();
 
             foreach (var backend in new[] { "csharp", "cpp" }.Select(BackendNamed))

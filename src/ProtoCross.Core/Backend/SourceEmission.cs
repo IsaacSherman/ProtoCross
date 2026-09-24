@@ -21,12 +21,19 @@ namespace ProtoCross.Backend;
 /// module exists; meeting one here is a defect in the compiler rather than in the input, and it
 /// throws rather than choosing which to keep.
 /// </para>
+/// <para>
+/// Every source is generated, including one that holds only tests, whose behavior files then
+/// declare nothing. Telling a test source from a behavior source is what a project's
+/// <c>&lt;Tests&gt;</c> group is for (#106); until a source can say which it is, generating an
+/// empty file is the answer that assumes nothing.
+/// </para>
 /// </remarks>
 public static class SourceEmission
 {
     /// <summary>What <paramref name="backend"/> generates for the behavior of every source.</summary>
     /// <exception cref="ArgumentException">
-    /// <paramref name="result"/> did not succeed, so there is no module anything may be generated from.
+    /// <paramref name="result"/> did not succeed, so there is no module anything may be generated
+    /// from, or it does not say which sources it holds.
     /// </exception>
     public static IReadOnlyList<GeneratedFile> Emit(CompilationResult result, IBackend backend, DiagnosticBag diagnostics)
     {
@@ -56,6 +63,15 @@ public static class SourceEmission
         {
             throw new ArgumentException(
                 "Only a compilation that succeeded may be generated from; see CompilationResult.EmittableModule.",
+                nameof(result));
+        }
+
+        // A module with no sources beside it was built by hand rather than compiled, and generating
+        // nothing from it would read as a compilation with nothing in it.
+        if (result.SyntaxTrees.Count == 0)
+        {
+            throw new ArgumentException(
+                "The compilation does not say which sources it holds; see CompilationResult.SyntaxTrees.",
                 nameof(result));
         }
 

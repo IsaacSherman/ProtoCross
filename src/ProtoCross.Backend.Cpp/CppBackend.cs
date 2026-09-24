@@ -17,6 +17,13 @@ namespace ProtoCross.Backend.Cpp;
 /// chosen here because they subclass nothing, require no protoc insertion points, and work
 /// identically whether the protobuf codegen is regenerated or vendored. Declarations are emitted
 /// ahead of definitions so methods may call one another in any order.
+/// <para>
+/// A header has two layouts. One whose methods call no other source's declares and defines a
+/// namespace at a time, as every header always has. One whose methods do declares everything,
+/// includes the headers it calls, then defines everything, so two sources calling each other compile
+/// in either include order; see <c>WriteAroundSiblings</c>. Keeping the first layout for the common
+/// case is what keeps generating a single source from moving.
+/// </para>
 /// </remarks>
 public sealed class CppBackend : ITestProjectScaffold
 {
