@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
+using ProtoCross.Binding;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
@@ -82,16 +83,35 @@ public class MultiFileCompilationTests
         Assert.True(result.Success, Described(result));
     }
 
+    /// <summary>
+    /// Two sources importing one schema ask protoc for it once. The request is keyed by the files it
+    /// names, so a compilation of both is answered from the cache that one source importing the
+    /// schema filled, and asking for the schema twice would have been a request of its own.
+    /// </summary>
     [Fact]
-    public void ASchemaEveryFileImportsIsLoadedOnce()
+    public void ASchemaEveryFileImportsIsRequestedOnce()
     {
-        var result = Compile(
-            ("pricing.pcross", Extend("fn gross() -> int64 { return quantity * unit_price_cents; }")),
-            ("stock.pcross", Extend("fn is_empty() -> bool { return quantity == 0; }")));
+        var protoc = ProtocLocator.Locate();
+        if (protoc is null)
+        {
+            Assert.Skip("No protoc on PATH and none in the NuGet cache. Restore the solution first.");
+        }
+
+        var loader = new DescriptorLoader(protoc, new DescriptorLoaderOptions { Cache = new DescriptorCache() });
+        var directory = TestPaths.CreateTempDirectory();
+        var alone = Write(directory, "alone.pcross", Extend("fn f() -> int64 { return 1; }"));
+        string[] both =
+        [
+            Write(directory, "pricing.pcross", Extend("fn gross() -> int64 { return quantity * unit_price_cents; }")),
+            Write(directory, "stock.pcross", Extend("fn is_empty() -> bool { return quantity == 0; }")),
+        ];
+
+        Assert.True(Compilation.Compile([alone], [TestPaths.ExampleProtoDirectory], loader).Success);
+        var result = Compilation.Compile(both, [TestPaths.ExampleProtoDirectory], loader);
 
         Assert.True(result.Success, Described(result));
         Assert.Equal(2, result.Imports.Count);
-        Assert.Single(result.Descriptors, file => file.Name == "invoice.proto");
+        Assert.True(loader.ProtocInvocations == 1, "the two sources must ask for the schema exactly as one source does");
     }
 
     // ------- a file with no import

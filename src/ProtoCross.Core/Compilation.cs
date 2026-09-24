@@ -419,6 +419,7 @@ public sealed class Compilation
     /// find the same <c>protocross.config.xml</c> above it, or none; see
     /// <see cref="ResolveSharedConfig"/>.
     /// </param>
+    /// <exception cref="ArgumentException"><paramref name="sourcePaths"/> is empty.</exception>
     public static CompilationResult Compile(
         IReadOnlyList<string> sourcePaths,
         IReadOnlyList<string> includePaths,
@@ -426,6 +427,11 @@ public sealed class Compilation
         ProjectConfig? config = null)
     {
         ArgumentNullException.ThrowIfNull(sourcePaths);
+
+        if (sourcePaths.Count == 0)
+        {
+            throw new ArgumentException("A compilation needs at least one source.", nameof(sourcePaths));
+        }
 
         var identities = sourcePaths.Select(SourceIdentity.FromPath).ToList();
         var diagnostics = new DiagnosticBag();
@@ -453,6 +459,7 @@ public sealed class Compilation
     /// <remarks>
     /// The several-source form of <see cref="Compile(SourceDocument, IReadOnlyList{string}, DescriptorLoader?, ProjectConfig?)"/>.
     /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="sources"/> is empty.</exception>
     public static CompilationResult Compile(
         IReadOnlyList<SourceDocument> sources,
         IReadOnlyList<string> includePaths,
@@ -764,7 +771,7 @@ public sealed class Compilation
             return Stopped(imports) with { SchemaFailure = SchemaLoadFailure.From(ex) };
         }
 
-        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config, Sources[0].Identity);
+        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config);
         var module = binder.Bind(trees);
 
         // Carried out whether or not anything went wrong, because a module built from a broken tree
@@ -820,13 +827,14 @@ public sealed class Compilation
 
             distinct = false;
             var first = claimed[key];
+            var again = IsSameSource(first, source);
             diagnostics.Report(
                 DiagnosticCodes.SourcesShareGeneratedNames,
-                first == source
+                again
                     ? $"'{source.Name}' is given more than once."
                     : $"'{source.Name}' would be generated under the same names as '{first.Name}'.",
                 StartOf(source),
-                first == source
+                again
                     ? "Pass each source once."
                     : "Generated file names, include guards and test classes ignore case and "
                         + "punctuation, so these two names are one name to them. Rename one source.");
@@ -834,6 +842,12 @@ public sealed class Compilation
 
         return distinct;
     }
+
+    /// <summary>Whether two identities name one source, however a path to it is spelled.</summary>
+    private static bool IsSameSource(SourceIdentity first, SourceIdentity second)
+        => first.Path is not null && second.Path is not null
+            ? PathIdentity.AreSame(first.Path, second.Path)
+            : first == second;
 
     /// <summary>
     /// The schemas to hand protoc: each file the imports resolved to once, under the path its first
@@ -844,7 +858,9 @@ public sealed class Compilation
     /// schema handed to protoc twice is loaded, and cached, as two requests for one answer. Resolved
     /// files are compared by <see cref="PathIdentity"/>, so two spellings of one file are one file.
     /// The path the author wrote is what protoc is given, not the one it resolved to, so that what
-    /// protoc reports matches what was asked for.
+    /// protoc reports matches what was asked for. A single source that imports one schema twice is
+    /// asked for once as well: protoc accepted the repeat and answered the same, so the only thing
+    /// that moves is the key a cached load is kept under.
     /// </remarks>
     private static List<string> SchemaFilesFor(IReadOnlyList<ImportResolution> imports)
         => imports

@@ -103,9 +103,10 @@ internal sealed class ReferenceIndex
     {
         SymbolReference? best = null;
 
-        foreach (var reference in AllIn(document))
+        foreach (var reference in _all)
         {
-            if (PositionSearch.Contains(reference.Span, offset)
+            if ((document is null || reference.Document == document)
+                && PositionSearch.Contains(reference.Span, offset)
                 && (best is null || reference.Span.Length < best.Span.Length))
             {
                 best = reference;
