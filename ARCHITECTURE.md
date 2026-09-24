@@ -133,7 +133,10 @@ each with a form that takes a list of sources.
    unreadable config, an unusable include path, or a schema that could not be found or loaded.
    **`Module` is the partial one. Emit from `EmittableModule`**, which is null unless the
    compilation produced a whole program.
-9. **Emit.** Backends consume the IR only.
+9. **Emit.** Backends consume the IR only, one source at a time:
+   [`SourceEmission`](src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
+   part of the module (`IrModule.DeclaredIn`) with the options that name its files
+   (`BackendOptions.For`), and keeps one copy of the runtime file every source's output shares.
 
 Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)
 answers "what is at this offset" for the syntax tree and for the IR, hands back the chain of nodes
@@ -529,6 +532,12 @@ Per spec 23 a backend consumes only the typed IR, never the AST, and rejects wha
 rather than emitting something that quietly differs. A backend **cannot branch on policy**: how an
 operation is emitted comes from the behavior annotation the binder stamped on the IR node. Policy
 reaches a backend only as prose for the generated file's header.
+
+A backend is handed one source's part of the module, and a call in it may name a method another
+source declares. C# reaches it by the receiver's `partial` extension class, whichever file declares
+the part. A C++ header includes the headers of the sources it calls, after its own declarations and
+before its definitions, so two sources that call each other compile whichever header comes first;
+one that calls none is laid out as it always was.
 
 ## Tests
 

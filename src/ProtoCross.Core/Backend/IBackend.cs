@@ -21,6 +21,21 @@ public sealed record BackendOptions(string SourceFileName)
     /// </remarks>
     public IReadOnlyList<string> PolicyDescription { get; init; } =
         Config.ProjectConfig.Default.DescribeForHeader();
+
+    /// <summary>The options for generating one source of a compilation run under <paramref name="config"/>.</summary>
+    /// <remarks>
+    /// One home for the pairing, because every caller that emits has to make it and each used to
+    /// spell it out: the name a source's files are generated under is the name its identity prints,
+    /// and the header states the policy the compilation ran under. A caller naming the files after
+    /// something else would generate a file no include or test driver refers to.
+    /// </remarks>
+    public static BackendOptions For(SourceIdentity document, Config.ProjectConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(config);
+
+        return new BackendOptions(document.Name) { PolicyDescription = config.DescribeForHeader() };
+    }
 }
 
 /// <summary>

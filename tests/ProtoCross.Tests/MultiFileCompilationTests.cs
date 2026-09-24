@@ -26,20 +26,13 @@ public class MultiFileCompilationTests
 
     /// <summary>Writes each source into <paramref name="directory"/> and compiles them together.</summary>
     private static CompilationResult Compile(string directory, params (string Name, string Text)[] sources)
-        => Compilation.Compile(
-            [.. sources.Select(source => Write(directory, source.Name, source.Text))],
-            [TestPaths.ExampleProtoDirectory]);
+        => Compilation.Compile(TestPaths.WriteSources(directory, sources), [TestPaths.ExampleProtoDirectory]);
 
     private static CompilationResult Compile(params (string Name, string Text)[] sources)
         => Compile(TestPaths.CreateTempDirectory(), sources);
 
     private static string Write(string directory, string name, string text)
-    {
-        var path = Path.Combine(directory, name);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.WriteAllText(path, text);
-        return path;
-    }
+        => TestPaths.WriteSources(directory, (name, text))[0];
 
     private static string Extend(string methods, string imports = Import)
         => $$"""
@@ -298,9 +291,9 @@ public class MultiFileCompilationTests
 
             Assert.Equal(Described(alone), Described(listed));
             Assert.Equal(alone.Success, listed.Success);
-            if (alone.EmittableModule is { } module)
+            if (alone.Success)
             {
-                Assert.Equal(Emitted(module, alone.Config, path), Emitted(listed.EmittableModule!, listed.Config, path));
+                Assert.Equal(Emitted(alone), Emitted(listed));
             }
         }
     }
@@ -353,13 +346,13 @@ public class MultiFileCompilationTests
 
     // ------- helpers
 
-    private static IEnumerable<string> Emitted(IrModule module, ProjectConfig config, string path)
+    private static IEnumerable<string> Emitted(CompilationResult result)
     {
-        var options = new BackendOptions(Path.GetFileName(path)) { PolicyDescription = config.DescribeForHeader() };
         var diagnostics = new DiagnosticBag();
         ITestBackend[] backends = [new CSharpBackend(), new CppBackend()];
 
-        return backends.SelectMany(backend => backend.Emit(module, options, diagnostics).Concat(backend.EmitTests(module, options, diagnostics)))
+        return backends
+            .SelectMany(backend => SourceEmission.Emit(result, backend, diagnostics).Concat(SourceEmission.EmitTests(result, backend, diagnostics)))
             .Select(file => $"{file.RelativePath}{Environment.NewLine}{file.Contents}");
     }
 
