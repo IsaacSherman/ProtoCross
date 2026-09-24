@@ -102,12 +102,18 @@ jobs:
       - name: Restore
         run: dotnet restore ProtoCross.slnx
 
+      # Release, because the suite's longest tests are the compiler itself run tens of thousands of
+      # times -- the resilience sweeps compile every file once per character of it -- and an
+      # unoptimized build ran them between four and five times slower. That bought nothing: no
+      # production code has a Debug.Assert for the Debug build to check, and the one test that asks
+      # which configuration it runs under answers for both. It is also the build the VS Code
+      # extension ships. A failure here reproduces locally with '-c Release' on both commands.
       - name: Build
-        run: dotnet build ProtoCross.slnx --no-restore
+        run: dotnet build ProtoCross.slnx --no-restore --configuration Release
 
       - name: Test
         run: >
-          dotnet test ProtoCross.slnx --no-build
+          dotnet test ProtoCross.slnx --no-build --configuration Release
           --logger "trx;LogFileName=results.trx"
           --results-directory artifacts/test
 

@@ -28,7 +28,8 @@ and `DOTNET_gcServer=0`, and refuses to run without either: the suite runs the s
 collector, and the language server ships with the workstation one).
 `.github/workflows/ci.yml` turns the first two on for every pull request to `main`, so what a local
 run skips is still checked before anything merges — and `report.ps1` fails the job when one of those
-is skipped there, since a gate that quietly stays shut looks exactly like a green build.
+is skipped there, since a gate that quietly stays shut looks exactly like a green build. CI builds
+and tests in Release, so a failure seen only there reproduces with `-c Release` on both commands.
 
 `PROTOCROSS_BENCH` is deliberately not one of them. A wall-clock deadline on a shared runner flakes
 until somebody loosens it past the point of describing anything, so CI checks counted work instead —
