@@ -46,6 +46,19 @@ public class MultiFileCompilationTests
     private static string Described(CompilationResult result)
         => string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString()));
 
+    /// <summary>
+    /// Writes a proto3 <c>shared.proto</c> holding <paramref name="body"/> into a new directory under
+    /// <paramref name="root"/>, and returns the directory.
+    /// </summary>
+    private static string WriteSharedSchema(string root, string directoryName, string body)
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(root, directoryName)).FullName;
+        File.WriteAllText(
+            Path.Combine(directory, "shared.proto"),
+            $"syntax = \"proto3\";\n{body}\n");
+        return directory;
+    }
+
     // ------- one program
 
     [Fact]
@@ -105,6 +118,142 @@ public class MultiFileCompilationTests
         Assert.True(result.Success, Described(result));
         Assert.Equal(2, result.Imports.Count);
         Assert.True(loader.ProtocInvocations == 1, "the two sources must ask for the schema exactly as one source does");
+    }
+
+    // ------- a schema beside a source, shadowed by another directory's
+
+    /// <summary>
+    /// Two sources in different directories each import <c>shared.proto</c>, and each sits beside a
+    /// different file of that name. Both imports resolve to the first directory's copy, and the
+    /// source whose own copy lost is warned that it did (<c>PC0087</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written for a review finding on #27: that the compiler resolved each source's imports against
+    /// its own directory, then handed protoc only the path as written, so that protoc loaded the first
+    /// directory's copy twice and <c>right.Right</c> went missing. The first half was not so. Spec 5.2
+    /// resolves every import against one ordered list, both imports resolve to the left copy, and
+    /// that is the one protoc loads, once. What was real is that the author of <c>right.pcross</c>
+    /// got <c>PC0021</c> for a type declared in the file beside them, with nothing to say another
+    /// file had been chosen.
+    /// </para>
+    /// <para>
+    /// Loading both copies was rejected: protoc knows a schema by its path under its root, so one
+    /// compilation cannot hold two files called <c>shared.proto</c>, and the code protoc generates
+    /// from them would collide in any build that links both. Renaming the losing schema on the
+    /// author's behalf was considered and shelved, because the name reaches everything protoc
+    /// generates and every import of it. So the program still fails to compile, and the warning
+    /// says which file won and which lost.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void ASchemaBesideASourceThatAnotherSourcesDirectoryShadowsIsWarnedAbout()
+    {
+        const string RightText =
+            """
+            import proto "shared.proto";
+
+            extend right.Right {
+                fn right_value() -> int64 { return value; }
+            }
+            """;
+
+        var root = TestPaths.CreateTempDirectory();
+        var left = WriteSharedSchema(root, "left", "package left; message Left { int64 value = 1; }");
+        var right = WriteSharedSchema(root, "right", "package right; message Right { int64 value = 1; }");
+
+        var result = Compilation.Compile(
+            TestPaths.WriteSources(
+                root,
+                ("left/left.pcross", """
+                    import proto "shared.proto";
+
+                    extend left.Left {
+                        fn left_value() -> int64 { return value; }
+                    }
+                    """),
+                ("right/right.pcross", RightText)),
+            []);
+
+        var shadowed = Assert.Single(
+            result.Diagnostics,
+            diagnostic => diagnostic.Code == DiagnosticCodes.SchemaBesideSourceIsShadowed.Code);
+        Assert.Equal(DiagnosticSeverity.Warning, shadowed.Severity);
+        Assert.True(shadowed.Span.File == "right.pcross", $"the warning belongs to the source whose copy lost, not {shadowed.Span.File}");
+        Assert.Equal(RightText.IndexOf("import", StringComparison.Ordinal), shadowed.Span.Start.Offset);
+        Assert.Contains(left, shadowed.Message, StringComparison.Ordinal);
+        Assert.Contains(right, shadowed.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A schema beside a source that an include path shadows is warned about in the same way, because
+    /// include paths come first in the same list (spec 5.2), and one source is enough to be surprised.
+    /// </summary>
+    [Fact]
+    public void ASchemaBesideASourceThatAnIncludePathShadowsIsWarnedAbout()
+    {
+        var root = TestPaths.CreateTempDirectory();
+        var included = WriteSharedSchema(root, "protos", "package shared; message Included { int64 value = 1; }");
+        var beside = WriteSharedSchema(root, "source", "package shared; message Beside { int64 value = 1; }");
+
+        const string Text = "import proto \"shared.proto\";\n\nextend shared.Included {\n    fn included_value() -> int64 { return value; }\n}\n";
+
+        var result = Compilation.Compile(Write(beside, "beside.pcross", Text), [included]);
+
+        var shadowed = Assert.Single(
+            result.Diagnostics,
+            diagnostic => diagnostic.Code == DiagnosticCodes.SchemaBesideSourceIsShadowed.Code);
+        Assert.Equal(Text.IndexOf("import", StringComparison.Ordinal), shadowed.Span.Start.Offset);
+        Assert.Contains(included, shadowed.Message, StringComparison.Ordinal);
+        Assert.Contains(beside, shadowed.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Copies of one schema that differ only in what a checkout or an editor changes unasked -- CRLF
+    /// line endings, a leading UTF-8 byte order mark -- are one schema to protoc, so they are not
+    /// warned about either.
+    /// </summary>
+    /// <remarks>
+    /// <c>ShadowedSchemaComparisonTests</c> holds the other side: a line separator inside a string
+    /// default is part of the value, and copies differing there are warned about.
+    /// </remarks>
+    [Theory]
+    [InlineData("syntax = \"proto3\";\r\npackage shared;\r\nmessage Shared { int64 value = 1; }\r\n")]
+    [InlineData("﻿syntax = \"proto3\";\npackage shared;\nmessage Shared { int64 value = 1; }\n")]
+    public void CopiesOfASchemaThatProtocReadsAlikeAreNotWarnedAbout(string besideText)
+    {
+        var root = TestPaths.CreateTempDirectory();
+        var included = WriteSharedSchema(root, "protos", "package shared;\nmessage Shared { int64 value = 1; }");
+        var beside = Directory.CreateDirectory(Path.Combine(root, "source")).FullName;
+        File.WriteAllText(Path.Combine(beside, "shared.proto"), besideText);
+
+        var result = Compilation.Compile(
+            Write(beside, "beside.pcross", "import proto \"shared.proto\";\n\nextend shared.Shared {\n    fn shared_value() -> int64 { return value; }\n}\n"),
+            [included]);
+
+        Assert.Empty(result.Diagnostics);
+    }
+
+    /// <summary>
+    /// Copies of one schema with the same contents are not warned about. Whichever copy is loaded,
+    /// nothing differs, so nothing is wrong.
+    /// </summary>
+    [Fact]
+    public void IdenticalCopiesOfASchemaBesideTwoSourcesAreNotWarnedAbout()
+    {
+        var root = TestPaths.CreateTempDirectory();
+        WriteSharedSchema(root, "left", "package shared; message Shared { int64 value = 1; }");
+        WriteSharedSchema(root, "right", "package shared; message Shared { int64 value = 1; }");
+
+        var result = Compilation.Compile(
+            TestPaths.WriteSources(
+                root,
+                ("left/left.pcross", "import proto \"shared.proto\";\n\nextend shared.Shared {\n    fn left_value() -> int64 { return value; }\n}\n"),
+                ("right/right.pcross", "import proto \"shared.proto\";\n\nextend shared.Shared {\n    fn right_value() -> int64 { return value; }\n}\n")),
+            []);
+
+        Assert.True(result.Success, Described(result));
+        Assert.Empty(result.Diagnostics);
     }
 
     // ------- a file with no import
@@ -279,8 +428,8 @@ public class MultiFileCompilationTests
     [Fact]
     public void OneSourceInAListCompilesExactlyAsItDoesAlone()
     {
-        var sources = ConformanceVectors.HandWritten
-            .Select(vector => (vector.SourcePath, Protos: ConformanceVectors.ProtoDirectory))
+        var sources = ConformanceVectors.HandWrittenSources
+            .Select(path => (path, Protos: ConformanceVectors.ProtoDirectory))
             .Append((TestPaths.SimpleScript, Protos: TestPaths.ExampleProtoDirectory))
             .Append((TestPaths.WriteTempScript(CompiledCorpus.BrokenText), Protos: TestPaths.ExampleProtoDirectory));
 

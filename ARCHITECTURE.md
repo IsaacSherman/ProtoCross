@@ -429,7 +429,8 @@ to report `**/*.proto` and `**/protocross.config.xml`
 ([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
 reschedules every open document. So does the client agreeing to watch, since a save before its watcher
 was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
-schemas still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
+schemas still stand costs a hash per schema rather than a compile. That includes a schema beside a
+source that another directory shadows: protoc never reads it, but `PC0087` was decided from it. The server registers the patterns rather than
 an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
 
 When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
@@ -558,6 +559,8 @@ and the scaffolding and smoke suites.
   files whose `test` blocks *are* the vectors, compiled and executed in both backends. This is the
   semantic gate: spec 25.2 left the vector format open and this repository answers it with the
   language's own `test` declaration, so a vector with a wrong-typed expectation is a compile error.
+  A directory under `multi/` is one vector written across several files and compiled as one
+  program, which is where what happens between sources is pinned.
 - **Harness** — [tests/ProtoCross.Tests/Harness](tests/ProtoCross.Tests/Harness) builds and runs real
   generated projects. Needs `protoc`, the .NET SDK, and a C++ toolchain.
 - **Paths** — [TestPaths.cs](tests/ProtoCross.Tests/TestPaths.cs) finds the repository root and the

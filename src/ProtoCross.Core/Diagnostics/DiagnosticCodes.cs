@@ -422,6 +422,15 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor BitwiseNotRequiresAnIntegerOperand =
         new("PC0086", DiagnosticSeverity.Error, "bitwise not requires an integer operand");
 
+    // ------------------------------------------------------- sources and schemas, continued
+
+    /// <summary>
+    /// An import resolved to a schema other than the different one of that path beside its own
+    /// source, because another directory in the one search order held it first (spec 5.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SchemaBesideSourceIsShadowed =
+        new("PC0087", DiagnosticSeverity.Warning, "schema beside the source is shadowed");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

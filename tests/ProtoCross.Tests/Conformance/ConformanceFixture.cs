@@ -1,5 +1,4 @@
 using ProtoCross.Backend;
-using ProtoCross.Config;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
@@ -22,14 +21,30 @@ public sealed class ConformanceFixture
     internal ConformanceRun Cpp { get; }
 
     /// <summary>
-    /// One compiled vector, with the policy it compiled under.
+    /// One compiled vector.
     /// </summary>
     /// <remarks>
-    /// The policy is carried because it reaches the generated file's header. The vectors in the
-    /// policy subdirectories are precisely the ones a header claiming the default would mislead
-    /// about, and a header is the first thing read when a conformance failure is being diagnosed.
+    /// The whole result is kept rather than its module, because a vector is generated a source at a
+    /// time (<see cref="SourceEmission"/>), and that needs the sources the result holds as well as the
+    /// policy it compiled under. The policy reaches each generated file's header: the vectors in the
+    /// policy subdirectories are precisely the ones a header claiming the default would mislead about,
+    /// and a header is the first thing read when a conformance failure is being diagnosed.
     /// </remarks>
-    private sealed record CompiledVector(ConformanceVector Vector, IrModule Module, ProjectConfig Config);
+    private sealed record CompiledVector(ConformanceVector Vector, CompilationResult Result)
+    {
+        public IReadOnlyList<IrTest> Tests => Result.Module!.Tests;
+    }
+
+    /// <summary>What one backend generated for one vector, its tests apart from its behavior.</summary>
+    /// <remarks>
+    /// Apart because every file the C++ backend generates for tests is a program of its own: a driver
+    /// for each source of the vector that declares tests, which between them report all of the
+    /// vector's.
+    /// </remarks>
+    private sealed record GeneratedVector(
+        CompiledVector Compiled,
+        IReadOnlyList<GeneratedFile> Behavior,
+        IReadOnlyList<GeneratedFile> Tests);
 
     public ConformanceFixture()
     {
@@ -41,7 +56,7 @@ public sealed class ConformanceFixture
             var result = ConformanceVectors.Compile(vector);
             if (result.Success)
             {
-                modules.Add(new CompiledVector(vector, result.Module!, result.Config));
+                modules.Add(new CompiledVector(vector, result));
                 continue;
             }
 
@@ -49,7 +64,7 @@ public sealed class ConformanceFixture
         }
 
         DeclaredIdentities = modules
-            .SelectMany(entry => ConformanceVectors.DeclaredIdentities(entry.Module.Tests))
+            .SelectMany(entry => ConformanceVectors.DeclaredIdentities(entry.Tests))
             .ToList();
 
         if (failures.Count > 0)
@@ -86,7 +101,7 @@ public sealed class ConformanceFixture
 
         var backend = new CSharpBackend();
         var diagnostics = new DiagnosticBag();
-        var files = EmitAll(modules, backend, diagnostics);
+        var vectors = Generate(modules, backend, diagnostics);
 
         if (diagnostics.HasErrors)
         {
@@ -95,7 +110,7 @@ public sealed class ConformanceFixture
         }
 
         var workspace = CSharpTestWorkspace.Create("conformance-csharp");
-        workspace.Write(files);
+        workspace.Write(FilesOf(vectors));
 
         var generated = workspace.GenerateProtobuf(
             protoc, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
@@ -112,7 +127,7 @@ public sealed class ConformanceFixture
         var byName = run.Executed.ToDictionary(test => test.Name, StringComparer.Ordinal);
 
         var results = modules
-            .SelectMany(entry => entry.Module.Tests)
+            .SelectMany(entry => entry.Tests)
             .Select(test => byName.TryGetValue(test.Identity, out var executed)
                 ? new ConformanceResult(
                     test.Identity,
@@ -155,7 +170,7 @@ public sealed class ConformanceFixture
 
         var backend = new CppBackend();
         var diagnostics = new DiagnosticBag();
-        var files = EmitAll(modules, backend, diagnostics);
+        var vectors = Generate(modules, backend, diagnostics);
 
         if (diagnostics.HasErrors)
         {
@@ -164,7 +179,7 @@ public sealed class ConformanceFixture
         }
 
         var workspace = CppTestWorkspace.Create("conformance-cpp");
-        workspace.Write(files);
+        workspace.Write(FilesOf(vectors));
 
         var generated = workspace.GenerateProtobuf(
             protobuf.ProtocPath!, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
@@ -175,19 +190,27 @@ public sealed class ConformanceFixture
                 Backend, null, [], workspace.Directory, "protoc C++ generation failed." + generated.Output);
         }
 
-        var drivers = modules.Select(entry => entry.Vector.Name + ".tests.cc").ToList();
-        var programs = workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources);
+        var drivers = vectors.SelectMany(vector => vector.Tests).Select(driver => driver.RelativePath).ToList();
+        var programs = drivers
+            .Zip(workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources))
+            .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
 
         var results = new List<ConformanceResult>();
         var output = new List<string>();
 
-        for (var i = 0; i < modules.Count; i++)
+        foreach (var vector in vectors)
         {
-            var program = programs[i];
-            output.Add($"--- {drivers[i]} (exit code {program.ExitCode}) ---");
-            output.Add(program.Output);
+            var reported = new List<string>();
 
-            results.AddRange(ReadDriverResults(modules[i].Module.Tests, program.Output));
+            foreach (var driver in vector.Tests.Select(file => file.RelativePath))
+            {
+                var program = programs[driver];
+                output.Add($"--- {driver} (exit code {program.ExitCode}) ---");
+                output.Add(program.Output);
+                reported.Add(program.Output);
+            }
+
+            results.AddRange(ReadDriverResults(vector.Compiled.Tests, string.Join('\n', reported)));
         }
 
         return new ConformanceRun(
@@ -195,9 +218,9 @@ public sealed class ConformanceFixture
     }
 
     /// <summary>
-    /// Reads one driver's output. Each declared test is looked up by its own identity rather than
-    /// by parsing identities out of the driver's lines, so a test name containing bracket or
-    /// parenthesis characters cannot confuse the match.
+    /// Reads what a vector's drivers reported. Each declared test is looked up by its own identity
+    /// rather than by parsing identities out of the drivers' lines, so a test name containing bracket
+    /// or parenthesis characters cannot confuse the match.
     /// </summary>
     private static IEnumerable<ConformanceResult> ReadDriverResults(
         IReadOnlyList<IrTest> tests,
@@ -224,29 +247,45 @@ public sealed class ConformanceFixture
         }
     }
 
-    /// <summary>
-    /// Emits behavior and tests for every vector into one file set. The arithmetic and test support
-    /// files are emitted once per vector and are identical every time, so they are deduplicated
-    /// here: that is exactly the case their fixed file names exist to allow.
-    /// </summary>
-    private static IReadOnlyList<GeneratedFile> EmitAll(
+    /// <summary>Generates every vector a source at a time, as a command-line build of it would.</summary>
+    private static IReadOnlyList<GeneratedVector> Generate(
         IReadOnlyList<CompiledVector> modules,
         ITestBackend backend,
         DiagnosticBag diagnostics)
+        => modules
+            .Select(entry => new GeneratedVector(
+                entry,
+                SourceEmission.Emit(entry.Result, backend, diagnostics),
+                SourceEmission.EmitTests(entry.Result, backend, diagnostics)))
+            .ToList();
+
+    /// <summary>
+    /// Every file every vector generated, as one file set. The arithmetic and test support files are
+    /// generated beside each vector's own and are identical every time, so each is kept once: that is
+    /// exactly the case their fixed file names exist to allow.
+    /// </summary>
+    /// <remarks>
+    /// Two different files under one name are refused rather than one of them kept. That is two
+    /// vectors whose sources are named alike, which <c>NoTwoSourcesInTheCorpusGenerateFilesOfOneName</c>
+    /// reports by name; keeping either file would leave the other vector's tests missing, or running
+    /// against code it never declared, with nothing saying why.
+    /// </remarks>
+    private static IReadOnlyList<GeneratedFile> FilesOf(IReadOnlyList<GeneratedVector> vectors)
     {
         var byPath = new Dictionary<string, GeneratedFile>(StringComparer.Ordinal);
 
-        foreach (var (vector, module, config) in modules)
+        foreach (var file in vectors.SelectMany(vector => vector.Behavior.Concat(vector.Tests)))
         {
-            var options = BackendOptions.For(SourceIdentity.FromPath(vector.SourcePath), config);
-
-            foreach (var file in backend.Emit(module, options, diagnostics)
-                .Concat(backend.EmitTests(module, options, diagnostics)))
+            if (byPath.TryGetValue(file.RelativePath, out var kept) && kept.Contents != file.Contents)
             {
-                byPath[file.RelativePath] = file;
+                throw new InvalidOperationException(
+                    $"Two vectors generated different files named '{file.RelativePath}'; see "
+                    + "ConformanceVectorTests.NoTwoSourcesInTheCorpusGenerateFilesOfOneName.");
             }
+
+            byPath.TryAdd(file.RelativePath, file);
         }
 
-        return byPath.Values.ToList();
+        return [.. byPath.Values];
     }
 }

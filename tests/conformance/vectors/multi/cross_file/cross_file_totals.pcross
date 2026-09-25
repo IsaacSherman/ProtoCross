@@ -1,0 +1,46 @@
+// Conformance vectors for one program written across several sources: the first of three.
+//
+// The three are one compilation, and each is generated into files of its own (spec 5.3). This source
+// and cross_file_lines.pcross both extend CrossFileOrder, and each calls a method the other declares,
+// so one receiver's generated methods are split between two outputs that need each other. C# has to
+// take two parts of one static class (spec 24.1). Each C++ header includes the other, and has to
+// declare everything it holds before that include, whichever of the two a driver includes first
+// (spec 24.2). cross_file_tests.pcross declares no method at all, so its behavior output is empty,
+// and its driver includes the headers of the sources it tests.
+
+import proto "cross_file.proto";
+
+extend CrossFileOrder {
+    // Calls a method the lines source declares, on another receiver.
+    fn subtotal_cents() -> int64 {
+        var subtotal: int64 = 0;
+
+        for line in lines {
+            subtotal = subtotal + line.line_cents();
+        }
+
+        return subtotal;
+    }
+
+    // Calls a method the lines source declares on this same receiver, which calls back into this one.
+    fn total_cents() -> int64 {
+        return subtotal_cents() - discount_applied_cents();
+    }
+}
+
+// Beside the method it tests, so this source has a driver of its own as well as the tests source.
+test CrossFileOrder.subtotal_cents "each line is priced by the source that declares the line's method" {
+    receiver {
+        lines {
+            quantity = 2;
+            unit_price_cents = 300;
+        }
+
+        lines {
+            quantity = 1;
+            unit_price_cents = 150;
+        }
+    }
+
+    expect return 750;
+}

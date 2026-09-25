@@ -223,9 +223,10 @@ internal static class CompiledCorpus
     /// both extend <c>Invoice</c>, so one receiver's methods are split between them.
     /// </para>
     /// <para>
-    /// The two are the shortest program that has all three. The multi-file conformance vectors
-    /// arrive after this and will be swept the same way; this entry is what shows the sweeps were
-    /// ready for them.
+    /// The two are the shortest program that has all three. The conformance vectors written across
+    /// several files are swept the same way, and this entry came before them to show the sweeps were
+    /// ready. It stays because it is small enough for <c>CompiledCorpusTests</c> to pin what it
+    /// holds, where a vector is free to change with the behavior it pins.
     /// </para>
     /// </remarks>
     public const string CrossFileTotalsText =
@@ -300,10 +301,7 @@ internal static class CompiledCorpus
         Unclosed,
         Qualified,
         .. CrossFile,
-        .. ConformanceVectors.HandWritten.Select(vector => new CorpusSource(
-            vector.Name,
-            File.ReadAllText(vector.SourcePath),
-            ConformanceVectors.Compile(vector))),
+        .. ConformanceVectors.HandWritten.SelectMany(vector => Each(vector.SourcePaths, ConformanceVectors.Compile(vector))),
     ];
 
     /// <summary>Compiles <paramref name="sources"/> as one program, and sees each of them on its own.</summary>
@@ -314,8 +312,18 @@ internal static class CompiledCorpus
         var paths = TestPaths.WriteSources(
             TestPaths.CreateTempDirectory(),
             [.. sources.Select(source => ($"{source.Name}.pcross", source.Text))]);
-        var result = Compilation.Compile(paths, protoPaths);
 
-        return [.. sources.Zip(paths, (source, path) => new CorpusSource(source.Name, source.Text, result, SourceIdentity.FromPath(path)))];
+        return [.. Each(paths, Compilation.Compile(paths, protoPaths))];
     }
+
+    /// <summary>
+    /// Sees each of <paramref name="paths"/> on its own, named after its file, in the one compilation
+    /// that holds them all.
+    /// </summary>
+    private static IEnumerable<CorpusSource> Each(IReadOnlyList<string> paths, CompilationResult result)
+        => paths.Select(path => new CorpusSource(
+            Path.GetFileNameWithoutExtension(path),
+            File.ReadAllText(path),
+            result,
+            SourceIdentity.FromPath(path)));
 }

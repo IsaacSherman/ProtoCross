@@ -237,7 +237,7 @@ public class FixtureRecoveryTests
         => SyntaxWalk.DescendantsAndSelf(unit).OfType<TestFieldInitializer>().Count();
 
     private static IEnumerable<string> CorpusSources()
-        => ConformanceVectors.HandWritten.Select(vector => vector.SourcePath).Append(TestPaths.SimpleScript);
+        => ConformanceVectors.HandWrittenSources.Append(TestPaths.SimpleScript);
 
     /// <summary>
     /// Every token start strictly inside a receiver fixture's braces, including its closing brace,
