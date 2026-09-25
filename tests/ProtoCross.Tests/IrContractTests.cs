@@ -106,15 +106,18 @@ public class IrContractTests
     /// module holds. A name that resolved to nothing is not given a stand-in symbol to point at; it
     /// becomes an error-typed node, which is how the IR marks what did not resolve.
     /// </summary>
+    /// <remarks>
+    /// The declarations are looked for in the whole program and the names in one source of it, because
+    /// a call may reach a method another source declares.
+    /// </remarks>
     [Fact]
     public void EverySymbolANodeNamesIsDeclaredInTheModule()
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var module = source.Result.Module!;
-            var declared = IrWalk.DeclarationsOf(module).Select(declaration => declaration.Id).ToHashSet();
+            var declared = IrWalk.DeclarationsOf(source.Result.Module!).Select(declaration => declaration.Id).ToHashSet();
 
-            foreach (var node in IrWalk.DescendantsAndSelf(module))
+            foreach (var node in IrWalk.DescendantsAndSelf(source.Module!))
             {
                 if (NamedSymbol(node) is not { } symbol)
                 {
@@ -168,7 +171,7 @@ public class IrContractTests
     private static IEnumerable<(CorpusSource Source, TNode Node)> Nodes<TNode>()
         where TNode : IrNode
         => CompiledCorpus.All.SelectMany(source
-            => IrWalk.DescendantsAndSelf(source.Result.Module!).OfType<TNode>().Select(node => (source, node)));
+            => IrWalk.DescendantsAndSelf(source.Module!).OfType<TNode>().Select(node => (source, node)));
 
     private static Type? RepresentationOf(PlType type) => type switch
     {

@@ -1,9 +1,60 @@
+using ProtoCross.Ir;
+using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Tests.Conformance;
 
 namespace ProtoCross.Tests;
 
-/// <summary>One compiled source, kept beside the text it came from.</summary>
-internal sealed record CorpusSource(string Name, string Text, CompilationResult Result);
+/// <summary>One compiled source, kept beside the text it came from, and seen on its own.</summary>
+/// <remarks>
+/// <para>
+/// A compilation of several sources is one result, and an offset means something only within one of
+/// them. So everything a sweep asks at an offset, or of what one file wrote, is asked of
+/// <see cref="Document"/>: its own tree, its own part of the module, and a model that answers at its
+/// offsets. What belongs to the whole program stays on <see cref="Result"/>: its diagnostics, its
+/// policy, and the module in which a call written here finds what it calls.
+/// </para>
+/// <para>
+/// A sweep that asked the result instead would be asking about the first source with this one's
+/// text, and would find out only where the two happened to disagree.
+/// <see cref="CompiledCorpus.CrossFile"/> is in the corpus so that they always do somewhere.
+/// </para>
+/// </remarks>
+internal sealed record CorpusSource(string Name, string Text, CompilationResult Result, SourceIdentity Document)
+{
+    /// <summary>A source compiled on its own, and so the only one its result holds.</summary>
+    /// <remarks>
+    /// Refuses a result holding any other number of trees, naming the source, because this runs in
+    /// the corpus's type initializer: a bare <see cref="Enumerable.Single{TSource}(IEnumerable{TSource})"/>
+    /// would fail every sweep with "sequence contains no elements" and never say which file stopped.
+    /// </remarks>
+    public CorpusSource(string name, string text, CompilationResult result)
+        : this(name, text, result, OnlyDocumentOf(name, result))
+    {
+    }
+
+    private static SourceIdentity OnlyDocumentOf(string name, CompilationResult result)
+        => result.SyntaxTrees is [var only]
+            ? only.Document
+            : throw new InvalidOperationException(
+                $"'{name}' compiled to {result.SyntaxTrees.Count} syntax trees rather than one: "
+                + string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+    /// <summary>This source's syntax tree, or null when it was never parsed.</summary>
+    public CompilationUnit? SyntaxTree => Result.SyntaxTrees.FirstOrDefault(tree => tree.Document == Document)?.Unit;
+
+    /// <summary>The part of the module this source declared, or null when nothing was bound.</summary>
+    public IrModule? Module => Result.Module?.DeclaredIn(Document);
+
+    /// <summary>A model that answers at this source's offsets.</summary>
+    public SemanticModel Model => SemanticModel.For(Result, Document);
+
+    /// <summary>
+    /// Whether this is the only source of its compilation, which is how the language server compiles
+    /// every buffer until a project can say which files belong together (#106).
+    /// </summary>
+    public bool StandsAlone => Result.SyntaxTrees.Count == 1;
+}
 
 /// <summary>
 /// Every ProtoCross source the repository maintains, compiled once, for the tests that assert a
@@ -161,8 +212,86 @@ internal static class CompiledCorpus
             [TestPaths.ExampleProtoDirectory, TestPaths.FixtureProtoDirectory]));
 
     /// <summary>
-    /// The example, the broken buffer, the unfinished one, the qualified names, and every
-    /// conformance vector someone wrote.
+    /// The first of two sources compiled as one program: a method that calls one the other source
+    /// declares.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every other entry is a compilation of one source, where the source and the compilation are the
+    /// same thing and a sweep cannot tell which of the two it asked. Here they differ: each source
+    /// has offsets the other does not, a reference in each names a declaration in the other, and
+    /// both extend <c>Invoice</c>, so one receiver's methods are split between them.
+    /// </para>
+    /// <para>
+    /// The two are the shortest program that has all three. The multi-file conformance vectors
+    /// arrive after this and will be swept the same way; this entry is what shows the sweeps were
+    /// ready for them.
+    /// </para>
+    /// </remarks>
+    public const string CrossFileTotalsText =
+        """
+        import proto "invoice.proto";
+
+        extend Invoice {
+            fn total_cents() -> int64 {
+                var total: int64 = 0;
+
+                for item in items {
+                    total = total + item.line_cents();
+                }
+
+                return total;
+            }
+        }
+        """;
+
+    /// <summary>
+    /// The second source of the program <see cref="CrossFileTotalsText"/> begins: the method the
+    /// first calls, another method on <c>Invoice</c>, and a test of the first source's method.
+    /// </summary>
+    public const string CrossFileLinesText =
+        """
+        import proto "invoice.proto";
+
+        extend InvoiceItem {
+            fn line_cents() -> int64 {
+                return quantity * unit_price_cents;
+            }
+        }
+
+        extend Invoice {
+            fn line_count() -> int64 {
+                var count: int64 = 0;
+
+                for item in items {
+                    count = count + 1;
+                }
+
+                return count;
+            }
+        }
+
+        test Invoice.total_cents "adds up lines another file prices" {
+            receiver {
+                items {
+                    quantity = 2;
+                    unit_price_cents = 300;
+                }
+            }
+
+            expect return 600;
+        }
+        """;
+
+    /// <inheritdoc cref="CrossFileTotalsText"/>
+    public static IReadOnlyList<CorpusSource> CrossFile { get; } = Together(
+        [TestPaths.ExampleProtoDirectory],
+        ("crossfile_totals", CrossFileTotalsText),
+        ("crossfile_lines", CrossFileLinesText));
+
+    /// <summary>
+    /// The example, the broken buffer, the unfinished one, the qualified names, the program written
+    /// across two files, and every conformance vector someone wrote.
     /// </summary>
     public static IReadOnlyList<CorpusSource> All { get; } =
     [
@@ -170,9 +299,23 @@ internal static class CompiledCorpus
         Broken,
         Unclosed,
         Qualified,
+        .. CrossFile,
         .. ConformanceVectors.HandWritten.Select(vector => new CorpusSource(
             vector.Name,
             File.ReadAllText(vector.SourcePath),
             ConformanceVectors.Compile(vector))),
     ];
+
+    /// <summary>Compiles <paramref name="sources"/> as one program, and sees each of them on its own.</summary>
+    private static IReadOnlyList<CorpusSource> Together(
+        IReadOnlyList<string> protoPaths,
+        params (string Name, string Text)[] sources)
+    {
+        var paths = TestPaths.WriteSources(
+            TestPaths.CreateTempDirectory(),
+            [.. sources.Select(source => ($"{source.Name}.pcross", source.Text))]);
+        var result = Compilation.Compile(paths, protoPaths);
+
+        return [.. sources.Zip(paths, (source, path) => new CorpusSource(source.Name, source.Text, result, SourceIdentity.FromPath(path)))];
+    }
 }
