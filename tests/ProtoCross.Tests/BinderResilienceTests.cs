@@ -2,6 +2,8 @@ using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
+using ProtoCross.Tests.Conformance;
+using System.Diagnostics;
 using ProtoCross.Tests.Harness;
 using Xunit;
 
@@ -25,7 +27,7 @@ namespace ProtoCross.Tests;
 /// </para>
 /// </remarks>
 [Collection("Timing-sensitive regressions")]
-public class BinderResilienceTests
+public class BinderResilienceTests(ITestOutputHelper logger)
 {
     /// <summary>A hang guard for one bounded batch, not a throughput target for an entire file.</summary>
     private static readonly TimeSpan BindBudget = TimeSpan.FromSeconds(60);
@@ -49,7 +51,7 @@ public class BinderResilienceTests
     /// a test to hold is what <c>#54</c> -- process supervision, cancellation, and timeouts -- is
     /// for. The failure is still reported, which is what this exists to do.
     /// </remarks>
-    private static async Task WithinBudget(string description, Action<CancellationToken> sweep)
+    private async Task WithinBudget(string description, Action<CancellationToken> sweep)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var token = stop.Token;
@@ -58,10 +60,13 @@ public class BinderResilienceTests
         try
         {
             await task.WaitAsync(BindBudget, TestContext.Current.CancellationToken);
+            logger.WriteLine($"{description} is within budget");
         }
         catch (TimeoutException) when (!task.IsFaulted)
         {
+            logger.WriteLine($"{description} exceeded budget");
             Assert.Fail($"Binding did not terminate within {BindBudget.TotalSeconds:0}s: {description}");
+
         }
         finally
         {
@@ -98,10 +103,12 @@ public class BinderResilienceTests
     [MemberData(nameof(ParserResilienceTests.Corpus), MemberType = typeof(ParserResilienceTests))]
     public async Task SingleCharacterDeletionBinds(string path)
     {
+        var sw = Stopwatch.StartNew();
         var source = File.ReadAllText(path);
 
         // Every deletion still runs. Batching keeps a larger corpus from exhausting a deadline
         // merely by making progress, while a stuck bind still fails within one batch's budget.
+        logger.WriteLine($"Read file: {path}");
         for (var start = 0; start < source.Length; start += DeletionBatchSize)
         {
             var first = start;
@@ -110,6 +117,7 @@ public class BinderResilienceTests
                 $"single-character deletions of {Path.GetFileName(path)}, offsets {first} through {end - 1}",
                 stop => MutationSweep.For(first, end, stop, index => Assert.NotNull(Bind(source.Remove(index, 1)))));
         }
+        logger.WriteLine($"Took {sw.Elapsed.TotalSeconds} seconds to finish");
     }
 
     /// <summary>
