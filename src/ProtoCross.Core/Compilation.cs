@@ -559,6 +559,9 @@ public sealed class Compilation
     /// </remarks>
     public static ProjectConfig? ResolveSharedConfig(IReadOnlyList<SourceIdentity> sources, DiagnosticBag diagnostics)
     {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
         var found = sources
             .Where(source => source.Directory is not null)
             .Select(source => (Source: source, File: ProjectConfig.Discover(source.Directory!)))

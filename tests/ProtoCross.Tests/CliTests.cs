@@ -164,6 +164,59 @@ public class CliTests
     }
 
     /// <summary>
+    /// With <c>--scaffold</c>, the build file runs the tests of every source that has any, not only
+    /// the first: each source's driver is a target of its own in it.
+    /// </summary>
+    /// <remarks>
+    /// That the CMake project turns every driver it is handed into a test is pinned in
+    /// <c>ScaffoldTests</c>; what is pinned here is that the command line hands it all of them.
+    /// </remarks>
+    [Fact]
+    public void TheBuildFileRunsTheTestsOfEverySource()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(
+            directory,
+            ("pricing.pcross", Pricing + """
+
+                test InvoiceItem.gross "quantity times unit price" {
+                    receiver {
+                        quantity = 2;
+                        unit_price_cents = 5;
+                    }
+
+                    expect return 10;
+                }
+                """),
+            ("discounts.pcross", Discounts));
+
+        var run = Run(
+            directory,
+            "pricing.pcross",
+            "discounts.pcross",
+            "-t",
+            "cpp",
+            "-o",
+            "out",
+            "--test-out",
+            "tests",
+            "--scaffold");
+        Assert.True(run.ExitCode == 0, run.Output);
+
+        var testDirectory = Path.Combine(directory, "tests", "cpp");
+        var drivers = Directory.GetFiles(testDirectory, "*.tests.cc").Select(Path.GetFileName).ToList();
+        Assert.Equal(2, drivers.Count);
+
+        var buildFile = File.ReadAllText(Path.Combine(testDirectory, CppTestProject.FileName));
+        foreach (var driver in drivers)
+        {
+            Assert.True(
+                buildFile.Contains($"\"{driver}\"", StringComparison.Ordinal),
+                $"the build file does not build {driver}:{Environment.NewLine}{buildFile}");
+        }
+    }
+
+    /// <summary>
     /// A source that does not compile leaves nothing written for any source, so a build never picks
     /// up one source's new output beside another's stale output.
     /// </summary>
