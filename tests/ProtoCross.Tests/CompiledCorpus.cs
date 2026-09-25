@@ -23,10 +23,22 @@ namespace ProtoCross.Tests;
 internal sealed record CorpusSource(string Name, string Text, CompilationResult Result, SourceIdentity Document)
 {
     /// <summary>A source compiled on its own, and so the only one its result holds.</summary>
+    /// <remarks>
+    /// Refuses a result holding any other number of trees, naming the source, because this runs in
+    /// the corpus's type initializer: a bare <see cref="Enumerable.Single{TSource}(IEnumerable{TSource})"/>
+    /// would fail every sweep with "sequence contains no elements" and never say which file stopped.
+    /// </remarks>
     public CorpusSource(string name, string text, CompilationResult result)
-        : this(name, text, result, result.SyntaxTrees.Single().Document)
+        : this(name, text, result, OnlyDocumentOf(name, result))
     {
     }
+
+    private static SourceIdentity OnlyDocumentOf(string name, CompilationResult result)
+        => result.SyntaxTrees is [var only]
+            ? only.Document
+            : throw new InvalidOperationException(
+                $"'{name}' compiled to {result.SyntaxTrees.Count} syntax trees rather than one: "
+                + string.Join("; ", result.Diagnostics.Select(diagnostic => diagnostic.ToString())));
 
     /// <summary>This source's syntax tree, or null when it was never parsed.</summary>
     public CompilationUnit? SyntaxTree => Result.SyntaxTrees.FirstOrDefault(tree => tree.Document == Document)?.Unit;
