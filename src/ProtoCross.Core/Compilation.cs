@@ -923,16 +923,26 @@ public sealed class Compilation
         }
     }
 
-    /// <summary>Whether two files are known to hold different bytes.</summary>
+    /// <summary>Whether two schemas are known to say different things.</summary>
     /// <remarks>
+    /// <para>
+    /// Compared as text with their line endings made one, because a copy checked out on another
+    /// machine, or written by a tool, can differ from the original in nothing but those and a byte
+    /// order mark, and protoc reads the two alike.
+    /// </para>
+    /// <para>
     /// A file that cannot be read is not known to differ, so it is not reported: the warning claims
     /// the two differ, and protoc says what is wrong with a schema it cannot read.
+    /// </para>
     /// </remarks>
     private static bool DifferInContents(string first, string second)
     {
         try
         {
-            return !File.ReadAllBytes(first).AsSpan().SequenceEqual(File.ReadAllBytes(second));
+            return !string.Equals(
+                File.ReadAllText(first).ReplaceLineEndings("\n"),
+                File.ReadAllText(second).ReplaceLineEndings("\n"),
+                StringComparison.Ordinal);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

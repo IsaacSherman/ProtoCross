@@ -422,7 +422,7 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor BitwiseNotRequiresAnIntegerOperand =
         new("PC0086", DiagnosticSeverity.Error, "bitwise not requires an integer operand");
 
-    // ------------------------------------------------------- sources and schemas, across sources
+    // ------------------------------------------------------- sources and schemas, continued
 
     /// <summary>
     /// An import resolved to a schema other than the different one of that path beside its own

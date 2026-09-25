@@ -196,14 +196,34 @@ public class MultiFileCompilationTests
         var included = WriteSharedSchema(root, "protos", "package shared; message Included { int64 value = 1; }");
         var beside = WriteSharedSchema(root, "source", "package shared; message Beside { int64 value = 1; }");
 
-        var result = Compilation.Compile(
-            Write(beside, "beside.pcross", "import proto \"shared.proto\";\n\nextend shared.Included {\n    fn included_value() -> int64 { return value; }\n}\n"),
-            [included]);
+        const string Text = "import proto \"shared.proto\";\n\nextend shared.Included {\n    fn included_value() -> int64 { return value; }\n}\n";
+
+        var result = Compilation.Compile(Write(beside, "beside.pcross", Text), [included]);
 
         var shadowed = Assert.Single(
             result.Diagnostics,
             diagnostic => diagnostic.Code == DiagnosticCodes.SchemaBesideSourceIsShadowed.Code);
+        Assert.Equal(Text.IndexOf("import", StringComparison.Ordinal), shadowed.Span.Start.Offset);
         Assert.Contains(included, shadowed.Message, StringComparison.Ordinal);
+        Assert.Contains(beside, shadowed.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Copies of one schema that differ only in their line endings are the same schema to protoc, so
+    /// they are not warned about either.
+    /// </summary>
+    [Fact]
+    public void CopiesOfASchemaThatDifferOnlyInLineEndingsAreNotWarnedAbout()
+    {
+        var root = TestPaths.CreateTempDirectory();
+        var included = WriteSharedSchema(root, "protos", "package shared;\nmessage Shared { int64 value = 1; }");
+        var beside = WriteSharedSchema(root, "source", "package shared;\r\nmessage Shared { int64 value = 1; }");
+
+        var result = Compilation.Compile(
+            Write(beside, "beside.pcross", "import proto \"shared.proto\";\n\nextend shared.Shared {\n    fn shared_value() -> int64 { return value; }\n}\n"),
+            [included]);
+
+        Assert.Empty(result.Diagnostics);
     }
 
     /// <summary>
