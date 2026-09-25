@@ -741,6 +741,8 @@ public sealed class Compilation
             }
         }
 
+        ReportShadowedSchemas(trees, imports, diagnostics);
+
         // The question is whether the schemas are all here, not whether anything at all has gone
         // wrong. Asking the bag instead would stop a buffer whose imports are perfectly good and
         // whose only problem is the half-typed line the editor is asking about.
@@ -867,6 +869,76 @@ public sealed class Compilation
             .DistinctBy(import => PathIdentity.KeyFor(import.ResolvedPath!))
             .Select(import => import.Path)
             .ToList();
+
+    /// <summary>
+    /// Warns wherever an import resolved to one schema while its own source's directory holds a
+    /// different one under the same path (<c>PC0087</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every import is resolved against one ordered list (spec 5.2), so the first directory holding a
+    /// path answers for every source that imports it. A reader takes <c>import proto "shared.proto"</c>
+    /// to mean the file beside them, and when an include path or another source's directory holds a
+    /// different <c>shared.proto</c>, that is the one they get: whatever they name from their own copy
+    /// is then an unknown type, and nothing says why. The warning is what says why.
+    /// </para>
+    /// <para>
+    /// Resolution itself does not change. protoc knows a schema by its path under its root, so one
+    /// compilation cannot load two files called <c>shared.proto</c>, and the protobuf code generated
+    /// from both could not be linked into one program either. Copies with the same contents are not
+    /// reported, because nothing differs whichever of them is loaded.
+    /// </para>
+    /// </remarks>
+    private static void ReportShadowedSchemas(
+        IReadOnlyList<SourceTree> trees,
+        IReadOnlyList<ImportResolution> imports,
+        DiagnosticBag diagnostics)
+    {
+        var directoryOf = new Dictionary<ImportDeclaration, string?>(ReferenceEqualityComparer.Instance);
+        foreach (var tree in trees)
+        {
+            foreach (var declaration in tree.Unit.Imports)
+            {
+                directoryOf.Add(declaration, tree.Document.Directory);
+            }
+        }
+
+        foreach (var import in imports.Where(import => import.IsResolved))
+        {
+            if (directoryOf[import.Declaration] is not { } directory
+                || SchemaLookup.Find(import.Path, [directory]) is not { } beside
+                || PathIdentity.AreSame(beside, import.ResolvedPath!)
+                || !DifferInContents(beside, import.ResolvedPath!))
+            {
+                continue;
+            }
+
+            diagnostics.Report(
+                DiagnosticCodes.SchemaBesideSourceIsShadowed,
+                $"'{import.Path}' resolved to '{import.ResolvedPath}', not to the different '{beside}' beside this source.",
+                import.Span,
+                $"Every source's imports are resolved against one list of directories, and the first '{import.Path}' "
+                    + "in it is the one every source gets (spec 5.2). Rename one of the two schemas, or remove the "
+                    + "one that is not meant.");
+        }
+    }
+
+    /// <summary>Whether two files are known to hold different bytes.</summary>
+    /// <remarks>
+    /// A file that cannot be read is not known to differ, so it is not reported: the warning claims
+    /// the two differ, and protoc says what is wrong with a schema it cannot read.
+    /// </remarks>
+    private static bool DifferInContents(string first, string second)
+    {
+        try
+        {
+            return !File.ReadAllBytes(first).AsSpan().SequenceEqual(File.ReadAllBytes(second));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The help line on an unresolved import: what it very nearly named, where the compiler looked,
