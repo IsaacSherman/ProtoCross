@@ -264,9 +264,28 @@ public sealed class ConformanceFixture
     /// generated beside each vector's own and are identical every time, so each is kept once: that is
     /// exactly the case their fixed file names exist to allow.
     /// </summary>
+    /// <remarks>
+    /// Two different files under one name are refused rather than one of them kept. That is two
+    /// vectors whose sources are named alike, which <c>NoTwoSourcesInTheCorpusGenerateFilesOfOneName</c>
+    /// reports by name; keeping either file would leave the other vector's tests missing, or running
+    /// against code it never declared, with nothing saying why.
+    /// </remarks>
     private static IReadOnlyList<GeneratedFile> FilesOf(IReadOnlyList<GeneratedVector> vectors)
-        => vectors
-            .SelectMany(vector => vector.Behavior.Concat(vector.Tests))
-            .DistinctBy(file => file.RelativePath, StringComparer.Ordinal)
-            .ToList();
+    {
+        var byPath = new Dictionary<string, GeneratedFile>(StringComparer.Ordinal);
+
+        foreach (var file in vectors.SelectMany(vector => vector.Behavior.Concat(vector.Tests)))
+        {
+            if (byPath.TryGetValue(file.RelativePath, out var kept) && kept.Contents != file.Contents)
+            {
+                throw new InvalidOperationException(
+                    $"Two vectors generated different files named '{file.RelativePath}'; see "
+                    + "ConformanceVectorTests.NoTwoSourcesInTheCorpusGenerateFilesOfOneName.");
+            }
+
+            byPath.TryAdd(file.RelativePath, file);
+        }
+
+        return [.. byPath.Values];
+    }
 }
