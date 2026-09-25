@@ -500,18 +500,55 @@ public class SchemaCompletionTests
     /// corpus is thousands of compilations, and a loader per compilation would turn a suite that
     /// takes minutes into one that takes hours.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Once for each set of schemas the sweep compiles against, rather than once. The caret after the
+    /// dot in <c>"fixtures.proto"</c> is offered every schema in the directory, and accepting one is a
+    /// compilation against a different schema, which protoc has to be run for. A bound of one held only
+    /// when an earlier test in this class had loaded all of them already, so the test passed or failed
+    /// by the order its class happened to run in, and that order depends on where the repository is
+    /// checked out (#136).
+    /// </para>
+    /// <para>
+    /// The bound is exact from a cold cache, one run per set, and a warm cache only lowers the count.
+    /// It still has the teeth it was written for: the sweep applies several times more items than it
+    /// meets sets, so a cache that stopped caching would start a process per item and fail here.
+    /// </para>
+    /// </remarks>
     [Fact]
-    public async Task TheSweepRunsProtocOnceHoweverManyItemsItApplies()
+    public async Task TheSweepRunsProtocOnceForEachSetOfSchemasHoweverManyItemsItApplies()
     {
         var before = Loader().ProtocInvocations;
         var applied = await SweepAsync(Reachable);
+        var started = Loader().ProtocInvocations - before;
 
-        Assert.NotEmpty(applied);
+        var schemaSets = applied
+            .Select(attempt => SchemaSetOf(attempt.Result))
+            .Where(set => set.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .Count();
+
+        // More items than sets is exactly what makes the bound mean something: a process per item
+        // then cannot fit under it.
         Assert.True(
-            Loader().ProtocInvocations - before <= 1,
-            $"the sweep applied {applied.Count} items and started "
-                + $"{Loader().ProtocInvocations - before} protoc processes");
+            applied.Count > schemaSets,
+            $"the sweep must apply more items than it meets sets of schemas, or the bound says nothing; it "
+                + $"applied {applied.Count} across {schemaSets}");
+        Assert.True(
+            started <= schemaSets,
+            $"the sweep applied {applied.Count} items across {schemaSets} sets of schemas and started "
+                + $"{started} protoc processes");
     }
+
+    /// <summary>The schemas a compilation resolved its imports to, as one key, empty when it resolved none.</summary>
+    private static string SchemaSetOf(CompilationResult result)
+        => string.Join(
+            '|',
+            result.Imports
+                .Where(import => import.IsResolved)
+                .Select(import => PathIdentity.KeyFor(import.ResolvedPath!))
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal));
 
     /// <summary>
     /// A buffer mid-edit is the state completion is invoked in, so a sweep that only ever met
