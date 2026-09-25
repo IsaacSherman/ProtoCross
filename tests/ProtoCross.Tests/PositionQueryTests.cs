@@ -389,7 +389,7 @@ public class PositionQueryTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var module = source.Result.Module;
+            var module = source.Module;
             Assert.NotNull(module);
 
             var compoundReads = CompoundTargetsAndReads(module);
@@ -547,6 +547,20 @@ public class PositionQueryTests
     }
 
     /// <summary>
+    /// And over each source of a program written across two files, where every answer must also come
+    /// from the source asked about: an offset in one file is some other place in the other, and an
+    /// answer from the wrong one covers the offset just as well.
+    /// </summary>
+    [Fact]
+    public void EveryPositionInEachSourceOfAProgramIsAnsweredFromThatSource()
+    {
+        foreach (var source in CompiledCorpus.CrossFile)
+        {
+            SweepEveryPosition(source);
+        }
+    }
+
+    /// <summary>
     /// The deep input no well-formed file contains and an editor produces by accident. Until #69,
     /// 5000 unbalanced parentheses came back from recovery as an invocation chain 2436 nodes deep;
     /// the parser now refuses that chain at its height budget, and what it leaves has to be just as
@@ -574,22 +588,25 @@ public class PositionQueryTests
 
     private static void SweepEveryPosition(CorpusSource source)
     {
-        var model = SemanticModel.For(source.Result);
+        var model = source.Model;
 
         for (var offset = -1; offset <= source.Text.Length + 1; offset++)
         {
-            AssertCovers(model.SyntaxAt(offset)?.Node.Span, offset);
-            AssertCovers(model.IrAt(offset)?.Node.Span, offset);
+            AssertCovers(model.SyntaxAt(offset)?.Node.Span, offset, source.Document.Name);
+            AssertCovers(model.IrAt(offset)?.Node.Span, offset, source.Document.Name);
         }
     }
 
-    private static void AssertCovers(SourceSpan? span, int offset)
+    private static void AssertCovers(SourceSpan? span, int offset, string file)
     {
         if (span is not { } found)
         {
             return;
         }
 
+        Assert.True(
+            found.File == file,
+            $"the node answered for offset {offset} of {file} is in {found.File}");
         Assert.True(
             found.Start.Offset <= offset && offset <= found.End.Offset,
             $"the node answered for offset {offset} spans {found.Start.Offset}..{found.End.Offset}");

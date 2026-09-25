@@ -1689,11 +1689,19 @@ public class SchemaCompletionTests
         }
     }
 
+    /// <summary>The name of every corpus source that is a compilation on its own.</summary>
+    /// <remarks>
+    /// The provider compiles the buffer it is given and nothing else, as the language server does
+    /// until a project can say which files belong together (#106). A source written as part of a
+    /// larger program, compiled that way, is a different program from the one it belongs to -- every
+    /// call into its siblings is unresolved -- so sweeping it would check completion against a file
+    /// nobody wrote.
+    /// </remarks>
     public static TheoryData<string> CorpusNames()
     {
         var names = new TheoryData<string>();
 
-        foreach (var source in CompiledCorpus.All)
+        foreach (var source in CompiledCorpus.All.Where(source => source.StandsAlone))
         {
             names.Add(source.Name);
         }
