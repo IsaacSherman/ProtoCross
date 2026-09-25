@@ -258,6 +258,14 @@ public sealed class DocumentSemantics
     /// <see cref="DescriptorRequest.RootsFor"/> is where that order lives.
     /// </para>
     /// <para>
+    /// <b>And the schemas beside its sources that lost.</b> <c>PC0087</c> is decided by comparing the
+    /// schema an import resolved to with a different one under the same path beside the source, and
+    /// that one never reaches protoc, so it is in no closure. Asking only the closure kept the warning
+    /// after the losing copy was made to match, and went on lacking it after the copy was made to
+    /// differ, until the buffer itself moved. <see cref="SchemaBesideSource.IsCurrent"/> puts the
+    /// closure's own question to each of them.
+    /// </para>
+    /// <para>
     /// <b>A load that failed is not reused at all, which is the layer below's policy rather than a
     /// new one.</b> A missing import or a malformed <c>.proto</c> leaves no bundle and therefore no
     /// closure, and there is no honest way to describe what such a compilation depended on: protoc
@@ -279,7 +287,8 @@ public sealed class DocumentSemantics
     private static bool SchemasAreUnchanged(DocumentCompilation held)
         => held.Result is not { } result
             || (result.Schema is { } schema
-                && SchemaClosure.IsCurrent(schema.Closure, RootsOf(result, held.Loader)));
+                && SchemaClosure.IsCurrent(schema.Closure, RootsOf(result, held.Loader))
+                && result.SchemasBesideSources.All(beside => beside.IsCurrent));
 
     /// <summary>Every root a schema name resolved against for this compilation, in priority order.</summary>
     /// <remarks>

@@ -53,11 +53,13 @@ Normative Requirements:
 - **A schema beside a source that another directory shadows is `PC0087`, a warning.** The first
   match in that list is what every source gets, so a source whose own directory holds a *different*
   file under the path it imports is compiled against the other one, and whatever it names from its
-  own copy may not exist. The warning names both files. Copies with the same contents, line endings
-  aside, are not reported, since nothing differs whichever is loaded. Resolution does not change:
-  protoc knows a schema by its path under its root, so one compilation cannot load two schemas of
-  one path, and the code protoc generates from two of them could not be built into one program
-  either.
+  own copy may not exist. The warning names both files. Copies with the same bytes are not reported,
+  since nothing differs whichever is loaded, and neither are copies that differ only by a leading
+  UTF-8 byte order mark or by CRLF where the other has LF, which protoc reads alike. Nothing else is
+  set aside: any other line separator can sit inside a string default, where it is part of the
+  value. Resolution does not change: protoc knows a schema by its path under its root, so one
+  compilation cannot load two schemas of one path, and the code protoc generates from two of them
+  could not be built into one program either.
 - **An import that resolves to nothing names the schema it came closest to naming**, where the
   directory it named holds one that differs from it by little enough to be a plausible slip. `PC0002`
   still says where the compiler looked; the near match comes first, because a list of directories only

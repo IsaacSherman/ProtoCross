@@ -209,15 +209,23 @@ public class MultiFileCompilationTests
     }
 
     /// <summary>
-    /// Copies of one schema that differ only in their line endings are the same schema to protoc, so
-    /// they are not warned about either.
+    /// Copies of one schema that differ only in what a checkout or an editor changes unasked -- CRLF
+    /// line endings, a leading UTF-8 byte order mark -- are one schema to protoc, so they are not
+    /// warned about either.
     /// </summary>
-    [Fact]
-    public void CopiesOfASchemaThatDifferOnlyInLineEndingsAreNotWarnedAbout()
+    /// <remarks>
+    /// <c>ShadowedSchemaComparisonTests</c> holds the other side: a line separator inside a string
+    /// default is part of the value, and copies differing there are warned about.
+    /// </remarks>
+    [Theory]
+    [InlineData("syntax = \"proto3\";\r\npackage shared;\r\nmessage Shared { int64 value = 1; }\r\n")]
+    [InlineData("﻿syntax = \"proto3\";\npackage shared;\nmessage Shared { int64 value = 1; }\n")]
+    public void CopiesOfASchemaThatProtocReadsAlikeAreNotWarnedAbout(string besideText)
     {
         var root = TestPaths.CreateTempDirectory();
         var included = WriteSharedSchema(root, "protos", "package shared;\nmessage Shared { int64 value = 1; }");
-        var beside = WriteSharedSchema(root, "source", "package shared;\r\nmessage Shared { int64 value = 1; }");
+        var beside = Directory.CreateDirectory(Path.Combine(root, "source")).FullName;
+        File.WriteAllText(Path.Combine(beside, "shared.proto"), besideText);
 
         var result = Compilation.Compile(
             Write(beside, "beside.pcross", "import proto \"shared.proto\";\n\nextend shared.Shared {\n    fn shared_value() -> int64 { return value; }\n}\n"),

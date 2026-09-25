@@ -1,3 +1,4 @@
+using System.Text;
 using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Binding;
@@ -143,6 +144,18 @@ public sealed record CompilationResult(
     /// which file it is.
     /// </remarks>
     public IReadOnlyList<SourceTree> SyntaxTrees { get; init; } = [];
+
+    /// <summary>
+    /// What each source's own directory held under the paths it imports that resolved somewhere else,
+    /// which is what <c>PC0087</c> was decided from. Empty when there were none, or when the
+    /// compilation stopped before its imports resolved.
+    /// </summary>
+    /// <remarks>
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. Carried
+    /// out so that a host holding this result can tell whether its warnings still describe the disk;
+    /// see <see cref="SchemaBesideSource"/>.
+    /// </remarks>
+    public IReadOnlyList<SchemaBesideSource> SchemasBesideSources { get; init; } = [];
 
     /// <summary>
     /// What protoc reported about the schemas, one entry per line it wrote, empty when it reported
@@ -741,7 +754,8 @@ public sealed class Compilation
             }
         }
 
-        ReportShadowedSchemas(trees, imports, diagnostics);
+        var besides = SchemasBesideSources(trees, imports);
+        ReportShadowedSchemas(besides, diagnostics);
 
         // The question is whether the schemas are all here, not whether anything at all has gone
         // wrong. Asking the bag instead would stop a buffer whose imports are perfectly good and
@@ -786,6 +800,7 @@ public sealed class Compilation
             Schema = schema,
             Types = binder.Types,
             SyntaxTrees = trees,
+            SchemasBesideSources = [.. besides.Select(beside => beside.Beside).Distinct()],
         };
 
         // A compilation that parsed its sources and stopped before binding them.
@@ -870,6 +885,40 @@ public sealed class Compilation
             .Select(import => import.Path)
             .ToList();
 
+    /// <summary>A resolved import, and what its source's own directory held under the path it names.</summary>
+    private sealed record ImportBeside(ImportResolution Import, SchemaBesideSource Beside);
+
+    /// <summary>
+    /// For every resolved import of a source that has a directory, what that directory holds under
+    /// the imported path, wherever that is not the schema the import resolved to.
+    /// </summary>
+    /// <remarks>
+    /// Described once and used twice: <see cref="ReportShadowedSchemas"/> decides <c>PC0087</c> from
+    /// it, and the result carries it out so that a host can tell when that decision has gone stale.
+    /// A file beside the source that is the one the import resolved to is left out, because the
+    /// descriptor closure already watches it.
+    /// </remarks>
+    private static List<ImportBeside> SchemasBesideSources(
+        IReadOnlyList<SourceTree> trees,
+        IReadOnlyList<ImportResolution> imports)
+    {
+        var directoryOf = new Dictionary<ImportDeclaration, string?>(ReferenceEqualityComparer.Instance);
+        foreach (var tree in trees)
+        {
+            foreach (var declaration in tree.Unit.Imports)
+            {
+                directoryOf.Add(declaration, tree.Document.Directory);
+            }
+        }
+
+        return imports
+            .Where(import => import.IsResolved && directoryOf[import.Declaration] is not null)
+            .Select(import => new ImportBeside(import, SchemaBesideSource.Describe(directoryOf[import.Declaration]!, import.Path)))
+            .Where(candidate => candidate.Beside.File.Path is not { } path
+                || !PathIdentity.AreSame(path, candidate.Import.ResolvedPath!))
+            .ToList();
+    }
+
     /// <summary>
     /// Warns wherever an import resolved to one schema while its own source's directory holds a
     /// different one under the same path (<c>PC0087</c>).
@@ -889,33 +938,18 @@ public sealed class Compilation
     /// reported, because nothing differs whichever of them is loaded.
     /// </para>
     /// </remarks>
-    private static void ReportShadowedSchemas(
-        IReadOnlyList<SourceTree> trees,
-        IReadOnlyList<ImportResolution> imports,
-        DiagnosticBag diagnostics)
+    private static void ReportShadowedSchemas(IReadOnlyList<ImportBeside> besides, DiagnosticBag diagnostics)
     {
-        var directoryOf = new Dictionary<ImportDeclaration, string?>(ReferenceEqualityComparer.Instance);
-        foreach (var tree in trees)
+        foreach (var (import, beside) in besides)
         {
-            foreach (var declaration in tree.Unit.Imports)
-            {
-                directoryOf.Add(declaration, tree.Document.Directory);
-            }
-        }
-
-        foreach (var import in imports.Where(import => import.IsResolved))
-        {
-            if (directoryOf[import.Declaration] is not { } directory
-                || SchemaLookup.Find(import.Path, [directory]) is not { } beside
-                || PathIdentity.AreSame(beside, import.ResolvedPath!)
-                || !DifferInContents(beside, import.ResolvedPath!))
+            if (beside.File.Path is not { } shadowed || !DifferInContents(shadowed, import.ResolvedPath!))
             {
                 continue;
             }
 
             diagnostics.Report(
                 DiagnosticCodes.SchemaBesideSourceIsShadowed,
-                $"'{import.Path}' resolved to '{import.ResolvedPath}', not to the different '{beside}' beside this source.",
+                $"'{import.Path}' resolved to '{import.ResolvedPath}', not to the different '{shadowed}' beside this source.",
                 import.Span,
                 $"Every source's imports are resolved against one list of directories, and the first '{import.Path}' "
                     + "in it is the one every source gets (spec 5.2). Rename one of the two schemas, or remove the "
@@ -926,9 +960,14 @@ public sealed class Compilation
     /// <summary>Whether two schemas are known to say different things.</summary>
     /// <remarks>
     /// <para>
-    /// Compared as text with their line endings made one, because a copy checked out on another
-    /// machine, or written by a tool, can differ from the original in nothing but those and a byte
-    /// order mark, and protoc reads the two alike.
+    /// Compared byte for byte, once each has had taken out the two differences a checkout or an
+    /// editor makes without anyone meaning to: a leading UTF-8 byte order mark, which protoc skips,
+    /// and CRLF line endings, which it reads as it reads LF. Nothing else is folded. A carriage return
+    /// before a line feed can only end a line, because a protobuf string may not hold a line feed;
+    /// every other separator Unicode has, <c>U+0085</c> and <c>U+2028</c> among them, can sit inside
+    /// a string default, where it is part of the value, and folding those made two schemas with
+    /// different defaults compare the same. Bytes rather than decoded text, so that two different
+    /// malformed sequences cannot both decode to one replacement character and compare the same.
     /// </para>
     /// <para>
     /// A file that cannot be read is not known to differ, so it is not reported: the warning claims
@@ -939,15 +978,35 @@ public sealed class Compilation
     {
         try
         {
-            return !string.Equals(
-                File.ReadAllText(first).ReplaceLineEndings("\n"),
-                File.ReadAllText(second).ReplaceLineEndings("\n"),
-                StringComparison.Ordinal);
+            return !AsProtocReads(File.ReadAllBytes(first)).SequenceEqual(AsProtocReads(File.ReadAllBytes(second)));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return false;
         }
+    }
+
+    /// <summary>A schema's bytes without a leading UTF-8 byte order mark, and with each CRLF made LF.</summary>
+    private static List<byte> AsProtocReads(byte[] bytes)
+    {
+        var text = bytes.AsSpan();
+        if (text.StartsWith(Encoding.UTF8.Preamble))
+        {
+            text = text[Encoding.UTF8.Preamble.Length..];
+        }
+
+        var kept = new List<byte>(text.Length);
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == (byte)'\r' && index + 1 < text.Length && text[index + 1] == (byte)'\n')
+            {
+                continue;
+            }
+
+            kept.Add(text[index]);
+        }
+
+        return kept;
     }
 
     /// <summary>
