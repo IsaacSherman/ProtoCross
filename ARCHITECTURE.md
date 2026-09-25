@@ -553,7 +553,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
-and the scaffolding and smoke suites.
+`CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`
   files whose `test` blocks *are* the vectors, compiled and executed in both backends. This is the

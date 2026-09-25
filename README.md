@@ -181,6 +181,16 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 
 That writes `generated/csharp/` and `generated/cpp/`. Pass `-t csharp` or `-t cpp` for one target.
 
+Several sources are compiled together by naming each of them:
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- billing/pricing.pcross billing/discounts.pcross -I protos -o generated
+```
+
+They are one program, so a method in either may call one declared in the other, and each is still
+generated into files named after it: `pricing.g.cs` and `discounts.g.cs`, `pricing.pc.h` and
+`discounts.pc.h`. Nothing is written unless every source compiles.
+
 The compiler needs a `protoc` executable, because it consumes protobuf descriptors rather than
 reparsing `.proto` files itself (spec 21.1). It looks at `PROTOCROSS_PROTOC`, then `PATH`, then a
 restored `Grpc.Tools` NuGet package, so a separate protoc install is usually unnecessary.
@@ -195,7 +205,8 @@ them, so they never appear in an emitted project.
 Some questions have more than one defensible answer, and which one you want is a property of your
 project rather than of the language. Those answers live in `protocross.config.xml`, next to the code
 they govern. The compiler looks for it in the source file's directory and every directory above it,
-nearest first -- the way `.editorconfig` is found -- so a repository states its policy once.
+nearest first -- the way `.editorconfig` is found -- so a repository states its policy once. Sources
+compiled together must all find the same file, because one program runs under one policy.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
