@@ -528,10 +528,12 @@ public class SchemaCompletionTests
             .Distinct(StringComparer.Ordinal)
             .Count();
 
+        // More items than sets is exactly what makes the bound mean something: a process per item
+        // then cannot fit under it.
         Assert.True(
-            applied.Count > 2 * schemaSets,
-            $"the sweep must apply several items per set of schemas, or the bound says nothing; it applied "
-                + $"{applied.Count} across {schemaSets}");
+            applied.Count > schemaSets,
+            $"the sweep must apply more items than it meets sets of schemas, or the bound says nothing; it "
+                + $"applied {applied.Count} across {schemaSets}");
         Assert.True(
             started <= schemaSets,
             $"the sweep applied {applied.Count} items across {schemaSets} sets of schemas and started "
