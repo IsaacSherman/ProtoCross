@@ -3,8 +3,17 @@ using Xunit;
 
 namespace ProtoCross.Tests.Conformance;
 
-/// <summary>One conformance vector: a ProtoCross source file whose <c>test</c> blocks are the vectors.</summary>
-internal sealed record ConformanceVector(string Name, string SourcePath);
+/// <summary>
+/// One conformance vector: the ProtoCross sources compiled as one program, whose <c>test</c> blocks
+/// are the vectors.
+/// </summary>
+/// <remarks>
+/// Almost every vector is one source. One under <see cref="ConformanceVectors.MultiDirectory"/> is
+/// several, because what it pins is what happens between them, so a test that asks something of one
+/// file at a time asks it of each of <see cref="SourcePaths"/>, and one that compiles a vector
+/// compiles them all together.
+/// </remarks>
+internal sealed record ConformanceVector(string Name, IReadOnlyList<string> SourcePaths);
 
 /// <summary>
 /// Discovers the conformance corpus under <c>tests/conformance/</c>.
@@ -24,6 +33,18 @@ internal static class ConformanceVectors
     public static string ProtoDirectory { get; } = Path.Combine(RootDirectory, "protos");
 
     public static string VectorDirectory { get; } = Path.Combine(RootDirectory, "vectors");
+
+    /// <summary>
+    /// The directory, beside the vectors of a policy, whose every subdirectory is one vector written
+    /// across several sources and named after the subdirectory.
+    /// </summary>
+    /// <remarks>
+    /// A subdirectory already says which policy the vectors in it compile under, and that is found by
+    /// the compiler's own upward search. So a vector of several sources needs a directory of its own
+    /// that no policy could be called, under whichever policy directory it belongs to; its sources then
+    /// find that policy the way any other source does.
+    /// </remarks>
+    public const string MultiDirectory = "multi";
 
     /// <summary>
     /// Every schema in <see cref="ProtoDirectory"/>, in a stable order. protoc generates all of
@@ -53,8 +74,11 @@ internal static class ConformanceVectors
     /// <see cref="Sweep.ArithmeticSweep"/> generates into its own directories.
     /// </summary>
     public static IReadOnlyList<ConformanceVector> HandWritten { get; } =
-        All.Where(vector => Path.GetFileName(Path.GetDirectoryName(vector.SourcePath)) != Sweep.ArithmeticSweep.Directory)
-            .ToList();
+        All.Where(vector => !vector.SourcePaths.Any(IsGenerated)).ToList();
+
+    /// <summary>Every source of <see cref="HandWritten"/>, for the tests that ask something of one file at a time.</summary>
+    public static IReadOnlyList<string> HandWrittenSources { get; } =
+        HandWritten.SelectMany(vector => vector.SourcePaths).ToList();
 
     /// <summary>Vector names, for a theory that runs one case per vector.</summary>
     public static TheoryData<string> Names
@@ -75,7 +99,7 @@ internal static class ConformanceVectors
         => All.Single(vector => string.Equals(vector.Name, name, StringComparison.Ordinal));
 
     public static CompilationResult Compile(ConformanceVector vector)
-        => Compilation.Compile(vector.SourcePath, [ProtoDirectory]);
+        => Compilation.Compile(vector.SourcePaths, [ProtoDirectory]);
 
     /// <summary>
     /// The backend-independent name of every test the corpus declares. Both backends report these
@@ -85,7 +109,8 @@ internal static class ConformanceVectors
         => tests.Select(test => test.Identity).ToList();
 
     /// <summary>
-    /// Every <c>.pcross</c> file under <c>vectors/</c>, at any depth.
+    /// Every <c>.pcross</c> file under <c>vectors/</c>, at any depth, each a vector of its own unless
+    /// it is in a directory of <see cref="MultiDirectory"/>.
     /// </summary>
     /// <remarks>
     /// The search is recursive because a subdirectory is how a vector selects a non-default
@@ -99,7 +124,23 @@ internal static class ConformanceVectors
         => Directory.Exists(VectorDirectory)
             ? Directory.GetFiles(VectorDirectory, "*.pcross", SearchOption.AllDirectories)
                 .OrderBy(path => path, StringComparer.Ordinal)
-                .Select(path => new ConformanceVector(Path.GetFileNameWithoutExtension(path), path))
+                .GroupBy(VectorPathOf, StringComparer.Ordinal)
+                .Select(sources => new ConformanceVector(Path.GetFileNameWithoutExtension(sources.Key), [.. sources]))
                 .ToList()
             : [];
+
+    /// <summary>
+    /// What a source's vector is named after: its directory, for a source in a directory of
+    /// <see cref="MultiDirectory"/>, and otherwise the source itself.
+    /// </summary>
+    private static string VectorPathOf(string source)
+    {
+        var directory = Path.GetDirectoryName(source)!;
+
+        return Path.GetFileName(Path.GetDirectoryName(directory)) == MultiDirectory ? directory : source;
+    }
+
+    /// <summary>Whether <see cref="Sweep.ArithmeticSweep"/> wrote this source into a directory of its own.</summary>
+    private static bool IsGenerated(string source)
+        => Path.GetFileName(Path.GetDirectoryName(source)) == Sweep.ArithmeticSweep.Directory;
 }

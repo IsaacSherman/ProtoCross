@@ -153,60 +153,87 @@ public class MultiSourceBindingTests
     /// <summary>
     /// Every hand-written conformance vector, bound together with every other vector of its policy,
     /// comes back out of the joint module exactly as it binds alone: the same generated code in both
-    /// backends, the same names written, the same names in scope.
+    /// backends, the same names written, the same names in scope, in each of its sources.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// This is what dividing a module back into its sources rests on. A method or test stamped with
     /// the wrong source, or a reference recorded against the source bound before it, leaves a part
     /// that is missing something the source declares, or holding something it does not. The vectors
     /// declare no method twice between them (<c>NoTwoVectorsDeclareOneMethod</c>), so binding them
     /// together has no diagnostic of its own to report.
+    /// </para>
+    /// <para>
+    /// A vector of one source binds alone through the door that takes one unit. A vector written
+    /// across several is a program of several already, and none of its sources binds alone, so it is
+    /// bound as the program it is and each source's part of that is what the joint module is held to.
+    /// </para>
     /// </remarks>
     [Fact]
     public void ASourceBoundAlongsideOthersIsExactlyWhatItIsBoundAlone()
     {
         var byPolicy = ConformanceVectors.HandWritten
-            .Select(vector => (Vector: vector, Config: PolicyOf(vector)))
+            .Select(vector => (Sources: ParseVector(vector), Config: PolicyOf(vector)))
             .GroupBy(entry => entry.Config.Path ?? string.Empty);
         var swept = 0;
 
         foreach (var group in byPolicy)
         {
             var config = group.First().Config;
-            var sources = group.Select(entry => ParseVector(entry.Vector)).ToList();
 
             var jointDiagnostics = new DiagnosticBag();
-            var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config).Bind(sources);
+            var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config)
+                .Bind([.. group.SelectMany(entry => entry.Sources)]);
             Assert.Empty(jointDiagnostics);
 
-            foreach (var source in sources)
+            foreach (var (document, alone) in group.SelectMany(entry => BindAlone(entry.Sources, config)))
             {
-                var aloneDiagnostics = new DiagnosticBag();
-                var alone = new Binder(LoadedSchemas.ExampleAndConformance, aloneDiagnostics, config: config, document: source.Document)
-                    .Bind(source.Unit);
-                Assert.Empty(aloneDiagnostics);
-
-                AssertSameModule(source.Document, alone, joint.DeclaredIn(source.Document), config);
+                AssertSameModule(document, alone, joint.DeclaredIn(document), config);
                 swept++;
             }
         }
 
-        Assert.True(swept == ConformanceVectors.HandWritten.Count, $"every vector must be swept; {swept} were");
+        Assert.True(
+            swept == ConformanceVectors.HandWrittenSources.Count,
+            $"every source of every vector must be swept; {swept} were");
     }
 
     // ------- helpers
 
-    private static SourceTree ParseVector(ConformanceVector vector)
+    private static IReadOnlyList<SourceTree> ParseVector(ConformanceVector vector)
     {
         var diagnostics = new DiagnosticBag();
-        var tree = Parse(SourceIdentity.FromPath(vector.SourcePath), File.ReadAllText(vector.SourcePath), diagnostics);
+        var trees = vector.SourcePaths
+            .Select(path => Parse(SourceIdentity.FromPath(path), File.ReadAllText(path), diagnostics))
+            .ToList();
         Assert.Empty(diagnostics);
-        return tree;
+        return trees;
     }
 
+    /// <summary>The policy a vector compiles under, which its first source says for all of them (spec 5.3).</summary>
     private static ProjectConfig PolicyOf(ConformanceVector vector)
-        => Compilation.ResolveConfig(Path.GetDirectoryName(vector.SourcePath), new DiagnosticBag())
+        => Compilation.ResolveConfig(Path.GetDirectoryName(vector.SourcePaths[0]), new DiagnosticBag())
             ?? throw new InvalidOperationException($"'{vector.Name}' has a configuration that does not load.");
+
+    /// <summary>What each of a vector's sources binds to when the vector is bound on its own.</summary>
+    private static IReadOnlyList<(SourceIdentity Document, IrModule Module)> BindAlone(
+        IReadOnlyList<SourceTree> sources,
+        ProjectConfig config)
+    {
+        var diagnostics = new DiagnosticBag();
+
+        if (sources is [var only])
+        {
+            var module = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config, document: only.Document)
+                .Bind(only.Unit);
+            Assert.Empty(diagnostics);
+            return [(only.Document, module)];
+        }
+
+        var program = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config).Bind(sources);
+        Assert.Empty(diagnostics);
+        return [.. sources.Select(source => (source.Document, program.DeclaredIn(source.Document)))];
+    }
 
     private static void AssertSameModule(SourceIdentity document, IrModule expected, IrModule actual, ProjectConfig config)
     {

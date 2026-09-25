@@ -120,15 +120,22 @@ public partial class BackendTests
     /// behavior and tests.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The direct side builds its options the way every caller did before
     /// <see cref="BackendOptions.For"/> existed, so a change to that factory cannot move both sides
     /// together and pass.
+    /// </para>
+    /// <para>
+    /// A vector written across several sources is left out: none of its sources compiles alone, so
+    /// there is no direct generation of one to compare with.
+    /// </para>
     /// </remarks>
     [Fact]
     public void GeneratingOneSourceThroughSourceEmissionIsGeneratingItDirectly()
     {
         var sources = ConformanceVectors.HandWritten
-            .Select(vector => (vector.SourcePath, Protos: ConformanceVectors.ProtoDirectory))
+            .Where(vector => vector.SourcePaths.Count == 1)
+            .Select(vector => (Path: vector.SourcePaths[0], Protos: ConformanceVectors.ProtoDirectory))
             .Append((TestPaths.SimpleScript, Protos: TestPaths.ExampleProtoDirectory));
 
         foreach (var (path, protos) in sources)

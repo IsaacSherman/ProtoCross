@@ -77,9 +77,9 @@ public class ParserResilienceTests
     {
         var data = new TheoryData<string> { TestPaths.SimpleScript };
 
-        foreach (var vector in ConformanceVectors.HandWritten)
+        foreach (var source in ConformanceVectors.HandWrittenSources)
         {
-            data.Add(vector.SourcePath);
+            data.Add(source);
         }
 
         return data;

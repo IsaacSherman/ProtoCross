@@ -279,8 +279,8 @@ public class MultiFileCompilationTests
     [Fact]
     public void OneSourceInAListCompilesExactlyAsItDoesAlone()
     {
-        var sources = ConformanceVectors.HandWritten
-            .Select(vector => (vector.SourcePath, Protos: ConformanceVectors.ProtoDirectory))
+        var sources = ConformanceVectors.HandWrittenSources
+            .Select(path => (path, Protos: ConformanceVectors.ProtoDirectory))
             .Append((TestPaths.SimpleScript, Protos: TestPaths.ExampleProtoDirectory))
             .Append((TestPaths.WriteTempScript(CompiledCorpus.BrokenText), Protos: TestPaths.ExampleProtoDirectory));
 

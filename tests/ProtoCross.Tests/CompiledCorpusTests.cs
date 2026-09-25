@@ -11,6 +11,25 @@ namespace ProtoCross.Tests;
 public class CompiledCorpusTests
 {
     /// <summary>
+    /// Every source in the corpus is one of the trees its compilation holds.
+    /// </summary>
+    /// <remarks>
+    /// A source finds its tree, its part of the module and its model by its identity. One carrying an
+    /// identity its compilation never assigned would have no tree, an empty part and a model with
+    /// nothing to say, and every sweep would pass over it without looking.
+    /// </remarks>
+    [Fact]
+    public void EverySourceInTheCorpusIsATreeItsCompilationHolds()
+    {
+        foreach (var source in CompiledCorpus.All)
+        {
+            Assert.True(
+                source.SyntaxTree is not null,
+                $"'{source.Name}' is {source.Document.Name}, which is none of the sources its compilation holds");
+        }
+    }
+
+    /// <summary>
     /// The program written across two files compiles, each file has a tree and a part of the module
     /// of its own, and each part reaches something only the other declares.
     /// </summary>

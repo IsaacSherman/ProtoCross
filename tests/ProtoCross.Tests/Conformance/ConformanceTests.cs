@@ -80,6 +80,48 @@ public class ConformanceVectorTests
         }
     }
 
+    /// <summary>
+    /// No two sources anywhere in the corpus generate files of one name, whichever vectors they
+    /// belong to.
+    /// </summary>
+    /// <remarks>
+    /// Every vector is generated into one workspace per backend, and each source's files are named
+    /// after it (spec 5.3). Within one vector the compiler refuses two such sources (<c>PC2006</c>);
+    /// between two vectors nothing would, and one vector's files would overwrite another's, leaving
+    /// its tests missing with no word as to why. Sources are compared by the key <c>PC2006</c>
+    /// compares them by, because it is coarser than every name a backend derives from one.
+    /// </remarks>
+    [Fact]
+    public void NoTwoSourcesInTheCorpusGenerateFilesOfOneName()
+    {
+        var collisions = ConformanceVectors.All
+            .SelectMany(vector => vector.SourcePaths)
+            .GroupBy(path => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(path)), StringComparer.Ordinal)
+            .Where(sources => sources.Count() > 1)
+            .Select(sources => string.Join(" and ", sources))
+            .ToList();
+
+        Assert.True(
+            collisions.Count == 0,
+            "these sources would generate files of one name; name each source of a vector after the vector: "
+            + string.Join("; ", collisions));
+    }
+
+    /// <summary>
+    /// A directory under <c>multi/</c> is one vector, written across several sources and compiled as
+    /// one program.
+    /// </summary>
+    /// <remarks>
+    /// Asserted because nothing else would notice it stop. Were the directory's sources taken for
+    /// vectors of their own, each would fail to compile alone and say so; were they left out, every
+    /// other test here would go on passing over a corpus that no longer calls anything across files.
+    /// </remarks>
+    [Fact]
+    public void TheCorpusHoldsAVectorWrittenAcrossSeveralSources()
+    {
+        Assert.Contains(ConformanceVectors.All, vector => vector.SourcePaths.Count > 1);
+    }
+
     public static TheoryData<string> Names => ConformanceVectors.Names;
 
     /// <summary>
