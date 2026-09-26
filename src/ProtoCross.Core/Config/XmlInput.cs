@@ -32,11 +32,13 @@ public sealed class XmlInput
     /// </remarks>
     private static readonly XmlReaderSettings Settings = new() { DtdProcessing = DtdProcessing.Prohibit };
 
+    private readonly string _text;
     private readonly LineMap _lines;
 
-    private XmlInput(string name, LineMap lines, XElement root)
+    private XmlInput(string name, string text, LineMap lines, XElement root)
     {
         Name = name;
+        _text = text;
         _lines = lines;
         Root = root;
     }
@@ -98,11 +100,36 @@ public sealed class XmlInput
             return null;
         }
 
-        return new XmlInput(name, lines, root);
+        return new XmlInput(name, xml, lines, root);
     }
 
     /// <summary>Where <paramref name="node"/> starts, or no position when the parser recorded none.</summary>
     public SourceSpan Span(XObject? node) => Span(Name, _lines, node);
+
+    /// <summary>Where the first character of <paramref name="text"/> that is not whitespace is.</summary>
+    /// <remarks>
+    /// A text node starts where the markup before it ends, which is usually the end of a line, so a
+    /// diagnostic about what the text says belongs where the saying starts. The whitespace is skipped in
+    /// the file's own characters rather than in <see cref="XText.Value"/>, whose line endings the parser
+    /// has already normalized.
+    /// </remarks>
+    public SourceSpan SpanOfText(XText text)
+    {
+        var start = Span(text);
+        if (start.Start == SourcePosition.None)
+        {
+            return start;
+        }
+
+        var offset = start.Start.Offset;
+        while (offset < _text.Length && char.IsWhiteSpace(_text[offset]))
+        {
+            offset++;
+        }
+
+        var position = _lines.PositionOf(offset);
+        return new SourceSpan(Name, position, position);
+    }
 
     private static SourceSpan Span(string name, LineMap lines, XObject? node)
         => node is IXmlLineInfo info && info.HasLineInfo()

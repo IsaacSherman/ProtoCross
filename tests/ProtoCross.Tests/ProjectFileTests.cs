@@ -132,6 +132,9 @@ public class ProjectFileTests
     [InlineData("<Config></Config>", "PC2009", "Config")]
     [InlineData("<ProtoPath>  </ProtoPath>", "PC2009", "ProtoPath")]
     [InlineData("<Config>a.xml</Config>\n<Config>b.xml</Config>", "PC2009", "Config>b")]
+    [InlineData("<Sources Include=\"src/**/../*.pcross\" />", "PC2009", "Include")]
+    [InlineData("<Sources Include=\"src/*.pcross\" Exclude=\"src/**/../old.pcross\" />", "PC2009", "Exclude")]
+    [InlineData("<Tests Include=\"tests/*.pcross\" />\n  src/**/*.pcross", "PC2009", "src/**")]
     public void ARefusedElementIsReportedWhereItStandsAndNoProjectIsReturned(string body, string code, string at)
     {
         var xml = string.Format(Wrapper, body);

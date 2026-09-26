@@ -149,9 +149,10 @@ Normative Requirements:
   naming `protoc`, because a project comes with a repository and a repository does not choose what
   the machine runs ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), and none stating
   policy.
-- Paths and patterns are relative to the project file's directory, and `../` reaches above it. A path
-  may be absolute. A pattern may not, because it is matched below a directory, and a full path in a
-  project that is committed names a directory on one machine only.
+- Paths and patterns are relative to the project file's directory, and `../` reaches above it. In a
+  pattern, `../` may only come first. A path may be absolute. A pattern may not, because it is matched
+  below a directory, and a full path in a project that is committed names a directory on one machine
+  only.
 - `Include` and `Exclude` list patterns separated by `;`. `*` matches within one directory and `**`
   across any number of them, either separator divides directories, and case is ignored exactly where
   the file system ignores it. Only `.pcross` files are taken from what a pattern matches, so
@@ -166,8 +167,9 @@ Normative Requirements:
   XML, declares a document type (as a configuration file may not either,
   [10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), or has another root, and for a
   directory a pattern searches that cannot be listed; `PC2009`
-  for an element without its patterns, patterns written as text, a full path used as a pattern, an
-  empty or impossible path, or `<Config>` stated twice.
+  for an element without its patterns, patterns written as text, text standing directly inside
+  `<ProtoCrossProject>`, a full path used as a pattern, a pattern that cannot be matched (a `../`
+  after its start), an empty or impossible path, or `<Config>` stated twice.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a
   typo, and the rest of the project still stands.
 - One project is one compilation and one file. Several may share a directory, and each is a

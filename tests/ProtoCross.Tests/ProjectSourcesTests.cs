@@ -161,6 +161,30 @@ public class ProjectSourcesTests
         Assert.Equal(["src/a.pcross", "src/b/c.pcross", "src/b/z.pcross", "src/m.pcross"], files.Sources);
     }
 
+    /// <summary>
+    /// An element built by hand rather than read, whose pattern the matcher cannot match, is reported
+    /// at the element rather than thrown: the pattern still came from somebody's input.
+    /// </summary>
+    [Fact]
+    public void AnUnmatchablePatternInAnElementBuiltByHandIsReported()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        var span = SourceSpan.SingleLine("billing.pcproj", 0, 1, 1, 0);
+        var project = new ProtoCrossProject
+        {
+            Path = Path.Combine(directory, "billing" + ProtoCrossProject.Extension),
+            Sources = [new ProjectItem(["src/**/../*.pcross"], [], span)],
+        };
+        var diagnostics = new DiagnosticBag();
+
+        var files = ProjectSources.Expand(project, diagnostics);
+
+        Assert.Empty(files.Sources);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(DiagnosticCodes.InvalidProjectSetting.Code, diagnostic.Code);
+        Assert.Equal(span, diagnostic.Span);
+    }
+
     // ------- matching nothing
 
     /// <summary>

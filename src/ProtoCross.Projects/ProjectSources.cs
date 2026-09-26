@@ -64,17 +64,52 @@ public static class ProjectSources
         return [.. files.OrderBy(file => RelativeKey(project.Directory, file), StringComparer.Ordinal)];
     }
 
-    /// <summary>The sources one element matches, or null when a directory it searches could not be listed.</summary>
+    /// <summary>Why <paramref name="pattern"/> cannot be matched, or null when it can.</summary>
+    /// <remarks>
+    /// Asked of the matcher itself, which refuses a pattern as it is added -- <c>..</c> anywhere but at
+    /// the start is the one a reader is likeliest to write -- so that the project reader refuses exactly
+    /// what matching would, rather than a second statement of the matcher's grammar that drifts from it.
+    /// </remarks>
+    internal static string? ProblemWith(string pattern)
+    {
+        try
+        {
+            NewMatcher().AddInclude(WithForwardSlashes(pattern));
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// The sources one element matches, or null when a pattern of it cannot be matched or a directory
+    /// it searches could not be listed.
+    /// </summary>
+    /// <remarks>
+    /// A project read by <see cref="ProtoCrossProject.Load"/> has had every pattern checked with
+    /// <see cref="ProblemWith"/> already. An element built by hand has not, and meeting an unmatchable
+    /// pattern here is reported rather than thrown, since the pattern still came from somebody's input.
+    /// </remarks>
     private static List<string>? Match(string directory, string group, ProjectItem item, DiagnosticBag diagnostics)
     {
-        var matcher = new Matcher(PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
-        matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
-        matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
-
         PatternMatchingResult result;
         try
         {
+            var matcher = NewMatcher();
+            matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
+            matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
             result = matcher.Execute(new DirectoryInfoWrapper(new DirectoryInfo(directory)));
+        }
+        catch (ArgumentException ex)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidProjectSetting,
+                $"{Describe(group, item)} holds a pattern ProtoCross cannot match: {ex.Message}",
+                item.Span,
+                UnmatchableHelp);
+            return null;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
         {
@@ -92,6 +127,13 @@ public static class ProjectSources
                 .Where(IsSource),
         ];
     }
+
+    /// <summary>What to write instead of a pattern the matcher refuses.</summary>
+    internal const string UnmatchableHelp =
+        "../ may only begin a pattern, as in ../shared/*.pcross. * matches within one directory and ** across any number.";
+
+    private static Matcher NewMatcher()
+        => new(PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The element as written, excludes included, since an exclude can be what emptied it.</summary>
     private static string Describe(string group, ProjectItem item)

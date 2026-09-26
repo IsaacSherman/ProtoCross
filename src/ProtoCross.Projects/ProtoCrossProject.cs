@@ -113,6 +113,7 @@ public sealed record ProtoCrossProject
         public ProtoCrossProject? Read()
         {
             RefuseAttributes(file.Root);
+            RefuseText(file.Root);
 
             foreach (var element in file.Root.Elements())
             {
@@ -191,18 +192,30 @@ public sealed record ProtoCrossProject
                 .Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 .ToList();
 
-            // A pattern is matched below a directory, so it has to be written relative to one. A full
-            // path in a project that is committed also names a directory on one machine only.
-            var rooted = patterns.Where(System.IO.Path.IsPathRooted).ToList();
-            foreach (var pattern in rooted)
+            var usable = true;
+            foreach (var pattern in patterns)
             {
-                Invalid(
-                    attribute!,
-                    $"'{pattern}' is a full path, and a pattern is matched below the project's directory.",
-                    "Write it relative to the project's directory; ../ reaches above it.");
+                // A pattern is matched below a directory, so it has to be written relative to one. A full
+                // path in a project that is committed also names a directory on one machine only.
+                if (System.IO.Path.IsPathRooted(pattern))
+                {
+                    Invalid(
+                        attribute!,
+                        $"'{pattern}' is a full path, and a pattern is matched below the project's directory.",
+                        "Write it relative to the project's directory; ../ reaches above it.");
+                    usable = false;
+                }
+                else if (ProjectSources.ProblemWith(pattern) is { } problem)
+                {
+                    Invalid(
+                        attribute!,
+                        $"'{pattern}' is not a pattern ProtoCross can match: {problem}",
+                        ProjectSources.UnmatchableHelp);
+                    usable = false;
+                }
             }
 
-            return rooted.Count == 0 ? patterns : null;
+            return usable ? patterns : null;
         }
 
         private void ReadProtoPath(XElement element)
@@ -270,6 +283,27 @@ public sealed record ProtoCrossProject
                         "Policy is stated in protocross.config.xml, never in a project. Name that file with <Config>.",
                     _ => $"Known elements inside <{RootElement}>: {string.Join(", ", KnownElements)}.",
                 });
+        }
+
+        /// <summary>
+        /// Refuses text standing directly in <paramref name="element"/>, which is patterns pasted in the
+        /// wrong place far more often than anything else, and which would otherwise be dropped without a
+        /// word from a project that then compiles fewer sources than its author wrote.
+        /// </summary>
+        private void RefuseText(XElement element)
+        {
+            var text = TextOf(element);
+            if (text.Length == 0)
+            {
+                return;
+            }
+
+            diagnostics.Report(
+                DiagnosticCodes.InvalidProjectSetting,
+                $"<{element.Name.LocalName}> holds elements, not text, and '{text}' is text.",
+                file.SpanOfText(element.Nodes().OfType<XText>().First(node => !string.IsNullOrWhiteSpace(node.Value))),
+                $"Sources are named by an element, as in <Sources Include=\"{text}\" />.");
+            _failed = true;
         }
 
         private void RefuseChildren(XElement element)
