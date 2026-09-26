@@ -509,4 +509,11 @@ public static class DiagnosticCodes
     /// <summary>A <c>&lt;Sources&gt;</c> or <c>&lt;Tests&gt;</c> element that matches no source (spec 5.4).</summary>
     public static readonly DiagnosticDescriptor ProjectPatternMatchesNothing =
         new("PC2010", DiagnosticSeverity.Warning, "project pattern matches no source");
+
+    /// <summary>
+    /// A source a project compiles that finds a configuration file above it other than the one the
+    /// project compiles it under (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MemberUnderAnotherConfig =
+        new("PC2011", DiagnosticSeverity.Warning, "project member is under another configuration file");
 }

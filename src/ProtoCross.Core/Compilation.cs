@@ -631,7 +631,7 @@ public sealed class Compilation
                     DiagnosticCodes.SourcesDisagreeOnPolicy,
                     $"'{other.Name}' is under {DescribeConfig(file)} and '{first.Name}' is under "
                         + $"{DescribeConfig(governing)}. One compilation runs under one policy.",
-                    StartOf(other),
+                    other.Start,
                     "Compile them separately, or move them under one protocross.config.xml.");
                 return null;
             }
@@ -639,17 +639,6 @@ public sealed class Compilation
 
         return LoadDiscovered(governing, diagnostics);
     }
-
-    /// <summary>
-    /// The empty point at the start of <paramref name="source"/>, for a diagnostic about the source
-    /// as a whole.
-    /// </summary>
-    /// <remarks>
-    /// Such a diagnostic is reported before the source is lexed, so there is nothing inside it to
-    /// place one at, and <see cref="SourceSpan.None"/> would say which file only by leaving it out.
-    /// The start is also where an editor puts a diagnostic that has no position (spec 26.1).
-    /// </remarks>
-    private static SourceSpan StartOf(SourceIdentity source) => SourceSpan.SingleLine(source.Name, 0, 1, 1, 0);
 
     private static string DescribeConfig(string? file)
         => file is null ? "no protocross.config.xml" : $"'{file}'";
@@ -977,7 +966,7 @@ public sealed class Compilation
             again
                 ? $"'{source.Name}' is given more than once."
                 : $"'{source.Name}' would be generated under the same names as '{first.Name}'.",
-            StartOf(source),
+            source.Start,
             again
                 ? "Pass each source once."
                 : "Generated file names, include guards and test classes ignore case and "
@@ -989,7 +978,7 @@ public sealed class Compilation
             DiagnosticCodes.SourcesShareGeneratedNames,
             $"'{source.Name}' would be generated under the name of a file the compiler generates "
                 + "beside every source's.",
-            StartOf(source),
+            source.Start,
             $"Rename the source. {string.Join(", ", NameConventions.FixedNames)} are taken, whatever "
                 + "their case and punctuation.");
 
@@ -998,7 +987,7 @@ public sealed class Compilation
             DiagnosticCodes.SourcesShareGeneratedNames,
             $"'{helper.Name}' is a test source, so its files are generated beside the tests of "
                 + $"'{owner.Name}', and under the same names.",
-            StartOf(helper),
+            helper.Start,
             $"Rename one of them. The tests generated from a source are named after it, followed by "
                 + $"'{NameConventions.TestsSuffix}'.");
 
