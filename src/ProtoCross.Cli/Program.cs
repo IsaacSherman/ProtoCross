@@ -13,9 +13,14 @@ if (options is null)
     return 2;
 }
 
-if (!File.Exists(options.SourcePath))
+var missing = options.SourcePaths.Where(path => !File.Exists(path)).ToList();
+foreach (var path in missing)
 {
-    Console.Error.WriteLine($"error: source file not found: {options.SourcePath}");
+    Console.Error.WriteLine($"error: source file not found: {path}");
+}
+
+if (missing.Count > 0)
+{
     return 2;
 }
 
@@ -35,7 +40,7 @@ if (config is null)
     return 2;
 }
 
-var result = Compilation.Compile(options.SourcePath, options.IncludePaths, config: config);
+var result = Compilation.Compile(options.SourcePaths, options.IncludePaths, config: config);
 PrintDiagnostics(result.Diagnostics);
 
 // The one module a compiler may write from. A partial one comes out of a buffer that did not
@@ -162,8 +167,8 @@ static ProjectConfig? ResolveConfig(CommandLineOptions options, DiagnosticBag di
     {
         // The same discovery the compiler would have done, asked for by name rather than repeated
         // here, so the CLI and the library can never disagree about which file settles the policy.
-        var discovered = Compilation.ResolveConfig(
-            SourceIdentity.FromPath(options.SourcePath).Directory,
+        var discovered = Compilation.ResolveSharedConfig(
+            [.. options.SourcePaths.Select(SourceIdentity.FromPath)],
             diagnostics);
 
         if (discovered is null)
@@ -202,7 +207,7 @@ static void PrintDiagnostics(DiagnosticBag diagnostics)
 }
 
 internal sealed record CommandLineOptions(
-    string SourcePath,
+    IReadOnlyList<string> SourcePaths,
     IReadOnlyList<string> IncludePaths,
     string OutputDirectory,
     string? TestOutputDirectory,
@@ -217,7 +222,7 @@ internal sealed record CommandLineOptions(
 
     public static CommandLineOptions? Parse(string[] args)
     {
-        string? sourcePath = null;
+        var sourcePaths = new List<string>();
         var includePaths = new List<string>();
         var outputDirectory = "generated";
         string? testOutputDirectory = null;
@@ -336,18 +341,12 @@ internal sealed record CommandLineOptions(
                         return null;
                     }
 
-                    if (sourcePath is not null)
-                    {
-                        Console.Error.WriteLine("error: only one source file may be given");
-                        return null;
-                    }
-
-                    sourcePath = arg;
+                    sourcePaths.Add(arg);
                     break;
             }
         }
 
-        if (sourcePath is null)
+        if (sourcePaths.Count == 0)
         {
             return null;
         }
@@ -367,7 +366,7 @@ internal sealed record CommandLineOptions(
         }
 
         return new CommandLineOptions(
-            sourcePath,
+            sourcePaths,
             includePaths,
             outputDirectory,
             testOutputDirectory,
@@ -404,11 +403,14 @@ internal sealed record CommandLineOptions(
     {
         Console.Error.WriteLine("protocross - ProtoCross compiler");
         Console.Error.WriteLine();
-        Console.Error.WriteLine("usage: protocross <source.pcross> [options]");
+        Console.Error.WriteLine("usage: protocross <source.pcross>... [options]");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Several sources compile together as one program, and each is generated into");
+        Console.Error.WriteLine("files named after it.");
         Console.Error.WriteLine();
         Console.Error.WriteLine("options:");
         Console.Error.WriteLine("  -I, --proto_path <dir>   Directory searched for imported .proto files.");
-        Console.Error.WriteLine("                           May be repeated. The source directory is always searched.");
+        Console.Error.WriteLine("                           May be repeated. Each source's directory is always searched.");
         Console.Error.WriteLine("  -o, --out <dir>          Output directory (default: generated).");
         Console.Error.WriteLine("                           Each backend writes to <dir>/<target>/.");
         Console.Error.WriteLine("  --test-out <dir>         Optional generated test output directory.");
@@ -428,8 +430,9 @@ internal sealed record CommandLineOptions(
         Console.Error.WriteLine("                           states. Without it, the conflict is an error: the file");
         Console.Error.WriteLine("                           is the project's answer and a flag is not.");
         Console.Error.WriteLine();
-        Console.Error.WriteLine("  With no --config or --no-config, protocross.config.xml is searched for in the");
-        Console.Error.WriteLine("  source file's directory and every directory above it, nearest first.");
+        Console.Error.WriteLine("  With no --config or --no-config, protocross.config.xml is searched for in each");
+        Console.Error.WriteLine("  source file's directory and every directory above it, nearest first. Sources");
+        Console.Error.WriteLine("  compiled together must all find the same one.");
         Console.Error.WriteLine();
         Console.Error.WriteLine("environment:");
         Console.Error.WriteLine("  PROTOCROSS_PROTOC         Path to protoc. Otherwise PATH and the NuGet");

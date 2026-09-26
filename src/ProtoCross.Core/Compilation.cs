@@ -550,9 +550,18 @@ public sealed class Compilation
     /// stating the default, so it adopts the one the others found. With one source this is
     /// <see cref="ResolveConfig(string?, DiagnosticBag)"/> exactly.
     /// </para>
+    /// <para>
+    /// Published for a caller that settles policy before compiling, as the command line does so that
+    /// it can apply its flags to what was found. Discovering per source outside this method would be a
+    /// second statement of the rule, and the first one to drift would compile sources that disagree
+    /// under whichever policy it happened to look at first.
+    /// </para>
     /// </remarks>
-    private static ProjectConfig? ResolveSharedConfig(IReadOnlyList<SourceIdentity> sources, DiagnosticBag diagnostics)
+    public static ProjectConfig? ResolveSharedConfig(IReadOnlyList<SourceIdentity> sources, DiagnosticBag diagnostics)
     {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
         var found = sources
             .Where(source => source.Directory is not null)
             .Select(source => (Source: source, File: ProjectConfig.Discover(source.Directory!)))

@@ -110,5 +110,7 @@ Normative Requirements:
 
 Implementation Note:
 
-- The command line still compiles one source; the `Compilation` API compiles several. Which sources
-  make up a project is not yet something a project can write down.
+- The command line compiles every source it is given as one compilation
+  (`protocross pricing.pcross discounts.pcross`), as the `Compilation` API does. Which sources make
+  up a project is not yet something a project can write down, so whoever runs the command lists
+  them.
