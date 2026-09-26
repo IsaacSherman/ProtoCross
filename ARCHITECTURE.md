@@ -146,7 +146,9 @@ each with a form that takes a list of sources.
    test source's method is `PC0088`, so nothing in the behavior output calls into the test output;
    and production behavior is bound against the production schema closure alone
    ([`ProductionSchemaClosure`](src/ProtoCross.Core/ProductionSchemaClosure.cs)), so a schema only a
-   test source brings is `PC0089` there rather than a name that resolves.
+   test source brings is `PC0089` there rather than a name that resolves. A schema in that closure
+   that the compilation loaded through a test source's directory is `PC0090`, since the production
+   build would load it from somewhere else or not at all.
    A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test.
 
 Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)

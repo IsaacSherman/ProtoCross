@@ -196,4 +196,71 @@ public class ProductionSchemaClosureTests
             !diagnostic.Help!.Contains(tests, StringComparison.OrdinalIgnoreCase),
             $"the production import must not have searched the test source's directory: {diagnostic.Help}");
     }
+
+    /// <summary>
+    /// A schema a production schema imports is not found through a test source's directory either:
+    /// it is <c>PC0090</c>, at the production import that brings it in, naming both schemas.
+    /// </summary>
+    [Fact]
+    public void AProductionSchemasOwnImportIsNotFoundThroughATestSourcesDirectory()
+    {
+        var root = TestPaths.CreateTempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(root, "src")).FullName;
+        var tests = Directory.CreateDirectory(Path.Combine(root, "tests")).FullName;
+        File.WriteAllText(Path.Combine(source, "public.proto"), "syntax = \"proto3\";\nimport \"detail.proto\";\nmessage Public { Detail detail = 1; }\n");
+        File.WriteAllText(Path.Combine(tests, "detail.proto"), "syntax = \"proto3\";\nmessage Detail { int64 amount = 1; }\n");
+        var text = "import proto \"public.proto\";\n\nextend Public {\n    fn f() -> int64 { return 1; }\n}";
+
+        var result = CompileBeside(source, text, tests, "import proto \"detail.proto\";");
+
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal(DiagnosticCodes.ProductionSchemaNeedsATestDirectory.Code, diagnostic.Code);
+        Assert.Equal("pricing.pcross", diagnostic.Span.File);
+        Assert.Equal(text.IndexOf("import proto \"public.proto\"", StringComparison.Ordinal), diagnostic.Span.Start.Offset);
+        Assert.True(
+            diagnostic.Message.Contains("'detail.proto'", StringComparison.Ordinal)
+                && diagnostic.Message.Contains("'public.proto'", StringComparison.Ordinal),
+            $"the message must name the schema and the import that brings it in: {diagnostic.Message}");
+    }
+
+    /// <summary>
+    /// A test source's directory holding its own copy of a well-known schema a production source
+    /// imports is loaded ahead of the one the production build loads, and that is <c>PC0090</c> too.
+    /// </summary>
+    [Fact]
+    public void ATestSourcesDirectoryCannotShadowAWellKnownSchemaProductionImports()
+    {
+        var root = TestPaths.CreateTempDirectory();
+        var source = Directory.CreateDirectory(Path.Combine(root, "src")).FullName;
+        var tests = Directory.CreateDirectory(Path.Combine(root, "tests")).FullName;
+        TestPaths.WriteSources(
+            tests,
+            ("google/protobuf/timestamp.proto", "syntax = \"proto3\";\npackage google.protobuf;\nmessage Timestamp { int64 seconds = 1; int32 nanos = 2; }\n"));
+        var text = InvoiceImport + "\nimport proto \"google/protobuf/timestamp.proto\";\n\nextend InvoiceItem {\n    fn f() -> int64 { return quantity; }\n}";
+
+        Assert.True(
+            CompileBeside(source, text).Success,
+            "without the test source the well-known schema must load from where protoc keeps it");
+
+        var result = CompileBeside(source, text, tests, InvoiceImport);
+
+        var diagnostic = Assert.Single(result.Diagnostics);
+        Assert.Equal(DiagnosticCodes.ProductionSchemaNeedsATestDirectory.Code, diagnostic.Code);
+        Assert.Equal(text.IndexOf("import proto \"google/protobuf/timestamp.proto\"", StringComparison.Ordinal), diagnostic.Span.Start.Offset);
+    }
+
+    /// <summary>
+    /// Compiles a production source in <paramref name="source"/> and, when given, a test source in
+    /// <paramref name="tests"/>, with the example's schemas on the include path.
+    /// </summary>
+    private static CompilationResult CompileBeside(string source, string text, string? tests = null, string? testText = null)
+        => new Compilation(
+                [
+                    new SourceDocument(SourceIdentity.Unsaved("pricing.pcross", source), text),
+                    .. tests is null
+                        ? Array.Empty<SourceDocument>()
+                        : [new SourceDocument(SourceIdentity.Unsaved("pricing_checks.pcross", tests), testText!) { Role = SourceRole.Test }],
+                ],
+                new CompilationOptions { IncludePaths = [TestPaths.ExampleProtoDirectory] })
+            .Compile();
 }

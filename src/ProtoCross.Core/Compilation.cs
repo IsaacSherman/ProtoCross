@@ -850,10 +850,15 @@ public sealed class Compilation
             return Stopped(imports) with { SchemaFailure = SchemaLoadFailure.From(ex) };
         }
 
+        // Reported and then bound all the same, for the reason a failed import is: what is wrong is
+        // which file a schema came from, and the rest of each source still has its say.
+        var production = HasTestSources ? ProductionSchemaClosure.Of(schema, ProductionImports(trees, imports)) : null;
+        production?.ReportSchemasTheProductionBuildLoadsDifferently(productionResolvePaths, diagnostics);
+
         var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config)
         {
             SkipTests = Options.SkipTests,
-            ProductionSchemas = HasTestSources ? ProductionSchemaClosure.Of(schema, ProductionImports(trees, imports)) : null,
+            ProductionSchemas = production?.Schemas,
         };
         var module = binder.Bind(trees);
 

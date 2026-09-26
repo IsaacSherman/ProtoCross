@@ -445,6 +445,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ProductionNamesATestOnlyType =
         new("PC0089", DiagnosticSeverity.Error, "production behavior names a test-only type");
 
+    /// <summary>
+    /// A schema the production sources bring that was found through a directory only test sources
+    /// bring, so the production build would not load it from there (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionSchemaNeedsATestDirectory =
+        new("PC0090", DiagnosticSeverity.Error, "production schema found through a test directory");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

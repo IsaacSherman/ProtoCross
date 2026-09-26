@@ -230,8 +230,14 @@ agreement with the first.
   ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Production behavior is bound
   against the production closure alone, so a test schema can neither make a production name
   resolve nor make one ambiguous.
-- **Imports production sources write are resolved without the test sources' directories.** A
-  schema only a test source's directory holds is one the production build cannot find either.
+- **Imports production sources write are resolved without the test sources' directories, and so
+  is every schema in the production schema closure.** A schema only a test source's directory holds
+  is one the production build cannot find, and a copy there that shadows another is not the one the
+  production build loads. An import a production source writes that only such a directory holds is
+  `PC0002`, as it is in the production build. A schema the production closure reaches through
+  another schema's import, which the compilation loaded from a file the production build would not
+  (missing without the test sources' directories, or found elsewhere), is `PC0090`, an error at the
+  production import that brings it in.
 - **Test sources come after production sources** in a compilation, each in the order given
   ([5.3](./§5-Source%20Organization.md#53-compilation-unit)). Order decides which source's directory
   answers an import first ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), which of
