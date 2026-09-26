@@ -36,7 +36,7 @@ public partial class BackendTests
         return result;
     }
 
-    private static ITestBackend BackendNamed(string name) => name switch
+    internal static ITestBackend BackendNamed(string name) => name switch
     {
         "csharp" => new CSharpBackend(),
         "cpp" => new CppBackend(),

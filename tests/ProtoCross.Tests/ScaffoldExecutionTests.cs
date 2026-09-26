@@ -54,24 +54,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCMakeProjectBuildsAndPassesItsTests()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
-
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var (cmake, protobuf) = RequireCMakeToolchain();
 
         BuildAndRun(cmake, protobuf, ScaffoldLayout.Emit(new CppBackend(), "scaffold-cpp"));
     }
@@ -88,6 +71,27 @@ public partial class ScaffoldExecutionTests
     /// </remarks>
     [Fact]
     public void TheEmittedCMakeProjectBuildsASchemaThatImportsWellKnownTypes()
+    {
+        var (cmake, protobuf) = RequireCMakeToolchain();
+
+        var layout = ScaffoldLayout.Emit(
+            new CppBackend(),
+            "scaffold-cpp-wellknown",
+            Path.Combine(ConformanceVectors.VectorDirectory, "well_known.pcross"),
+            ConformanceVectors.ProtoDirectory);
+
+        Assert.DoesNotContain(
+            "google/protobuf/",
+            File.ReadAllText(Path.Combine(layout.TestDirectory, CppTestProject.FileName)));
+
+        BuildAndRun(cmake, protobuf, layout);
+    }
+
+    /// <summary>
+    /// The cmake and protobuf install a CMake scaffold is built with, skipping the test when either,
+    /// or a C++ compiler, is missing.
+    /// </summary>
+    private static (string CMake, ProtobufCppInstall Protobuf) RequireCMakeToolchain()
     {
         var cmake = Toolchain.LocateCMake();
         if (cmake is null)
@@ -108,17 +112,7 @@ public partial class ScaffoldExecutionTests
             Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
         }
 
-        var layout = ScaffoldLayout.Emit(
-            new CppBackend(),
-            "scaffold-cpp-wellknown",
-            Path.Combine(ConformanceVectors.VectorDirectory, "well_known.pcross"),
-            ConformanceVectors.ProtoDirectory);
-
-        Assert.DoesNotContain(
-            "google/protobuf/",
-            File.ReadAllText(Path.Combine(layout.TestDirectory, CppTestProject.FileName)));
-
-        BuildAndRun(cmake, protobuf, layout);
+        return (cmake, protobuf);
     }
 
     private static void BuildAndRun(string cmake, ProtobufCppInstall protobuf, ScaffoldLayout layout)
@@ -166,24 +160,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCMakeProjectConfiguresWithNoSchemasOfItsOwn()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
-
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var (cmake, protobuf) = RequireCMakeToolchain();
 
         var directory = Path.Combine(
             Path.GetTempPath(), "protocross-scaffold-noschema", Guid.NewGuid().ToString("N"));

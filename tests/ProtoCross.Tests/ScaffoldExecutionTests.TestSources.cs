@@ -82,24 +82,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCMakeProjectBuildsAndRunsTestsThatCallATestSource()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
-
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var (cmake, protobuf) = RequireCMakeToolchain();
 
         BuildAndRun(cmake, protobuf, ScaffoldLayout.Emit(new CppBackend(), "scaffold-cpp-helper", TestBuildWithAHelper()));
     }

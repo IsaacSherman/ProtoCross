@@ -40,15 +40,9 @@ public class TestSourceTests
              }
              """;
 
-    private static string Described(CompilationResult result)
-        => string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString()));
+    private static string Described(CompilationResult result) => MultiFileCompilationTests.Described(result);
 
-    private static ITestBackend BackendNamed(string name) => name switch
-    {
-        "csharp" => new CSharpBackend(),
-        "cpp" => new CppBackend(),
-        _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown backend."),
-    };
+    private static ITestBackend BackendNamed(string name) => BackendTests.BackendNamed(name);
 
     private const string Gross = "fn gross() -> int64 { return quantity * unit_price_cents; }";
 
@@ -119,8 +113,8 @@ public class TestSourceTests
         Assert.True(
             result.Diagnostics.Any(diagnostic =>
                 diagnostic.Severity == DiagnosticSeverity.Error
-                && diagnostic.Span.Start.Offset > text.IndexOf("test ", StringComparison.Ordinal)),
-            "the syntax error inside the test must still be reported: " + Described(result));
+                && diagnostic.Span.Start.Offset == text.IndexOf("1 2;", StringComparison.Ordinal) + "1 ".Length),
+            "the syntax error at the stray token must still be reported: " + Described(result));
     }
 
     // ------- calls into a test source
@@ -297,6 +291,28 @@ public class TestSourceTests
         var tests = SourceEmission.EmitTests(result, backend, new DiagnosticBag()).Select(file => file.RelativePath);
 
         Assert.Empty(behavior.Intersect(tests, StringComparer.Ordinal));
+    }
+
+    /// <summary>
+    /// Only a test source's files are checked against the behavior output. A test file named like a
+    /// behavior file is written beside it in the other directory, as it always has been, rather than
+    /// taken for a second copy of it.
+    /// </summary>
+    [Fact]
+    public void ATestFileIsWrittenWhateverBehaviorFileSharesItsName()
+    {
+        var backend = new CSharpBackend();
+        var result = TestBuild(
+            Production("x.pcross", Extend(Gross) + "\n\n" + TestOfDoubled.Replace("doubled", "gross", StringComparison.Ordinal)),
+            Production("x.tests.pcross", Extend("fn net() -> int64 { return gross() - 1; }")),
+            TestSource("x_checks.pcross", Extend(Doubled)));
+        Assert.True(result.Success, Described(result));
+
+        var behavior = SourceEmission.Emit(result, backend, new DiagnosticBag());
+        var tests = SourceEmission.EmitTests(result, backend, new DiagnosticBag());
+
+        Assert.Contains(behavior, file => file.RelativePath == "x.tests.g.cs" && file.Contents.Contains("Net(", StringComparison.Ordinal));
+        Assert.Contains(tests, file => file.RelativePath == "x.tests.g.cs" && file.Contents.Contains("Gross", StringComparison.Ordinal));
     }
 
     /// <summary>

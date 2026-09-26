@@ -43,7 +43,7 @@ public class MultiFileCompilationTests
              }
              """;
 
-    private static string Described(CompilationResult result)
+    internal static string Described(CompilationResult result)
         => string.Join(Environment.NewLine, result.Diagnostics.Select(diagnostic => diagnostic.ToString()));
 
     /// <summary>

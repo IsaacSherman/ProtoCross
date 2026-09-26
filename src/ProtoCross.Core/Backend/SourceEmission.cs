@@ -56,14 +56,16 @@ public static class SourceEmission
     /// generated into the behavior output may (<c>PC0088</c>). It comes with the runtime file every
     /// source's behavior does, and the behavior output holds that file already. A build that
     /// compiles both directories into one program -- the C# project <c>--scaffold</c> writes is one
-    /// -- would then define its types twice, so whatever the behavior output holds is left out of
-    /// this one.
+    /// -- would then define its types twice, so a test source's file the behavior output already
+    /// holds is left out.
     /// </para>
     /// <para>
     /// The behavior output is generated again to find out what it holds, and only its file names and
     /// contents are kept. Whatever generating it reported belongs to the caller that asked for it, and
     /// reporting it here as well would say it twice. With no test source there is nothing to leave out,
-    /// and it is not generated at all.
+    /// and it is not generated at all. Regenerating it costs a second pass over the production sources
+    /// in a test build; asking only one of them would find the runtime every source brings, but not
+    /// one that a backend brings only for some.
     /// </para>
     /// </remarks>
     /// <inheritdoc cref="Emit" path="/exception"/>
@@ -72,11 +74,19 @@ public static class SourceEmission
         ArgumentNullException.ThrowIfNull(backend);
         ArgumentNullException.ThrowIfNull(result);
 
-        var hasTestSources = result.SyntaxTrees.Any(source => source.Role is SourceRole.Test);
-        var files = new GeneratedFiles(elsewhere: hasTestSources ? Emit(result, backend, new DiagnosticBag()) : []);
-
+        var files = new GeneratedFiles();
         files.AddEach(result, _ => true, diagnostics, backend.EmitTests);
-        files.AddEach(result, source => source.Role is SourceRole.Test, diagnostics, backend.Emit);
+
+        if (result.SyntaxTrees.Any(source => source.Role is SourceRole.Test))
+        {
+            // Only a helper's files are checked against the behavior output. A test file that shares
+            // a name with one of its files is not a second copy of anything: the two outputs are two
+            // directories, and a test file has always been written beside behavior of any name.
+            var helpers = new GeneratedFiles(elsewhere: Emit(result, backend, new DiagnosticBag()));
+            helpers.AddEach(result, source => source.Role is SourceRole.Test, diagnostics, backend.Emit);
+            files.AddRange(helpers.Gathered);
+        }
+
         return files.Gathered;
     }
 
@@ -107,10 +117,15 @@ public static class SourceEmission
 
             foreach (var document in result.SyntaxTrees.Where(included).Select(source => source.Document))
             {
-                foreach (var file in emit(module.DeclaredIn(document), BackendOptions.For(document, result.Config), diagnostics))
-                {
-                    Add(file);
-                }
+                AddRange(emit(module.DeclaredIn(document), BackendOptions.For(document, result.Config), diagnostics));
+            }
+        }
+
+        public void AddRange(IEnumerable<GeneratedFile> files)
+        {
+            foreach (var file in files)
+            {
+                Add(file);
             }
         }
 
