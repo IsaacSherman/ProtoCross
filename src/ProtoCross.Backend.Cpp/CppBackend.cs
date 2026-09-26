@@ -234,7 +234,7 @@ public sealed class CppBackend : ITestProjectScaffold
             EmitCppTest(writer, test, functionNames[test]);
         }
 
-        return [new GeneratedFile(baseName + ".tests.cc", writer.ToString())];
+        return [new GeneratedFile(baseName + NameConventions.TestsSuffix + ".cc", writer.ToString())];
     }
 
     public IReadOnlyList<GeneratedFile> EmitTestProject(

@@ -33,7 +33,10 @@ Normative Requirements:
 
 - Imports use `import proto "path/to/schema.proto";`.
 - The path is resolved against compiler include paths, then against the directory of each source in
-  the compilation ([5.3](#53-compilation-unit)).
+  the compilation ([5.3](#53-compilation-unit)), a production source's before a test source's. An
+  import a production source writes is resolved without the test sources' directories, and
+  production behavior may name only the types its production schema closure declares
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - **A compilation's sources share their imports.** A type any source imports can be named in every
   source, in the same way a type that an imported schema imports can already be named in the file
   that imports the schema. A schema imported by several sources is loaded once.
@@ -96,7 +99,9 @@ Normative Requirements:
 
 - The sources are one program. A method may call, and a `test` may target, a method declared in any
   source of the compilation, and the sources are not ordered
-  ([16.1](./§16-Methods.md#161-method-attachment)).
+  ([16.1](./§16-Methods.md#161-method-attachment)). The one exception is a test source's method,
+  which a production source's may not call
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - Every source is generated into files of its own, named after it, as a compilation of that source
   alone would be.
 - Two sources whose names would collide in anything generated from them are `PC2006`, and the
@@ -104,6 +109,14 @@ Normative Requirements:
   system ignores it, punctuation, a `T` placed before a name that does not start with a letter -- so
   the names compared are the source names reduced to their letters and digits, upper-cased, with that
   `T` in front where it would go. One source given twice is `PC2006` as well.
+- Two more kinds of generated name are compared the same way, and a source that takes one is
+  `PC2006`. A backend generates some files under a fixed name beside every source's, so no source
+  may be named `ProtoCrossArithmetic`, `ProtoCrossTestSupport` or `protocross_runtime`, in any role.
+  And a test source's files are generated beside every source's tests
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)),
+  which are named after their source followed by `.tests`, so a test source may not be named
+  `pricing.tests` in a compilation that has a `pricing`. A production source may: its files are
+  generated into the other directory.
 - Every source compiles under one policy ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
 - Every source carries an identity of its own, a path or the name its caller gave an unsaved buffer
   ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)).
@@ -159,7 +172,8 @@ Normative Requirements:
   `src/**` means every source under `src`. An `Exclude` applies to the element it is written on.
 - A file several patterns of one group match is one source. `<Sources>` and `<Tests>` may name the
   same files, and neither has to exclude the other's: building and testing are two procedures, and a
-  file in both takes part in both.
+  file in both takes part in both. A file only `<Tests>` names is a test source, and what each build
+  compiles and generates is [25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)'s.
 - Each group's sources are ordered by their path below the project's directory, so one tree is one
   compilation on every machine, whatever order a file system lists a directory in.
 - A project that states anything it cannot mean is refused whole, because a project missing one of

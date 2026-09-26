@@ -115,6 +115,14 @@ public sealed record SourceIdentity
 /// </remarks>
 public sealed record SourceDocument(SourceIdentity Identity, string Text)
 {
+    /// <summary>What this source is compiled for; a production source unless a caller says otherwise.</summary>
+    /// <remarks>
+    /// Init-only and beside the positional members, so that every existing caller builds a document
+    /// exactly as it did and gets what it always compiled: a source whose methods are the program.
+    /// Only a project can name a test source (spec 5.4), so only a caller that read one sets this.
+    /// </remarks>
+    public SourceRole Role { get; init; }
+
     /// <summary>Reads the file <paramref name="identity"/> names.</summary>
     /// <remarks>
     /// The only place the compiler reads ProtoCross source from the file system. Text a caller

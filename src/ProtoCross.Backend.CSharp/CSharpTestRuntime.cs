@@ -26,7 +26,7 @@ namespace ProtoCross.Backend.CSharp;
 /// </remarks>
 public static class CSharpTestRuntime
 {
-    public const string FileName = "ProtoCrossTestSupport.g.cs";
+    public const string FileName = NameConventions.CSharpTestRuntimeName + ".g.cs";
 
     public const string NamespaceName = "ProtoCross.Runtime";
 

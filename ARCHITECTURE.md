@@ -140,6 +140,16 @@ each with a form that takes a list of sources.
    [`SourceEmission`](src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
    part of the module (`IrModule.DeclaredIn`) with the options that name its files
    (`BackendOptions.For`), and keeps one copy of the runtime file every source's output shares.
+   It also divides the output by each source's `SourceRole` (spec 25.3.1): a production source's
+   behavior goes to the behavior output, and a test source's goes to the test output with every
+   source's tests. The binder is what makes that division sound: a production method that calls a
+   test source's method is `PC0088`, so nothing in the behavior output calls into the test output;
+   and production behavior is bound against the production schema closure alone
+   ([`ProductionSchemaClosure`](src/ProtoCross.Core/ProductionSchemaClosure.cs)), so a schema only a
+   test source brings is `PC0089` there rather than a name that resolves. A schema in that closure
+   that the compilation loaded through a test source's directory is `PC0090`, since the production
+   build would load it from somewhere else or not at all.
+   A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test.
 
 Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)
 answers "what is at this offset" for the syntax tree and for the IR, hands back the chain of nodes
@@ -568,7 +578,8 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
-`ProjectSourcesTests`, `XmlInputTests`, `BackendTests`, `NameMappingTests`,
+`ProjectSourcesTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
+`ProductionSchemaClosureTests`, `BackendTests`, `NameMappingTests`,
 `CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`

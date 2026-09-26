@@ -134,7 +134,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
             }
         }
 
-        var fileName = sourceName + ".tests.g.cs";
+        var fileName = sourceName + NameConventions.TestsSuffix + ".g.cs";
 
         // The support file is emitted only when something needs it, so a source with no 'expect
         // fail' test does not gain a file that starts child processes.

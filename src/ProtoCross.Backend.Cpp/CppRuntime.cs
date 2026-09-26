@@ -28,7 +28,7 @@ namespace ProtoCross.Backend.Cpp;
 /// </remarks>
 public static class CppRuntime
 {
-    public const string FileName = "protocross_runtime.h";
+    public const string FileName = NameConventions.CppRuntimeName + ".h";
 
     // Lazy rather than a field initializer: Build() reads static tables declared further down,
     // and static field initializers run in declaration order.

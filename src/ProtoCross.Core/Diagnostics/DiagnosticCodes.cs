@@ -431,6 +431,27 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor SchemaBesideSourceIsShadowed =
         new("PC0087", DiagnosticSeverity.Warning, "schema beside the source is shadowed");
 
+    /// <summary>
+    /// A method of a production source that calls a method a test source declares, which is
+    /// generated with the tests and not with the program (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionMethodCallsTestHelper =
+        new("PC0088", DiagnosticSeverity.Error, "production method calls a test helper");
+
+    /// <summary>
+    /// Production behavior naming a type only schemas the test sources bring declare, which the
+    /// production build never loads (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionNamesATestOnlyType =
+        new("PC0089", DiagnosticSeverity.Error, "production behavior names a test-only type");
+
+    /// <summary>
+    /// A schema the production sources bring that was found through a directory only test sources
+    /// bring, so the production build would not load it from there (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionSchemaNeedsATestDirectory =
+        new("PC0090", DiagnosticSeverity.Error, "production schema found through a test directory");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

@@ -47,8 +47,8 @@ are distinct from the compiler's own conformance suite:
 
 Normative Requirements:
 
-- Unit tests are written in a ProtoCross test declaration, either in the same `.pcross` file as
-  the behavior or in a companion test file imported by the test command.
+- Unit tests are written in a ProtoCross test declaration, in any `.pcross` source: beside the
+  behavior they test, or in a source of their own.
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
   declares the expected return value or expected terminal failure.
@@ -56,9 +56,9 @@ Normative Requirements:
   exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
   exception no test could say that a result is not a number; and which NaN it is cannot matter,
   because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
-- Test declarations are not emitted into production behavior output unless test generation is
-  explicitly requested.
-- The compiler generates target-language test source files into a user-selected output directory.
+- Test declarations are never emitted into production behavior output. The compiler generates
+  target-language test source files into a user-selected test output directory, and only when test
+  generation is explicitly requested.
 - The compiler should not execute tests by default. Execution belongs to the target language's
   normal test runner or build system.
 
@@ -165,8 +165,12 @@ Implemented backend behavior:
 
 Open Questions:
 
-- Should test declarations live in production `.pcross` files, separate `.pcrosstest` files,
-  or both?
+- ~~Should test declarations live in production `.pcross` files, separate `.pcrosstest` files,
+  or both?~~ Decided: in any `.pcross` source, and a project's `<Tests>` group names the sources
+  that are there only to test with ([25.3.1](#2531-test-sources-and-the-two-builds)).
+- ~~Should a test build refuse a production source that names a type only a test source
+  imports?~~ Decided: yes. Production behavior names only types in the production schema closure
+  ([25.3.1](#2531-test-sources-and-the-two-builds)).
 - Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
   three?
 - Should the compiler embed fixtures in generated source, copy fixture files beside the generated
@@ -185,3 +189,64 @@ fixes at 70, not a test for "died somehow". That distinction matters: a child th
 unrelated reason, or that fell through to an ordinary test run and merely reported failures, must
 not be mistaken for a method that terminated. Requiring one exact code across every backend is only
 possible because 10.2.1 rules out crash primitives, whose exit codes the host chooses.
+
+### 25.3.1 Test Sources and the Two Builds
+
+**Decided: a test source is a source a project names only in `<Tests>`
+([5.4](./§5-Source%20Organization.md#54-projects)). Its methods are helpers, generated with the
+tests. Every other source is a production source, and that is every source when there is no
+project.** There is no `.pcrosstest` extension: a project's `<Tests>` group already says which
+sources are there only to test with, and a second way to say it would be a second thing to keep in
+agreement with the first.
+
+- **A production build** compiles the production sources, and leaves every test out. A test is
+  still parsed, because it is part of the text, but it is neither bound nor generated, so a test
+  that no longer binds (a renamed target, a fixture field the schema dropped) does not stop the
+  program shipping. A test that does not parse is still reported: a declaration that does not parse
+  cannot say where it ends, and passing over it could pass over the method written after it.
+- **A test build** compiles the production sources and the test sources together, each source once
+  however many groups name it, and binds every source's tests. It generates:
+  - each production source's behavior into the behavior output, exactly as the production build
+    would, byte for byte;
+  - each test source's behavior into the test output, leaving out anything the behavior output
+    already holds, such as a runtime file every source's behavior brings;
+  - every source's tests into the test output.
+- **A test source may declare methods.** Any test may target one, and one may call any method,
+  since it is generated beside everything it could call.
+- **A production source's method may not call a test source's method.** It is `PC0088`, an error,
+  wherever the two are compiled together, which includes an editor. Such a method would be generated
+  into the behavior output calling something generated only into the test output, and the
+  production build would report it as a method that does not exist. The rule is what lets the test
+  build's behavior output be the production build's.
+- **Adding test sources to a compilation must not make any production behavior valid that would
+  be invalid without them.** `PC0088` above, and the three rules below, follow from it.
+- **Production behavior may reference only protobuf types in the production schema closure**: the
+  schemas production sources import, and every schema transitively reachable from those imports.
+  Production behavior is a production source's `extend` blocks and methods, not its tests. Tests,
+  and the methods test sources declare, use the full test schema closure: every schema any source
+  brings. A type production behavior names that only the test closure declares is `PC0089`, an
+  error, meaning that no production source brings its schema into the compilation. Which production
+  source imports it does not matter, since sources share their imports
+  ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Production behavior is bound
+  against the production closure alone, so a test schema can neither make a production name
+  resolve nor make one ambiguous.
+- **Imports production sources write are resolved without the test sources' directories, and so
+  is every schema in the production schema closure.** A schema only a test source's directory holds
+  is one the production build cannot find, and a copy there that shadows another is not the one the
+  production build loads. An import a production source writes that only such a directory holds is
+  `PC0002`, as it is in the production build. A schema the production closure reaches through
+  another schema's import, which the compilation loaded from a file the production build would not
+  (missing without the test sources' directories, or found elsewhere), is `PC0090`, an error at the
+  production import that brings it in.
+- **Test sources come after production sources** in a compilation, each in the order given
+  ([5.3](./§5-Source%20Organization.md#53-compilation-unit)). Order decides which source's directory
+  answers an import first ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), which of
+  two declarations of one method is the duplicate, and the order of the generated files, so a test
+  source can change none of those for a production source.
+
+Implementation Note:
+
+- The `Compilation` API does both builds: a source says which it is with `SourceDocument.Role`, and
+  `CompilationOptions.SkipTests` makes a build a production build. The command line and the editor
+  do not take a project yet, so every source they compile is a production source, and the command
+  line binds every source's tests whether or not `--test-out` is given, as it always has.

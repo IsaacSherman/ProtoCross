@@ -72,8 +72,14 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).
 - `protoc` plugin and Buf integration strategy.
-- ~~ProtoCross unit test declaration syntax.~~ Decided: `test` declarations in `.pcross` files
-  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)). Separate `.pcrosstest` files remain open.
+- ~~ProtoCross unit test declaration syntax.~~ Decided: `test` declarations in any `.pcross` file
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
+  ~~Separate `.pcrosstest` files.~~ Decided: there are none; the sources a project names only in
+  `<Tests>` are its test sources
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
+- ~~Whether a test build should refuse a production source that names a type only a test source
+  imports.~~ Decided: yes; production behavior names only types in the production schema closure
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - Generated test output framework options and future `protoc` plugin flag names.
 - Stable IR format.
 - Third-party backend support.

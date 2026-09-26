@@ -114,6 +114,39 @@ public static class NameConventions
     }
 
     /// <summary>
+    /// What follows a source's name in the names of the tests generated from it:
+    /// <c>pricing.tests.g.cs</c>, <c>pricing.tests.cc</c>.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in each backend, because a test source's own files are generated into the
+    /// test output beside every source's tests, and <c>PC2006</c> has to know what those are called
+    /// before any backend runs (spec 5.3).
+    /// </remarks>
+    public const string TestsSuffix = ".tests";
+
+    /// <summary>The name of the arithmetic runtime every C# source's behavior shares.</summary>
+    public const string CSharpRuntimeName = "ProtoCrossArithmetic";
+
+    /// <summary>The name of the support file C# tests that <c>expect fail</c> share.</summary>
+    public const string CSharpTestRuntimeName = "ProtoCrossTestSupport";
+
+    /// <summary>The name of the arithmetic runtime every C++ source's behavior shares.</summary>
+    public const string CppRuntimeName = "protocross_runtime";
+
+    /// <summary>
+    /// The names a backend generates a file under whatever the sources are called, which no source
+    /// may take (spec 5.3).
+    /// </summary>
+    /// <remarks>
+    /// Each is generated beside sources' own files -- the runtimes beside the behavior, and beside a
+    /// test source's behavior in the test output; the test support beside the tests -- so a source of
+    /// one of these names would be generated over it. They are compared by <see cref="OutputKey"/>
+    /// like every other generated name, and refused whichever backend is asked for, because which
+    /// backends run is decided after the compilation is.
+    /// </remarks>
+    public static IReadOnlyList<string> FixedNames { get; } = [CSharpRuntimeName, CSharpTestRuntimeName, CppRuntimeName];
+
+    /// <summary>
     /// What a source's name comes to once everything any backend derives from it has folded it: its
     /// letters and digits, upper-cased, with a <c>T</c> in front when the first is not a letter.
     /// Two sources whose names give one key cannot be generated side by side.

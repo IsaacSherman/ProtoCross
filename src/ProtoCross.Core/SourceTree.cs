@@ -12,4 +12,13 @@ namespace ProtoCross;
 /// file name, and two files of one name in two directories would share it. So the identity travels
 /// with the tree rather than being looked up from it.
 /// </remarks>
-public sealed record SourceTree(SourceIdentity Document, CompilationUnit Unit);
+public sealed record SourceTree(SourceIdentity Document, CompilationUnit Unit)
+{
+    /// <summary>What the source this tree was parsed from is compiled for.</summary>
+    /// <remarks>
+    /// Carried from the <see cref="SourceDocument"/> for the reason the identity is: the binder has
+    /// to know it of every declaration a call resolves to, and generation has to know it of every
+    /// source it divides a module into, and neither is handed the documents.
+    /// </remarks>
+    public SourceRole Role { get; init; }
+}

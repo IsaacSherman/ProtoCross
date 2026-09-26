@@ -65,6 +65,30 @@ public sealed partial class Binder
     /// </remarks>
     private SourceIdentity _document;
 
+    /// <summary>The sources being bound that are compiled only to test with (spec 25.3.1).</summary>
+    /// <remarks>
+    /// Set by <see cref="Bind(IReadOnlyList{SourceTree})"/> before anything is declared, and asked
+    /// of the source a call resolves into: a method in one of these is generated with the tests, so
+    /// a method that ships may not call it.
+    /// </remarks>
+    private HashSet<SourceIdentity> _testSources = [];
+
+    /// <summary>
+    /// Whether what is being bound is production behavior: a production source's <c>extend</c>
+    /// blocks and methods, and never a test (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Set as binding moves between sources, and between a source's methods and its tests, the way
+    /// <see cref="_document"/> is. Production behavior is what ships, so it is what may neither call
+    /// a test source's method (<c>PC0088</c>) nor name a type only the test sources' schemas declare
+    /// (<c>PC0089</c>). A test, and a test source's own methods, are generated with the tests and may
+    /// do both.
+    /// </remarks>
+    private bool _productionBehavior;
+
+    /// <summary>The index of <see cref="ProductionSchemas"/>, built the first time production behavior asks.</summary>
+    private SchemaTypes? _productionTypes;
+
     /// <param name="document">
     /// What the source handed to <see cref="Bind(CompilationUnit)"/> is, which every declaration
     /// site records so that a reference can say not just where its declaration is but which file
@@ -97,6 +121,26 @@ public sealed partial class Binder
     /// are what make a second walk wrong rather than merely redundant.
     /// </remarks>
     public SchemaTypes Types => _types;
+
+    /// <summary>
+    /// Whether the sources' <c>test</c> declarations are passed over, as a production build passes
+    /// them over (spec 25.3.1). See <see cref="CompilationOptions.SkipTests"/>.
+    /// </summary>
+    public bool SkipTests { get; init; }
+
+    /// <summary>
+    /// The schemas production behavior may name: the production schema closure (spec 25.3.1). Null
+    /// when that is every schema, which it is whenever no test source is being bound.
+    /// </summary>
+    public IReadOnlyList<FileDescriptor>? ProductionSchemas { get; init; }
+
+    /// <summary>
+    /// The types what is being bound may name: the production schema closure's for production
+    /// behavior, and every schema's for everything else.
+    /// </summary>
+    private SchemaTypes Visible => _productionBehavior && ProductionSchemas is { } production
+        ? _productionTypes ??= SchemaTypes.From(production)
+        : _types;
 
     /// <summary>Binds a compilation unit to typed IR, whether or not it parsed cleanly.</summary>
     /// <remarks>
@@ -148,6 +192,8 @@ public sealed partial class Binder
                 nameof(sources));
         }
 
+        _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
+
         var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
 
         var methods = new List<IrMethod>();
@@ -156,8 +202,14 @@ public sealed partial class Binder
         foreach (var (source, extends) in declared)
         {
             _document = source.Document;
+            _productionBehavior = source.Role is SourceRole.Production;
             methods.AddRange(BindMethods(extends));
-            tests.AddRange(BindTests(source.Unit));
+
+            _productionBehavior = false;
+            if (!SkipTests)
+            {
+                tests.AddRange(BindTests(source.Unit));
+            }
         }
 
         return new IrModule(methods, tests)
@@ -175,6 +227,7 @@ public sealed partial class Binder
     private List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> Declare(SourceTree source)
     {
         _document = source.Document;
+        _productionBehavior = source.Role is SourceRole.Production;
         var resolvedExtends = new List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)>();
 
         foreach (var extend in source.Unit.Extends)
@@ -374,12 +427,12 @@ public sealed partial class Binder
         // ambiguous against messages alone rather than against every type. What stays here is which
         // of the two ways it failed, because that is a choice between two diagnostics and the index
         // issues none.
-        if (_types.ResolveReceiver(name) is { } resolved)
+        if (Visible.ResolveReceiver(name) is { } resolved)
         {
             return resolved;
         }
 
-        var candidates = _types.MessagesNamed(name);
+        var candidates = Visible.MessagesNamed(name);
 
         if (candidates.Count > 0)
         {
@@ -389,6 +442,11 @@ public sealed partial class Binder
                 + string.Join(", ", candidates.Select(c => c.FullName)) + ".",
                 span,
                 "Qualify the name with its protobuf package.");
+            return null;
+        }
+
+        if (ReportIfOnlyTestSchemasDeclare(name, span, types => [types.ResolveReceiver(name), .. types.MessagesNamed(name)]))
+        {
             return null;
         }
 
@@ -560,22 +618,22 @@ public sealed partial class Binder
 
         // A fully qualified name is unambiguous by construction, so it is tried before any
         // simple-name lookup that could report a false ambiguity.
-        if (_types.FindMessage(name) is { } messageByFullName)
+        if (Visible.FindMessage(name) is { } messageByFullName)
         {
             return NamedMessage(messageByFullName);
         }
 
-        if (_types.FindEnum(name) is { } enumByFullName)
+        if (Visible.FindEnum(name) is { } enumByFullName)
         {
             return NamedEnum(enumByFullName);
         }
 
-        var messages = _types.MessagesNamed(name);
-        var enums = _types.EnumsNamed(name);
+        var messages = Visible.MessagesNamed(name);
+        var enums = Visible.EnumsNamed(name);
 
         // Asked of the index rather than counted here, because completion has to predict exactly this
         // and a second count is a second rule. The index names it for the position it governs.
-        if (_types.IsAmbiguousAsATypeName(name))
+        if (Visible.IsAmbiguousAsATypeName(name))
         {
             // Messages and enums share one type name space here, so a name matching one of each is
             // just as ambiguous as a name matching two enums.
@@ -593,6 +651,14 @@ public sealed partial class Binder
         if (enums is [var onlyEnum])
         {
             return NamedEnum(onlyEnum);
+        }
+
+        if (ReportIfOnlyTestSchemasDeclare(
+                name,
+                reference.Span,
+                types => [types.FindMessage(name), types.FindEnum(name), .. types.MessagesNamed(name), .. types.EnumsNamed(name)]))
+        {
+            return ErrorType.Instance;
         }
 
         _diagnostics.Report(
@@ -1816,19 +1882,25 @@ public sealed partial class Binder
 
         // A fully qualified name is unambiguous by construction, so it is tried before the
         // simple-name lookup that could report a false ambiguity.
-        if (_types.FindEnum(typeName) is { } byFullName)
+        if (Visible.FindEnum(typeName) is { } byFullName)
         {
             descriptor = byFullName;
             Use(SymbolId.ForType(descriptor), receiver.Span);
             return true;
         }
 
-        var candidates = _types.EnumsNamed(typeName);
+        var candidates = Visible.EnumsNamed(typeName);
 
         if (candidates.Count == 0)
         {
-            // Not an enum. Whatever this is, the ordinary path reports it.
-            return false;
+            // Not an enum production behavior may name, when only a test source's schemas declare
+            // it: settled here, as an ambiguous one is, so the ordinary path does not go on to
+            // report the same name as an unknown value. Otherwise not an enum at all, and the
+            // ordinary path reports whatever it is.
+            return ReportIfOnlyTestSchemasDeclare(
+                typeName,
+                receiver.Span,
+                types => [types.FindEnum(typeName), .. types.EnumsNamed(typeName)]);
         }
 
         if (candidates.Count > 1)
@@ -2084,6 +2156,14 @@ public sealed partial class Binder
 
         Use(signature.Id, methodNameSpan);
 
+        // Reported and then bound as the call it is. The call is well formed and resolves; what is
+        // wrong is only where its target is generated, and binding it for what it is keeps a
+        // mistake inside an argument from hiding behind this one.
+        if (_productionBehavior && _testSources.Contains(signature.Declaration.Document))
+        {
+            ReportCallIntoATestSource(signature, invocation.Span);
+        }
+
         var arguments = new List<IrExpression>();
         for (var i = 0; i < invocation.Arguments.Count; i++)
         {
@@ -2133,6 +2213,77 @@ public sealed partial class Binder
                 boundReceiver,
                 [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))],
                 invocation.Span);
+    }
+
+    /// <summary>
+    /// Refuses a call from a method that ships to a method a test source declares (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test source's methods are generated with the tests, and only a test build compiles them at
+    /// all. A production method that called one would be generated into the behavior output calling
+    /// something that is not there, and the production build, which leaves test sources out, would
+    /// report it as a method that does not exist. So it is refused wherever the two are compiled
+    /// together, which is what lets a test build's behavior output be the production build's.
+    /// </para>
+    /// <para>
+    /// The target is named with the source it is in, because nothing at the call site says which
+    /// source that is, and the fix is to move the method out of it.
+    /// </para>
+    /// </remarks>
+    private void ReportCallIntoATestSource(IrMethodSignature target, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.ProductionMethodCallsTestHelper,
+            $"'{target.Name}' is declared in '{target.Declaration.Document.Name}', a test source, so it "
+                + "is generated with the tests and not with this method.",
+            span,
+            "Declare it in a production source, or call it only from tests and from methods in test sources.");
+
+    /// <summary>
+    /// Refuses a name production behavior looked for in the production schema closure and did not
+    /// find, when a schema only test sources bring declares it (<c>PC0089</c>, spec 25.3.1).
+    /// </summary>
+    /// <param name="declared">
+    /// What the name resolves to in an index, null where nothing does. Asked of every schema's index
+    /// only when production behavior is being bound against a narrower one, since otherwise the
+    /// caller has already asked that index and found nothing.
+    /// </param>
+    /// <returns>Whether it was refused; false leaves the caller to report an unknown name.</returns>
+    /// <remarks>
+    /// <para>
+    /// The production build never loads that schema, so there the name is simply unknown. A test
+    /// build loads it for the tests, and without this the name would resolve there instead, making
+    /// production behavior valid only because test sources were added. Binding production behavior
+    /// against the production closure alone is what keeps a test build from accepting it, and from
+    /// finding a production name ambiguous because a test schema declares another of that name.
+    /// </para>
+    /// <para>
+    /// Its own code rather than the unknown-type diagnostic, because the name is not unknown: the
+    /// author can see the declaration, and a test builds against it. What the reader needs is which
+    /// schema it is in and why production behavior cannot reach it. The schema is named, and not the
+    /// source that imports it, because what is missing is a production source bringing it in, not
+    /// this source's import of it: any production source's import would do.
+    /// </para>
+    /// </remarks>
+    private bool ReportIfOnlyTestSchemasDeclare(
+        string name,
+        SourceSpan span,
+        Func<SchemaTypes, IEnumerable<IDescriptor?>> declared)
+    {
+        if (!_productionBehavior
+            || ProductionSchemas is null
+            || declared(_types).OfType<IDescriptor>().FirstOrDefault() is not { } type)
+        {
+            return false;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.ProductionNamesATestOnlyType,
+            $"'{name}' is declared in '{type.File.Name}', which no production source brings into the "
+                + "compilation, so only tests and test sources may name it.",
+            span,
+            $"Import '{type.File.Name}' from a production source, or use '{name}' only in tests and test sources.");
+        return true;
     }
 
     /// <summary>
