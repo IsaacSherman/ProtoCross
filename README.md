@@ -1,14 +1,14 @@
 # ProtoCross
 
-ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages.
+ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages, with tests that run across every target it supports.
 
-Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams often reimplement the same methods in every target language and hope the implementations stay semantically identical.
+Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams reimplement the same methods in every target language, write parallel test suites using similar-but-not-identical frameworks and extension points, and hope both the implementations and their tests stay semantically identical.
 
-ProtoCross is an attempt to fill that gap without turning protobuf into a full programming platform.
+ProtoCross makes that shared behavior a shared, executable contract. Define a method and its declarative tests once; the compiler generates native behavior and test artifacts for each backend, while the conformance suite requires the same observable results everywhere. The goal is not merely similar code in several languages, but behavior we can verify is equivalent as closely as the targets allow, without turning protobuf into a full programming platform.
 
 ## Vision
 
-The goal is simple: define behavior once, then transpile it into the languages where the protobuf messages are used.
+The goal is simple: define behavior and its tests once, then transpile both into the languages where the protobuf messages are used.
 
 ProtoCross should let a team write small, explicit methods against protobuf message types:
 
@@ -20,7 +20,7 @@ extend InvoiceItem {
 }
 ```
 
-That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target.
+That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
 
 This is not meant to be a clever language. It is meant to be deliberately plain: old-fashioned pseudocode with enough type information and control flow to express common domain behavior clearly.
 
