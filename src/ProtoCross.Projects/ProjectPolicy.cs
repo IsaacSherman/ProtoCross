@@ -49,9 +49,12 @@ public static class ProjectPolicy
             return null;
         }
 
+        // Members share directories, and each search walks to the root, so each directory is
+        // searched once however many members it holds.
+        var nearest = new Dictionary<string, string?>(PathIdentity.Comparer);
         foreach (var member in members)
         {
-            ReportIfUnderAnotherFile(project, member, governing, diagnostics);
+            ReportIfUnderAnotherFile(project, member, governing, nearest, diagnostics);
         }
 
         return config;
@@ -90,11 +93,12 @@ public static class ProjectPolicy
         ProtoCrossProject project,
         ProjectMember member,
         string? governing,
+        Dictionary<string, string?> nearest,
         DiagnosticBag diagnostics)
     {
         var source = SourceIdentity.FromPath(member.Path);
         if (source.Directory is not { } directory
-            || ProjectConfig.Discover(directory) is not { } nearer
+            || Nearest(directory, nearest) is not { } nearer
             || PathIdentity.AreSame(nearer, governing))
         {
             return;
@@ -108,6 +112,18 @@ public static class ProjectPolicy
             source.Start,
             $"One compilation runs under one policy, and {projectName} settles its own. Remove the nearer "
                 + "file if the project's policy is the one meant, or compile this source in a project of its own.");
+    }
+
+    /// <summary>The configuration file <paramref name="directory"/>'s search finds, asked of the file system once.</summary>
+    private static string? Nearest(string directory, Dictionary<string, string?> nearest)
+    {
+        if (!nearest.TryGetValue(directory, out var found))
+        {
+            found = ProjectConfig.Discover(directory);
+            nearest[directory] = found;
+        }
+
+        return found;
     }
 
     private static string Describe(string? governing)

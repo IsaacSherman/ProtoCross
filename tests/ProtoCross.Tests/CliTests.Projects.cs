@@ -306,6 +306,27 @@ public partial class CliTests
     }
 
     /// <summary>
+    /// A source that finds no configuration file of its own is not warned about, although compiled on
+    /// its own it would run under the defaults rather than the file the project names: it states no
+    /// policy, so there is no other policy to have been passed over.
+    /// </summary>
+    [Fact]
+    public void AMemberWithNoConfigOfItsOwnIsNotWarnedAbout()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(
+            directory,
+            ("billing.pcproj", Project("<Config>policy/strict.xml</Config>\n<Sources Include=\"src/*.pcross\" />")),
+            ("policy/strict.xml", CheckedPolicy),
+            ("src/pricing.pcross", Pricing));
+
+        var run = Run(directory, "billing.pcproj", "-t", "csharp", "-o", "out");
+
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.DoesNotContain(DiagnosticCodes.MemberUnderAnotherConfig.Code, run.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A <c>&lt;Config&gt;</c> naming no file is refused (<c>PC2009</c>), rather than the project
     /// built under the defaults it did not ask for.
     /// </summary>
