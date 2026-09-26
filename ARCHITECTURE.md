@@ -12,7 +12,7 @@ Behavior is defined once and generated per target, and it has to mean the same t
 
 ## The solution
 
-`ProtoCross.slnx`, six projects, `net10.0`. Settings are central in
+`ProtoCross.slnx`, seven projects, `net10.0`. Settings are central in
 [Directory.Build.props](Directory.Build.props): nullable enabled, implicit usings, **warnings as
 errors**, and `CheckForOverflowUnderflow=false` on purpose — the compiler must never inherit the
 arithmetic behavior it exists to define.
@@ -24,11 +24,14 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Backend.Cpp](src/ProtoCross.Backend.Cpp) | The same for C++. |
 | [src/ProtoCross.Cli](src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
 | [src/ProtoCross.LanguageServer](src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
+| [src/ProtoCross.Projects](src/ProtoCross.Projects) | Reading a `.pcproj`, and finding the sources its patterns match. |
 | [tests/ProtoCross.Tests](tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
-dragging the CLI along, and it is worth preserving.
+dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` references Core and a
+globbing package and nothing else, so that listing directories to find sources happens beside Core
+rather than in it.
 
 Outside the solution, [editors/vscode](editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
@@ -275,6 +278,18 @@ withheld too, and protoc is located instead. And nothing withheld is discarded, 
 new generation and a recompile like any other change. What was withheld is said once per process as a
 message, and listed in the status report — never as a diagnostic, since nothing about the document or
 the setting needs editing.
+
+### Projects
+
+A `.pcproj` (spec 5.4) says which sources one compilation is made of and which of them hold its
+tests, and names the `protocross.config.xml` its policy comes from: two files, because what is
+compiled and what it means are two questions.
+[`ProtoCrossProject.Load`](src/ProtoCross.Projects/ProtoCrossProject.cs) reads the project file
+alone, through the same [`XmlInput`](src/ProtoCross.Core/Config/XmlInput.cs) the configuration
+file is read with, so a position in either is placed the same way.
+[`ProjectSources.Expand`](src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
+directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
+an element whose patterns match nothing is a warning (`PC2010`). Nothing compiles a project yet.
 
 ### Serving an editor
 
@@ -552,7 +567,8 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
-`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
+`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
+`ProjectSourcesTests`, `BackendTests`, `NameMappingTests`,
 `CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`

@@ -1,4 +1,3 @@
-using System.Xml;
 using System.Xml.Linq;
 using ProtoCross.Diagnostics;
 
@@ -205,50 +204,9 @@ public sealed record ProjectConfig(
     /// </summary>
     public static ProjectConfig? Load(string path, DiagnosticBag diagnostics)
     {
-        var name = System.IO.Path.GetFileName(path);
-
-        string xml;
-        try
+        var file = XmlInput.Read(path, "ProtoCross", DiagnosticCodes.ConfigurationFileCouldNotBeRead, diagnostics);
+        if (file is null)
         {
-            xml = File.ReadAllText(path);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            diagnostics.Report(
-                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
-                ex.Message,
-                new SourceSpan(name, SourcePosition.None, SourcePosition.None));
-            return null;
-        }
-
-        // Parsed from text this method also keeps a copy of, rather than straight from the path,
-        // because a span carries an absolute offset and XML line info does not. The cost is that an
-        // encoding named in the XML declaration no longer overrides what the bytes say:
-        // File.ReadAllText follows a byte-order mark and otherwise reads UTF-8, which is what every
-        // protocross.config.xml is written in.
-        var file = new ConfigFile(name, new LineMap(xml));
-
-        XDocument document;
-        try
-        {
-            document = XDocument.Parse(xml, LoadOptions.SetLineInfo);
-        }
-        catch (XmlException ex)
-        {
-            diagnostics.Report(
-                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
-                ex.Message,
-                Span(file, ex.LineNumber, ex.LinePosition));
-            return null;
-        }
-
-        var root = document.Root;
-        if (root is null || root.Name.LocalName != "ProtoCross")
-        {
-            diagnostics.Report(
-                DiagnosticCodes.ConfigurationFileCouldNotBeRead,
-                $"The root element must be <ProtoCross>, not <{root?.Name.LocalName ?? "(empty)"}>.",
-                Span(file, root));
             return null;
         }
 
@@ -256,7 +214,7 @@ public sealed record ProjectConfig(
         var explicitKeys = new HashSet<string>(StringComparer.Ordinal);
         var failed = false;
 
-        foreach (var section in root.Elements())
+        foreach (var section in file.Root.Elements())
         {
             var sectionName = section.Name.LocalName;
             if (sectionName is not ("Arithmetic" or "Presence"))
@@ -338,7 +296,7 @@ public sealed record ProjectConfig(
                     diagnostics.Report(
                         DiagnosticCodes.DuplicateConfigurationSetting,
                         $"'{key}' is stated more than once.",
-                        Span(file, setting),
+                        file.Span(setting),
                         "Two answers to one question is not a configuration, it is a coin toss. Keep one.");
                     failed = true;
                 }
@@ -372,7 +330,7 @@ public sealed record ProjectConfig(
 
     private static bool TryParse<T>(
         DiagnosticBag diagnostics,
-        ConfigFile file,
+        XmlInput file,
         XElement element,
         string key,
         string text,
@@ -394,7 +352,7 @@ public sealed record ProjectConfig(
         diagnostics.Report(
             DiagnosticCodes.UnknownConfigurationValue,
             $"'{text}' is not a legal value for '{key}'.",
-            Span(file, element),
+            file.Span(element),
             $"Legal values: {string.Join(", ", Enum.GetValues<T>().Select(v => v.ToString()))}.");
 
         value = default;
@@ -403,7 +361,7 @@ public sealed record ProjectConfig(
 
     private static void UnknownElement(
         DiagnosticBag diagnostics,
-        ConfigFile file,
+        XmlInput file,
         XElement element,
         string name,
         string parent,
@@ -412,36 +370,9 @@ public sealed record ProjectConfig(
         diagnostics.Report(
             DiagnosticCodes.UnknownConfigurationElement,
             $"<{name}> is not a setting ProtoCross knows about inside <{parent}>.",
-            Span(file, element),
+            file.Span(element),
             known.Count == 0
                 ? null
                 : $"Known elements inside <{parent}>: {string.Join(", ", known)}.");
     }
-
-    private static SourceSpan Span(ConfigFile file, XObject? node)
-        => node is IXmlLineInfo info && info.HasLineInfo()
-            ? Span(file, info.LineNumber, info.LinePosition)
-            : Span(file, 0, 0);
-
-    /// <remarks>
-    /// Zero-width, because it says where the problem is rather than how much of the file is wrong.
-    /// Half-open ranges make that a legitimate empty range rather than a length nobody should read.
-    /// A line of 0 is the XML parser saying it does not know, and stays out of band.
-    /// </remarks>
-    private static SourceSpan Span(ConfigFile file, int line, int column)
-    {
-        if (line <= 0)
-        {
-            return new SourceSpan(file.Name, SourcePosition.None, SourcePosition.None);
-        }
-
-        var position = new SourcePosition(file.Lines.OffsetOf(line, column), line, column);
-        return new SourceSpan(file.Name, position, position);
-    }
-
-    /// <summary>
-    /// The configuration file being read: the name its diagnostics print, and where its lines begin
-    /// so that a line and column from the XML parser can be given the absolute offset a span wants.
-    /// </summary>
-    private sealed record ConfigFile(string Name, LineMap Lines);
 }

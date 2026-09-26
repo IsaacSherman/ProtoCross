@@ -111,6 +111,66 @@ Normative Requirements:
 Implementation Note:
 
 - The command line compiles every source it is given as one compilation
-  (`protocross pricing.pcross discounts.pcross`), as the `Compilation` API does. Which sources make
-  up a project is not yet something a project can write down, so whoever runs the command lists
-  them.
+  (`protocross pricing.pcross discounts.pcross`), as the `Compilation` API does. A project can now
+  write down which sources it is made of ([5.4](#54-projects)), but the command line does not yet
+  take one, so whoever runs it still lists them.
+
+### 5.4 Projects
+
+**Decided: a project file, `<name>.pcproj`, says which sources make up one compilation and which of
+them hold its tests. It names the configuration file its policy comes from, and never states policy
+itself.**
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<ProtoCrossProject>
+  <Config>../protocross.config.xml</Config>
+  <Sources Include="src/**/*.pcross" Exclude="src/scratch/**" />
+  <Tests Include="tests/**/*.pcross" />
+  <ProtoPath>protos</ProtoPath>
+</ProtoCrossProject>
+```
+
+What is compiled and what it means are two questions, and each has a file of its own: a project
+answers the first and `protocross.config.xml` the second
+([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)). A project that could state
+`<Arithmetic>` itself would give policy two homes.
+
+Normative Requirements:
+
+- The root element is `<ProtoCrossProject>`, and it holds only these elements, each of them optional:
+  - `<Sources>`, which may be repeated: sources a production build compiles.
+  - `<Tests>`, which may be repeated: sources a test build compiles as well.
+  - `<ProtoPath>`, which may be repeated: a directory imported schemas are searched for in, as an
+    include path is ([5.2](#52-relationship-to-proto)). They keep the order they are written in.
+  - `<Config>`, at most once: the configuration file the project's compilation runs under.
+- Anything else is `PC2008`, and so is an attribute an element does not take. There is no element
+  naming `protoc`, because a project comes with a repository and a repository does not choose what
+  the machine runs ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), and none stating
+  policy.
+- Paths and patterns are relative to the project file's directory, and `../` reaches above it. A path
+  may be absolute. A pattern may not, because it is matched below a directory, and a full path in a
+  project that is committed names a directory on one machine only.
+- `Include` and `Exclude` list patterns separated by `;`. `*` matches within one directory and `**`
+  across any number of them, either separator divides directories, and case is ignored exactly where
+  the file system ignores it. Only `.pcross` files are taken from what a pattern matches, so
+  `src/**` means every source under `src`. An `Exclude` applies to the element it is written on.
+- A file several patterns of one group match is one source. `<Sources>` and `<Tests>` may name the
+  same files, and neither has to exclude the other's: building and testing are two procedures, and a
+  file in both takes part in both.
+- Each group's sources are ordered by their path below the project's directory, so one tree is one
+  compilation on every machine, whatever order a file system lists a directory in.
+- A project that states anything it cannot mean is refused whole, because a project missing one of
+  its lines would compile a program nobody wrote: `PC2007` for a file that cannot be read, is not
+  XML, or has another root, and for a directory a pattern searches that cannot be listed; `PC2009`
+  for an element without its patterns, patterns written as text, a full path used as a pattern, an
+  empty or impossible path, or `<Config>` stated twice.
+- An element that matches no source is `PC2010`, a warning at that element. It is almost always a
+  typo, and the rest of the project still stands.
+- One project is one compilation and one file. Several may share a directory, and each is a
+  compilation of its own.
+
+Implementation Note:
+
+- A project can be read and its sources found, but neither the command line nor an editor compiles
+  one yet.

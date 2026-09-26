@@ -31,11 +31,11 @@ Code ranges:
 | `PC0001`–`PC0999` | The compiler front end: lexer, parser, binder |
 | `PC1001`–`PC1099` | The C# backend |
 | `PC1101`–`PC1199` | The C++ backend |
-| `PC2001`–`PC2099` | The driver and the configuration file ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) |
+| `PC2001`–`PC2099` | The driver, the configuration file ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) and the project file ([5.4](./§5-Source%20Organization.md#54-projects)) |
 | `PC2100`–`PC2199` | Host configuration: settings, scopes, and precedence ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)) |
 
-A configuration diagnostic names `protocross.config.xml` and the line and column inside it, rather
-than a position in a `.pcross` source. A host-configuration diagnostic has no file and no
+A configuration or project diagnostic names its file -- `protocross.config.xml`, or the `.pcproj` --
+and the line and column inside it, rather than a position in a `.pcross` source. A host-configuration diagnostic has no file and no
 position at all: it names the scope the setting was written at — `<user settings>`,
 `<workspace settings>`, `<folder settings>`, `<environment>` — because a client sends settings as
 values rather than as the text of the file it read them from.
