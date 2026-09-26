@@ -144,7 +144,8 @@ Normative Requirements:
   - `<ProtoPath>`, which may be repeated: a directory imported schemas are searched for in, as an
     include path is ([5.2](#52-relationship-to-proto)). They keep the order they are written in.
   - `<Config>`, at most once: the configuration file the project's compilation runs under.
-- Anything else is `PC2008`, and so is an attribute an element does not take. There is no element
+- Anything else is `PC2008`, and so is an attribute an element does not take. An attribute in a
+  namespace, such as `xsi:schemaLocation`, belongs to another vocabulary and is left alone. There is no element
   naming `protoc`, because a project comes with a repository and a repository does not choose what
   the machine runs ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), and none stating
   policy.
@@ -162,7 +163,9 @@ Normative Requirements:
   compilation on every machine, whatever order a file system lists a directory in.
 - A project that states anything it cannot mean is refused whole, because a project missing one of
   its lines would compile a program nobody wrote: `PC2007` for a file that cannot be read, is not
-  XML, or has another root, and for a directory a pattern searches that cannot be listed; `PC2009`
+  XML, declares a document type (as a configuration file may not either,
+  [10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), or has another root, and for a
+  directory a pattern searches that cannot be listed; `PC2009`
   for an element without its patterns, patterns written as text, a full path used as a pattern, an
   empty or impossible path, or `<Config>` stated twice.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a

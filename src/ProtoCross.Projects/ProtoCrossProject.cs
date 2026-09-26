@@ -75,7 +75,22 @@ public sealed record ProtoCrossProject
         ArgumentNullException.ThrowIfNull(path);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var fullPath = System.IO.Path.GetFullPath(path);
+        string fullPath;
+        try
+        {
+            fullPath = System.IO.Path.GetFullPath(path);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // Reported rather than thrown: the path comes from a command line or an editor, and
+            // neither may take the process down by naming a file that cannot exist.
+            diagnostics.Report(
+                DiagnosticCodes.ProjectCouldNotBeRead,
+                $"'{path}' is not a path: {ex.Message}",
+                new SourceSpan(path, SourcePosition.None, SourcePosition.None));
+            return null;
+        }
+
         var file = XmlInput.Read(fullPath, RootElement, DiagnosticCodes.ProjectCouldNotBeRead, diagnostics);
 
         return file is null ? null : new ProjectReader(file, fullPath, diagnostics).Read();
@@ -271,7 +286,9 @@ public sealed record ProtoCrossProject
         private void RefuseAttributes(XElement element, params string[] known)
         {
             var name = element.Name.LocalName;
-            foreach (var attribute in element.Attributes().Where(attribute => !attribute.IsNamespaceDeclaration))
+            // An attribute in a namespace belongs to another vocabulary -- xsi:schemaLocation, which an
+            // editor reads for completion, is the usual one -- and says nothing to ProtoCross.
+            foreach (var attribute in element.Attributes().Where(attribute => attribute.Name.Namespace == XNamespace.None))
             {
                 if (known.Contains(attribute.Name.LocalName, StringComparer.Ordinal))
                 {

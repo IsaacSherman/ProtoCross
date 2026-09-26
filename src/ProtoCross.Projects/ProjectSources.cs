@@ -53,7 +53,7 @@ public static class ProjectSources
             {
                 diagnostics.Report(
                     DiagnosticCodes.ProjectPatternMatchesNothing,
-                    $"<{group} Include=\"{string.Join(';', item.Include)}\"> matches no {SourceExtension} file.",
+                    $"{Describe(group, item)} matches no {SourceExtension} file.",
                     item.Span,
                     "Patterns are matched below the project's directory, and ../ reaches above it.");
             }
@@ -68,8 +68,8 @@ public static class ProjectSources
     private static List<string>? Match(string directory, string group, ProjectItem item, DiagnosticBag diagnostics)
     {
         var matcher = new Matcher(PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
-        matcher.AddIncludePatterns(item.Include);
-        matcher.AddExcludePatterns(item.Exclude);
+        matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
+        matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
 
         PatternMatchingResult result;
         try
@@ -80,7 +80,7 @@ public static class ProjectSources
         {
             diagnostics.Report(
                 DiagnosticCodes.ProjectCouldNotBeRead,
-                $"The files <{group} Include=\"{string.Join(';', item.Include)}\"> names could not be listed: {ex.Message}",
+                $"The files {Describe(group, item)} names could not be listed: {ex.Message}",
                 item.Span);
             return null;
         }
@@ -92,6 +92,19 @@ public static class ProjectSources
                 .Where(IsSource),
         ];
     }
+
+    /// <summary>The element as written, excludes included, since an exclude can be what emptied it.</summary>
+    private static string Describe(string group, ProjectItem item)
+        => item.Exclude.Count == 0
+            ? $"<{group} Include=\"{string.Join(';', item.Include)}\">"
+            : $"<{group} Include=\"{string.Join(';', item.Include)}\" Exclude=\"{string.Join(';', item.Exclude)}\">";
+
+    /// <summary>
+    /// A pattern with either separator written as a forward slash, so that one project matches the
+    /// same files on every platform rather than leaving a backslash to mean a separator on one and a
+    /// character of a file name on another.
+    /// </summary>
+    private static string WithForwardSlashes(string pattern) => pattern.Replace('\\', '/');
 
     private static bool IsSource(string path)
         => string.Equals(

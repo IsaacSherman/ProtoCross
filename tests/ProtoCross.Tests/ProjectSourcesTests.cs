@@ -191,6 +191,10 @@ public class ProjectSourcesTests
             "<Sources Include=\"src/*.pcross\" Exclude=\"src/*.pcross\" />",
             "project/src/a.pcross");
 
-        Assert.Equal(DiagnosticCodes.ProjectPatternMatchesNothing.Code, Assert.Single(diagnostics).Code);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(DiagnosticCodes.ProjectPatternMatchesNothing.Code, diagnostic.Code);
+        Assert.True(
+            diagnostic.Message.Contains("Exclude=\"src/*.pcross\"", StringComparison.Ordinal),
+            $"the warning must show the exclude that emptied the element: {diagnostic.Message}");
     }
 }

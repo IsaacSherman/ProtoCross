@@ -218,6 +218,35 @@ public class ProjectFileTests
         Assert.True(diagnostic.Span.Line > 1, "a malformed project should report the line it went wrong on");
     }
 
+    /// <summary>A path that cannot name a file is reported, not thrown: it came from a command line or an editor.</summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("bad\0name.pcproj")]
+    public void APathThatCannotBeAFileIsReportedRatherThanThrown(string path)
+    {
+        var diagnostics = new DiagnosticBag();
+
+        var project = ProtoCrossProject.Load(path, diagnostics);
+
+        Assert.Null(project);
+        Assert.Equal(DiagnosticCodes.ProjectCouldNotBeRead.Code, Assert.Single(diagnostics).Code);
+    }
+
+    /// <summary>
+    /// An attribute in another vocabulary's namespace, such as the schema location an editor reads for
+    /// completion, is not ProtoCross's to refuse.
+    /// </summary>
+    [Fact]
+    public void AnAttributeInAnotherNamespaceIsLeftAlone()
+    {
+        var (project, diagnostics) = Load(
+            "<ProtoCrossProject xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" "
+                + "xsi:schemaLocation=\"urn:protocross pcproj.xsd\">\n<Sources Include=\"src/*.pcross\" />\n</ProtoCrossProject>\n");
+
+        Assert.Empty(diagnostics);
+        Assert.NotNull(project);
+    }
+
     /// <summary>A configuration file handed over as a project is refused at its root, which names both.</summary>
     [Fact]
     public void AFileWithAnotherRootIsNotAProject()

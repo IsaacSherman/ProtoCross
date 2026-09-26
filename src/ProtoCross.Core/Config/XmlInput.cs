@@ -24,6 +24,14 @@ namespace ProtoCross.Config;
 /// </remarks>
 public sealed class XmlInput
 {
+    /// <summary>How every such file is parsed: with no document type definition.</summary>
+    /// <remarks>
+    /// Neither file has any use for one, and both come with a repository, which an editor reads the
+    /// moment a folder is opened, trusted or not. A DTD is how a few hundred bytes of entity
+    /// definitions expand into gigabytes of text, so one is refused as not being a file of either kind.
+    /// </remarks>
+    private static readonly XmlReaderSettings Settings = new() { DtdProcessing = DtdProcessing.Prohibit };
+
     private readonly LineMap _lines;
 
     private XmlInput(string name, LineMap lines, XElement root)
@@ -71,7 +79,8 @@ public sealed class XmlInput
         XDocument document;
         try
         {
-            document = XDocument.Parse(xml, LoadOptions.SetLineInfo);
+            using var reader = XmlReader.Create(new StringReader(xml), Settings);
+            document = XDocument.Load(reader, LoadOptions.SetLineInfo);
         }
         catch (XmlException ex)
         {
