@@ -872,37 +872,93 @@ public sealed class Compilation
     /// overwriting the other or as a duplicate definition in the consumer's build.
     /// <see cref="NameConventions.OutputKey"/> is coarser than all of them, so two sources with
     /// different keys cannot collide in any. The same file given twice has one key as well.
+    /// <para>
+    /// Two other kinds of name share a directory with a source's own. A backend generates some files
+    /// under a fixed name whatever the sources are called, and a test source's files are generated
+    /// into the test output, beside every source's tests (spec 25.3.1). Both are compared by the same
+    /// key, so a source named after a runtime, or a test source named after another source's tests,
+    /// is refused here rather than overwriting that file when it is generated.
+    /// </para>
     /// </remarks>
     private bool EverySourceHasNamesOfItsOwn(DiagnosticBag diagnostics)
     {
         var claimed = new Dictionary<string, SourceIdentity>(StringComparer.Ordinal);
+        var fixedKeys = NameConventions.FixedNames.Select(NameConventions.OutputKey).ToHashSet(StringComparer.Ordinal);
         var distinct = true;
 
         foreach (var source in Sources.Select(source => source.Identity))
         {
-            var key = NameConventions.OutputKey(Path.GetFileNameWithoutExtension(source.Name));
-            if (claimed.TryAdd(key, source))
+            var key = OwnKey(source);
+            if (fixedKeys.Contains(key))
             {
-                continue;
+                distinct = false;
+                ReportFixedName(source, diagnostics);
             }
+            else if (!claimed.TryAdd(key, source))
+            {
+                distinct = false;
+                ReportSharedNames(source, claimed[key], diagnostics);
+            }
+        }
 
-            distinct = false;
-            var first = claimed[key];
-            var again = IsSameSource(first, source);
-            diagnostics.Report(
-                DiagnosticCodes.SourcesShareGeneratedNames,
-                again
-                    ? $"'{source.Name}' is given more than once."
-                    : $"'{source.Name}' would be generated under the same names as '{first.Name}'.",
-                StartOf(source),
-                again
-                    ? "Pass each source once."
-                    : "Generated file names, include guards and test classes ignore case and "
-                        + "punctuation, so these two names are one name to them. Rename one source.");
+        var tested = new Dictionary<string, SourceIdentity>(StringComparer.Ordinal);
+        foreach (var source in Sources.Select(source => source.Identity))
+        {
+            tested.TryAdd(TestsKey(source), source);
+        }
+
+        foreach (var helper in Sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Identity))
+        {
+            if (tested.TryGetValue(OwnKey(helper), out var owner))
+            {
+                distinct = false;
+                ReportNamedLikeTests(helper, owner, diagnostics);
+            }
         }
 
         return distinct;
     }
+
+    /// <summary>What <paramref name="source"/>'s own generated names come to.</summary>
+    private static string OwnKey(SourceIdentity source)
+        => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(source.Name));
+
+    /// <summary>What the names of the tests generated from <paramref name="source"/> come to.</summary>
+    private static string TestsKey(SourceIdentity source)
+        => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(source.Name) + NameConventions.TestsSuffix);
+
+    private static void ReportSharedNames(SourceIdentity source, SourceIdentity first, DiagnosticBag diagnostics)
+    {
+        var again = IsSameSource(first, source);
+        diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            again
+                ? $"'{source.Name}' is given more than once."
+                : $"'{source.Name}' would be generated under the same names as '{first.Name}'.",
+            StartOf(source),
+            again
+                ? "Pass each source once."
+                : "Generated file names, include guards and test classes ignore case and "
+                    + "punctuation, so these two names are one name to them. Rename one source.");
+    }
+
+    private static void ReportFixedName(SourceIdentity source, DiagnosticBag diagnostics)
+        => diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            $"'{source.Name}' would be generated under the name of a file the compiler generates "
+                + "beside every source's.",
+            StartOf(source),
+            $"Rename the source. {string.Join(", ", NameConventions.FixedNames)} are taken, whatever "
+                + "their case and punctuation.");
+
+    private static void ReportNamedLikeTests(SourceIdentity helper, SourceIdentity owner, DiagnosticBag diagnostics)
+        => diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            $"'{helper.Name}' is a test source, so its files are generated beside the tests of "
+                + $"'{owner.Name}', and under the same names.",
+            StartOf(helper),
+            $"Rename one of them. The tests generated from a source are named after it, followed by "
+                + $"'{NameConventions.TestsSuffix}'.");
 
     /// <summary>Whether two identities name one source, however a path to it is spelled.</summary>
     private static bool IsSameSource(SourceIdentity first, SourceIdentity second)

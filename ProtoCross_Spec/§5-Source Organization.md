@@ -107,6 +107,14 @@ Normative Requirements:
   system ignores it, punctuation, a `T` placed before a name that does not start with a letter -- so
   the names compared are the source names reduced to their letters and digits, upper-cased, with that
   `T` in front where it would go. One source given twice is `PC2006` as well.
+- Two more kinds of generated name are compared the same way, and a source that takes one is
+  `PC2006`. A backend generates some files under a fixed name beside every source's, so no source
+  may be named `ProtoCrossArithmetic`, `ProtoCrossTestSupport` or `protocross_runtime`, in any role.
+  And a test source's files are generated beside every source's tests
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)),
+  which are named after their source followed by `.tests`, so a test source may not be named
+  `pricing.tests` in a compilation that has a `pricing`. A production source may: its files are
+  generated into the other directory.
 - Every source compiles under one policy ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
 - Every source carries an identity of its own, a path or the name its caller gave an unsaved buffer
   ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)).
