@@ -63,6 +63,16 @@ public sealed record SourceIdentity
     /// </remarks>
     public string? Directory { get; }
 
+    /// <summary>
+    /// The empty point at the start of this source, for a diagnostic about the source as a whole.
+    /// </summary>
+    /// <remarks>
+    /// Such a diagnostic is reported before the source is lexed, so there is nothing inside it to
+    /// place one at, and <see cref="Diagnostics.SourceSpan.None"/> would say which file only by leaving
+    /// it out. The start is also where an editor puts a diagnostic that has no position (spec 26.1).
+    /// </remarks>
+    public Diagnostics.SourceSpan Start => Diagnostics.SourceSpan.SingleLine(Name, 0, 1, 1, 0);
+
     /// <summary>Identifies text by the file it is stored in.</summary>
     public static SourceIdentity FromPath(string path)
     {

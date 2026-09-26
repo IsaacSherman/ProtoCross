@@ -211,6 +211,9 @@ agreement with the first.
   - each test source's behavior into the test output, leaving out anything the behavior output
     already holds, such as a runtime file every source's behavior brings;
   - every source's tests into the test output.
+
+  A test build is one build. It generates nothing unless all of it compiles, tests included: the
+  behavior output alone, written beside a failed test build, would look like a finished one.
 - **A test source may declare methods.** Any test may target one, and one may call any method,
   since it is generated beside everything it could call.
 - **A production source's method may not call a test source's method.** It is `PC0088`, an error,
@@ -247,6 +250,10 @@ agreement with the first.
 Implementation Note:
 
 - The `Compilation` API does both builds: a source says which it is with `SourceDocument.Role`, and
-  `CompilationOptions.SkipTests` makes a build a production build. The command line and the editor
-  do not take a project yet, so every source they compile is a production source, and the command
-  line binds every source's tests whether or not `--test-out` is given, as it always has.
+  `CompilationOptions.SkipTests` makes a build a production build.
+- The command line runs a production build without `--test-out`, and a test build with it, writing
+  the behavior output to `-o` and the test output to `--test-out`. That holds without a project
+  too, where every source is a production source: a test that no longer binds stops a build only
+  when `--test-out` asks for the tests.
+- An editor does not take a project yet, so every source it compiles is a production source, and it
+  binds every source's tests.

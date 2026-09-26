@@ -17,7 +17,7 @@ namespace ProtoCross.Tests;
 /// writes relative to where it was run -- and a process has one console and one working directory,
 /// shared by every test running beside it.
 /// </remarks>
-public class CliTests
+public partial class CliTests
 {
     private const string Import = "import proto \"invoice.proto\";";
 
