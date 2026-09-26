@@ -431,6 +431,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor SchemaBesideSourceIsShadowed =
         new("PC0087", DiagnosticSeverity.Warning, "schema beside the source is shadowed");
 
+    /// <summary>
+    /// A method of a production source that calls a method a test source declares, which is
+    /// generated with the tests and not with the program (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionMethodCallsTestHelper =
+        new("PC0088", DiagnosticSeverity.Error, "production method calls a test helper");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

@@ -65,6 +65,14 @@ public sealed partial class Binder
     /// </remarks>
     private SourceIdentity _document;
 
+    /// <summary>The sources being bound that are compiled only to test with (spec 25.3.1).</summary>
+    /// <remarks>
+    /// Set by <see cref="Bind(IReadOnlyList{SourceTree})"/> before anything is declared, and asked
+    /// of the source a call resolves into: a method in one of these is generated with the tests, so
+    /// a method that ships may not call it.
+    /// </remarks>
+    private HashSet<SourceIdentity> _testSources = [];
+
     /// <param name="document">
     /// What the source handed to <see cref="Bind(CompilationUnit)"/> is, which every declaration
     /// site records so that a reference can say not just where its declaration is but which file
@@ -97,6 +105,12 @@ public sealed partial class Binder
     /// are what make a second walk wrong rather than merely redundant.
     /// </remarks>
     public SchemaTypes Types => _types;
+
+    /// <summary>
+    /// Whether the sources' <c>test</c> declarations are passed over, as a production build passes
+    /// them over (spec 25.3.1). See <see cref="CompilationOptions.SkipTests"/>.
+    /// </summary>
+    public bool SkipTests { get; init; }
 
     /// <summary>Binds a compilation unit to typed IR, whether or not it parsed cleanly.</summary>
     /// <remarks>
@@ -148,6 +162,8 @@ public sealed partial class Binder
                 nameof(sources));
         }
 
+        _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
+
         var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
 
         var methods = new List<IrMethod>();
@@ -157,7 +173,11 @@ public sealed partial class Binder
         {
             _document = source.Document;
             methods.AddRange(BindMethods(extends));
-            tests.AddRange(BindTests(source.Unit));
+
+            if (!SkipTests)
+            {
+                tests.AddRange(BindTests(source.Unit));
+            }
         }
 
         return new IrModule(methods, tests)
@@ -654,7 +674,10 @@ public sealed partial class Binder
             Declare(scope, parameter.Declaration, parameter.Type, ScopeEntry.FirstOffsetInside(method.Body.Span));
         }
 
-        var context = new MethodContext(receiver, signature.ReturnType);
+        var context = new MethodContext(receiver, signature.ReturnType)
+        {
+            Ships = !_testSources.Contains(_document),
+        };
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
@@ -2084,6 +2107,14 @@ public sealed partial class Binder
 
         Use(signature.Id, methodNameSpan);
 
+        // Reported and then bound as the call it is. The call is well formed and resolves; what is
+        // wrong is only where its target is generated, and binding it for what it is keeps a
+        // mistake inside an argument from hiding behind this one.
+        if (context.Ships && _testSources.Contains(signature.Declaration.Document))
+        {
+            ReportCallIntoATestSource(signature, invocation.Span);
+        }
+
         var arguments = new List<IrExpression>();
         for (var i = 0; i < invocation.Arguments.Count; i++)
         {
@@ -2134,6 +2165,30 @@ public sealed partial class Binder
                 [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))],
                 invocation.Span);
     }
+
+    /// <summary>
+    /// Refuses a call from a method that ships to a method a test source declares (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test source's methods are generated with the tests, and only a test build compiles them at
+    /// all. A production method that called one would be generated into the behavior output calling
+    /// something that is not there, and the production build, which leaves test sources out, would
+    /// report it as a method that does not exist. So it is refused wherever the two are compiled
+    /// together, which is what lets a test build's behavior output be the production build's.
+    /// </para>
+    /// <para>
+    /// The target is named with the source it is in, because nothing at the call site says which
+    /// source that is, and the fix is to move the method out of it.
+    /// </para>
+    /// </remarks>
+    private void ReportCallIntoATestSource(IrMethodSignature target, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.ProductionMethodCallsTestHelper,
+            $"'{target.Name}' is declared in '{target.Declaration.Document.Name}', a test source, so it "
+                + "is generated with the tests and not with this method.",
+            span,
+            "Declare it in a production source, or call it only from tests and from methods in test sources.");
 
     /// <summary>
     /// Binds a presence test, <c>has customer.email</c> (spec 8.4).
@@ -2801,6 +2856,17 @@ public sealed partial class Binder
         /// arrives (spec 18), this is the assumption that has to be revisited.
         /// </remarks>
         public IReadOnlySet<string> Present { get; init; } = EmptyPresence;
+
+        /// <summary>
+        /// Whether what is being bound ships with the program: the body of a method a production
+        /// source declares (spec 25.3.1).
+        /// </summary>
+        /// <remarks>
+        /// Only such a body is refused a call into a test source. A test and a test source's own
+        /// methods are generated with the tests, beside everything they could call, so false is
+        /// the answer for everything else.
+        /// </remarks>
+        public bool Ships { get; init; }
     }
 
     private static readonly IReadOnlySet<string> EmptyPresence =

@@ -20,7 +20,7 @@ namespace ProtoCross;
 /// <param name="SyntaxTree">
 /// The syntax tree, present whenever the source was parsed at all, error-recovered and complete
 /// enough to walk. Null on the same three stops that leave <paramref name="Module"/> null. Of a
-/// compilation of several sources, this is the first source's tree;
+/// compilation of several sources, this is the first tree of <see cref="CompilationResult.SyntaxTrees"/>;
 /// <see cref="CompilationResult.SyntaxTrees"/> holds every source's.
 /// </param>
 /// <param name="Descriptors">
@@ -134,7 +134,9 @@ public sealed record CompilationResult(
 
     /// <summary>
     /// Every source's syntax tree, with the source it came from, in the order the sources were
-    /// given. Empty when the compilation stopped before it parsed anything.
+    /// given, except that test sources come after production ones (see
+    /// <see cref="Compilation(IReadOnlyList{SourceDocument}, CompilationOptions)"/>). Empty when the
+    /// compilation stopped before it parsed anything.
     /// </summary>
     /// <remarks>
     /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives: the
@@ -197,6 +199,25 @@ public sealed record CompilationOptions
     /// nothing -- or nowhere -- is found.
     /// </summary>
     public ProjectConfig? Config { get; init; }
+
+    /// <summary>
+    /// Whether the sources' tests are left out, as a production build leaves them (spec 25.3.1):
+    /// parsed, because they are part of the text, but neither bound nor generated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A build that ships the program has no use for its tests, and a test that no longer binds --
+    /// its target renamed, a fixture field gone from the schema -- must not stop the program
+    /// shipping. So the binder never sees one, and nothing a test says is reported.
+    /// </para>
+    /// <para>
+    /// A test that does not parse is still reported. Leaving a declaration out needs to know where
+    /// it ends, and one that does not parse cannot say: whatever recovery decided, the error may be
+    /// about the method written after it, and passing over it would ship a program that is missing
+    /// that method with nothing said.
+    /// </para>
+    /// </remarks>
+    public bool SkipTests { get; init; }
 }
 
 /// <summary>
@@ -236,6 +257,14 @@ public sealed class Compilation
     /// refused when the compilation runs, as <c>PC2006</c>, rather than here, because that is a
     /// problem with the input and not with the call.
     /// </para>
+    /// <para>
+    /// Production sources come first, in the order given, and then test sources, in the order given
+    /// (spec 25.3.1). Order decides three things about a compilation: which source's directory answers
+    /// an import first, which of two declarations of one method is the duplicate, and the order the
+    /// generated files come out in. A test source placed first could otherwise change all three for
+    /// the production sources, and a test build is only worth running if what it generates for them
+    /// is what the production build does. With no test source the order is the one given.
+    /// </para>
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="sources"/> is empty.</exception>
     public Compilation(IReadOnlyList<SourceDocument> sources, CompilationOptions options)
@@ -248,7 +277,7 @@ public sealed class Compilation
             throw new ArgumentException("A compilation needs at least one source.", nameof(sources));
         }
 
-        Sources = [.. sources];
+        Sources = [.. sources.OrderBy(source => source.Role is SourceRole.Test)];
         Options = options;
         SearchPaths = BuildSearchPaths(
             Sources.Select(source => source.Identity),
@@ -796,7 +825,10 @@ public sealed class Compilation
             return Stopped(imports) with { SchemaFailure = SchemaLoadFailure.From(ex) };
         }
 
-        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config);
+        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config)
+        {
+            SkipTests = Options.SkipTests,
+        };
         var module = binder.Bind(trees);
 
         // Carried out whether or not anything went wrong, because a module built from a broken tree
@@ -821,7 +853,10 @@ public sealed class Compilation
     {
         var file = source.Identity.Name;
         var tokens = new Lexer(source.Text, file, diagnostics).Tokenize();
-        return new SourceTree(source.Identity, new Parser(tokens, file, diagnostics).ParseCompilationUnit());
+        return new SourceTree(source.Identity, new Parser(tokens, file, diagnostics).ParseCompilationUnit())
+        {
+            Role = source.Role,
+        };
     }
 
     /// <summary>

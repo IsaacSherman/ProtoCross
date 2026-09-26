@@ -25,7 +25,7 @@ namespace ProtoCross.Tests;
 /// consumer runs the compiler once, then their language's normal build command.
 /// </para>
 /// </remarks>
-public class ScaffoldExecutionTests
+public partial class ScaffoldExecutionTests
 {
     [Fact]
     public void TheEmittedCSharpProjectBuildsAndPassesItsTests()
@@ -248,9 +248,17 @@ internal sealed record ScaffoldLayout(
         string label,
         string? sourcePath = null,
         string? protoDirectory = null)
+        => Emit(
+            backend,
+            label,
+            Compilation.Compile(sourcePath ?? TestPaths.SimpleScript, [protoDirectory ?? TestPaths.ExampleProtoDirectory]));
+
+    /// <summary>Writes what <paramref name="result"/> generates, divided between the two outputs as the CLI divides it.</summary>
+    public static ScaffoldLayout Emit(ITestProjectScaffold backend, string label, CompilationResult result)
     {
-        sourcePath ??= TestPaths.SimpleScript;
-        protoDirectory ??= TestPaths.ExampleProtoDirectory;
+        Assert.True(
+            result.Success,
+            "the source did not compile: " + string.Join("; ", result.Diagnostics.Select(d => d.ToString())));
 
         var root = Path.Combine(Path.GetTempPath(), "protocross-" + label, Guid.NewGuid().ToString("N"));
 
@@ -260,22 +268,15 @@ internal sealed record ScaffoldLayout(
         Directory.CreateDirectory(behaviorDirectory);
         Directory.CreateDirectory(testDirectory);
 
-        var result = Compilation.Compile(sourcePath, [protoDirectory]);
-        Assert.True(
-            result.Success,
-            "the source did not compile: " + string.Join("; ", result.Diagnostics.Select(d => d.ToString())));
-
         var diagnostics = new DiagnosticBag();
-        var options = new BackendOptions(Path.GetFileName(sourcePath));
 
-        Write(behaviorDirectory, backend.Emit(result.Module!, options, diagnostics));
+        Write(behaviorDirectory, SourceEmission.Emit(result, backend, diagnostics));
 
-        var testFiles = backend.EmitTests(result.Module!, options, diagnostics);
+        var testFiles = SourceEmission.EmitTests(result, backend, diagnostics);
         Write(testDirectory, testFiles);
 
         var scaffold = ScaffoldOptions.Create(
-            sourcePath,
-            [protoDirectory],
+            result.SearchPaths,
             result.Descriptors,
             behaviorDirectory,
             testDirectory,
