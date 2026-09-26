@@ -445,7 +445,7 @@ public sealed partial class Binder
             return null;
         }
 
-        if (ReportIfOnlyTestSchemasDeclare(name, span, [_types.ResolveReceiver(name), .. _types.MessagesNamed(name)]))
+        if (ReportIfOnlyTestSchemasDeclare(name, span, types => [types.ResolveReceiver(name), .. types.MessagesNamed(name)]))
         {
             return null;
         }
@@ -656,7 +656,7 @@ public sealed partial class Binder
         if (ReportIfOnlyTestSchemasDeclare(
                 name,
                 reference.Span,
-                [_types.FindMessage(name), _types.FindEnum(name), .. _types.MessagesNamed(name), .. _types.EnumsNamed(name)]))
+                types => [types.FindMessage(name), types.FindEnum(name), .. types.MessagesNamed(name), .. types.EnumsNamed(name)]))
         {
             return ErrorType.Instance;
         }
@@ -1900,7 +1900,7 @@ public sealed partial class Binder
             return ReportIfOnlyTestSchemasDeclare(
                 typeName,
                 receiver.Span,
-                [_types.FindEnum(typeName), .. _types.EnumsNamed(typeName)]);
+                types => [types.FindEnum(typeName), .. types.EnumsNamed(typeName)]);
         }
 
         if (candidates.Count > 1)
@@ -2243,7 +2243,11 @@ public sealed partial class Binder
     /// Refuses a name production behavior looked for in the production schema closure and did not
     /// find, when a schema only test sources bring declares it (<c>PC0089</c>, spec 25.3.1).
     /// </summary>
-    /// <param name="declared">What the name resolves to among every schema, null where nothing does.</param>
+    /// <param name="declared">
+    /// What the name resolves to in an index, null where nothing does. Asked of every schema's index
+    /// only when production behavior is being bound against a narrower one, since otherwise the
+    /// caller has already asked that index and found nothing.
+    /// </param>
     /// <returns>Whether it was refused; false leaves the caller to report an unknown name.</returns>
     /// <remarks>
     /// <para>
@@ -2261,9 +2265,14 @@ public sealed partial class Binder
     /// this source's import of it: any production source's import would do.
     /// </para>
     /// </remarks>
-    private bool ReportIfOnlyTestSchemasDeclare(string name, SourceSpan span, IEnumerable<IDescriptor?> declared)
+    private bool ReportIfOnlyTestSchemasDeclare(
+        string name,
+        SourceSpan span,
+        Func<SchemaTypes, IEnumerable<IDescriptor?>> declared)
     {
-        if (!_productionBehavior || declared.OfType<IDescriptor>().FirstOrDefault() is not { } type)
+        if (!_productionBehavior
+            || ProductionSchemas is null
+            || declared(_types).OfType<IDescriptor>().FirstOrDefault() is not { } type)
         {
             return false;
         }
