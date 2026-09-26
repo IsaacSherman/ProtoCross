@@ -344,7 +344,8 @@ Normative Requirements:
   stating nothing.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value
   (`PC2002`), a malformed file (`PC2003`), or a setting stated twice (`PC2004`) is an error, and the
-  compilation stops. A project that states a policy and is then silently ignored is worse off than
+  compilation stops. A file declaring a document type is malformed: the file has no use for one, and
+  a few hundred bytes of entity definitions can expand into gigabytes. A project that states a policy and is then silently ignored is worse off than
   one that states nothing.
 - **The file wins.** A command-line flag that contradicts a setting the file states is refused, not
   applied. An explicit override flag lifts the refusal, so trying another policy stays one command

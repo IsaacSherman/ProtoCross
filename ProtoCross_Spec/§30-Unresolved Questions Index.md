@@ -7,7 +7,7 @@ This section should be maintained as the authoritative list of open decisions.
   include paths and the source directory ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Descriptor-set input remains open.
 - ~~Compilation units of more than one file.~~ Decided: a compilation is one or more sources bound as
   one program, each generated into files of its own, under one policy ([5.3](./§5-Source%20Organization.md#53-compilation-unit)).
-  How a project names its sources remains open.
+  A project names its sources, and which of them hold tests, in a `.pcproj` ([5.4](./§5-Source%20Organization.md#54-projects)).
 - ~~Package and namespace model for current source.~~ Decided: no independent ProtoCross package
   declaration; names come from protobuf descriptors ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Future embedded-in-proto design remains
   open.

@@ -53,6 +53,7 @@
     <ProjectReference Include="..\..\src\ProtoCross.Backend.CSharp\ProtoCross.Backend.CSharp.csproj" />
     <ProjectReference Include="..\..\src\ProtoCross.Backend.Cpp\ProtoCross.Backend.Cpp.csproj" />
     <ProjectReference Include="..\..\src\ProtoCross.Cli\ProtoCross.Cli.csproj" />
+    <ProjectReference Include="..\..\src\ProtoCross.Projects\ProtoCross.Projects.csproj" />
   </ItemGroup>
 
 </Project>

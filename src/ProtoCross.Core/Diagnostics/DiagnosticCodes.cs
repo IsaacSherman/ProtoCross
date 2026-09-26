@@ -464,4 +464,28 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor SourcesShareGeneratedNames =
         new("PC2006", DiagnosticSeverity.Error, "sources share generated names");
+
+    // ------------------------------------------------------- the project file
+
+    /// <summary>
+    /// A project file that is missing, malformed, or not a ProtoCross one, or a directory its
+    /// patterns search that could not be listed (spec 5.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectCouldNotBeRead =
+        new("PC2007", DiagnosticSeverity.Error, "project could not be read");
+
+    /// <summary>An element or attribute a project file has no meaning for (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor UnknownProjectElement =
+        new("PC2008", DiagnosticSeverity.Error, "unknown project element or attribute");
+
+    /// <summary>
+    /// A project element that is known but unusable: a pattern or a path that is missing, empty, or
+    /// cannot be one, or a setting stated twice (spec 5.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidProjectSetting =
+        new("PC2009", DiagnosticSeverity.Error, "invalid project setting");
+
+    /// <summary>A <c>&lt;Sources&gt;</c> or <c>&lt;Tests&gt;</c> element that matches no source (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor ProjectPatternMatchesNothing =
+        new("PC2010", DiagnosticSeverity.Warning, "project pattern matches no source");
 }
