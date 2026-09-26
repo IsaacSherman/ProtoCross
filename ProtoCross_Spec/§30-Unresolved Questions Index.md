@@ -77,8 +77,9 @@ This section should be maintained as the authoritative list of open decisions.
   ~~Separate `.pcrosstest` files.~~ Decided: there are none; the sources a project names only in
   `<Tests>` are its test sources
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
-- Whether a test build should refuse a production source that names a type only a test source
-  imports ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
+- ~~Whether a test build should refuse a production source that names a type only a test source
+  imports.~~ Decided: yes; production behavior names only types in the production schema closure
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - Generated test output framework options and future `protoc` plugin flag names.
 - Stable IR format.
 - Third-party backend support.

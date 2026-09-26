@@ -168,9 +168,9 @@ Open Questions:
 - ~~Should test declarations live in production `.pcross` files, separate `.pcrosstest` files,
   or both?~~ Decided: in any `.pcross` source, and a project's `<Tests>` group names the sources
   that are there only to test with ([25.3.1](#2531-test-sources-and-the-two-builds)).
-- Should a test build refuse a production source that names a type only a test source imports?
-  Sources share their imports ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), so a
-  test build accepts one, and the production build, which does not import it, refuses it.
+- ~~Should a test build refuse a production source that names a type only a test source
+  imports?~~ Decided: yes. Production behavior names only types in the production schema closure
+  ([25.3.1](#2531-test-sources-and-the-two-builds)).
 - Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
   three?
 - Should the compiler embed fixtures in generated source, copy fixture files beside the generated
@@ -218,6 +218,20 @@ agreement with the first.
   into the behavior output calling something generated only into the test output, and the
   production build would report it as a method that does not exist. The rule is what lets the test
   build's behavior output be the production build's.
+- **Adding test sources to a compilation must not make any production behavior valid that would
+  be invalid without them.** `PC0088` above, and the three rules below, follow from it.
+- **Production behavior may reference only protobuf types in the production schema closure**: the
+  schemas production sources import, and every schema transitively reachable from those imports.
+  Production behavior is a production source's `extend` blocks and methods, not its tests. Tests,
+  and the methods test sources declare, use the full test schema closure: every schema any source
+  brings. A type production behavior names that only the test closure declares is `PC0089`, an
+  error, meaning that no production source brings its schema into the compilation. Which production
+  source imports it does not matter, since sources share their imports
+  ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Production behavior is bound
+  against the production closure alone, so a test schema can neither make a production name
+  resolve nor make one ambiguous.
+- **Imports production sources write are resolved without the test sources' directories.** A
+  schema only a test source's directory holds is one the production build cannot find either.
 - **Test sources come after production sources** in a compilation, each in the order given
   ([5.3](./§5-Source%20Organization.md#53-compilation-unit)). Order decides which source's directory
   answers an import first ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), which of

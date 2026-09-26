@@ -438,6 +438,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ProductionMethodCallsTestHelper =
         new("PC0088", DiagnosticSeverity.Error, "production method calls a test helper");
 
+    /// <summary>
+    /// Production behavior naming a type only schemas the test sources bring declare, which the
+    /// production build never loads (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionNamesATestOnlyType =
+        new("PC0089", DiagnosticSeverity.Error, "production behavior names a test-only type");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

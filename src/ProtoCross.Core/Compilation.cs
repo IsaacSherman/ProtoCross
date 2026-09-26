@@ -235,6 +235,18 @@ public sealed class Compilation
 {
     private readonly IReadOnlyList<UnusableIncludePath> _unusableIncludePaths;
 
+    /// <summary>
+    /// The directories a production source's import is resolved against: <see cref="SearchPaths"/>
+    /// without the directories only test sources contribute (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// A schema that only a test source's directory holds is one the production build, which leaves
+    /// test sources out, cannot find. Resolving a production import there as well would let adding a
+    /// test source make a production source valid that is not valid without it. With no test source
+    /// this is <see cref="SearchPaths"/> itself.
+    /// </remarks>
+    private readonly IReadOnlyList<string> _productionSearchPaths;
+
     /// <summary>Creates a compilation over one source document.</summary>
     public Compilation(SourceDocument source, CompilationOptions options)
         : this([source], options)
@@ -283,6 +295,12 @@ public sealed class Compilation
             Sources.Select(source => source.Identity),
             options.IncludePaths,
             out _unusableIncludePaths);
+        _productionSearchPaths = HasTestSources
+            ? BuildSearchPaths(
+                Sources.Where(source => source.Role is SourceRole.Production).Select(source => source.Identity),
+                options.IncludePaths,
+                out _)
+            : SearchPaths;
     }
 
     /// <summary>An include path the caller named that the file system could not make sense of.</summary>
@@ -339,6 +357,9 @@ public sealed class Compilation
     /// </para>
     /// </remarks>
     public IReadOnlyList<string> SearchPaths { get; }
+
+    /// <summary>Whether any source is compiled only to test with (spec 25.3.1).</summary>
+    private bool HasTestSources => Sources.Any(source => source.Role is SourceRole.Test);
 
     /// <summary>Whether any source belongs to a directory, which is where imports fall back to.</summary>
     private bool AnySourceHasADirectory => Sources.Any(source => source.Identity.Directory is not null);
@@ -774,8 +795,12 @@ public sealed class Compilation
         Loader = loader;
 
         var resolvePaths = SchemaCatalog.RootsFor(SearchPaths, loader);
+        var productionResolvePaths = HasTestSources ? SchemaCatalog.RootsFor(_productionSearchPaths, loader) : resolvePaths;
 
-        var imports = declared.Select(import => Resolve(import, resolvePaths)).ToList();
+        var imports = trees
+            .SelectMany(tree => tree.Unit.Imports.Select(import =>
+                Resolve(import, tree.Role is SourceRole.Test ? resolvePaths : productionResolvePaths)))
+            .ToList();
 
         foreach (var import in imports)
         {
@@ -828,6 +853,7 @@ public sealed class Compilation
         var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config)
         {
             SkipTests = Options.SkipTests,
+            ProductionSchemas = HasTestSources ? ProductionSchemaClosure.Of(schema, ProductionImports(trees, imports)) : null,
         };
         var module = binder.Bind(trees);
 
@@ -847,6 +873,17 @@ public sealed class Compilation
         // A compilation that parsed its sources and stopped before binding them.
         CompilationResult Stopped(IReadOnlyList<ImportResolution> resolved)
             => new(null, trees[0].Unit, [], diagnostics, config, SearchPaths, resolved) { SyntaxTrees = trees };
+    }
+
+    /// <summary>The imports production sources wrote, as each resolved.</summary>
+    private static List<ImportResolution> ProductionImports(IReadOnlyList<SourceTree> trees, IReadOnlyList<ImportResolution> imports)
+    {
+        var written = trees
+            .Where(tree => tree.Role is SourceRole.Production)
+            .SelectMany(tree => tree.Unit.Imports)
+            .ToHashSet<ImportDeclaration>(ReferenceEqualityComparer.Instance);
+
+        return [.. imports.Where(import => written.Contains(import.Declaration))];
     }
 
     private static SourceTree Parse(SourceDocument source, DiagnosticBag diagnostics)

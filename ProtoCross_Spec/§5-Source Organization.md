@@ -33,7 +33,9 @@ Normative Requirements:
 
 - Imports use `import proto "path/to/schema.proto";`.
 - The path is resolved against compiler include paths, then against the directory of each source in
-  the compilation ([5.3](#53-compilation-unit)), a production source's before a test source's
+  the compilation ([5.3](#53-compilation-unit)), a production source's before a test source's. An
+  import a production source writes is resolved without the test sources' directories, and
+  production behavior may name only the types its production schema closure declares
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - **A compilation's sources share their imports.** A type any source imports can be named in every
   source, in the same way a type that an imported schema imports can already be named in the file
