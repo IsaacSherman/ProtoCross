@@ -87,6 +87,26 @@ public class ProjectDiscoveryMemoryTests
         Assert.Equal(2, reader.Reads);
     }
 
+    /// <summary>
+    /// A reading under way when everything is forgotten is not kept, since it may predate the change the
+    /// forgetting was for; the entry is read again next time although its stamp has not moved.
+    /// </summary>
+    [Fact]
+    public void AReadingUnderWayWhenClearedIsNotKept()
+    {
+        var facts = new StampedFacts<int>();
+        var reads = 0;
+
+        facts.Get("entry", Settled, _ =>
+        {
+            facts.Clear();
+            return ++reads;
+        });
+        facts.Get("entry", Settled, _ => ++reads);
+
+        Assert.Equal(2, reads);
+    }
+
     // ------- changes are seen
 
     private static string Project(string pattern) => $"<ProtoCrossProject><Sources Include=\"{pattern}\" /></ProtoCrossProject>";

@@ -245,8 +245,10 @@ mistake — describing a bound by the first caller that came to mind:
   project, which means looking at every directory above the document; listing them afresh each time
   put every warm row at 15–20 ms when the document sat beneath a directory of 20,000 entries, and
   highlighting over its budget. Discovery now keeps what each directory held and what each project
-  said while a stat says the entry has not changed (`StampedFacts`), and the rows are back where the
-  table has them.
+  said while a stat says the entry has not changed (`StampedFacts`). On the machine that measured
+  15–20 ms, the same run afterwards put the warm hover, highlighting and go-to-definition rows at
+  0.7–1.0 ms median, against 0.5–0.8 ms at the commit before #106's editor work; the table above was
+  not re-measured.
 
 Neither is urgent — the totals they sit inside are one to two orders of magnitude under budget, which
 bounds them from above. But "not urgent because it is small" is a different claim from "not on the

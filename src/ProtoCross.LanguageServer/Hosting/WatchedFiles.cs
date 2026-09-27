@@ -71,15 +71,28 @@ public static class WatchedFiles
         return changes.Any(Concerns);
     }
 
+    /// <summary>Whether any of these changes is to a project file, which is what project discovery remembers.</summary>
+    public static bool MoveAProject(IEnumerable<FileEvent> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return changes.Any(change => PathOf(change) is { } path && IsProject(path));
+    }
+
     private static bool Concerns(FileEvent change)
     {
-        if (!DocumentUri.TryParse(change.Uri, out var uri) || uri.Path is not { } path)
+        if (PathOf(change) is not { } path)
         {
             return false;
         }
 
         return path.EndsWith(SchemaExtension, StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith(ProtoCrossProject.Extension, StringComparison.OrdinalIgnoreCase)
+            || IsProject(path)
             || string.Equals(Path.GetFileName(path), ProjectConfig.FileName, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string? PathOf(FileEvent change)
+        => DocumentUri.TryParse(change.Uri, out var uri) ? uri.Path : null;
+
+    private static bool IsProject(string path) => path.EndsWith(ProtoCrossProject.Extension, StringComparison.OrdinalIgnoreCase);
 }

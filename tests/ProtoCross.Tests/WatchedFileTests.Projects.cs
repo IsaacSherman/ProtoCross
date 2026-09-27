@@ -36,6 +36,24 @@ public partial class WatchedFileTests
     }
 
     /// <summary>
+    /// Only a change to a project file is one project discovery has to forget what it read for: a saved
+    /// schema or policy file changes nothing it listed or read.
+    /// </summary>
+    [Theory]
+    [InlineData("billing.pcproj", true)]
+    [InlineData("nested/Billing.PCPROJ", true)]
+    [InlineData("shape.proto", false)]
+    [InlineData("protocross.config.xml", false)]
+    [InlineData("billing.pcproj.bak", false)]
+    public void OnlyAProjectChangeIsOneDiscoveryForgets(string relative, bool forgets)
+    {
+        var path = Path.Combine(TestPaths.CreateTempDirectory(), relative);
+        var change = new FileEvent { Uri = new Uri(path).AbsoluteUri, Type = FileChangeType.Changed };
+
+        Assert.Equal(forgets, ProtoCross.LanguageServer.Hosting.WatchedFiles.MoveAProject([change]));
+    }
+
+    /// <summary>
     /// A project repaired without its stamp moving -- rewritten at the same length within the same tick
     /// of a clock as coarse as FAT32's -- is still seen once the client reports the change, since being
     /// told is what the server does not have to infer from a stamp.

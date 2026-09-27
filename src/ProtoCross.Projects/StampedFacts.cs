@@ -60,6 +60,9 @@ internal sealed class StampedFacts<T>
 
     private readonly ConcurrentDictionary<string, (EntryStamp Stamp, T Value)> _entries = new(PathIdentity.Comparer);
 
+    /// <summary>How many times everything has been forgotten; see <see cref="Clear"/>.</summary>
+    private int _clears;
+
     /// <summary>What <paramref name="read"/> says of <paramref name="path"/>, read again only if its stamp has moved.</summary>
     /// <param name="stamp">The entry's stamp, taken before it is read, so a change made while reading moves it.</param>
     public T Get(string path, EntryStamp stamp, Func<string, T> read)
@@ -69,8 +72,11 @@ internal sealed class StampedFacts<T>
             return held.Value;
         }
 
+        // Read before reading the entry: a clear that lands while it is being read is the host saying
+        // the entry changed in a way its stamp may not show, and what this read found may predate it.
+        var clears = Volatile.Read(ref _clears);
         var value = read(path);
-        if (DateTime.UtcNow - stamp.Written >= Settling)
+        if (DateTime.UtcNow - stamp.Written >= Settling && Volatile.Read(ref _clears) == clears)
         {
             _entries[path] = (stamp, value);
         }
@@ -83,5 +89,14 @@ internal sealed class StampedFacts<T>
     }
 
     /// <summary>Forgets everything read, so that every entry is read again the next time it is asked about.</summary>
-    public void Clear() => _entries.Clear();
+    /// <remarks>
+    /// A reading already under way when this runs is not kept afterwards, since it may have read the
+    /// entry before the change this was called for; without that, a hover in flight when a project was
+    /// repaired on a two-second file system would put the broken reading back under the same stamp.
+    /// </remarks>
+    public void Clear()
+    {
+        Interlocked.Increment(ref _clears);
+        _entries.Clear();
+    }
 }
