@@ -132,8 +132,11 @@ public static class ProjectSources
     internal const string UnmatchableHelp =
         "../ may only begin a pattern, as in ../shared/*.pcross. * matches within one directory and ** across any number.";
 
-    private static Matcher NewMatcher()
-        => new(PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+    /// <summary>How a file name is compared with a pattern or an extension: as <see cref="PathIdentity"/> compares it.</summary>
+    internal static StringComparison NameComparison
+        => PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+    private static Matcher NewMatcher() => new(NameComparison);
 
     /// <summary>The element as written, excludes included, since an exclude can be what emptied it.</summary>
     private static string Describe(string group, ProjectItem item)
@@ -149,10 +152,7 @@ public static class ProjectSources
     private static string WithForwardSlashes(string pattern) => pattern.Replace('\\', '/');
 
     private static bool IsSource(string path)
-        => string.Equals(
-            Path.GetExtension(path),
-            SourceExtension,
-            PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase);
+        => string.Equals(Path.GetExtension(path), SourceExtension, NameComparison);
 
     /// <summary>A file's path below the project's directory, with forward slashes, which is what it is sorted by.</summary>
     private static string RelativeKey(string directory, string file)

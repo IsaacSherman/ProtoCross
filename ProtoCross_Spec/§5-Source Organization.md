@@ -124,9 +124,8 @@ Normative Requirements:
 Implementation Note:
 
 - The command line compiles every source it is given as one compilation
-  (`protocross pricing.pcross discounts.pcross`), as the `Compilation` API does. A project can now
-  write down which sources it is made of ([5.4](#54-projects)), but the command line does not yet
-  take one, so whoever runs it still lists them.
+  (`protocross pricing.pcross discounts.pcross`), as the `Compilation` API does, or the one
+  compilation a project describes (`protocross billing.pcproj`, [5.4](#54-projects)).
 
 ### 5.4 Projects
 
@@ -155,7 +154,9 @@ Normative Requirements:
   - `<Sources>`, which may be repeated: sources a production build compiles.
   - `<Tests>`, which may be repeated: sources a test build compiles as well.
   - `<ProtoPath>`, which may be repeated: a directory imported schemas are searched for in, as an
-    include path is ([5.2](#52-relationship-to-proto)). They keep the order they are written in.
+    include path is ([5.2](#52-relationship-to-proto)). They keep the order they are written in, and
+    come before any include path a build adds, which can add to what a project's imports can reach
+    but not change what one already finds.
   - `<Config>`, at most once: the configuration file the project's compilation runs under.
 - Anything else is `PC2008`, and so is an attribute an element does not take. An attribute in a
   namespace, such as `xsi:schemaLocation`, belongs to another vocabulary and is left alone. There is no element
@@ -183,13 +184,25 @@ Normative Requirements:
   directory a pattern searches that cannot be listed; `PC2009`
   for an element without its patterns, patterns written as text, text standing directly inside
   `<ProtoCrossProject>`, a full path used as a pattern, a pattern that cannot be matched (a `../`
-  after its start), an empty or impossible path, or `<Config>` stated twice.
+  after its start), an empty or impossible path, `<Config>` stated twice, or `<Config>` naming a file
+  that is not there. A project that names its policy and is built under the defaults instead ships
+  code nobody asked for.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a
   typo, and the rest of the project still stands.
 - One project is one compilation and one file. Several may share a directory, and each is a
   compilation of its own.
+- A project's compilation runs under the configuration file its `<Config>` names, or else the
+  nearest one at or above the project's directory, whichever directories its sources are in
+  ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
+- A project says what is compiled, not where it goes. Where generated files are written, and for
+  which targets, is the build's to say, and a project has no element for either.
 
 Implementation Note:
 
-- A project can be read and its sources found, but neither the command line nor an editor compiles
-  one yet.
+- The command line builds one project, named as its only input: `protocross billing.pcproj`, with
+  `-o`, `-t` and `--test-out` as for sources. It does not look for a project, so one is built only
+  when it is named. A source named beside a project, a second project, and `--config` or
+  `--no-config` are refused, each as a second answer to a question the project settles. Without
+  `--test-out` it runs the production build, and with it the test build
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
+- An editor does not compile a project yet.

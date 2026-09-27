@@ -27,6 +27,10 @@ public sealed record ProtoCrossProject
     /// <summary>The extension a project file carries.</summary>
     public const string Extension = ".pcproj";
 
+    /// <summary>Whether <paramref name="path"/> names a project file rather than a source, by its extension.</summary>
+    public static bool IsProjectFile(string path)
+        => string.Equals(System.IO.Path.GetExtension(path), Extension, ProjectSources.NameComparison);
+
     /// <summary>The name a project file's root element must have.</summary>
     public const string RootElement = "ProtoCrossProject";
 

@@ -191,6 +191,28 @@ They are one program, so a method in either may call one declared in the other, 
 generated into files named after it: `pricing.g.cs` and `discounts.g.cs`, `pricing.pc.h` and
 `discounts.pc.h`. Nothing is written unless every source compiles.
 
+A project file names them instead, so that building is one command however many there are. This is
+`billing/billing.pcproj`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Tests Include="tests/**/*.pcross" />
+  <ProtoPath>../protos</ProtoPath>
+</ProtoCrossProject>
+```
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- billing/billing.pcproj -o generated
+```
+
+Patterns and paths are relative to the project's directory. `<ProtoPath>` directories are searched
+before any `-I`, and output goes where `-o` says, because a project says what is compiled and not
+where it goes. `<Tests>` names sources that are there only to test with: they are compiled, and
+their methods generated beside the tests, only when `--test-out` asks for the tests. A project is
+built only when it is named, one at a time, and never beside sources of its own (spec 5.4).
+
 The compiler needs a `protoc` executable, because it consumes protobuf descriptors rather than
 reparsing `.proto` files itself (spec 21.1). It looks at `PROTOCROSS_PROTOC`, then `PATH`, then a
 restored `Grpc.Tools` NuGet package, so a separate protoc install is usually unnecessary.
@@ -206,7 +228,10 @@ Some questions have more than one defensible answer, and which one you want is a
 project rather than of the language. Those answers live in `protocross.config.xml`, next to the code
 they govern. The compiler looks for it in the source file's directory and every directory above it,
 nearest first -- the way `.editorconfig` is found -- so a repository states its policy once. Sources
-compiled together must all find the same file, because one program runs under one policy.
+compiled together must all find the same file, because one program runs under one policy. A project
+settles that for its sources: it compiles under the file its `<Config>` names, or else the nearest one
+at or above the project file, and a source under a different file of its own is compiled under the
+project's with a warning.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -279,11 +304,11 @@ The compiler options used in those commands are:
 |---|---|
 | `-I`, `--proto_path <dir>` | Directory searched for imported `.proto` files. May be repeated. |
 | `-o`, `--out <dir>` | Root directory for generated behavior artifacts. Each backend writes below `<dir>/<target>/`. |
-| `--test-out <dir>` | Root directory for generated test artifacts. Each test backend writes below `<dir>/<target>/`. |
+| `--test-out <dir>` | Build the tests too, into this root directory. Each test backend writes below `<dir>/<target>/`. Without it, tests are neither checked nor generated. |
 | `--scaffold` | Also write the build file that builds and runs the generated tests. Requires `--test-out`. |
 | `-t`, `--target <list>` | Comma-separated backend list: `csharp`, `cpp`. Defaults to all current backends. |
-| `--config <file>` | Use this `protocross.config.xml` instead of searching for one. |
-| `--no-config` | Ignore any config file and use the built-in defaults. |
+| `--config <file>` | Use this `protocross.config.xml` instead of searching for one. Not with a project, which settles its own. |
+| `--no-config` | Ignore any config file and use the built-in defaults. Not with a project. |
 | `--arithmetic-overflow <mode>` | `wrapping` (default), `checked`, or `saturating`. |
 | `--override-config` | Let a policy flag win over a setting the config file states. |
 
@@ -329,6 +354,11 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 
 That writes production C# to `generated/csharp/` and generated xUnit tests to
 `generated/tests/csharp/`.
+
+Tests are built only when `--test-out` asks for them. Without it the program alone is built, and
+its tests are neither checked nor generated, so a test left behind by a rename never stops a release.
+With it the tests are part of the build, and nothing is written unless all of it compiles: the
+production output of a build whose tests failed would look like a finished one.
 
 Generated test source is not runnable on its own: it needs a project that also compiles the
 generated behavior and the protobuf message classes. Adding `--scaffold` writes that project too,

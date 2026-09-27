@@ -340,6 +340,14 @@ Normative Requirements:
   thing are still two places the policy is stated. A source with no directory -- a buffer never
   saved -- has nowhere to search from, states nothing, and compiles under what the others found. A
   file named explicitly, as `--config` does, governs every source.
+- **A project settles its compilation's policy** ([5.4](./§5-Source%20Organization.md#54-projects)): the
+  file its `<Config>` names, or else the nearest file at or above the project's directory, searched
+  for as from a source's. Every source the project compiles runs under it, wherever the source is,
+  so sources a project gathers from several directories never disagree and `PC2005` does not arise.
+  A source whose own search finds a different file is `PC2011`, a warning at the start of that
+  source, and it still compiles under the project's: compiled on its own it would run under the
+  other file's policy, and whoever reads it cannot tell which one a build used. A source that finds
+  no file of its own is not reported, since it states nothing.
 - A setting absent from the file takes its default. A file absent entirely is the same as a file
   stating nothing.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value

@@ -24,14 +24,14 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Backend.Cpp](src/ProtoCross.Backend.Cpp) | The same for C++. |
 | [src/ProtoCross.Cli](src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
 | [src/ProtoCross.LanguageServer](src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
-| [src/ProtoCross.Projects](src/ProtoCross.Projects) | Reading a `.pcproj`, and finding the sources its patterns match. |
+| [src/ProtoCross.Projects](src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
 | [tests/ProtoCross.Tests](tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
 dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` references Core and a
 globbing package and nothing else, so that listing directories to find sources happens beside Core
-rather than in it.
+rather than in it. The CLI references it too.
 
 Outside the solution, [editors/vscode](editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
@@ -149,7 +149,8 @@ each with a form that takes a list of sources.
    test source brings is `PC0089` there rather than a name that resolves. A schema in that closure
    that the compilation loaded through a test source's directory is `PC0090`, since the production
    build would load it from somewhere else or not at all.
-   A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test.
+   A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test. The
+   command line runs one whenever it is not asked for `--test-out`.
 
 Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)
 answers "what is at this offset" for the syntax tree and for the IR, hands back the chain of nodes
@@ -299,7 +300,13 @@ alone, through the same [`XmlInput`](src/ProtoCross.Core/Config/XmlInput.cs) the
 file is read with, so a position in either is placed the same way.
 [`ProjectSources.Expand`](src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
 directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
-an element whose patterns match nothing is a warning (`PC2010`). Nothing compiles a project yet.
+an element whose patterns match nothing is a warning (`PC2010`).
+[`ProjectFiles`](src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
+role, and [`ProjectPolicy`](src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
+file the compilation runs under, warning about a member whose own search finds another (`PC2011`).
+Both live here rather than in the command line, because an editor compiling a project has to answer
+the same two questions the same way. The command line builds a project it is named; an editor does
+not compile one yet.
 
 ### Serving an editor
 
@@ -578,7 +585,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
-`ProjectSourcesTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
+`ProjectSourcesTests`, `ProjectBuildTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
 `ProductionSchemaClosureTests`, `BackendTests`, `NameMappingTests`,
 `CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 

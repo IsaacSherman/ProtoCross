@@ -10,6 +10,7 @@
     <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
     <ProjectReference Include="..\ProtoCross.Backend.CSharp\ProtoCross.Backend.CSharp.csproj" />
     <ProjectReference Include="..\ProtoCross.Backend.Cpp\ProtoCross.Backend.Cpp.csproj" />
+    <ProjectReference Include="..\ProtoCross.Projects\ProtoCross.Projects.csproj" />
   </ItemGroup>
 
 </Project>
