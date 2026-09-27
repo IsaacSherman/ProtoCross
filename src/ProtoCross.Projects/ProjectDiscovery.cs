@@ -100,7 +100,10 @@ public static class ProjectDiscovery
             return ProjectClaim.Read(full);
         }
 
-        return Projects.Get(full, stamp, ProjectClaim.Read);
+        // A project that could not be read is read again every time. That covers a file another
+        // process holds locked, whose release moves no stamp, without telling a lock from a malformed
+        // file by the wording of the reader's message; and reading a broken project again costs a parse.
+        return Projects.Get(full, stamp, ProjectClaim.Read, worthKeeping: claim => claim.Project is not null);
     }
 
     /// <summary>
