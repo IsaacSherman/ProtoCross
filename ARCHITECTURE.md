@@ -443,8 +443,10 @@ a document's settings, found by [`ProjectCatalog`](src/ProtoCross.Projects/Proje
 the rule the command line asks (`ProjectSources.ExpandForBuild`), so a project the build refuses is
 refused in the editor too, and remembered until the project file changes or a watched source is
 created or deleted, because a walk of every directory a pattern searches is too much to repeat per
-caret move. A kept compilation checks every buffer it read against the store and every closed source
-against its file's stamp. `CompileScheduler` keys its queue the same way: an edit schedules the
+caret move. A kept compilation checks every buffer it read against the store, every closed source
+against its file's stamp, and, once another document has opened, that none the patterns match is
+missing from what it read. An answer is refused if any buffer it was compiled with moved while it was
+being worked out (`DocumentRequest.CompileWith`), not only the one it was asked about. `CompileScheduler` keys its queue the same way: an edit schedules the
 document's compilation and every other held one that read its buffer, one run compiles it once, and
 each open document whose own compilation it is gets published its share, by the file each
 diagnostic's span names. A closed source is compiled and never published.
