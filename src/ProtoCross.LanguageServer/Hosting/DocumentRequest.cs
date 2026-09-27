@@ -44,6 +44,36 @@ public abstract class DocumentRequest
 
     /// <summary>The settings this is about, as an object rather than as a generation.</summary>
     public WorkspaceConfiguration Configuration { get; }
+
+    private IReadOnlyList<OpenDocument>? _buffers;
+
+    /// <summary>
+    /// Every open buffer the answer was worked out from: <see cref="Document"/> until it is compiled,
+    /// and every buffer its compilation read after that.
+    /// </summary>
+    /// <remarks>
+    /// A document with a project is compiled with the buffers of the project's other open documents,
+    /// so an answer about this one can be made out of date by an edit to another: a method renamed in
+    /// a sibling while go-to-definition was being answered would send the caret to a declaration that
+    /// is no longer there. <see cref="DeferredAnswers.Require"/> asks this, so the refusal covers every
+    /// buffer the answer rests on and not only the one it was asked about.
+    /// </remarks>
+    public IReadOnlyList<OpenDocument> Buffers => Volatile.Read(ref _buffers) ?? [Document];
+
+    /// <summary>Compiles the buffer this is about, and remembers every buffer the compilation read.</summary>
+    /// <remarks>
+    /// The one way an answer compiles, so that no answer can rest on a buffer <see cref="Buffers"/> does
+    /// not name.
+    /// </remarks>
+    public DocumentCompilation CompileWith(DocumentSemantics semantics, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(semantics);
+
+        var compiled = semantics.For(Document, Configuration, cancellationToken);
+        Volatile.Write(ref _buffers, compiled.Buffers);
+
+        return compiled;
+    }
 }
 
 /// <summary>A request about one caret.</summary>

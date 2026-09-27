@@ -324,7 +324,7 @@ public sealed class CompletionProvider
     private IReadOnlyList<CompletionItem> Symbols(
         CompletionRequest asked, SchemaSubject subject, CancellationToken cancellationToken)
     {
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         if (compiled.Semantics is not { } model || compiled.Result is not { } result)
         {

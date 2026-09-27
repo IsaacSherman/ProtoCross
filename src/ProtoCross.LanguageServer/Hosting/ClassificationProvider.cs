@@ -220,7 +220,7 @@ public sealed class ClassificationProvider
         // own: what this is watching for is a close that lands while the compile runs.
         var withdrawals = Volatile.Read(ref _withdrawals);
 
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         var classified = SemanticTokenEncoder.Encode(
             asked.Document.Text,

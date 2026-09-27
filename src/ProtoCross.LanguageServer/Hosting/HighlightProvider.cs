@@ -99,7 +99,7 @@ public sealed class HighlightProvider
     /// </remarks>
     private DocumentHighlight[]? Answer(PositionRequest asked, CancellationToken cancellationToken)
     {
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         if (SymbolOccurrences.At(compiled, asked.Offset) is not { } occurrences)
         {

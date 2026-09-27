@@ -82,7 +82,7 @@ public sealed class HoverProvider
 
         return _deferred.AnswerAsync(
             asked,
-            token => HoverCard.For(_semantics.For(asked.Document, asked.Configuration, token), asked.Offset),
+            token => HoverCard.For(asked.CompileWith(_semantics, token), asked.Offset),
             cancellationToken);
     }
 

@@ -140,7 +140,10 @@ Normative Requirements:
   kind of answer and not only for diagnostics -- a hover or a completion computed against text the
   user has already replaced is describing something nobody is looking at -- so a request that can
   answer only about a superseded version is refused as such rather than answered. A stale
-  computation is discarded silently; a refusal is only for a request that is owed a reply.
+  computation is discarded silently; a refusal is only for a request that is owed a reply. **The
+  same holds of every buffer an answer was compiled with**: a document compiled with its project
+  rests on the buffers of the project's other open documents, and a method renamed in one of them
+  while go-to-definition was being answered would send the caret to a declaration that is gone.
 - **Which buffer an answer is about is settled when the request arrives, not when it is answered**,
   and **the version number alone does not settle it**. A host that reads messages in order and then
   defers the lookup lets the edit queued behind a request be applied first, and measures the position
