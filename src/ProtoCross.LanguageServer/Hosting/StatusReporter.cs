@@ -278,6 +278,14 @@ public sealed class StatusReporter
 
         facts.AddRange(resolved.Describe().Select(fact => new StatusFact(fact.Setting, fact.Value, fact.Source.Describe())));
 
+        if (resolved.ProjectRefused)
+        {
+            facts.Add(new StatusFact(
+                "project file",
+                resolved.ProjectPath!,
+                "found and refused, so this document is not being compiled at all"));
+        }
+
         if (resolved.ConfigRefused)
         {
             facts.Add(new StatusFact(

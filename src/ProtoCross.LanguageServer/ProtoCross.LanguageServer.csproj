@@ -32,6 +32,7 @@
   -->
   <ItemGroup>
     <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
+    <ProjectReference Include="..\ProtoCross.Projects\ProtoCross.Projects.csproj" />
   </ItemGroup>
 
 </Project>

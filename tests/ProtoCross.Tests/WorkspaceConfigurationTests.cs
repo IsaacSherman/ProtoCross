@@ -17,7 +17,7 @@ namespace ProtoCross.Tests;
 /// is not being used says so. The last is not a nicety: a setting silently ignored leaves a user
 /// unable to tell a typo from a refusal from a bug.
 /// </remarks>
-public class WorkspaceConfigurationTests
+public partial class WorkspaceConfigurationTests
 {
     private static string TempDirectory(string label = "workspace")
     {
@@ -452,12 +452,13 @@ public class WorkspaceConfigurationTests
 
         Assert.Equal(
             [
+                ConfigurationSource.Project,
                 ConfigurationSource.FolderSetting,
                 ConfigurationSource.WorkspaceSetting,
                 ConfigurationSource.UserSetting,
                 ConfigurationSource.Environment,
             ],
-            precedence.Take(4));
+            precedence.Take(5));
 
         Assert.All(
             precedence,

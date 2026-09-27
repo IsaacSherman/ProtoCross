@@ -1,6 +1,7 @@
 using ProtoCross.Binding;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
+using ProtoCross.Projects;
 
 namespace ProtoCross.LanguageServer.Workspace;
 
@@ -111,6 +112,33 @@ public sealed record DocumentConfiguration
 
     /// <summary>The workspace folder this document belongs to, or null when it belongs to none.</summary>
     public WorkspaceFolder? Folder { get; init; }
+
+    /// <summary>
+    /// The project file this document compiles with, whether or not it could be read, and null when
+    /// the document has no project.
+    /// </summary>
+    public string? ProjectPath { get; init; }
+
+    /// <summary>
+    /// The project read from <see cref="ProjectPath"/>, or null when the document has none or it could
+    /// not be read.
+    /// </summary>
+    public ProtoCrossProject? Project { get; init; }
+
+    /// <summary>
+    /// How the document came to have its project: <see cref="ConfigurationSource.Project"/> when it was
+    /// found by searching, the scope of <c>protocross.project</c> when a setting named it -- whether or
+    /// not that project includes the document -- and <see cref="ConfigurationSource.Default"/> when
+    /// neither gave it one.
+    /// </summary>
+    public ConfigurationSource ProjectSource { get; init; } = ConfigurationSource.Default;
+
+    /// <summary>Whether a project was found for this document and could not be read.</summary>
+    /// <remarks>
+    /// The document is then not compiled, and <see cref="Config"/> is null with no file to name: the
+    /// project that would have said which file governs is the thing that could not be read.
+    /// </remarks>
+    public bool ProjectRefused => ProjectPath is not null && Project is null;
 
     /// <summary>
     /// The protoc to run, or null when nothing named one and the compiler should locate its own.
@@ -296,6 +324,7 @@ public sealed record DocumentConfiguration
     {
         var facts = new List<ConfigurationFact>
         {
+            new("project", DescribeProject(), ProjectSource),
             new("protoc", ProtocPath ?? DescribeLocated(), ProtocPathSource),
 
             // A refused file is named, not summarized as "(defaults)". Reporting the defaults beside
@@ -328,6 +357,33 @@ public sealed record DocumentConfiguration
             return $"(refused: {ConfigPath})";
         }
 
+        if (ProjectRefused)
+        {
+            return "(not settled: the project could not be read)";
+        }
+
         return Config?.Path ?? "(defaults)";
+    }
+
+    /// <remarks>
+    /// A project named by a setting that does not include this document is said so, rather than
+    /// reported as no project at all: the setting is in force and chose nothing for this file, and a
+    /// user who wrote it and reads "none" would take it for a setting that was never read.
+    /// </remarks>
+    private string DescribeProject()
+    {
+        if (ProjectRefused)
+        {
+            return $"(refused: {ProjectPath})";
+        }
+
+        if (ProjectPath is not null)
+        {
+            return ProjectPath;
+        }
+
+        return ProjectSource.IsEditorSetting()
+            ? "(none: the project that setting names does not include this file)"
+            : "(none: no project at or above this file includes it)";
     }
 }

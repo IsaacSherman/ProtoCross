@@ -7,7 +7,7 @@ using LspFolder = ProtoCross.LanguageServer.Protocol.Lsp.WorkspaceFolder;
 
 namespace ProtoCross.Tests;
 
-public class LanguageServerDiagnosticRoutingTests
+public partial class LanguageServerDiagnosticRoutingTests
 {
     [Fact]
     public async Task ANewerDiagnosticStateCannotBeOvertakenByAnEarlierWrite()

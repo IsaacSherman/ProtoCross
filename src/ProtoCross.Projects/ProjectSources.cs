@@ -64,6 +64,57 @@ public static class ProjectSources
         return [.. files.OrderBy(file => RelativeKey(project.Directory, file), StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// The role <paramref name="path"/> takes in <paramref name="project"/>: production when a
+    /// <c>&lt;Sources&gt;</c> element matches it, test when only a <c>&lt;Tests&gt;</c> element does,
+    /// and null when neither does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the patterns alone, without listing a directory. An editor asks it of each document it
+    /// is settling the settings of, which it does on every hover and every caret move, and walking a
+    /// project's tree to answer would put a directory walk under each of them.
+    /// </para>
+    /// <para>
+    /// It answers exactly what <see cref="Expand"/> finds, because it asks the same matcher, built from
+    /// the same element by the same method; only where the candidate files come from differs. A pattern
+    /// the matcher cannot take matches nothing here, where <see cref="Expand"/> reports it: a project
+    /// read by <see cref="ProtoCrossProject.Load"/> holds no such pattern, and the question asked here
+    /// is membership, not whether the project is sound.
+    /// </para>
+    /// </remarks>
+    public static SourceRole? RoleOf(ProtoCrossProject project, string path)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(path);
+
+        var full = Path.GetFullPath(path);
+        if (!IsSource(full))
+        {
+            return null;
+        }
+
+        if (AnyMatches(project.Directory, project.Sources, full))
+        {
+            return SourceRole.Production;
+        }
+
+        return AnyMatches(project.Directory, project.Tests, full) ? SourceRole.Test : null;
+    }
+
+    private static bool AnyMatches(string directory, IReadOnlyList<ProjectItem> items, string path)
+        => items.Any(item =>
+        {
+            try
+            {
+                return MatcherFor(item).Execute(new PathToOneFile(directory, path)).HasMatches;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        });
+
     /// <summary>Why <paramref name="pattern"/> cannot be matched, or null when it can.</summary>
     /// <remarks>
     /// Asked of the matcher itself, which refuses a pattern as it is added -- <c>..</c> anywhere but at
@@ -97,10 +148,7 @@ public static class ProjectSources
         PatternMatchingResult result;
         try
         {
-            var matcher = NewMatcher();
-            matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
-            matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
-            result = matcher.Execute(new DirectoryInfoWrapper(new DirectoryInfo(directory)));
+            result = MatcherFor(item).Execute(new DirectoryInfoWrapper(new DirectoryInfo(directory)));
         }
         catch (ArgumentException ex)
         {
@@ -137,6 +185,16 @@ public static class ProjectSources
         => PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
 
     private static Matcher NewMatcher() => new(NameComparison);
+
+    /// <summary>The matcher for one element: its includes, less its excludes.</summary>
+    /// <exception cref="ArgumentException">A pattern of the element is one the matcher cannot take.</exception>
+    private static Matcher MatcherFor(ProjectItem item)
+    {
+        var matcher = NewMatcher();
+        matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
+        matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
+        return matcher;
+    }
 
     /// <summary>The element as written, excludes included, since an exclude can be what emptied it.</summary>
     private static string Describe(string group, ProjectItem item)

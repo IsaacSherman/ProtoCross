@@ -1,5 +1,6 @@
 using ProtoCross.Config;
 using ProtoCross.LanguageServer.Protocol.Lsp;
+using ProtoCross.Projects;
 using ProtoCross.LanguageServer.Workspace;
 using FileSystemWatcher = ProtoCross.LanguageServer.Protocol.Lsp.FileSystemWatcher;
 
@@ -12,8 +13,8 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// <remarks>
 /// <para>
 /// <b>Why the server has to be told at all.</b> A compilation is a function of the buffer, the
-/// configuration the buffer resolves to, and the schemas that configuration reaches, and only the
-/// buffer arrives as a message. <see cref="DocumentSemantics"/> already refuses to answer from a
+/// configuration the buffer resolves to -- its project, and the policy file -- and the schemas that
+/// configuration reaches, and only the buffer arrives as a message. <see cref="DocumentSemantics"/> already refuses to answer from a
 /// compilation whose schemas or policy file have moved, so every <em>question</em> asked after a
 /// <c>.proto</c> is saved gets the new answer. What nothing did was ask: diagnostics are published when
 /// a compile is scheduled, a compile is scheduled by a keystroke, and saving an imported schema in
@@ -50,6 +51,7 @@ public static class WatchedFiles
     [
         new($"**/*{SchemaExtension}"),
         new($"**/{ProjectConfig.FileName}"),
+        new($"**/*{ProtoCrossProject.Extension}"),
     ];
 
     /// <summary>The id the registration is made under, so it could be withdrawn by name.</summary>
@@ -69,14 +71,28 @@ public static class WatchedFiles
         return changes.Any(Concerns);
     }
 
+    /// <summary>Whether any of these changes is to a project file, which is what project discovery remembers.</summary>
+    public static bool MoveAProject(IEnumerable<FileEvent> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return changes.Any(change => PathOf(change) is { } path && IsProject(path));
+    }
+
     private static bool Concerns(FileEvent change)
     {
-        if (!DocumentUri.TryParse(change.Uri, out var uri) || uri.Path is not { } path)
+        if (PathOf(change) is not { } path)
         {
             return false;
         }
 
         return path.EndsWith(SchemaExtension, StringComparison.OrdinalIgnoreCase)
+            || IsProject(path)
             || string.Equals(Path.GetFileName(path), ProjectConfig.FileName, StringComparison.OrdinalIgnoreCase);
     }
+
+    private static string? PathOf(FileEvent change)
+        => DocumentUri.TryParse(change.Uri, out var uri) ? uri.Path : null;
+
+    private static bool IsProject(string path) => path.EndsWith(ProtoCrossProject.Extension, StringComparison.OrdinalIgnoreCase);
 }

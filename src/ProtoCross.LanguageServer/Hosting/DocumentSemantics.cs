@@ -8,7 +8,7 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// <summary>One buffer compiled under one settled configuration, and what can be asked of it.</summary>
 /// <remarks>
 /// <para>
-/// The compilation and everything that comes with it -- the settings it ran under, the loader it
+/// The compilation and everything that comes with it -- the settings it runs under, the loader it
 /// ended up using, and the model that answers questions about positions -- kept together, because a
 /// caller holding the result alone cannot ask where protoc's own errors should be resolved against,
 /// and a caller holding the settings alone cannot say whether anything was compiled at all.
@@ -76,6 +76,16 @@ public sealed record DocumentCompilation(
 /// <see cref="SchemaClosure.IsCurrent"/> -- the very check <see cref="DescriptorCache"/> makes before
 /// it will answer from an entry -- for the schemas. Neither is restated here, because a second
 /// statement of either is one that eventually disagrees with the compiler.
+/// </para>
+/// <para>
+/// <b>A hit hands back the compilation it holds with the settings just resolved</b>, not the ones it
+/// was compiled under. <see cref="DocumentConfiguration.CompilesTheSameWayAs"/> deliberately ignores
+/// what settings report, because a warning cannot change the compiled result, and that is exactly why
+/// those warnings can be out of date in a held entry: a second project that starts or stops including
+/// the document (<c>PC2108</c>) changes nothing the compilation reads, and the held settings went on
+/// saying what the files said when it was built, until the buffer itself was edited. The two settings
+/// compile the same way -- that is what made the entry answer -- so pairing the held compilation with
+/// the current ones describes both truthfully.
 /// </para>
 /// <para>
 /// <b>What that costs on a hit is one configuration resolution and one hash per schema.</b> The
@@ -163,7 +173,9 @@ public sealed class DocumentSemantics
 
         if (_entries.TryGetValue(document.Uri.Key, out var held) && Answers(held, document, settings))
         {
-            return held;
+            // The compilation is reused and the settings are not: what they report about the files
+            // around the document can move without moving how it compiles.
+            return held with { Settings = settings };
         }
 
         // Read before the compile rather than after it, because what this is watching for is a
