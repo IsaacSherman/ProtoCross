@@ -85,4 +85,11 @@ public static class HostDiagnosticCodes
     /// <summary>A project named by a setting that names no file that exists (spec 10.4.1).</summary>
     public static readonly DiagnosticDescriptor ProjectNotFound =
         new("PC2110", DiagnosticSeverity.Warning, "project not found");
+
+    /// <summary>
+    /// A source of a document's project that could not be read, so the document was compiled without
+    /// it (spec 26.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectSourceUnreadable =
+        new("PC2111", DiagnosticSeverity.Warning, "project source could not be read");
 }

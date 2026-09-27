@@ -277,6 +277,67 @@ public class ProjectDiagnosticsTests
         Assert.Equal(1, summary.Range.Start.Line);
     }
 
+    /// <summary>
+    /// A document whose answer was made stale by another document's edit is compiled again and
+    /// published, although that edit was made while the project's first compile was still running and
+    /// so scheduled nothing that would publish for it.
+    /// </summary>
+    [Fact]
+    public async Task ADocumentAnotherBuffersEditOutdatedIsStillPublished()
+    {
+        var editor = Workspace(("billing.pcproj", EveryFile), ("pricing.pcross", Pricing), ("totals.pcross", Totals));
+        var pricing = editor.UriOf("pricing.pcross");
+        var totals = editor.UriOf("totals.pcross");
+        editor.Documents.Open(pricing, "protocross", 1, Pricing);
+        editor.Documents.Open(totals, "protocross", 1, Totals);
+
+        var compiling = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var compiles = 0;
+        editor.Semantics.Compile = (compilation, token) =>
+        {
+            if (Interlocked.Increment(ref compiles) == 1)
+            {
+                compiling.TrySetResult();
+                release.Task.Wait(TimeSpan.FromSeconds(10), token);
+            }
+
+            return compilation.Compile(token);
+        };
+
+        editor.Scheduler.Schedule(pricing);
+        await compiling.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        editor.Edit("totals.pcross", Totals + "\n");
+        await editor.ShownAsync(totals, _ => true);
+        release.TrySetResult();
+
+        await editor.ShownAsync(pricing, _ => true);
+    }
+
+    /// <summary>
+    /// A source of the project that cannot be read is said to be missing, on each open document, rather
+    /// than showing only as the unresolved names it leaves behind.
+    /// </summary>
+    [Fact]
+    public async Task ASourceThatCannotBeReadIsReportedOnTheDocumentsCompiledWithoutIt()
+    {
+        var editor = Workspace(("billing.pcproj", EveryFile), ("pricing.pcross", Pricing), ("totals.pcross", Totals));
+
+        using (new FileStream(Path.Combine(editor.Directory, "pricing.pcross"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var totals = editor.Open("totals.pcross", Totals);
+
+            var shown = await editor.ShownAsync(
+                totals, published => published.Any(diagnostic => diagnostic.Code == HostDiagnosticCodes.ProjectSourceUnreadable.Code));
+
+            Assert.Contains(
+                shown,
+                diagnostic => diagnostic.Code == HostDiagnosticCodes.ProjectSourceUnreadable.Code
+                    && diagnostic.Message.Contains("pricing.pcross", StringComparison.Ordinal));
+        }
+    }
+
     // ------- a project the build refuses
 
     /// <summary>

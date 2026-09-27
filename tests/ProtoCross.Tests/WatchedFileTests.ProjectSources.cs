@@ -85,6 +85,30 @@ public partial class WatchedFileTests
     }
 
     /// <summary>
+    /// A save of a document the editor has open is not a change any compilation rests on, since its
+    /// buffer is read rather than its file; its creation or deletion is, and so is a save of one that is
+    /// not open.
+    /// </summary>
+    [Fact]
+    public void ASaveOfAnOpenDocumentIsNotAChangeACompilationRestsOn()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        var open = new Uri(Path.Combine(directory, "open.pcross")).AbsoluteUri;
+        var closed = new Uri(Path.Combine(directory, "closed.pcross")).AbsoluteUri;
+        FileEvent[] changes =
+        [
+            new() { Uri = open, Type = FileChangeType.Changed },
+            new() { Uri = open, Type = FileChangeType.Deleted },
+            new() { Uri = closed, Type = FileChangeType.Changed },
+        ];
+
+        var left = ProtoCross.LanguageServer.Hosting.WatchedFiles.ExceptSavesOfOpenDocuments(
+            changes, uri => uri.Text == open);
+
+        Assert.Equal([changes[1], changes[2]], left);
+    }
+
+    /// <summary>
     /// Only a source added or removed, or a project changed, moves which files a project compiles: a
     /// saved source moves only its own text, which its stamp shows.
     /// </summary>

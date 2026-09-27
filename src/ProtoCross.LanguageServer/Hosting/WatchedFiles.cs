@@ -65,6 +65,24 @@ public static class WatchedFiles
     /// <summary>The id the registration is made under, so it could be withdrawn by name.</summary>
     public const string RegistrationId = "protocross.watchedFiles";
 
+    /// <summary>These changes without the saves of documents the editor has open.</summary>
+    /// <remarks>
+    /// An open document is compiled from its buffer and never from its file, so saving it moves nothing a
+    /// compilation read. Left in, every save of a ProtoCross file would recompile every open document,
+    /// since the sources are watched too. A document created or deleted while open is kept: which files a
+    /// project compiles may have moved.
+    /// </remarks>
+    public static IReadOnlyList<FileEvent> ExceptSavesOfOpenDocuments(
+        IEnumerable<FileEvent> changes, Func<DocumentUri, bool> isOpen)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(isOpen);
+
+        return [.. changes.Where(change => change.Type is not FileChangeType.Changed
+            || !DocumentUri.TryParse(change.Uri, out var uri)
+            || !isOpen(uri))];
+    }
+
     /// <summary>Whether any of these changes could make an open document compile differently.</summary>
     /// <remarks>
     /// Compared without regard to case on every platform. The cost of a false match is one round of

@@ -118,7 +118,10 @@ Normative Requirements:
   compilation. **Only open documents are published.** A closed source's problems are shown when it is
   opened, because nothing would ever withdraw what was published about a file nobody opened. A
   document that two projects compile, a nearer one and one over a whole tree, is published by its
-  own project, the nearer.
+  own project, the nearer. A closed source that cannot be read is left out of the compilation and
+  every open document of it is told so, as `PC2111`, a warning at its start: otherwise the only sign
+  is an unresolved name wherever a document calls into that source. It is read again at the next
+  question.
 - **An edit moves every open document of every compilation that read the edited buffer**, with no
   edit in them: a method renamed in one file is an unresolved name in each file that calls it, and
   naming it back clears that. Edits to several documents of one project within one pause are one
@@ -186,7 +189,8 @@ Normative Requirements:
   this the errors on screen go on describing the file as it was. A host that can ask its client to
   watch files asks for `**/*.proto`, `**/protocross.config.xml`, `**/*.pcproj` and `**/*.pcross` once
   initialized, and on any change to such a file recompiles every open document; each compile answers
-  from what it holds wherever the schemas, policy and closed sources it read still stand. What each
+  from what it holds wherever the schemas, policy and closed sources it read still stand. A save of a
+  document the editor has open recompiles nothing, because its buffer is what is compiled. What each
   project compiles is remembered rather than listed at every question, so a project file changed, or
   a source created or deleted, is what makes the host list them again: that is a change no file's
   stamp shows. Every document rather than only the importers, because the

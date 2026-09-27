@@ -253,6 +253,23 @@ public class ProjectCompilationTests
         Assert.Equal(0, workspace.Semantics.Count);
     }
 
+    /// <summary>
+    /// What is held for a document its project was refused for is its own, not the project's: a
+    /// project refused for one document may be compiled for another, and a refusal held under the
+    /// project's name would evict what they share.
+    /// </summary>
+    [Fact]
+    public void ARefusedDocumentIsHeldUnderItsOwnName()
+    {
+        var workspace = Project(
+            "<ProtoCrossProject><Sources Include=\"src/*.pcross\" /><Tests Include=\"*.pcross\" /></ProtoCrossProject>",
+            ("totals.pcross", Totals));
+        var totals = workspace.Open("totals.pcross");
+
+        Assert.Null(workspace.Compile(totals).Result);
+        Assert.Equal([totals.Uri.Key], workspace.Semantics.CompilationsReading(totals.Uri));
+    }
+
     // ------- what the providers answer across files
 
     /// <summary>Go-to-definition on a call leads into the member that declares the method.</summary>

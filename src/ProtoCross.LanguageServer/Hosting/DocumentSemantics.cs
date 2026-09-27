@@ -48,7 +48,22 @@ public sealed record DocumentCompilation(
     /// editor only while every one of them is still the buffer the editor holds.
     /// </summary>
     public IReadOnlyList<OpenDocument> Buffers { get; init; } = [Document];
+
+    /// <summary>
+    /// The sources of the document's project that could not be read, and were left out of the
+    /// compilation; empty when there were none.
+    /// </summary>
+    /// <remarks>
+    /// Carried out so the host can say so. Left out in silence, a source that could not be read shows
+    /// up only as unresolved names in the documents that call into it, and nothing points at why.
+    /// </remarks>
+    public IReadOnlyList<UnreadSource> UnreadSources { get; init; } = [];
 }
+
+/// <summary>A source of a project that a compilation could not read.</summary>
+/// <param name="Path">The source's full path.</param>
+/// <param name="Reason">What reading it said, as a sentence.</param>
+public sealed record UnreadSource(string Path, string Reason);
 
 /// <summary>
 /// Compiles the buffer a request was read against, with the rest of its project, and remembers the
@@ -214,7 +229,7 @@ public sealed class DocumentSemantics
         // and the first thing building one needs, and resolving it twice would be paying for the
         // walk twice in exchange for two chances to disagree about what it said.
         var settings = configuration.Resolve(document.Uri);
-        var key = CompilationKey.For(document.Uri, settings.ProjectPath);
+        var key = CompilationKey.Of(settings);
 
         if (_entries.TryGetValue(key, out var held) && Answers(held, document, settings))
         {
@@ -419,7 +434,7 @@ public sealed class DocumentSemantics
                 isWorthKeeping: true);
         }
 
-        var sources = SourcesFor(document, configuration, settings, out var readEverything);
+        var sources = SourcesFor(document, configuration, settings, out var unread);
         var compilation = new Compilation([.. sources.Select(source => source.Source)], options!);
 
         Interlocked.Increment(ref _compilations);
@@ -434,26 +449,27 @@ public sealed class DocumentSemantics
             document, configuration, settings, compilation.Loader ?? loader, failure, result)
         {
             Buffers = [.. sources.Select(source => source.Buffer).OfType<OpenDocument>()],
+            UnreadSources = unread,
         };
 
         return new Held(
             settings.ProjectFiles is null ? built : built with { Semantics = built.Semantics?.In(IdentityOf(sources, document)) },
             sources,
-            isWorthKeeping: readEverything && sources.All(source => source.Buffer is not null || source.Stamp.IsSettled));
+            isWorthKeeping: unread.Count == 0 && sources.All(source => source.Buffer is not null || source.Stamp.IsSettled));
     }
 
     /// <summary>The sources a document is compiled with: itself alone, or its project's test build.</summary>
-    /// <param name="readEverything">
-    /// False when a source of the project could not be read and was left out, which is what makes a
-    /// compilation not worth holding.
+    /// <param name="unread">
+    /// The sources of the project that could not be read and were left out, which makes a compilation
+    /// not worth holding.
     /// </param>
     private List<CompiledSource> SourcesFor(
         OpenDocument document,
         WorkspaceConfiguration configuration,
         DocumentConfiguration settings,
-        out bool readEverything)
+        out List<UnreadSource> unread)
     {
-        readEverything = true;
+        unread = [];
 
         if (settings is not { Project: { } project, ProjectFiles: { } files })
         {
@@ -471,20 +487,22 @@ public sealed class DocumentSemantics
             {
                 sources.Add(CompiledSource.Of(open, open.ToSource(directory: null) with { Role = member.Role }));
             }
-            else if (CompiledSource.Read(member, uri) is { } read)
+            else if (CompiledSource.Read(member, uri, out var reason) is { } read)
             {
                 sources.Add(read);
             }
             else
             {
-                readEverything = false;
+                unread.Add(new UnreadSource(member.Path, reason!));
             }
         }
 
-        if (!readEverything)
+        // A source that is not there any more means the listing is older than the directory: one
+        // deleted since the project was listed, in a client that did not say so. One that is there
+        // and still cannot be read says nothing about the listing, and forgetting every project's
+        // files for it would walk them all again on every question while it stays that way.
+        if (unread.Any(source => !File.Exists(source.Path)))
         {
-            // The likeliest reason is a source deleted since the project was listed, which a client
-            // that watches nothing never reports.
             configuration.Projects.Forget();
         }
 
@@ -522,17 +540,19 @@ public sealed class DocumentSemantics
         public static CompiledSource Of(OpenDocument buffer, SourceDocument source)
             => new(source, buffer.Uri, buffer, default);
 
-        /// <summary>A closed source read from disk, or null when it could not be read.</summary>
-        public static CompiledSource? Read(ProjectMember member, DocumentUri uri)
+        /// <summary>A closed source read from disk, or null when it could not be read, and why.</summary>
+        public static CompiledSource? Read(ProjectMember member, DocumentUri uri, out string? reason)
         {
             var stamp = EntryStamp.OfFile(member.Path);
 
             try
             {
+                reason = null;
                 return new(SourceDocument.ReadFrom(member.Path) with { Role = member.Role }, uri, null, stamp);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
+                reason = ex.Message;
                 return null;
             }
         }

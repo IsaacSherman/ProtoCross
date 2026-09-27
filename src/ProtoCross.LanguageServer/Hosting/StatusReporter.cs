@@ -199,7 +199,7 @@ public sealed class StatusReporter
             new("compiles waiting", Scheduler.Pending.ToString(CultureInfo.InvariantCulture),
                 $"{Scheduler.InFlight} running now, {Scheduler.PeakInFlight} at once at the busiest"),
             new("held compilations", Semantics.Count.ToString(CultureInfo.InvariantCulture),
-                $"{Semantics.Compilations} produced since the server started"),
+                $"{Semantics.Compilations} produced since the server started; the open documents of one project share one"),
         ];
 
         facts.Add(Log.LastError is { } error

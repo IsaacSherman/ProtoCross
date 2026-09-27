@@ -295,7 +295,7 @@ public sealed class CompileScheduler
     private void Remember(DocumentCompilation compiled)
     {
         var uri = compiled.Document.Uri;
-        _compilationOf[uri.Key] = CompilationKey.For(uri, compiled.Settings.ProjectPath);
+        _compilationOf[uri.Key] = CompilationKey.Of(compiled.Settings);
 
         if (_documents.Find(uri) is null)
         {
@@ -468,7 +468,30 @@ public sealed class CompileScheduler
             if (!await _router.PublishAsync(uri, Diagnose(answer, mapper), () => IsStale(answer, configuration)).ConfigureAwait(false))
             {
                 _log.Trace($"Discarding a compilation of '{uri}' that no longer describes the buffer.");
+                ScheduleIfAnotherBufferMoved(answer, configuration);
             }
+        }
+    }
+
+    /// <summary>
+    /// Compiles a document's compilation again when what made its answer stale was another document's
+    /// buffer moving, which may have scheduled nothing that would publish for it.
+    /// </summary>
+    /// <remarks>
+    /// An edit schedules the compilations held that read the edited buffer, and one still being
+    /// compiled for the first time is not held yet: a document opened a moment earlier, whose project's
+    /// first compile read the other buffer before it moved, had its answer discarded here and nothing
+    /// left to replace it, and showed no diagnostics until it was edited itself. A move of the document's
+    /// own buffer, or of the configuration, has always scheduled a compile of its own, so those are left
+    /// to it rather than compiled twice.
+    /// </remarks>
+    private void ScheduleIfAnotherBufferMoved(DocumentCompilation compiled, WorkspaceConfiguration configuration)
+    {
+        if (_documents.Find(compiled.Document.Uri) is { } current
+            && current.Version == compiled.Document.Version
+            && _configuration.Current.Generation == configuration.Generation)
+        {
+            ScheduleCompilation(CompilationOf(compiled.Document.Uri));
         }
     }
 
@@ -539,11 +562,33 @@ public sealed class CompileScheduler
         // here -- a second spelling is how this comes to name a root the compilation never searched.
         var resolvePaths = SchemaCatalog.RootsFor(result.SearchPaths, compiled.Loader);
 
-        return WithConfiguration(
-            CompilationDiagnostics.Build(result, uri, resolvePaths, mapper, MissingProtocIn(compiled)),
-            uri,
-            settings,
-            mapper);
+        var found = CompilationDiagnostics.Build(result, uri, resolvePaths, mapper, MissingProtocIn(compiled));
+        foreach (var unread in compiled.UnreadSources)
+        {
+            found.Add(uri, mapper.Map(Unread(unread, settings), uri.Text, DiagnosticMapper.WholeDocumentStart));
+        }
+
+        return WithConfiguration(found, uri, settings, mapper);
+    }
+
+    /// <summary>Says that a source of the document's project could not be read (<c>PC2111</c>).</summary>
+    /// <remarks>
+    /// On the document rather than on the source, which nobody has open, and a warning rather than an
+    /// error: what went wrong is outside the document, and the document was compiled all the same.
+    /// Without it the only sign is an unresolved name wherever the document calls into that source.
+    /// </remarks>
+    private static Diagnostics.Diagnostic Unread(UnreadSource unread, DocumentConfiguration settings)
+    {
+        var reported = new Diagnostics.DiagnosticBag();
+        reported.Report(
+            HostDiagnosticCodes.ProjectSourceUnreadable,
+            $"'{Path.GetFileName(unread.Path)}', a source of '{Path.GetFileName(settings.ProjectPath)}', could not "
+                + $"be read, so this document was compiled without it: {unread.Reason} Whatever it declares "
+                + "is unknown here until it can be read.",
+            Diagnostics.SourceSpan.None,
+            "Close whatever holds the file open, or make it readable; it is read again at the next edit.");
+
+        return reported.Single();
     }
 
     /// <summary>The account of a missing protoc when this compilation had none to run, or null.</summary>

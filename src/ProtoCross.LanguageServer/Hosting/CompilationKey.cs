@@ -11,6 +11,12 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// project is a compilation of its own, as every document was before projects.
 /// </para>
 /// <para>
+/// <b>So is a document its project was refused for.</b> Nothing is compiled for it, and what it holds
+/// instead -- its refusal -- is its own: a project refused for one document may be compiled for another,
+/// when the two are in folders whose settings differ, and a refusal held under the project's name would
+/// evict the compilation the other documents share, once per question, back and forth.
+/// </para>
+/// <para>
 /// One statement of it, because the scheduler deciding what to compile and the cache deciding what it
 /// holds must agree: a scheduler keyed one way and a cache keyed another would compile a project once per
 /// open document and cache it once.
@@ -18,17 +24,15 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// </remarks>
 internal static class CompilationKey
 {
-    /// <param name="projectPath">
-    /// The project file the document compiles with, whether or not it can be read or built, or null
-    /// when it has none.
-    /// </param>
-    public static string For(DocumentUri document, string? projectPath)
+    /// <summary>The compilation a document is in, under the settings just resolved for it.</summary>
+    public static string Of(DocumentConfiguration settings)
     {
-        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(settings);
 
         // A project file's own URI key, which no document shares, since a project is not a source.
-        return projectPath is not null && DocumentUri.TryParse(projectPath, out var project)
-            ? project.Key
-            : document.Key;
+        return settings is { ProjectFiles: not null, ProjectPath: { } projectPath }
+            && DocumentUri.TryParse(projectPath, out var project)
+                ? project.Key
+                : settings.Document.Key;
     }
 }

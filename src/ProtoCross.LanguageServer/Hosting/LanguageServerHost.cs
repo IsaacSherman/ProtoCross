@@ -1046,15 +1046,17 @@ public sealed class LanguageServerHost : IDisposable
     /// </remarks>
     private Task WatchedFilesChanged(DidChangeWatchedFilesParams message)
     {
-        if (WatchedFiles.MoveAnyCompilation(message.Changes))
+        var changes = WatchedFiles.ExceptSavesOfOpenDocuments(message.Changes, uri => _documents.Find(uri) is not null);
+
+        if (WatchedFiles.MoveAnyCompilation(changes))
         {
-            _log.Trace($"{message.Changes.Count} watched file(s) changed on disk; recompiling open documents.");
-            if (WatchedFiles.MoveAProject(message.Changes))
+            _log.Trace($"{changes.Count} watched file(s) changed on disk; recompiling open documents.");
+            if (WatchedFiles.MoveAProject(changes))
             {
                 ProjectDiscovery.Forget();
             }
 
-            if (WatchedFiles.MoveAProjectsFiles(message.Changes))
+            if (WatchedFiles.MoveAProjectsFiles(changes))
             {
                 _configuration.Current.Projects.Forget();
             }
