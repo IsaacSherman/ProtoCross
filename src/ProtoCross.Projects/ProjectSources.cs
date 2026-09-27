@@ -38,6 +38,59 @@ public static class ProjectSources
             Expand(project, "Tests", project.Tests, diagnostics));
     }
 
+    /// <summary>
+    /// The sources a build of <paramref name="project"/> compiles, or null when no build of it may
+    /// compile anything: a directory one of its patterns searches could not be listed (<c>PC2007</c>),
+    /// or its <c>&lt;Sources&gt;</c> match no source (<c>PC2012</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project whose files could not all be listed is refused rather than built from the ones that
+    /// could be, because a project missing some of its sources builds a program nobody wrote. One whose
+    /// <c>&lt;Sources&gt;</c> find nothing is refused in either build, although a test build would have
+    /// test sources to compile: a test build generates what the production build does, and the
+    /// production build has nothing to generate.
+    /// </para>
+    /// <para>
+    /// One rule the command line and the editor both ask. The command line used to state it by itself,
+    /// in a line of its own on standard error with no code, and an editor compiling a project's
+    /// documents had no way to say that the build would refuse to.
+    /// </para>
+    /// </remarks>
+    public static ProjectFiles? ExpandForBuild(ProtoCrossProject project, DiagnosticBag diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
+        // Collected apart and then handed on, so that what decides is what the expansion reported: the
+        // caller's bag may already hold errors about something else.
+        var expansion = new DiagnosticBag();
+        var files = Expand(project, expansion);
+        foreach (var diagnostic in expansion)
+        {
+            diagnostics.Add(diagnostic);
+        }
+
+        if (expansion.HasErrors)
+        {
+            return null;
+        }
+
+        if (files.Sources.Count == 0)
+        {
+            var name = Path.GetFileName(project.Path);
+            diagnostics.Report(
+                DiagnosticCodes.ProjectCompilesNothing,
+                $"{name} compiles nothing: no <Sources> element matches a {SourceExtension} file.",
+                SourceSpan.SingleLine(name, 0, 1, 1, 0),
+                "Add a <Sources> element whose patterns match the sources that ship. A file only <Tests> "
+                    + "names is compiled to test with, and is not what a build generates.");
+            return null;
+        }
+
+        return files;
+    }
+
     private static List<string> Expand(
         ProtoCrossProject project,
         string group,

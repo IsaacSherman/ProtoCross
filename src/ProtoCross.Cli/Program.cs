@@ -151,10 +151,10 @@ static Compilation? CompilationOfSources(CommandLineOptions options, DiagnosticB
 /// <summary>The compilation a project describes, for the build this run asks for (spec 5.4).</summary>
 /// <remarks>
 /// <para>
-/// A project that cannot be read, or whose files could not all be listed, compiles nothing, rather than
-/// the part of it that could be: a project missing one of its lines would build a program nobody
-/// wrote. A project whose <c>&lt;Sources&gt;</c> find nothing is refused in either build, because a test
-/// build writes what the production build would, and the production build has nothing to write.
+/// A project that cannot be read compiles nothing, rather than the part of it that could be read: a
+/// project missing one of its lines would build a program nobody wrote. Which projects no build may
+/// compile once read is <see cref="ProjectSources.ExpandForBuild"/>'s to say, because an editor has to
+/// refuse exactly the ones this refuses.
 /// </para>
 /// <para>
 /// The project's schema directories are searched before <c>-I</c>'s. They are the project's answer,
@@ -170,17 +170,8 @@ static Compilation? CompilationOfProject(string projectPath, CommandLineOptions 
         return null;
     }
 
-    var files = ProjectSources.Expand(project, diagnostics);
-    if (diagnostics.HasErrors)
+    if (ProjectSources.ExpandForBuild(project, diagnostics) is not { } files)
     {
-        return null;
-    }
-
-    if (files.Sources.Count == 0)
-    {
-        Console.Error.WriteLine(
-            $"error: {Path.GetFileName(project.Path)} compiles nothing: no <Sources> element matches a "
-                + $"{ProjectSources.SourceExtension} file");
         return null;
     }
 

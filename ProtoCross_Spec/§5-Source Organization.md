@@ -189,6 +189,10 @@ Normative Requirements:
   code nobody asked for.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a
   typo, and the rest of the project still stands.
+- A project whose `<Sources>` match no source compiles nothing, and is `PC2012`, an error at the
+  start of the project file, in either build. A test build generates what the production build does,
+  so a project with nothing to ship leaves both builds nothing to generate, however many test sources
+  it names.
 - One project is one compilation and one file. Several may share a directory, and each is a
   compilation of its own.
 - A project's compilation runs under the configuration file its `<Config>` names, or else the

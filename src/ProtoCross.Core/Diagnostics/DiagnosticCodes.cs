@@ -516,4 +516,8 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor MemberUnderAnotherConfig =
         new("PC2011", DiagnosticSeverity.Warning, "project member is under another configuration file");
+
+    /// <summary>A project whose <c>&lt;Sources&gt;</c> match no source, which no build of it can compile (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor ProjectCompilesNothing =
+        new("PC2012", DiagnosticSeverity.Error, "project compiles nothing");
 }
