@@ -45,6 +45,9 @@ public sealed class SemanticModel
     /// </summary>
     private readonly SourceIdentity? _document;
 
+    /// <summary>What the document is compiled for, which decides what its production behavior may name.</summary>
+    private readonly SourceRole _role;
+
     /// <remarks>
     /// Lazy because a model is built per request and most requests never ask. Position queries walk
     /// what the binder produced and build nothing; a reference index is the first thing here that
@@ -65,12 +68,14 @@ public sealed class SemanticModel
         CompilationUnit? syntaxTree,
         IrModule? part,
         SourceIdentity? document,
+        SourceRole role,
         Lazy<ReferenceIndex?> references)
     {
         _result = result;
         _syntaxTree = syntaxTree;
         _module = part;
         _document = document;
+        _role = role;
         _references = references;
     }
 
@@ -93,7 +98,13 @@ public sealed class SemanticModel
 
         return result.SyntaxTrees.Count > 1
             ? For(result, result.SyntaxTrees[0].Document)
-            : new SemanticModel(result, result.SyntaxTree, result.Module, document: null, IndexOf(result.Module));
+            : new SemanticModel(
+                result,
+                result.SyntaxTree,
+                result.Module,
+                document: null,
+                result.SyntaxTrees.FirstOrDefault()?.Role ?? SourceRole.Production,
+                IndexOf(result.Module));
     }
 
     /// <summary>Opens one document of a compilation to position queries.</summary>
@@ -128,8 +139,9 @@ public sealed class SemanticModel
 
     private static SemanticModel Open(CompilationResult result, SourceIdentity document, Lazy<ReferenceIndex?> references)
     {
-        var tree = result.SyntaxTrees.FirstOrDefault(source => source.Document == document)?.Unit;
-        return new SemanticModel(result, tree, result.Module?.DeclaredIn(document), document, references);
+        var tree = result.SyntaxTrees.FirstOrDefault(source => source.Document == document);
+        return new SemanticModel(
+            result, tree?.Unit, result.Module?.DeclaredIn(document), document, tree?.Role ?? SourceRole.Production, references);
     }
 
     private static Lazy<ReferenceIndex?> IndexOf(IrModule? whole)
@@ -347,9 +359,7 @@ public sealed class SemanticModel
         => IsProductionBehaviorAt(offset) ? _result.ProductionTypes : _result.Types;
 
     private bool IsProductionBehaviorAt(int offset)
-        => _result.SyntaxTrees.FirstOrDefault(tree => _document is null || tree.Document == _document)?.Role
-                is null or SourceRole.Production
-            && SyntaxAt(offset)?.Enclosing<TestDeclaration>() is null;
+        => _role is SourceRole.Production && SyntaxAt(offset)?.Enclosing<TestDeclaration>() is null;
 
     /// <summary>
     /// What a bare identifier written at <paramref name="offset"/> could mean, or null when the
