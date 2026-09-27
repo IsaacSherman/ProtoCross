@@ -321,7 +321,8 @@ that one path ([`PathToOneFile`](src/ProtoCross.Projects/PathToOneFile.cs)), so 
 disagree. Discovery runs whenever a document's settings are resolved, so what each directory held
 and what each project said are kept while a stat says the entry has not changed
 ([`StampedFacts`](src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
-drops them. The command line builds a project it is named. An editor resolves each document's settings
+drops them, and a project that could not be read is never kept, since releasing a lock moves no
+stamp. The command line builds a project it is named. An editor resolves each document's settings
 through its project, and still compiles each document on its own.
 
 ### Serving an editor

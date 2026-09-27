@@ -566,7 +566,9 @@ Implementation Note:
   `ProjectPolicy` the command line uses. What each directory above a document held, and what each
   project said, is kept while a stat shows the entry unchanged, and dropped when the host is told a
   project changed. A change is therefore seen on the next question on any file system whose stamps
-  are finer than 50 ms, and on FAT32, whose stamps are two seconds, once a watcher reports it.
+  are finer than 50 ms, and on FAT32, whose stamps are two seconds, once a watcher reports it. A
+  project that could not be read is not kept, and is read again on the next question, so one another
+  process held locked is seen as soon as the lock is released.
 - An editor still compiles each document on its own, under its project's settings: a call into
   another source of the project is not yet resolved there.
 - `ProtoCrossSettings.Definitions` is the named set: every setting the server reads is a row there, and
