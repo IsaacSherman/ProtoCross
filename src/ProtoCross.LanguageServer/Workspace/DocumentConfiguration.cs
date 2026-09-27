@@ -120,10 +120,16 @@ public sealed record DocumentConfiguration
     public string? ProjectPath { get; init; }
 
     /// <summary>
-    /// The project read from <see cref="ProjectPath"/>, or null when the document has none or it could
-    /// not be read.
+    /// The project read from <see cref="ProjectPath"/>, or null when the document has none, it could not
+    /// be read, or no build of it may compile anything.
     /// </summary>
     public ProtoCrossProject? Project { get; init; }
+
+    /// <summary>
+    /// The files <see cref="Project"/> compiles, which the document is compiled together with, or null
+    /// when the document has no project to compile with.
+    /// </summary>
+    public ProjectFiles? ProjectFiles { get; init; }
 
     /// <summary>
     /// How the document came to have its project: <see cref="ConfigurationSource.Project"/> when it was
@@ -133,10 +139,13 @@ public sealed record DocumentConfiguration
     /// </summary>
     public ConfigurationSource ProjectSource { get; init; } = ConfigurationSource.Default;
 
-    /// <summary>Whether a project was found for this document and could not be read.</summary>
+    /// <summary>
+    /// Whether a project was found for this document and could not be read, or was read and no build of
+    /// it may compile anything.
+    /// </summary>
     /// <remarks>
     /// The document is then not compiled, and <see cref="Config"/> is null with no file to name: the
-    /// project that would have said which file governs is the thing that could not be read.
+    /// project that would have said which file governs is the thing that was refused.
     /// </remarks>
     public bool ProjectRefused => ProjectPath is not null && Project is null;
 
@@ -237,8 +246,8 @@ public sealed record DocumentConfiguration
     /// unchanged workspace produce the same warnings and are not the same objects, and a report
     /// legitimately cares about those while a compilation cannot see them at all. What this compares
     /// is exactly what <see cref="TryCreateCompilationOptions"/> hands over, plus the folder a source
-    /// path is made relative to -- so a value that could not change the compiled result cannot make
-    /// this answer no.
+    /// path is made relative to and the files compiled with the document -- so a value that could not
+    /// change the compiled result cannot make this answer no.
     /// </para>
     /// <para>
     /// The question exists because the configuration is resolved from files, and files change while
@@ -255,7 +264,9 @@ public sealed record DocumentConfiguration
         return Config == other.Config
             && string.Equals(ProtocPath, other.ProtocPath, StringComparison.Ordinal)
             && PathIdentity.AreSame(Folder?.Path, other.Folder?.Path)
-            && IncludeDirectories.SequenceEqual(other.IncludeDirectories, PathIdentity.Comparer);
+            && IncludeDirectories.SequenceEqual(other.IncludeDirectories, PathIdentity.Comparer)
+            && PathIdentity.AreSame(ProjectPath, other.ProjectPath)
+            && Equals(ProjectFiles, other.ProjectFiles);
     }
 
     /// <summary>
@@ -359,7 +370,7 @@ public sealed record DocumentConfiguration
 
         if (ProjectRefused)
         {
-            return "(not settled: the project could not be read)";
+            return "(not settled: the project was refused)";
         }
 
         return Config?.Path ?? "(defaults)";

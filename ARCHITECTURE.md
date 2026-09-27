@@ -323,7 +323,7 @@ and what each project said are kept while a stat says the entry has not changed
 ([`StampedFacts`](src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
 drops them, and a project that could not be read is never kept, since releasing a lock moves no
 stamp. The command line builds a project it is named. An editor resolves each document's settings
-through its project, and still compiles each document on its own.
+through its project and compiles each document with it; see *Serving an editor*.
 
 ### Serving an editor
 
@@ -432,10 +432,27 @@ generation it began under, and its result is **discarded rather than published**
 The rule is not only about diagnostics: every answer describes the version it read, and a request
 that could only answer about a superseded one refuses instead.
 
+**A document with a project is compiled with it** (spec 26.1). `DocumentSemantics` keys what it holds
+by [`CompilationKey`](src/ProtoCross.LanguageServer/Hosting/CompilationKey.cs) — the project, or the
+document when it has none — so the open documents of one project share one compilation: the
+project's test build, each open source read from its buffer and each closed one from its file. Each
+document gets a view of it whose `SemanticModel` is opened on that document with `In`, sharing one
+reference index, so position questions measure offsets in the document's own text while
+find-references and go-to-definition cross into the others. Which files a project compiles is part of
+a document's settings, found by [`ProjectCatalog`](src/ProtoCross.Projects/ProjectCatalog.cs) through
+the rule the command line asks (`ProjectSources.ExpandForBuild`), so a project the build refuses is
+refused in the editor too, and remembered until the project file changes or a watched source is
+created or deleted, because a walk of every directory a pattern searches is too much to repeat per
+caret move. A kept compilation checks every buffer it read against the store and every closed source
+against its file's stamp. `CompileScheduler` keys its queue the same way: an edit schedules the
+document's compilation and every other held one that read its buffer, one run compiles it once, and
+each open document whose own compilation it is gets published its share, by the file each
+diagnostic's span names. A closed source is compiled and never published.
+
 Cancellation reaches the one step that can outlast a keystroke. A superseded or closed document's
 compile stops waiting on `protoc` and gives its worker back at once; everything after the load is
-milliseconds and simply finishes into the discard. The queue holds one entry per document and a new
-request supersedes the last, so it cannot outgrow the number of open documents, and `Pending`,
+milliseconds and simply finishes into the discard. The queue holds one entry per compilation and a
+new request supersedes the last, so it cannot outgrow the number of open documents, and `Pending`,
 `InFlight` and `PeakInFlight` publish the backlog, what is running and the high-water mark. The
 interval and the concurrency limit were #57's to pin and both stand: a whole-buffer compile is 33 ms
 at p95, so the quarter-second debounce is almost all of the delay a reader feels, and four concurrent
@@ -470,13 +487,15 @@ one array write per answer, in a fifty-deep ring, and **only answers are recorde
 refused for staleness produced no answer and folding those in would make a server look faster the
 more work it was abandoning.
 
-A compilation rests on two kinds of file the editor does not hold, the schemas it imports and the
-policy file it discovers, and a kept compilation already refuses to answer once either has moved. What
-nothing did was *ask*: diagnostics are published when a compile runs, and saving a `.proto` in another
-tab is not a keystroke in this one. So once initialized the server asks a client that can watch files
-to report `**/*.proto` and `**/protocross.config.xml`
-([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
-reschedules every open document. So does the client agreeing to watch, since a save before its watcher
+A compilation rests on files the editor does not hold — the schemas it imports, the policy file and
+project it settles on, and a project's closed sources — and a kept compilation already refuses to
+answer once any of them has moved. What nothing did was *ask*: diagnostics are published when a
+compile runs, and saving a `.proto` in another tab is not a keystroke in this one. So once initialized
+the server asks a client that can watch files to report `**/*.proto`, `**/protocross.config.xml`,
+`**/*.pcproj` and `**/*.pcross`
+([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to any of them
+reschedules every open document. A project file changed, or a source created or deleted, also makes
+the server forget which files each project compiles, since no stamp shows that. So does the client agreeing to watch, since a save before its watcher
 was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
 schemas still stand costs a hash per schema rather than a compile. That includes a schema beside a
 source that another directory shadows: protoc never reads it, but `PC0087` was decided from it. The server registers the patterns rather than

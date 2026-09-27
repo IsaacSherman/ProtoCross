@@ -457,7 +457,11 @@ Normative Requirements:
 - **A project that cannot be read stops the document**, as `PC2109`, an error naming the project and
   every problem found in it. Whether it includes the document is unknowable, and compiling the
   document as though it had no project would report, as problems with the document, everything the
-  project is there to settle. A configuration file the project settles on that cannot be read, or that
+  project is there to settle. **So does a project no build may compile**
+  ([5.4](./§5-Source%20Organization.md#54-projects)): one a directory of whose patterns cannot be
+  listed, or whose `<Sources>` match no file on disk (`PC2012`), stops each of its documents as
+  `PC2109` too, quoting why, with the reason itself in the project file. Compiling the document anyway
+  would present a project the build refuses as one that builds. A configuration file the project settles on that cannot be read, or that
   its `<Config>` names and is not there, stops the document as `PC2106`.
 - **A setting that is present and blank states nothing.** An editor writes an unset string setting as
   the empty string rather than leaving it out, so blank is the ordinary shape of "no answer" and

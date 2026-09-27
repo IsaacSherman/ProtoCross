@@ -121,6 +121,13 @@ public sealed record WorkspaceConfiguration
     /// <summary>Reads an environment variable. Replaceable so a test does not have to set one.</summary>
     public Func<string, string?> ReadEnvironmentVariable { get; init; } = Environment.GetEnvironmentVariable;
 
+    /// <summary>What each project compiles, as the server holding this configuration has found it.</summary>
+    /// <remarks>
+    /// Carried from one configuration to the next, because a change of settings changes nothing a
+    /// project lists, and one per server rather than one per process; see <see cref="ProjectCatalog"/>.
+    /// </remarks>
+    public ProjectCatalog Projects { get; init; } = new();
+
     /// <summary>The same configuration with a different set of open folders.</summary>
     public WorkspaceConfiguration WithFolders(IEnumerable<WorkspaceFolder> folders)
     {
@@ -228,7 +235,7 @@ public sealed record WorkspaceConfiguration
 
         var diagnostics = new DiagnosticBag();
         var folder = FolderFor(document);
-        var membership = ProjectOf(document, ScopesFor(folder), diagnostics);
+        var membership = Expanded(ProjectOf(document, ScopesFor(folder), diagnostics), diagnostics);
         var scopes = ScopesFor(folder, membership.Project);
 
         // Every resolution runs before the bag is copied, and each is a statement rather than a
@@ -249,6 +256,7 @@ public sealed record WorkspaceConfiguration
             Folder = folder,
             ProjectPath = membership.Path,
             Project = membership.Project,
+            ProjectFiles = membership.Files,
             ProjectSource = membership.Source,
             ProtocPath = protoc,
             ProtocPathSource = protocSource,
@@ -384,6 +392,9 @@ public sealed record WorkspaceConfiguration
     {
         public static Membership None { get; } = new(null, null, ConfigurationSource.Default);
 
+        /// <summary>The files the project compiles, once <see cref="Expanded"/> has found them.</summary>
+        public ProjectFiles? Files { get; init; }
+
         public bool Refused => Path is not null && Project is null;
     }
 
@@ -485,17 +496,79 @@ public sealed record WorkspaceConfiguration
         Refuse(
             HostDiagnosticCodes.ProjectRefused,
             claim.Path,
-            namedBy is { } scope
-                ? $"named by {ProtoCrossSettings.ProjectKey}, {scope.Describe()}"
-                : $"the nearest project at or above this document",
+            HowTheProjectWasChosen(namedBy ?? ConfigurationSource.Project),
+            "could not be read",
             "so which files this document compiles with, and under what settings, is unknown",
             "compiling it without its project would report as problems everything the project is there to settle",
-            "Fix the problems reported against the project file. Every document it is the nearest project of "
-                + $"is affected. Naming another project with {ProtoCrossSettings.ProjectKey} is a way past it "
-                + "in the meantime.",
+            ProjectRefusalHelp,
             reported,
             diagnostics);
     }
+
+    /// <summary>
+    /// The document's membership with the files its project compiles, or refused when no build of the
+    /// project may compile anything (spec 5.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of <see cref="Projects"/>, which asks the rule the command line asks, so a project the
+    /// build refuses is refused here too rather than compiled as though it would build. What finding the
+    /// files reported -- a pattern that matches nothing, a directory that could not be listed -- is placed
+    /// in the project file, and is reported for every document of the project, which the host publishes
+    /// in that file once.
+    /// </para>
+    /// <para>
+    /// A refused project stops the document as one that cannot be read does, with the same code, because
+    /// what the reader has to do is the same: fix the project file, whose own diagnostics say where.
+    /// </para>
+    /// </remarks>
+    private Membership Expanded(Membership membership, DiagnosticBag diagnostics)
+    {
+        if (membership.Project is not { } project)
+        {
+            return membership;
+        }
+
+        var expansion = Projects.FilesOf(project);
+        var reported = diagnostics.Count;
+        foreach (var problem in expansion.Problems)
+        {
+            diagnostics.Add(problem);
+        }
+
+        if (expansion.Files is { } files)
+        {
+            return membership with { Files = files };
+        }
+
+        Refuse(
+            HostDiagnosticCodes.ProjectRefused,
+            project.Path,
+            HowTheProjectWasChosen(membership.Source),
+            "cannot be built",
+            "so this document is not compiled with it",
+            "compiling it anyway would show a project the build refuses as one that builds",
+            ProjectRefusalHelp,
+            reported,
+            diagnostics);
+        return membership with { Project = null };
+    }
+
+    /// <summary>How a document came to have its project, as a clause.</summary>
+    /// <param name="source">
+    /// <see cref="ConfigurationSource.Project"/> when it was found by searching, and the scope that named
+    /// it otherwise.
+    /// </param>
+    private static string HowTheProjectWasChosen(ConfigurationSource source)
+        => source == ConfigurationSource.Project
+            ? "the nearest project at or above this document"
+            : $"named by {ProtoCrossSettings.ProjectKey}, {source.Describe()}";
+
+    /// <summary>What to do about a project that stops its documents.</summary>
+    private const string ProjectRefusalHelp =
+        "Fix the problems reported against the project file. Every document it is the nearest project of "
+            + $"is affected. Naming another project with {ProtoCrossSettings.ProjectKey} is a way past it "
+            + "in the meantime.";
 
     /// <summary>Warns that another project in the same directory includes the document as well.</summary>
     private static void ReportRivals(DocumentUri document, ProjectClaim claim, DiagnosticBag diagnostics)
@@ -544,6 +617,7 @@ public sealed record WorkspaceConfiguration
                 project.Config is null
                     ? $"found by searching upward from the directory of '{project.Path}'"
                     : $"named by <Config> in '{project.Path}'",
+                "could not be read",
                 NoPolicy,
                 DefaultsWouldMislead,
                 "Fix the problems reported against the file, or have the project name a different one "
@@ -706,6 +780,7 @@ public sealed record WorkspaceConfiguration
                     HostDiagnosticCodes.ConfigurationFileRefused,
                     path,
                     $"named by {ProtoCrossSettings.ConfigPathKey}, {scope.Source.Describe()}",
+                    "could not be read",
                     NoPolicy,
                     DefaultsWouldMislead,
                     $"Fix the problems reported against the file, or point "
@@ -733,6 +808,7 @@ public sealed record WorkspaceConfiguration
                 HostDiagnosticCodes.ConfigurationFileRefused,
                 consulted,
                 $"found by searching upward from '{searchedFrom}'",
+                "could not be read",
                 NoPolicy,
                 DefaultsWouldMislead,
                 "Fix the problems reported against the file. It is the nearest one to this document, so "
@@ -773,6 +849,7 @@ public sealed record WorkspaceConfiguration
     /// nothing, so nothing compiles until this is resolved.
     /// </para>
     /// </remarks>
+    /// <param name="failure">What is wrong with the file, as a clause: that it could not be read, say.</param>
     /// <param name="consequence">What the refusal leaves the document without, as a clause.</param>
     /// <param name="whyNotFallBack">Why compiling the document anyway would be worse, as a clause.</param>
     /// <param name="reported">
@@ -783,6 +860,7 @@ public sealed record WorkspaceConfiguration
         DiagnosticDescriptor code,
         string path,
         string howItWasChosen,
+        string failure,
         string consequence,
         string whyNotFallBack,
         string help,
@@ -800,7 +878,7 @@ public sealed record WorkspaceConfiguration
 
         diagnostics.Report(
             code,
-            $"'{path}', {howItWasChosen}, could not be read, {consequence}. "
+            $"'{path}', {howItWasChosen}, {failure}, {consequence}. "
                 + $"{detail} Nothing is compiled for this document until the file is fixed -- {whyNotFallBack}.",
             new SourceSpan(Path.GetFileName(path), SourcePosition.None, SourcePosition.None),
             help);

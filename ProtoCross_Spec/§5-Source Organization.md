@@ -210,5 +210,5 @@ Implementation Note:
   `--test-out` it runs the production build, and with it the test build
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - An editor settles each document's settings through its project
-  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), but still compiles each document
-  on its own.
+  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), and compiles each document with
+  its project, as the project's test build ([26.1](./§26-Diagnostics.md#261-diagnostics-in-an-editor)).

@@ -56,7 +56,7 @@ public sealed class HoverProvider
         // Shared where it is given, for the reason the scheduler and completion both take it: a
         // compile a keystroke scheduled and a card asked for between two keystrokes should be one
         // compile. A caller with no interest in that gets one of its own.
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
 
         _deferred = new DeferredAnswers("hover", documents, configuration, concurrency);
     }

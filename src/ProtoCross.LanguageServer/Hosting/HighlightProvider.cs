@@ -54,7 +54,7 @@ public sealed class HighlightProvider
 
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
         _deferred = new DeferredAnswers("occurrence highlighting", documents, configuration, concurrency);
     }
 
@@ -89,16 +89,12 @@ public sealed class HighlightProvider
 
     /// <remarks>
     /// <para>
-    /// Every occurrence is in this document, so no filtering by file is needed: a reference is
-    /// recorded where the name was written, and a schema symbol's declaration -- the one thing that
-    /// lives elsewhere -- is not a reference and is not in the list.
-    /// </para>
-    /// <para>
-    /// That rests on a compilation holding one ProtoCross source, as every position query on
-    /// <see cref="Semantics.SemanticModel"/> does. When one holds several (#27) the references come
-    /// from all of them and this has to drop the ones written in another file -- a range measured in
-    /// one buffer and painted into a different one lands on unrelated text, or past the end of a
-    /// shorter one.
+    /// Only the occurrences written in this document. A reference is recorded where the name was
+    /// written, so for a document compiled alone that is every one of them; a document compiled with
+    /// its project shares a compilation with the project's other sources, and the references come from
+    /// all of them. A range measured in one buffer and painted into a different one lands on unrelated
+    /// text, or past the end of a shorter one. A schema symbol's declaration is not a reference and is
+    /// not in the list.
     /// </para>
     /// </remarks>
     private DocumentHighlight[]? Answer(PositionRequest asked, CancellationToken cancellationToken)
@@ -112,11 +108,13 @@ public sealed class HighlightProvider
 
         return
         [
-            .. occurrences.References.Select(reference => new DocumentHighlight
-            {
-                Range = EditorPositions.RangeOf(reference.Span),
-                Kind = KindOf(reference.Kind),
-            }),
+            .. occurrences.References
+                .Where(reference => SymbolLocations.IsIn(reference.Document, asked.Uri))
+                .Select(reference => new DocumentHighlight
+                {
+                    Range = EditorPositions.RangeOf(reference.Span),
+                    Kind = KindOf(reference.Kind),
+                }),
         ];
     }
 

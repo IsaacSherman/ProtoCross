@@ -71,8 +71,10 @@ A file inside a project (a `.pcproj`) takes its settings from the project first,
 it builds that project: the project's `<ProtoPath>` directories are searched before
 `protocross.includePaths`, and the configuration file it settles on is used instead of
 `protocross.configPath`. A file's project is the nearest `.pcproj` at or above it whose patterns include
-it, unless `protocross.project` names one. Each file is still compiled on its own for now. Language policy, such as overflow
-behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor
+it, unless `protocross.project` names one. The file is compiled with the rest of its project, so a call
+into another file of it resolves, and go-to-definition and find-references cross into the others; files
+you have open are compiled from what is in the editor, and the rest from disk. Problems are shown for the
+files you have open. Language policy, such as overflow behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor
 and your build agree about what the code means.
 
 ## Commands

@@ -56,7 +56,11 @@ public sealed class ConfigurationSync(JsonRpcConnection connection, ServerLog lo
 
     private readonly Lock _gate = new();
 
-    private WorkspaceConfiguration _configuration = WorkspaceConfiguration.Empty;
+    /// <remarks>
+    /// Given a project catalog of its own, which every later configuration carries, so that what this
+    /// server has been told to forget is forgotten here and nowhere else.
+    /// </remarks>
+    private WorkspaceConfiguration _configuration = WorkspaceConfiguration.Empty with { Projects = new() };
     private IReadOnlyList<Diagnostic> _settingsDiagnostics = [];
     private bool _clientAnswersConfiguration;
     private int _announcedWithheld;

@@ -130,7 +130,7 @@ public sealed class CompletionProvider
         // Shared where it is given, for the reason CompileScheduler takes the same argument: a
         // compile a keystroke scheduled and a list asked for between two keystrokes should be one
         // compile. A caller with no interest in that gets one of its own.
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
 
         _deferred = new DeferredAnswers("completion", documents, configuration, concurrency);
     }

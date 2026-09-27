@@ -48,20 +48,30 @@ public sealed class SemanticModel
     /// <remarks>
     /// Lazy because a model is built per request and most requests never ask. Position queries walk
     /// what the binder produced and build nothing; a reference index is the first thing here that
-    /// does, and making <see cref="For"/> pay for it would charge hover and completion for something
-    /// only occurrence highlighting wants.
+    /// does, and making <see cref="For(CompilationResult)"/> pay for it would charge hover and
+    /// completion for something only occurrence highlighting wants. Shared by every model
+    /// <see cref="In"/> opens on the same compilation, because it indexes the whole module and not
+    /// one document's part of it.
     /// </remarks>
     private readonly Lazy<ReferenceIndex?> _references;
 
+    /// <summary>The compilation this model was opened on, which <see cref="In"/> opens on another document.</summary>
+    private readonly CompilationResult _result;
+
     /// <param name="part">This document's part of the module, which position questions walk.</param>
-    /// <param name="whole">The whole module, which questions about a symbol ask.</param>
-    private SemanticModel(CompilationUnit? syntaxTree, IrModule? part, IrModule? whole, SourceIdentity? document)
+    /// <param name="references">The index of the whole module, which questions about a symbol ask.</param>
+    private SemanticModel(
+        CompilationResult result,
+        CompilationUnit? syntaxTree,
+        IrModule? part,
+        SourceIdentity? document,
+        Lazy<ReferenceIndex?> references)
     {
+        _result = result;
         _syntaxTree = syntaxTree;
         _module = part;
         _document = document;
-        _references = new Lazy<ReferenceIndex?>(
-            () => whole is null ? null : new ReferenceIndex(whole));
+        _references = references;
     }
 
     /// <summary>Opens a compilation to position queries.</summary>
@@ -83,7 +93,7 @@ public sealed class SemanticModel
 
         return result.SyntaxTrees.Count > 1
             ? For(result, result.SyntaxTrees[0].Document)
-            : new SemanticModel(result.SyntaxTree, result.Module, result.Module, document: null);
+            : new SemanticModel(result, result.SyntaxTree, result.Module, document: null, IndexOf(result.Module));
     }
 
     /// <summary>Opens one document of a compilation to position queries.</summary>
@@ -97,9 +107,33 @@ public sealed class SemanticModel
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(document);
 
-        var tree = result.SyntaxTrees.FirstOrDefault(source => source.Document == document)?.Unit;
-        return new SemanticModel(tree, result.Module?.DeclaredIn(document), result.Module, document);
+        return Open(result, document, IndexOf(result.Module));
     }
+
+    /// <summary>This model's compilation, opened on another of its documents.</summary>
+    /// <remarks>
+    /// What a host holding several open documents of one compilation asks for each of them. The models
+    /// share what answers for the whole compilation -- the reference index, built the first time any
+    /// of them is asked about a symbol -- where opening each with
+    /// <see cref="For(CompilationResult, SourceIdentity)"/> would build one index per document over the
+    /// same module. A document that is not one of the compilation's sources answers as
+    /// <see cref="For(CompilationResult, SourceIdentity)"/> says.
+    /// </remarks>
+    public SemanticModel In(SourceIdentity document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return Open(_result, document, _references);
+    }
+
+    private static SemanticModel Open(CompilationResult result, SourceIdentity document, Lazy<ReferenceIndex?> references)
+    {
+        var tree = result.SyntaxTrees.FirstOrDefault(source => source.Document == document)?.Unit;
+        return new SemanticModel(result, tree, result.Module?.DeclaredIn(document), document, references);
+    }
+
+    private static Lazy<ReferenceIndex?> IndexOf(IrModule? whole)
+        => new(() => whole is null ? null : new ReferenceIndex(whole));
 
     /// <summary>What is at <paramref name="offset"/> in the syntax tree, or null when nothing is.</summary>
     /// <remarks>

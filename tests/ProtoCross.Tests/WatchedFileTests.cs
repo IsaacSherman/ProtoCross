@@ -103,9 +103,9 @@ public partial class WatchedFileTests
 
     // ------------------------------------------------------- asking the client to watch
 
-    /// <summary>A client that can be asked to watch files is asked for schemas, policy files and projects.</summary>
+    /// <summary>A client that can be asked to watch files is asked for schemas, policy files, projects and sources.</summary>
     [Fact]
-    public async Task AClientThatCanWatchIsAskedToWatchSchemasPolicyFilesAndProjects()
+    public async Task AClientThatCanWatchIsAskedToWatchSchemasPolicyFilesProjectsAndSources()
     {
         await using var client = await LanguageServerClient.StartAsync(capabilities: Watching);
 
@@ -117,7 +117,12 @@ public partial class WatchedFileTests
 
         Assert.Equal(Methods.DidChangeWatchedFiles, registration.Method);
         Assert.Equal(
-            ["**/*.proto", $"**/{ProjectConfig.FileName}", $"**/*{ProtoCross.Projects.ProtoCrossProject.Extension}"],
+            [
+                "**/*.proto",
+                $"**/{ProjectConfig.FileName}",
+                $"**/*{ProtoCross.Projects.ProtoCrossProject.Extension}",
+                $"**/*{ProtoCross.Projects.ProjectSources.SourceExtension}",
+            ],
             options.Watchers.Select(watcher => watcher.GlobPattern));
     }
 

@@ -16,6 +16,14 @@ namespace ProtoCross.Tests.Performance;
 /// large enough to be uncomfortable, both fixed.
 /// </para>
 /// <para>
+/// <b>And the stress file once more, as one source of a project.</b> A document with a project is
+/// compiled with the project's other sources (#106), so every warm answer about it stands on a
+/// compilation of more than the file being edited. The third half is the stress file compiled with
+/// the normal one as the two sources of one project, the normal one closed and read from disk, which
+/// is how a project is usually open: one file of it at a time. It is asked the stress file's
+/// questions, so the two rows differ by exactly what the project adds.
+/// </para>
+/// <para>
 /// <b>The normal case is a real file on purpose.</b> <c>examples/simpleScript.pcross</c> is
 /// maintained for its own reasons and will go on being edited by people who are not thinking about
 /// this, which is exactly what keeps it representative. A fixture written for measurement drifts
@@ -26,20 +34,21 @@ internal static class PerformanceCorpus
 {
     public const string Normal = "normal";
     public const string Stress = "stress";
+    public const string Project = "project";
 
     /// <summary>Where the named half of the corpus lives.</summary>
     public static string PathOf(string which) => which switch
     {
         Normal => TestPaths.SimpleScript,
-        Stress => StressCorpus.Path,
+        Stress or Project => StressCorpus.Path,
         _ => throw new ArgumentOutOfRangeException(nameof(which), which, "not a corpus file"),
     };
 
-    /// <summary>The named half of the corpus, as text.</summary>
+    /// <summary>The named half of the corpus, as text: for the project, the source asked about.</summary>
     public static string TextOf(string which) => which switch
     {
         Normal => File.ReadAllText(TestPaths.SimpleScript),
-        Stress => StressCorpus.Text,
+        Stress or Project => StressCorpus.Text,
         _ => throw new ArgumentOutOfRangeException(nameof(which), which, "not a corpus file"),
     };
 

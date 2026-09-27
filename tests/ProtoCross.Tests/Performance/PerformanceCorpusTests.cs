@@ -57,6 +57,18 @@ public class PerformanceCorpusTests
     }
 
     /// <summary>
+    /// The project half compiles clean as a project, so that its rows measure a project that builds
+    /// rather than two files that collide.
+    /// </summary>
+    /// <remarks>
+    /// Its own guard because the other one compiles each file alone, and two files that each compile
+    /// can still declare one method twice between them.
+    /// </remarks>
+    [Fact]
+    public void TheProjectHalfCompilesWithoutDiagnostics()
+        => Assert.NotNull(new PerformanceWorkspace(PerformanceCorpus.Project).Warm());
+
+    /// <summary>
     /// The stress file is larger than the normal one by an order of magnitude, which is what makes
     /// the pair say anything about scale.
     /// </summary>

@@ -60,7 +60,7 @@ public sealed class DefinitionProvider
 
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
         _deferred = new DeferredAnswers("go to definition", documents, configuration, concurrency);
     }
 

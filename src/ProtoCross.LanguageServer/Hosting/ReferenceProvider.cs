@@ -51,7 +51,7 @@ public sealed class ReferenceProvider
 
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
         _deferred = new DeferredAnswers("find references", documents, configuration, concurrency);
     }
 
