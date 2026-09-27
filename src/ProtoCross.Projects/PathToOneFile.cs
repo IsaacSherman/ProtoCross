@@ -57,12 +57,16 @@ internal sealed class PathToOneFile : DirectoryInfoBase
     public override IEnumerable<FileSystemInfoBase> EnumerateFileSystemInfos()
     {
         var below = Path.GetRelativePath(_directory, _file);
-        if (below == "." || Path.IsPathRooted(below) || below.StartsWith(ParentStep, StringComparison.Ordinal))
+        var separator = below.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
+        var first = separator < 0 ? below : below[..separator];
+
+        // The file is below this directory unless the way to it starts by going up. That is a whole
+        // step of "..", and not any name beginning with two dots: a directory may be called "..cache".
+        if (first is "." or ParentStep || Path.IsPathRooted(below))
         {
             yield break;
         }
 
-        var separator = below.IndexOfAny([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]);
         if (separator < 0)
         {
             yield return new OneFile(_file, this);

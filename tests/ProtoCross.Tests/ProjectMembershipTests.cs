@@ -26,6 +26,7 @@ public class ProjectMembershipTests
         "project/src/notes.txt",
         "project/tests/t.pcross",
         "project/tests/deep/u.pcross",
+        "project/..cache/k.pcross",
         "elsewhere/x.pcross",
     ];
 
@@ -37,6 +38,7 @@ public class ProjectMembershipTests
         "<Sources Include=\"**\" />",
         "<Sources Include=\"src/*.pcross;../shared/*.pcross\" />\n<Tests Include=\"src/**;tests/**\" Exclude=\"src/deep/**\" />",
         "<Tests Include=\"../**/*.pcross\" />",
+        "<Sources Include=\"../shared/a.pcross;..cache/*.pcross\" />\n<Tests Include=\"../elsewhere/x.pcross\" />",
     ];
 
     /// <summary>Writes <see cref="Tree"/> and a project stating <paramref name="body"/>, and reads the project.</summary>
