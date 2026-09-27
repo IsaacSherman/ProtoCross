@@ -67,9 +67,58 @@ public sealed record ProjectClaim
 /// Only an editor looks for a project. The command line builds the one it is named, since a build that
 /// depended on the directory it was run from would be a different build on another machine.
 /// </para>
+/// <para>
+/// An editor asks on every hover and caret move, so what each directory held and what each project
+/// said are kept while a stat says they have not changed (<see cref="StampedFacts{T}"/>). Listing every
+/// directory above a document each time cost fifteen milliseconds a question beneath a directory of
+/// twenty thousand entries, against a highlighting budget of twenty.
+/// </para>
 /// </remarks>
 public static class ProjectDiscovery
 {
+    private static readonly StampedFacts<IReadOnlyList<string>> Listings = new();
+
+    private static readonly StampedFacts<ProjectClaim> Projects = new();
+
+    /// <summary>
+    /// Reads the project at <paramref name="path"/> as <see cref="ProjectClaim.Read"/> does, reusing
+    /// the last reading while the file has not changed.
+    /// </summary>
+    public static ProjectClaim Read(string path)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+
+        var full = Path.GetFullPath(path);
+        EntryStamp stamp;
+        try
+        {
+            stamp = EntryStamp.OfFile(full);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            // A file that cannot even be stat'ed is read, and the reading says what went wrong with it.
+            return ProjectClaim.Read(full);
+        }
+
+        return Projects.Get(full, stamp, ProjectClaim.Read);
+    }
+
+    /// <summary>
+    /// Forgets what every directory held and what every project said, for a host that has been told a
+    /// project changed.
+    /// </summary>
+    /// <remarks>
+    /// What is kept is re-checked against each entry's stamp whenever it is used, so nothing needs this
+    /// to be correct on a file system whose stamps are fine. It is for one whose stamps are not -- FAT32
+    /// writes them to two seconds -- where a project saved within the same two seconds as the last
+    /// reading would otherwise go unseen until its directory changed again.
+    /// </remarks>
+    public static void Forget()
+    {
+        Listings.Clear();
+        Projects.Clear();
+    }
+
     /// <summary>
     /// The project <paramref name="document"/> compiles with, or null when no project at or above its
     /// directory claims it.
@@ -86,7 +135,7 @@ public static class ProjectDiscovery
         var full = Path.GetFullPath(document);
         for (var directory = Path.GetDirectoryName(full); directory is not null; directory = Path.GetDirectoryName(directory))
         {
-            var claims = ProjectsIn(directory).Select(ProjectClaim.Read).Where(claim => claim.Claims(full)).ToList();
+            var claims = ProjectsIn(directory).Select(Read).Where(claim => claim.Claims(full)).ToList();
             if (claims.Count > 0)
             {
                 return claims[0] with { Rivals = [.. claims.Skip(1).Select(claim => claim.Path)] };
@@ -102,20 +151,23 @@ public static class ProjectDiscovery
     /// goes on above it: an unreadable directory between a document and its project is not a reason to
     /// refuse the document, and it is not one the document's author can do anything about.
     /// </remarks>
-    private static List<string> ProjectsIn(string directory)
+    private static IReadOnlyList<string> ProjectsIn(string directory)
     {
         try
         {
-            return
-            [
-                .. Directory.EnumerateFiles(directory, "*" + ProtoCrossProject.Extension)
-                    .Where(ProtoCrossProject.IsProjectFile)
-                    .OrderBy(Path.GetFileName, StringComparer.Ordinal),
-            ];
+            return Listings.Get(directory, EntryStamp.OfDirectory(directory), List);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
         {
             return [];
         }
+
+        static IReadOnlyList<string> List(string directory)
+            =>
+            [
+                .. Directory.EnumerateFiles(directory, "*" + ProtoCrossProject.Extension)
+                    .Where(ProtoCrossProject.IsProjectFile)
+                    .OrderBy(Path.GetFileName, StringComparer.Ordinal),
+            ];
     }
 }

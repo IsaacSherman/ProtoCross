@@ -563,7 +563,10 @@ Implementation Note:
   includes a document is asked of its patterns with the document's path alone, rather than by listing
   the project's tree, since it is asked whenever a document's settings are; it is answered by the
   matcher expansion uses, so the two cannot disagree. The project's policy is settled by the
-  `ProjectPolicy` the command line uses.
+  `ProjectPolicy` the command line uses. What each directory above a document held, and what each
+  project said, is kept while a stat shows the entry unchanged, and dropped when the host is told a
+  project changed. A change is therefore seen on the next question on any file system whose stamps
+  are finer than 50 ms, and on FAT32, whose stamps are two seconds, once a watcher reports it.
 - An editor still compiles each document on its own, under its project's settings: a call into
   another source of the project is not yet resolved there.
 - `ProtoCrossSettings.Definitions` is the named set: every setting the server reads is a row there, and

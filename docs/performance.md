@@ -241,7 +241,12 @@ mistake — describing a bound by the first caller that came to mind:
   resolved before the held entry is checked, deliberately — it is half of what decides whether the
   entry still answers. So it is paid on every hover, every highlight, every caret move, and it is
   already inside all ten warm figures in the table above rather than absent from them. What has not
-  been done is separating its cost out from the answer's.
+  been done is separating its cost out from the answer's. Since #106 it also finds the document's
+  project, which means looking at every directory above the document; listing them afresh each time
+  put every warm row at 15–20 ms when the document sat beneath a directory of 20,000 entries, and
+  highlighting over its budget. Discovery now keeps what each directory held and what each project
+  said while a stat says the entry has not changed (`StampedFacts`), and the rows are back where the
+  table has them.
 
 Neither is urgent — the totals they sit inside are one to two orders of magnitude under budget, which
 bounds them from above. But "not urgent because it is small" is a different claim from "not on the

@@ -18,4 +18,14 @@
     <PackageReference Include="Microsoft.Extensions.FileSystemGlobbing" />
   </ItemGroup>
 
+  <!--
+    For the rules of what project discovery remembers (StampedFacts), which are tested on an instance
+    of their own: the one discovery uses is shared by every test in the run, and a server under test
+    clears it whenever it is told a project changed, so a test asking it whether something was kept
+    would depend on what ran beside it.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ProtoCross.Tests" />
+  </ItemGroup>
+
 </Project>

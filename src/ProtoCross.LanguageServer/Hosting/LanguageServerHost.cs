@@ -3,6 +3,7 @@ using System.Text.Json;
 using ProtoCross.LanguageServer.Protocol;
 using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.LanguageServer.Workspace;
+using ProtoCross.Projects;
 using LspFolder = ProtoCross.LanguageServer.Protocol.Lsp.WorkspaceFolder;
 
 namespace ProtoCross.LanguageServer.Hosting;
@@ -1030,15 +1031,19 @@ public sealed class LanguageServerHost : IDisposable
 
     /// <summary>Files changed on disk; recompile if any of them is one a compilation can rest on.</summary>
     /// <remarks>
-    /// Nothing is invalidated here, because nothing needs to be. The compile each document is given asks
-    /// <see cref="DocumentSemantics"/>, which already declines to answer from a compilation whose schemas
-    /// or policy file have moved; what was missing was a reason to ask. See <see cref="WatchedFiles"/>.
+    /// Almost nothing is invalidated here, because almost nothing needs to be. The compile each document
+    /// is given asks <see cref="DocumentSemantics"/>, which already declines to answer from a compilation
+    /// whose schemas, policy file or project settings have moved; what was missing was a reason to ask.
+    /// See <see cref="WatchedFiles"/>. What project discovery remembers is dropped, although it checks
+    /// itself against each file's stamp, because a stamp can be too coarse to show a change made within
+    /// the same two seconds (<see cref="ProjectDiscovery.Forget"/>), and being told is better than inferring.
     /// </remarks>
     private Task WatchedFilesChanged(DidChangeWatchedFilesParams message)
     {
         if (WatchedFiles.MoveAnyCompilation(message.Changes))
         {
             _log.Trace($"{message.Changes.Count} watched file(s) changed on disk; recompiling open documents.");
+            ProjectDiscovery.Forget();
             _scheduler.ScheduleAll();
         }
 

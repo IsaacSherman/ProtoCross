@@ -466,7 +466,7 @@ public sealed record WorkspaceConfiguration
             }
 
             namedBy = scope.Source;
-            return ProjectClaim.Read(path);
+            return ProjectDiscovery.Read(path);
         }
 
         namedBy = null;

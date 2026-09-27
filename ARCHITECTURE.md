@@ -318,7 +318,10 @@ compiles with, asking each candidate's patterns with the document's path through
 `ProjectSources.RoleOf` rather than listing the project's tree, since it runs whenever a document's
 settings are resolved; `RoleOf` asks the matcher expansion asks, over a directory that holds only
 that one path ([`PathToOneFile`](src/ProtoCross.Projects/PathToOneFile.cs)), so the two cannot
-disagree. The command line builds a project it is named. An editor resolves each document's settings
+disagree. Discovery runs whenever a document's settings are resolved, so what each directory held
+and what each project said are kept while a stat says the entry has not changed
+([`StampedFacts`](src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
+drops them. The command line builds a project it is named. An editor resolves each document's settings
 through its project, and still compiles each document on its own.
 
 ### Serving an editor
