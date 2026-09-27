@@ -83,6 +83,23 @@ public static class WatchedFiles
             || !isOpen(uri))];
     }
 
+    /// <summary>The ProtoCross sources these changes are to.</summary>
+    /// <remarks>
+    /// What a host discards held compilations for. A closed source's stamp is what says whether a
+    /// compilation that read it is still current, and a tool that keeps a file's timestamp, or a clock
+    /// as coarse as FAT32's, can change the file without moving it; the client saying the file changed
+    /// is the stronger word.
+    /// </remarks>
+    public static IEnumerable<DocumentUri> SourcesIn(IEnumerable<FileEvent> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return changes
+            .Select(change => DocumentUri.TryParse(change.Uri, out var uri) ? uri : null)
+            .OfType<DocumentUri>()
+            .Where(uri => uri.Path is { } path && IsSource(path));
+    }
+
     /// <summary>Whether any of these changes could make an open document compile differently.</summary>
     /// <remarks>
     /// Compared without regard to case on every platform. The cost of a false match is one round of

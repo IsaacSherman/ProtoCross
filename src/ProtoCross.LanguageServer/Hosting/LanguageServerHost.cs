@@ -783,6 +783,13 @@ public sealed class LanguageServerHost : IDisposable
             // for: its queue is a concurrent one, and a run it hands out for a document closed meanwhile
             // finds it closed and publishes nothing.
             _log.Trace("The client is watching schema and policy files; recompiling open documents in case one changed before it was.");
+
+            // And forgetting what was remembered on the strength of reports nobody could have sent yet.
+            // A source created before now is in no project's listing, and no stamp shows it: that
+            // listing is dropped only when the client says a source was created, which it has not been
+            // able to say until this moment.
+            ProjectDiscovery.Forget();
+            _configuration.Current.Projects.Forget();
             _scheduler.ScheduleAll();
         }
     }
@@ -1041,8 +1048,8 @@ public sealed class LanguageServerHost : IDisposable
     /// then: a saved schema changes nothing discovery read, and dropping its listings would only have
     /// every directory above every document listed again. The files each project compiles are dropped
     /// when a project changed or a source was added or removed, since that is the one change a stamp
-    /// cannot show at all (<see cref="ProjectCatalog"/>); a source that was only edited is read again
-    /// because its own stamp moved.
+    /// cannot show at all (<see cref="ProjectCatalog"/>). What is held that read a reported source is
+    /// dropped as well, whatever its stamp says (<see cref="WatchedFiles.SourcesIn"/>).
     /// </remarks>
     private Task WatchedFilesChanged(DidChangeWatchedFilesParams message)
     {
@@ -1059,6 +1066,11 @@ public sealed class LanguageServerHost : IDisposable
             if (WatchedFiles.MoveAProjectsFiles(changes))
             {
                 _configuration.Current.Projects.Forget();
+            }
+
+            foreach (var source in WatchedFiles.SourcesIn(changes))
+            {
+                _semantics.Forget(source);
             }
 
             _scheduler.ScheduleAll();
