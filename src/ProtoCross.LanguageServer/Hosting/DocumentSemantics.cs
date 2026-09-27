@@ -49,6 +49,43 @@ public sealed record DocumentCompilation(
     /// </summary>
     public IReadOnlyList<OpenDocument> Buffers { get; init; } = [Document];
 
+    /// <summary>The store's <see cref="DocumentStore.Openings"/> before the compilation read anything.</summary>
+    public int Openings { get; init; }
+
+    /// <summary>
+    /// A document this compilation read, or would read now, that has moved in
+    /// <paramref name="documents"/> since it was compiled; null when none has.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two ways. A buffer it read was edited, closed or reopened. Or a document the project's patterns
+    /// match has opened that it did not read as a buffer: one it read from its file, whose buffer is
+    /// what counts now and may say something else, or one it did not read at all, a source the
+    /// project's listing did not have yet. Every source a project's compilation reads from disk comes
+    /// from the project's listing, so the patterns match it and the second question covers both. It
+    /// is asked only once the store says something has opened, since it costs a pattern match per open
+    /// document.
+    /// </para>
+    /// <para>
+    /// One statement of the question, which a request asks before it answers and the scheduler before
+    /// it publishes, so the two cannot disagree about what moving means. A compilation that was
+    /// refused read nothing but its document, and rests on nothing else.
+    /// </para>
+    /// </remarks>
+    public DocumentUri? WhatMovedIn(DocumentStore documents)
+    {
+        ArgumentNullException.ThrowIfNull(documents);
+
+        if (Buffers.FirstOrDefault(buffer => !ReferenceEquals(documents.Find(buffer.Uri), buffer)) is { } moved)
+        {
+            return moved.Uri;
+        }
+
+        return Result is null || documents.Openings == Openings
+            ? null
+            : DocumentSemantics.OpenMemberNotAmong(documents, Settings.Project, Buffers);
+    }
+
     /// <summary>
     /// The sources of the document's project that could not be read, and were left out of the
     /// compilation; empty when there were none.
@@ -378,9 +415,7 @@ public sealed class DocumentSemantics
             return true;
         }
 
-        if (_documents.All.Any(open => open.Uri.Path is { } path
-            && !held.ReadsBufferOf(open.Uri)
-            && ProjectSources.RoleOf(project, path) is not null))
+        if (OpenMemberNotAmong(_documents, project, held.Built.Buffers) is not null)
         {
             return false;
         }
@@ -388,6 +423,18 @@ public sealed class DocumentSemantics
         held.CheckedOpenings = openings;
         return true;
     }
+
+    /// <summary>
+    /// An open document <paramref name="project"/>'s patterns match that is not among
+    /// <paramref name="read"/>, or null when there is none or no project.
+    /// </summary>
+    internal static DocumentUri? OpenMemberNotAmong(
+        DocumentStore documents, ProtoCrossProject? project, IReadOnlyList<OpenDocument> read)
+        => project is null
+            ? null
+            : documents.All.FirstOrDefault(open => open.Uri.Path is { } path
+                && !read.Any(buffer => buffer.Uri.Equals(open.Uri))
+                && ProjectSources.RoleOf(project, path) is not null)?.Uri;
 
     /// <summary>Whether one source a compilation read would read the same now.</summary>
     /// <remarks>
@@ -479,7 +526,7 @@ public sealed class DocumentSemantics
             || !settings.TryCreateCompilationOptions(loader, out var options))
         {
             return new Held(
-                new DocumentCompilation(document, configuration, settings, loader, failure, null),
+                new DocumentCompilation(document, configuration, settings, loader, failure, null) { Openings = openings },
                 [CompiledSource.Of(document, document.ToSource(settings.Folder?.Path))],
                 openings,
                 isWorthKeeping: true);
@@ -500,6 +547,7 @@ public sealed class DocumentSemantics
             document, configuration, settings, compilation.Loader ?? loader, failure, result)
         {
             Buffers = [.. sources.Select(source => source.Buffer).OfType<OpenDocument>()],
+            Openings = openings,
             UnreadSources = unread,
         };
 
@@ -648,10 +696,6 @@ public sealed class DocumentSemantics
 
         /// <summary>Whether this read <paramref name="document"/> at all, from its buffer or from its file.</summary>
         public bool Reads(DocumentUri document) => Sources.Any(source => source.Uri.Equals(document));
-
-        /// <summary>Whether this read <paramref name="document"/>'s buffer.</summary>
-        public bool ReadsBufferOf(DocumentUri document)
-            => Sources.Any(source => source.Buffer is not null && source.Uri.Equals(document));
 
         /// <summary>The compilation as <paramref name="document"/> sees it, under the settings just resolved for it.</summary>
         /// <remarks>Asked only of a document this compilation read the buffer of.</remarks>

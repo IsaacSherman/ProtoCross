@@ -128,7 +128,8 @@ Normative Requirements:
   compile. Closing a document compiles the compilations it shared again, with its file, since any
   edits it had not saved went with the buffer; opening one compiles again every compilation that
   read its file, since the buffer is what is compiled from then on and may already say something
-  else.
+  else, and once it is found to belong to a project, every open document of that project, which
+  were compiled without it if the project's listing did not have it yet.
 - **A file's diagnostics survive while any open document still reports them.** Two documents
   importing one broken schema both report it, identical reports are published once, and closing one
   of them does not withdraw the other's.
@@ -141,9 +142,10 @@ Normative Requirements:
   user has already replaced is describing something nobody is looking at -- so a request that can
   answer only about a superseded version is refused as such rather than answered. A stale
   computation is discarded silently; a refusal is only for a request that is owed a reply. **The
-  same holds of every buffer an answer was compiled with**: a document compiled with its project
-  rests on the buffers of the project's other open documents, and a method renamed in one of them
-  while go-to-definition was being answered would send the caret to a declaration that is gone.
+  same holds of everything an answer was compiled with**: a document compiled with its project
+  rests on the project's other sources, and a method renamed in one of them -- edited, or opened
+  with other text than its file, or opened for the first time -- while go-to-definition was being
+  answered would send the caret to a declaration that is gone.
 - **Which buffer an answer is about is settled when the request arrives, not when it is answered**,
   and **the version number alone does not settle it**. A host that reads messages in order and then
   defers the lookup lets the edit queued behind a request be applied first, and measures the position

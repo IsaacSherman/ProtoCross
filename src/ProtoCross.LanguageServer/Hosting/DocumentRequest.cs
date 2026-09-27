@@ -45,32 +45,30 @@ public abstract class DocumentRequest
     /// <summary>The settings this is about, as an object rather than as a generation.</summary>
     public WorkspaceConfiguration Configuration { get; }
 
-    private IReadOnlyList<OpenDocument>? _buffers;
+    private DocumentCompilation? _compiled;
 
-    /// <summary>
-    /// Every open buffer the answer was worked out from: <see cref="Document"/> until it is compiled,
-    /// and every buffer its compilation read after that.
-    /// </summary>
+    /// <summary>The compilation the answer was worked out from, or null until it has compiled.</summary>
     /// <remarks>
-    /// A document with a project is compiled with the buffers of the project's other open documents,
-    /// so an answer about this one can be made out of date by an edit to another: a method renamed in
-    /// a sibling while go-to-definition was being answered would send the caret to a declaration that
-    /// is no longer there. <see cref="DeferredAnswers.Require"/> asks this, so the refusal covers every
-    /// buffer the answer rests on and not only the one it was asked about.
+    /// A document with a project is compiled with the project's other sources, so an answer about this
+    /// one can be made out of date by a change to another: a method renamed in a sibling, or a sibling
+    /// read from its file opened with other text, while go-to-definition was being answered would send
+    /// the caret to a declaration that is no longer there. <see cref="DeferredAnswers.Require"/> asks
+    /// it what moved, so the refusal covers everything the answer rests on and not only the document it
+    /// was asked about.
     /// </remarks>
-    public IReadOnlyList<OpenDocument> Buffers => Volatile.Read(ref _buffers) ?? [Document];
+    public DocumentCompilation? Compiled => Volatile.Read(ref _compiled);
 
-    /// <summary>Compiles the buffer this is about, and remembers every buffer the compilation read.</summary>
+    /// <summary>Compiles the buffer this is about, and remembers the compilation.</summary>
     /// <remarks>
-    /// The one way an answer compiles, so that no answer can rest on a buffer <see cref="Buffers"/> does
-    /// not name.
+    /// The one way an answer compiles, so that no answer can rest on a compilation
+    /// <see cref="Compiled"/> does not name.
     /// </remarks>
     public DocumentCompilation CompileWith(DocumentSemantics semantics, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(semantics);
 
         var compiled = semantics.For(Document, Configuration, cancellationToken);
-        Volatile.Write(ref _buffers, compiled.Buffers);
+        Volatile.Write(ref _compiled, compiled);
 
         return compiled;
     }

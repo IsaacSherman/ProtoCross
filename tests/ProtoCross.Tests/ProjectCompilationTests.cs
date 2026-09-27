@@ -1,5 +1,6 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.LanguageServer.Hosting;
+using ProtoCross.LanguageServer.Protocol;
 using Diagnostic = ProtoCross.Diagnostics.Diagnostic;
 using DiagnosticSeverity = ProtoCross.Diagnostics.DiagnosticSeverity;
 using Range = ProtoCross.LanguageServer.Protocol.Lsp.Range;
@@ -268,6 +269,43 @@ public class ProjectCompilationTests
 
         Assert.Null(workspace.Compile(totals).Result);
         Assert.Equal([totals.Uri.Key], workspace.Semantics.CompilationsReading(totals.Uri));
+    }
+
+    /// <summary>
+    /// An answer is refused when a document the project's patterns match opens while it is being
+    /// worked out, although the compilation never read it: one the project's listing did not have yet
+    /// changes what the project declares all the same.
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerIsRefusedWhenAMemberTheListingLacksOpensWhileItIsWorkedOut()
+    {
+        var workspace = Project(EveryFile, ("totals.pcross", Totals));
+        var totals = workspace.Open("totals.pcross");
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var release = new ManualResetEventSlim();
+        workspace.Semantics.Compile = (compilation, token) =>
+        {
+            entered.TrySetResult();
+            Assert.True(release.Wait(TimeSpan.FromSeconds(15), token), "the test must release the compilation");
+            return compilation.Compile(token);
+        };
+        var provider = new DefinitionProvider(workspace.Documents, workspace.Configuration, EditorFixture.Loaders(), semantics: workspace.Semantics);
+        var answer = provider.AnswerAsync(
+            provider.Read(EditorFixture.Ask(totals.Uri, Totals, EditorFixture.After(Totals, "return dou")))!,
+            CancellationToken.None);
+
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
+            workspace.Open("pricing.pcross", Pricing);
+        }
+        finally
+        {
+            release.Set();
+        }
+
+        var refused = await Assert.ThrowsAsync<JsonRpcException>(async () => await answer);
+        Assert.Equal(ErrorCodes.ContentModified, refused.Error.Code);
     }
 
     // ------- what the providers answer across files
