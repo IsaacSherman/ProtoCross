@@ -95,13 +95,55 @@ public class ProjectCompilationReviewRegressionTests
         }
     }
 
-    /// <summary>A definition from an older sibling buffer must not navigate into its newly edited text.</summary>
+    /// <summary>A new matching buffer changes existing callers even though no held compilation read it yet.</summary>
     [Fact]
-    public async Task ADefinitionRequestRejectsAnAnswerWhenAnotherMemberMoves()
+    public async Task OpeningANewUnlistedMemberRefreshesItsCallersDiagnostics()
+    {
+        var workspace = new Workspace(withPricing: false);
+        var shown = new ConcurrentDictionary<string, Diagnostic[]>();
+        var router = new DiagnosticRouter(message =>
+        {
+            shown[message.Uri] = [.. message.Diagnostics];
+            return Task.CompletedTask;
+        }, uri => workspace.Documents.Find(uri)?.Version);
+        var scheduler = new CompileScheduler(workspace.Documents, workspace.Configuration, EditorFixture.Loaders(),
+            router, () => new DiagnosticMapper(true), new ServerLog { Mirror = TextWriter.Null },
+            debounce: TimeSpan.Zero, semantics: workspace.Semantics);
+        var totals = workspace.Open("totals.pcross", Totals);
+        scheduler.Schedule(totals.Uri);
+        await Idle();
+        Assert.Contains(shown[totals.Uri.Text], diagnostic => diagnostic.Message.Contains("doubled", StringComparison.Ordinal));
+
+        var pricing = workspace.Open("pricing.pcross", Pricing);
+        scheduler.Schedule(pricing.Uri);
+        await Idle();
+        Assert.True(shown.TryGetValue(pricing.Uri.Text, out var added));
+        Assert.DoesNotContain(added, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+        Assert.True(workspace.Compile(totals).Result!.Success,
+            "The updated compilation must resolve the caller before its published diagnostics are checked.");
+
+        Assert.DoesNotContain(shown[totals.Uri.Text], diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);
+
+        async Task Idle()
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            while (scheduler.Pending != 0 || scheduler.InFlight != 0)
+            {
+                Assert.True(DateTime.UtcNow < deadline, "Scheduled work must finish before inspecting its publications.");
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+        }
+    }
+
+    /// <summary>A definition from an older sibling buffer or file must not navigate into its newly edited text.</summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ADefinitionRequestRejectsAnAnswerWhenAnotherMemberMoves(bool initiallyOpen)
     {
         var workspace = new Workspace();
         var totals = workspace.Open("totals.pcross", Totals);
-        var pricing = workspace.Open("pricing.pcross", Pricing);
+        var pricing = initiallyOpen ? workspace.Open("pricing.pcross", Pricing) : null;
         Assert.True(workspace.Compile(totals).Result!.Success);
         workspace.Semantics.Forget(totals.Uri);
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -120,8 +162,15 @@ public class ProjectCompilationReviewRegressionTests
         try
         {
             await entered.Task.WaitAsync(TimeSpan.FromSeconds(15), TestContext.Current.CancellationToken);
-            workspace.Documents.Apply(pricing.Uri, 2,
-                [new TextDocumentContentChangeEvent { Text = Pricing.Replace("doubled", "tripled", StringComparison.Ordinal) }]);
+            var renamed = Pricing.Replace("doubled", "tripled", StringComparison.Ordinal);
+            if (pricing is not null)
+            {
+                workspace.Documents.Apply(pricing.Uri, 2, [new TextDocumentContentChangeEvent { Text = renamed }]);
+            }
+            else
+            {
+                workspace.Open("pricing.pcross", renamed);
+            }
         }
         finally
         {
