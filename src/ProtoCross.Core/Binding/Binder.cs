@@ -135,12 +135,24 @@ public sealed partial class Binder
     public IReadOnlyList<FileDescriptor>? ProductionSchemas { get; init; }
 
     /// <summary>
+    /// The types production behavior may name, as this binder resolved against them: those of the
+    /// production schema closure, and <see cref="Types"/> itself when no test source is bound
+    /// (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Published for the reason <see cref="Types"/> is. A host offering type names inside a production
+    /// method has to offer the ones the binder will accept there, and in a test build that is not every
+    /// type the compilation loaded: a name only a test source's schema declares is <c>PC0089</c>.
+    /// </remarks>
+    public SchemaTypes ProductionTypes => ProductionSchemas is { } production
+        ? _productionTypes ??= SchemaTypes.From(production)
+        : _types;
+
+    /// <summary>
     /// The types what is being bound may name: the production schema closure's for production
     /// behavior, and every schema's for everything else.
     /// </summary>
-    private SchemaTypes Visible => _productionBehavior && ProductionSchemas is { } production
-        ? _productionTypes ??= SchemaTypes.From(production)
-        : _types;
+    private SchemaTypes Visible => _productionBehavior ? ProductionTypes : _types;
 
     /// <summary>Binds a compilation unit to typed IR, whether or not it parsed cleanly.</summary>
     /// <remarks>

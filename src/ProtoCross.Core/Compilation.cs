@@ -133,6 +133,23 @@ public sealed record CompilationResult(
     public SchemaTypes Types { get; init; } = SchemaTypes.Empty;
 
     /// <summary>
+    /// The messages and enums production behavior may name, indexed as the binder resolved production
+    /// behavior against them: the production schema closure's in a compilation with test sources, and
+    /// <see cref="Types"/> otherwise (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Types"/> when nothing set it, so a result built without it answers as a compilation
+    /// with no test source does, which is every one built before test sources existed.
+    /// </remarks>
+    public SchemaTypes ProductionTypes
+    {
+        get => _productionTypes ?? Types;
+        init => _productionTypes = value;
+    }
+
+    private readonly SchemaTypes? _productionTypes;
+
+    /// <summary>
     /// Every source's syntax tree, with the source it came from, in the order the sources were
     /// given, except that test sources come after production ones (see
     /// <see cref="Compilation(IReadOnlyList{SourceDocument}, CompilationOptions)"/>). Empty when the
@@ -860,6 +877,7 @@ public sealed class Compilation
         {
             Schema = schema,
             Types = binder.Types,
+            ProductionTypes = binder.ProductionTypes,
             SyntaxTrees = trees,
             SchemasBesideSources = [.. besides.Select(beside => beside.Beside).Distinct()],
         };

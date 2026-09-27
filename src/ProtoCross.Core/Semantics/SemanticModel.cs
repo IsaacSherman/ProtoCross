@@ -327,6 +327,31 @@ public sealed class SemanticModel
     public SymbolReference? ReferenceAt(int offset) => _references.Value?.ReferenceAt(_document, offset);
 
     /// <summary>
+    /// The schema types a name written at <paramref name="offset"/> may resolve to: the production
+    /// schema closure's in production behavior, and every schema's anywhere else (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Production behavior is what ships: a production source's <c>extend</c> blocks and methods, and
+    /// never a test. It is bound against the schemas production sources bring in, so in a compilation
+    /// that has test sources a type only a test source's schema declares is <c>PC0089</c> there, and a
+    /// host offering it would be offering a name the compiler refuses. A test, and a test source, may
+    /// name every type the compilation loaded.
+    /// </para>
+    /// <para>
+    /// Asked of the source the document is and of the tree, the two facts the binder decides it by, so
+    /// the host and the binder cannot disagree about which kind of code a caret is in.
+    /// </para>
+    /// </remarks>
+    public Binding.SchemaTypes SchemaTypesAt(int offset)
+        => IsProductionBehaviorAt(offset) ? _result.ProductionTypes : _result.Types;
+
+    private bool IsProductionBehaviorAt(int offset)
+        => _result.SyntaxTrees.FirstOrDefault(tree => _document is null || tree.Document == _document)?.Role
+                is null or SourceRole.Production
+            && SyntaxAt(offset)?.Enclosing<TestDeclaration>() is null;
+
+    /// <summary>
     /// What a bare identifier written at <paramref name="offset"/> could mean, or null when the
     /// offset is not inside a method body or a test.
     /// </summary>
