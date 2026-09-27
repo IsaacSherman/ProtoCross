@@ -84,6 +84,81 @@ public class ProjectBuildRefusalTests
     }
 
     /// <summary>
+    /// A project one of whose patterns searches a directory that cannot be listed compiles nothing,
+    /// rather than the sources that could be found: a build missing some of them would build a program
+    /// nobody wrote.
+    /// </summary>
+    [Fact]
+    public void AProjectWhoseFilesCannotAllBeListedCompilesNothing()
+    {
+        var diagnostics = new DiagnosticBag();
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(directory, ("pricing.pcross", string.Empty), ("locked/totals.pcross", string.Empty));
+        var projectPath = Path.Combine(directory, ProjectName);
+        File.WriteAllText(projectPath, "<ProtoCrossProject><Sources Include=\"*.pcross\" /><Sources Include=\"locked/*.pcross\" /></ProtoCrossProject>");
+        var project = ProtoCrossProject.Load(projectPath, new DiagnosticBag());
+        Assert.NotNull(project);
+
+        var locked = new DirectoryInfo(Path.Combine(directory, "locked"));
+        using (Unlistable(locked))
+        {
+            Assert.Null(ProjectSources.ExpandForBuild(project, diagnostics));
+        }
+
+        Assert.Contains(diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.ProjectCouldNotBeRead.Code);
+        Assert.DoesNotContain(diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.ProjectCompilesNothing.Code);
+    }
+
+    /// <summary>Makes <paramref name="directory"/> unlistable until the result is disposed.</summary>
+    private static IDisposable Unlistable(DirectoryInfo directory)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return DeniedListing(directory);
+        }
+
+        if (Environment.UserName == "root")
+        {
+            Assert.Skip("root lists any directory, so none can be made unlistable here.");
+        }
+
+        return WithoutPermissions(directory);
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static IDisposable DeniedListing(DirectoryInfo directory)
+    {
+        var rule = new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.ListDirectory,
+            System.Security.AccessControl.AccessControlType.Deny);
+        var security = directory.GetAccessControl();
+        security.AddAccessRule(rule);
+        directory.SetAccessControl(security);
+
+        return new Restore(() =>
+        {
+            var restored = directory.GetAccessControl();
+            restored.RemoveAccessRule(rule);
+            directory.SetAccessControl(restored);
+        });
+    }
+
+    [System.Runtime.Versioning.UnsupportedOSPlatform("windows")]
+    private static IDisposable WithoutPermissions(DirectoryInfo directory)
+    {
+        var mode = File.GetUnixFileMode(directory.FullName);
+        File.SetUnixFileMode(directory.FullName, UnixFileMode.None);
+
+        return new Restore(() => File.SetUnixFileMode(directory.FullName, mode));
+    }
+
+    private sealed class Restore(Action undo) : IDisposable
+    {
+        public void Dispose() => undo();
+    }
+
+    /// <summary>
     /// What decides is what the expansion reported. An error the caller's bag already held, about
     /// something else, does not refuse a project that builds.
     /// </summary>
