@@ -285,22 +285,28 @@ public sealed class CompileScheduler
     private string CompilationOf(DocumentUri document)
         => _compilationOf.GetValueOrDefault(document.Key, document.Key);
 
-    /// <summary>Records which compilation a document's settings put it in, unless it has closed since.</summary>
+    /// <summary>
+    /// Records which compilation a document's settings put it in, unless it has closed since, and
+    /// says which that was.
+    /// </summary>
     /// <remarks>
     /// Checked after writing rather than before, because a close takes the document out of the store
     /// before it forgets this: either the check sees the close, or the forgetting comes after the write.
     /// Checked before writing, a close landing between the two would leave an entry for a document
     /// nothing will ever open again.
     /// </remarks>
-    private void Remember(DocumentCompilation compiled)
+    private string Remember(DocumentCompilation compiled)
     {
         var uri = compiled.Document.Uri;
-        _compilationOf[uri.Key] = CompilationKey.Of(compiled.Settings);
+        var compilation = CompilationKey.Of(compiled.Settings);
+        _compilationOf[uri.Key] = compilation;
 
         if (_documents.Find(uri) is null)
         {
             _compilationOf.TryRemove(uri.Key, out _);
         }
+
+        return compilation;
     }
 
     private void ScheduleCompilation(string compilation)
@@ -443,10 +449,7 @@ public sealed class CompileScheduler
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var compiled = documents.Select(document => _semantics.For(document, configuration, cancellationToken)).ToList();
 
-        foreach (var answer in compiled)
-        {
-            Remember(answer);
-        }
+        var found = compiled.Select(Remember).Distinct(StringComparer.Ordinal).ToList();
 
         // Before the staleness check and after the compile: what was measured is a compilation that
         // finished, whether or not anybody still wants its diagnostics. Recording after the check
@@ -470,6 +473,16 @@ public sealed class CompileScheduler
                 _log.Trace($"Discarding a compilation of '{uri}' that no longer describes the buffer.");
                 ScheduleIfAnotherBufferMoved(answer, configuration);
             }
+        }
+
+        // A document found in a compilation other than the one this ran for joined it by being opened,
+        // or moved into it, since the scheduler last saw it; that compilation's other open documents
+        // were compiled without it and are compiled again now. A document opened that no compilation
+        // had read -- a source the project's listing did not have yet -- has no other way of reaching
+        // them: an open schedules the compilations held that read the document, and none had.
+        foreach (var elsewhere in found.Where(key => key != compilation))
+        {
+            ScheduleCompilation(elsewhere);
         }
     }
 
@@ -499,8 +512,9 @@ public sealed class CompileScheduler
     /// Whether what was just computed describes text, or settings, that have since moved on.
     /// </summary>
     /// <remarks>
-    /// Every buffer the compilation read has to be unchanged, not only the document's own: in a
-    /// project, a method renamed in one open file is what another is being told about.
+    /// Everything the compilation read has to be unchanged, not only the document's own buffer: in a
+    /// project, a method renamed in one open file is what another is being told about. The question is
+    /// <see cref="DocumentCompilation.WhatMovedIn"/>'s, which a request asks too.
     /// </remarks>
     private bool IsStale(DocumentCompilation compiled, WorkspaceConfiguration configuration)
     {
@@ -508,7 +522,7 @@ public sealed class CompileScheduler
         // already cleared it, and publishing now would put diagnostics on a document the editor is no
         // longer showing; for another, the file on disk is what is compiled now, and closing it
         // scheduled that compile.
-        return compiled.Buffers.Any(buffer => _documents.Find(buffer.Uri)?.Version != buffer.Version)
+        return compiled.WhatMovedIn(_documents) is not null
             || _configuration.Current.Generation != configuration.Generation;
     }
 
