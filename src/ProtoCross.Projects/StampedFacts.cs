@@ -63,9 +63,17 @@ internal sealed class StampedFacts<T>
     /// <summary>How many times everything has been forgotten; see <see cref="Clear"/>.</summary>
     private int _clears;
 
+    /// <summary>Held across deciding to keep a reading and keeping it, and across a clear, so the two cannot interleave.</summary>
+    private readonly object _publication = new();
+
     /// <summary>What <paramref name="read"/> says of <paramref name="path"/>, read again only if its stamp has moved.</summary>
     /// <param name="stamp">The entry's stamp, taken before it is read, so a change made while reading moves it.</param>
-    public T Get(string path, EntryStamp stamp, Func<string, T> read)
+    /// <param name="worthKeeping">
+    /// Whether a reading may be kept at all. A reading that failed is not: a file held open by another
+    /// process reads as a failure, and releasing it moves no stamp, so a failure kept under that stamp
+    /// would outlive the lock for good.
+    /// </param>
+    public T Get(string path, EntryStamp stamp, Func<string, T> read, Func<T, bool>? worthKeeping = null)
     {
         if (_entries.TryGetValue(path, out var held) && held.Stamp == stamp)
         {
@@ -76,13 +84,22 @@ internal sealed class StampedFacts<T>
         // the entry changed in a way its stamp may not show, and what this read found may predate it.
         var clears = Volatile.Read(ref _clears);
         var value = read(path);
-        if (DateTime.UtcNow - stamp.Written >= Settling && Volatile.Read(ref _clears) == clears)
+
+        // Deciding and storing under the lock a clear takes, so that a clear cannot land between the
+        // two: checked and then stored outside it, a reading that predated the clear was put back after
+        // the clear had emptied everything, under a stamp that had not moved.
+        lock (_publication)
         {
-            _entries[path] = (stamp, value);
-        }
-        else
-        {
-            _entries.TryRemove(path, out _);
+            if (_clears == clears
+                && DateTime.UtcNow - stamp.Written >= Settling
+                && (worthKeeping?.Invoke(value) ?? true))
+            {
+                _entries[path] = (stamp, value);
+            }
+            else
+            {
+                _entries.TryRemove(path, out _);
+            }
         }
 
         return value;
@@ -96,7 +113,10 @@ internal sealed class StampedFacts<T>
     /// </remarks>
     public void Clear()
     {
-        Interlocked.Increment(ref _clears);
-        _entries.Clear();
+        lock (_publication)
+        {
+            _clears++;
+            _entries.Clear();
+        }
     }
 }
