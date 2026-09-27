@@ -32,7 +32,7 @@ public sealed record SettingValue(string Key, IReadOnlyList<string> Values)
 /// </summary>
 /// <remarks>
 /// <para>
-/// Three settings, and the list is short on purpose. Language policy -- overflow, conversions,
+/// Four settings, and the list is short on purpose. Language policy -- overflow, conversions,
 /// divide-by-zero, unset message reads -- is not here and will not be: spec 10.4 settles it in
 /// <c>protocross.config.xml</c>, tracked beside the code it governs, so that generated code means the
 /// same thing however it was built. An editor that could restate it would make a buffer mean one
@@ -61,6 +61,12 @@ public sealed record ProtoCrossSettings
     /// <summary>A <c>protocross.config.xml</c> to use instead of searching. The answer to <c>--config</c>.</summary>
     public const string ConfigPathKey = "protocross.configPath";
 
+    /// <summary>
+    /// The <c>.pcproj</c> a document compiles with, instead of the nearest one that includes it. The
+    /// answer to naming a project on the command line.
+    /// </summary>
+    public const string ProjectKey = "protocross.project";
+
     /// <summary>A scope that states nothing.</summary>
     public static ProtoCrossSettings None { get; } = new();
 
@@ -79,10 +85,10 @@ public sealed record ProtoCrossSettings
     /// </para>
     /// <para>
     /// <b>The test for requiring trust is whether the setting can make this machine run something.</b>
-    /// Only <see cref="ProtocPathKey"/> can. The other two direct reads and run nothing, and neither
+    /// Only <see cref="ProtocPathKey"/> can. The other three direct reads and run nothing, and none
     /// reaches anywhere a document cannot already reach without them: a <c>.pcross</c> file may
     /// import a schema by a path relative to its own directory, and discovers its own
-    /// <c>protocross.config.xml</c> by walking upward. Withholding them would buy nothing and cost an
+    /// <c>protocross.config.xml</c> and its own project by walking upward. Withholding them would buy nothing and cost an
     /// untrusted repository that relies on an include path every diagnostic it has, which is the
     /// degraded experience the issue asks to keep usable.
     /// </para>
@@ -112,6 +118,12 @@ public sealed record ProtoCrossSettings
             "names a policy file that is read and never run",
             settings => settings.ConfigPath is { } path ? [path] : [],
             (settings, values) => settings with { ConfigPath = values.FirstOrDefault(value => Stated(value) is not null) }),
+        new(
+            ProjectKey,
+            SettingTrust.Honoured,
+            "names a project file that is read and never run",
+            settings => settings.ProjectPath is { } path ? [path] : [],
+            (settings, values) => settings with { ProjectPath = values.FirstOrDefault(value => Stated(value) is not null) }),
     ];
 
     /// <summary>Every key this server understands, in the order they are documented.</summary>
@@ -148,9 +160,17 @@ public sealed record ProtoCrossSettings
         init => _configPath = Stated(value);
     }
 
+    /// <inheritdoc cref="ProjectKey"/>
+    public string? ProjectPath
+    {
+        get => _projectPath;
+        init => _projectPath = Stated(value);
+    }
+
     private readonly string? _protocPath;
     private readonly IReadOnlyList<string> _includePaths = [];
     private readonly string? _configPath;
+    private readonly string? _projectPath;
 
     /// <summary>The value a setting states, or null when it states nothing.</summary>
     /// <remarks>
@@ -172,7 +192,7 @@ public sealed record ProtoCrossSettings
     private static string? Stated(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     /// <summary>Whether this scope states anything at all.</summary>
-    public bool StatesNothing => ProtocPath is null && ConfigPath is null && IncludePaths.Count == 0;
+    public bool StatesNothing => ProtocPath is null && ConfigPath is null && ProjectPath is null && IncludePaths.Count == 0;
 
     /// <summary>What this scope states under <paramref name="key"/>, as written; empty when nothing.</summary>
     /// <remarks>

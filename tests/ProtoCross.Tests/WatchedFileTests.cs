@@ -19,7 +19,7 @@ namespace ProtoCross.Tests;
 /// client's patience and fail. The one exception is a save made before the client was watching,
 /// which nothing reports, and where agreeing to watch is the only thing the client does.
 /// </remarks>
-public class WatchedFileTests
+public partial class WatchedFileTests
 {
     private const string SchemaFile = "shape.proto";
 
@@ -103,9 +103,9 @@ public class WatchedFileTests
 
     // ------------------------------------------------------- asking the client to watch
 
-    /// <summary>A client that can be asked to watch files is asked for schemas and policy files.</summary>
+    /// <summary>A client that can be asked to watch files is asked for schemas, policy files and projects.</summary>
     [Fact]
-    public async Task AClientThatCanWatchIsAskedToWatchSchemasAndPolicyFiles()
+    public async Task AClientThatCanWatchIsAskedToWatchSchemasPolicyFilesAndProjects()
     {
         await using var client = await LanguageServerClient.StartAsync(capabilities: Watching);
 
@@ -117,7 +117,7 @@ public class WatchedFileTests
 
         Assert.Equal(Methods.DidChangeWatchedFiles, registration.Method);
         Assert.Equal(
-            ["**/*.proto", $"**/{ProjectConfig.FileName}"],
+            ["**/*.proto", $"**/{ProjectConfig.FileName}", $"**/*{ProtoCross.Projects.ProtoCrossProject.Extension}"],
             options.Watchers.Select(watcher => watcher.GlobPattern));
     }
 
@@ -226,7 +226,7 @@ public class WatchedFileTests
 
         Assert.True(
             await client.StaysSilentAboutAsync(uri, TimeSpan.FromMilliseconds(500)),
-            "a file that is neither a schema nor a policy file must not cause a republish");
+            "a file that is neither a schema, a policy file nor a project must not cause a republish");
     }
 
     /// <summary>Which changed files concern a compilation, over every shape a watcher can report.</summary>
@@ -235,11 +235,14 @@ public class WatchedFileTests
     [InlineData("nested/deeper/SHAPE.PROTO", true)]
     [InlineData("protocross.config.xml", true)]
     [InlineData("nested/ProtoCross.Config.XML", true)]
+    [InlineData("billing.pcproj", true)]
+    [InlineData("nested/Billing.PCPROJ", true)]
     [InlineData("protocross.config.xml.bak", false)]
+    [InlineData("billing.pcproj.bak", false)]
     [InlineData("shape.protobuf", false)]
     [InlineData("proto", false)]
     [InlineData("notes.md", false)]
-    public void OnlySchemasAndPolicyFilesMoveACompilation(string relative, bool moves)
+    public void OnlySchemasPolicyFilesAndProjectsMoveACompilation(string relative, bool moves)
     {
         var path = Path.Combine(TestPaths.CreateTempDirectory(), relative);
         var change = new FileEvent { Uri = new Uri(path).AbsoluteUri, Type = FileChangeType.Changed };

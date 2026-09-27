@@ -415,12 +415,15 @@ Normative Requirements:
 
 - Configuration is resolved **for a document**, not for a session. Two documents open at once may
   legitimately resolve different include paths and different policy.
-- The precedence order, most specific first, is: an editor setting for the workspace folder holding
+- The precedence order, most specific first, is: the project the document belongs to
+  ([5.4](./§5-Source%20Organization.md#54-projects)); an editor setting for the workspace folder holding
   the document; an editor setting for the workspace; an editor setting at user scope; the
   `PROTOCROSS_PROTOC` environment variable; and finally discovery -- `PATH`, then the NuGet package
   cache. A setting beats the environment because a setting is the project's answer and the
   environment is the machine's, and because the setting is the one the user can see in front of
-  them.
+  them. The project beats every setting because it is written about the very files it names, and
+  because it is what a build of the project uses, so an editor that answered otherwise would show a
+  buffer meaning something the build does not.
 - **Language policy is not host-configurable.** 10.4 says the file wins, and a host that could
   restate a policy would make a buffer mean one thing on screen and another in the build. A host may
   name a different `protocross.config.xml`, which is what `--config` does for the command line, and
@@ -428,14 +431,34 @@ Normative Requirements:
 - **Anything the user wrote that is not being used is reported**, as a warning naming the scope it
   was written at. A setting stating language policy (`PC2101`), a setting the host does not
   recognize (`PC2102`), a path that is relative with nothing to resolve it against or that is not a
-  path at all (`PC2103`), a named configuration file that does not exist (`PC2104`), and a named
-  `protoc` that does not exist (`PC2105`). A setting ignored in silence leaves a user unable to tell
+  path at all (`PC2103`), a named configuration file that does not exist (`PC2104`), a named
+  `protoc` that does not exist (`PC2105`), and a named project that does not exist (`PC2110`). A setting ignored in silence leaves a user unable to tell
   a typo from a refusal from a defect.
 - **A named `protoc` that exists and still cannot be run stops the document**, as `PC2107`, an error.
   It is deliberately not `PC2105`: that one is a warning and a fall-through, because the host can go
   on to the next source, and here there is nowhere to fall through to. Falling back to a located
   `protoc` instead would compile against an executable the settings do not name while the resolved
   configuration went on reporting that the setting was in force.
+- **A document's project** is the one the `protocross.project` setting names, or else the nearest
+  `.pcproj` at or above the document's directory whose patterns include it, searched for up to the
+  root of the file system as `protocross.config.xml` is. A project beside a document rather than above
+  it, such as one gathering `../shared/`, is found only by naming it. A named project replaces the
+  search rather than being preferred by it, so a document it does not include has no project; a
+  named project file that is not there is `PC2110`, and the search runs as though nothing were named.
+  A buffer never saved has no path for a project's patterns to include, and has no project.
+- Two projects in one directory that both include a document are `PC2108`, a warning, and the
+  document's project is the one whose file name sorts first, ordinally, so every machine settles it
+  the same way.
+- **What a project states comes first.** Its `<ProtoPath>` directories are searched before any
+  include path a setting adds, as they are before `-I` on the command line, and the policy it settles
+  ([10.4](#104-compile-time-policy)) is used instead of whatever `protocross.configPath` names. It
+  names no `protoc`. A document whose own search finds a different configuration file is `PC2011`, as
+  it is on the command line.
+- **A project that cannot be read stops the document**, as `PC2109`, an error naming the project and
+  every problem found in it. Whether it includes the document is unknowable, and compiling the
+  document as though it had no project would report, as problems with the document, everything the
+  project is there to settle. A configuration file the project settles on that cannot be read, or that
+  its `<Config>` names and is not there, stops the document as `PC2106`.
 - **A setting that is present and blank states nothing.** An editor writes an unset string setting as
   the empty string rather than leaving it out, so blank is the ordinary shape of "no answer" and
   falls through to the next source without comment.
@@ -478,10 +501,12 @@ Normative Requirements:
 - **Every setting a host reads declares whether it requires trust**, as part of declaring the setting
   at all, so that a new one is classified deliberately rather than by omission. A setting requires
   trust when it can make the machine run something. Today that is `protocross.protocPath` alone.
-  `protocross.includePaths` and `protocross.configPath` are honoured in every workspace: they direct
-  reads and start nothing, and neither reaches anywhere a document cannot already reach without them,
-  since a document imports schemas by paths relative to its own directory and discovers its own
-  `protocross.config.xml` by walking upward.
+  `protocross.includePaths`, `protocross.configPath` and `protocross.project` are honoured in every
+  workspace: they direct reads and start nothing, and none reaches anywhere a document cannot already
+  reach without them, since a document imports schemas by paths relative to its own directory and
+  discovers its own `protocross.config.xml` and its own project by walking upward. A project is
+  honoured in every workspace for the same reason: it names directories to read and a policy file,
+  and never a program.
 - **A setting that requires trust is withheld from folder and workspace scope** while the workspace is
   untrusted. User scope, the `PROTOCROSS_PROTOC` environment variable and discovery are not withheld
   from, because a repository can write none of them.
@@ -534,6 +559,13 @@ Implementation Note:
   editor that went dark over a stale path in a settings file would take away the diagnostics the
   user is trying to read. A file that exists and cannot be *read* still stops the document, exactly
   as 10.4 requires.
+- `ProjectDiscovery`, in `ProtoCross.Projects`, finds a document's project. Whether a project
+  includes a document is asked of its patterns with the document's path alone, rather than by listing
+  the project's tree, since it is asked whenever a document's settings are; it is answered by the
+  matcher expansion uses, so the two cannot disagree. The project's policy is settled by the
+  `ProjectPolicy` the command line uses.
+- An editor still compiles each document on its own, under its project's settings: a call into
+  another source of the project is not yet resolved there.
 - `ProtoCrossSettings.Definitions` is the named set: every setting the server reads is a row there, and
   a row cannot be written without its trust classification. `WorkspaceConfiguration` applies trust in
   one place, as each scope is admitted, so compilation, import completion and the status report cannot

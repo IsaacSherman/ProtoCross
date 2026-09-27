@@ -483,16 +483,21 @@ public sealed class CompileScheduler
     {
         contribution.Claim(uri);
 
-        var configuration = settings.ConfigPath is { } path && DocumentUri.TryParse(path, out var file) ? file : null;
+        List<DocumentUri> files =
+        [
+            .. new[] { settings.ProjectPath, settings.ConfigPath }
+                .Select(path => path is not null && DocumentUri.TryParse(path, out var file) ? file : null)
+                .OfType<DocumentUri>(),
+        ];
 
         foreach (var diagnostic in settings.Diagnostics)
         {
-            Attribute(contribution, uri, configuration, diagnostic, mapper);
+            Attribute(contribution, uri, files, diagnostic, mapper);
         }
 
         foreach (var diagnostic in _configuration.SettingsDiagnostics)
         {
-            Attribute(contribution, uri, configuration, diagnostic, mapper);
+            Attribute(contribution, uri, files, diagnostic, mapper);
         }
 
         return contribution;
@@ -507,7 +512,13 @@ public sealed class CompileScheduler
     /// the configuration file draws a squiggle on line 4 of the source, which is a different file
     /// saying a different thing -- or past the end of it, on a source shorter than the configuration.
     /// The file it belongs to is <see cref="DocumentConfiguration.ConfigPath"/>, the same file
-    /// <c>PC2106</c> names.
+    /// <c>PC2106</c> names, and a project reports in its own file, <see cref="DocumentConfiguration.ProjectPath"/>,
+    /// the same way.
+    /// </para>
+    /// <para>
+    /// Which of those two a diagnostic is in is read from the file its span names, since a document
+    /// with a project has both, and one diagnostic may name neither: <c>PC2011</c> is placed at the
+    /// start of the document it is about.
     /// </para>
     /// <para>
     /// A diagnostic with no position is the other kind: a setting being ignored, a path that would not
@@ -520,16 +531,18 @@ public sealed class CompileScheduler
     /// worse than one that admits it knows nothing: the message already names the file.
     /// </para>
     /// </remarks>
+    /// <param name="files">The files a configuration diagnostic may be positioned in: the project's, and the configuration's.</param>
     private static void Attribute(
         DiagnosticContribution contribution,
         DocumentUri document,
-        DocumentUri? configuration,
+        IReadOnlyList<DocumentUri> files,
         Diagnostics.Diagnostic diagnostic,
         DiagnosticMapper mapper)
     {
-        if (!diagnostic.Span.IsNone && configuration is not null)
+        if (!diagnostic.Span.IsNone
+            && files.FirstOrDefault(file => string.Equals(Path.GetFileName(file.Path), diagnostic.Span.File, StringComparison.Ordinal)) is { } named)
         {
-            contribution.Add(configuration, mapper.Map(diagnostic, configuration.Text));
+            contribution.Add(named, mapper.Map(diagnostic, named.Text));
             return;
         }
 

@@ -205,4 +205,6 @@ Implementation Note:
   `--no-config` are refused, each as a second answer to a question the project settles. Without
   `--test-out` it runs the production build, and with it the test build
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
-- An editor does not compile a project yet.
+- An editor settles each document's settings through its project
+  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), but still compiles each document
+  on its own.

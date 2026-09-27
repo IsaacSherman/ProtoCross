@@ -1,5 +1,6 @@
 using ProtoCross.Config;
 using ProtoCross.LanguageServer.Protocol.Lsp;
+using ProtoCross.Projects;
 using ProtoCross.LanguageServer.Workspace;
 using FileSystemWatcher = ProtoCross.LanguageServer.Protocol.Lsp.FileSystemWatcher;
 
@@ -12,8 +13,8 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// <remarks>
 /// <para>
 /// <b>Why the server has to be told at all.</b> A compilation is a function of the buffer, the
-/// configuration the buffer resolves to, and the schemas that configuration reaches, and only the
-/// buffer arrives as a message. <see cref="DocumentSemantics"/> already refuses to answer from a
+/// configuration the buffer resolves to -- its project, and the policy file -- and the schemas that
+/// configuration reaches, and only the buffer arrives as a message. <see cref="DocumentSemantics"/> already refuses to answer from a
 /// compilation whose schemas or policy file have moved, so every <em>question</em> asked after a
 /// <c>.proto</c> is saved gets the new answer. What nothing did was ask: diagnostics are published when
 /// a compile is scheduled, a compile is scheduled by a keystroke, and saving an imported schema in
@@ -50,6 +51,7 @@ public static class WatchedFiles
     [
         new($"**/*{SchemaExtension}"),
         new($"**/{ProjectConfig.FileName}"),
+        new($"**/*{ProtoCrossProject.Extension}"),
     ];
 
     /// <summary>The id the registration is made under, so it could be withdrawn by name.</summary>
@@ -77,6 +79,7 @@ public static class WatchedFiles
         }
 
         return path.EndsWith(SchemaExtension, StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith(ProtoCrossProject.Extension, StringComparison.OrdinalIgnoreCase)
             || string.Equals(Path.GetFileName(path), ProjectConfig.FileName, StringComparison.OrdinalIgnoreCase);
     }
 }

@@ -38,12 +38,24 @@ public static class ProjectPolicy
         ProtoCrossProject project,
         IReadOnlyList<ProjectMember> members,
         DiagnosticBag diagnostics)
+        => Resolve(project, members, diagnostics, out _);
+
+    /// <inheritdoc cref="Resolve(ProtoCrossProject, IReadOnlyList{ProjectMember}, DiagnosticBag)"/>
+    /// <param name="governing">
+    /// The configuration file that governs, whether or not it exists or could be read, and null when the
+    /// project names none and none was found. A caller explaining a refusal has to be able to name it.
+    /// </param>
+    public static ProjectConfig? Resolve(
+        ProtoCrossProject project,
+        IReadOnlyList<ProjectMember> members,
+        DiagnosticBag diagnostics,
+        out string? governing)
     {
         ArgumentNullException.ThrowIfNull(project);
         ArgumentNullException.ThrowIfNull(members);
         ArgumentNullException.ThrowIfNull(diagnostics);
 
-        var config = Governing(project, diagnostics, out var governing);
+        var config = Governing(project, diagnostics, out governing);
         if (config is null)
         {
             return null;

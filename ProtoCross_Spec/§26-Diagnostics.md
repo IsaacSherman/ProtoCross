@@ -70,8 +70,8 @@ Normative Requirements:
   all of them have to be seen. It is never converted from the 1-based scheme, which for a
   `SourceSpan.None` would name line zero minus one.
 - **A diagnostic that does have a position is published against the file that position is in**, which
-  is not always the file being compiled. A `protocross.config.xml` reports a line and a column inside
-  itself, and a `protoc` failure reports a line and a column inside a `.proto`; published against the
+  is not always the file being compiled. A `protocross.config.xml` or a `.pcproj` reports a line and
+  a column inside itself, and a `protoc` failure reports a line and a column inside a `.proto`; published against the
   source buffer instead, an error on line 4 of the configuration file becomes a squiggle on line 4 of
   a source that says something else entirely, or past the end of a source shorter than it. Where the
   named file cannot be resolved to a document, the diagnostic goes to the document being compiled at

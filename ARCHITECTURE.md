@@ -265,12 +265,19 @@ divide-by-zero, unset-message reads. Discovery walks up from the source director
 An editor adds an axis the command line never had: one process, many documents, one or more
 workspace folders, each able to state settings of its own. Spec 10.4.1 settles that in the server
 and `WorkspaceConfiguration.Resolve` is the only place it is applied. Configuration is resolved
-**per document**, in the order folder → workspace → user setting → `PROTOCROSS_PROTOC` → discovery.
+**per document**, in the order project → folder → workspace → user setting → `PROTOCROSS_PROTOC` →
+discovery.
 Language policy stays out of settings entirely — a host may name a different `protocross.config.xml`
 and may not restate what is in one — and **every setting that is not being used is reported**
 (`PC2101`–`PC2105`), because a user who cannot tell a typo from a refusal has nothing to go on. A
 `protocross.config.xml` that is found and cannot be read stops the document and is named as *refused*
 (`PC2106`), rather than being reported as having supplied the defaults it did not supply.
+A document's project is the scope at the head of that order: the one `protocross.project` names, or
+the nearest `.pcproj` at or above the document that includes it. Its `<ProtoPath>` directories come
+before every editor include path and its policy replaces `protocross.configPath`, as they do when the
+command line builds it, and a project that cannot be read stops the document (`PC2109`) as a refused
+configuration file does. A diagnostic positioned in the project file or the configuration file is
+published in that file, chosen by the file its span names.
 `DocumentUri` and `PathIdentity` are between them the only places a URI becomes a path and two paths
 are compared, which is what makes one file one document and one cache entry however it is spelled.
 
@@ -305,8 +312,14 @@ an element whose patterns match nothing is a warning (`PC2010`).
 role, and [`ProjectPolicy`](src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
 file the compilation runs under, warning about a member whose own search finds another (`PC2011`).
 Both live here rather than in the command line, because an editor compiling a project has to answer
-the same two questions the same way. The command line builds a project it is named; an editor does
-not compile one yet.
+the same two questions the same way.
+[`ProjectDiscovery`](src/ProtoCross.Projects/ProjectDiscovery.cs) finds the project a document
+compiles with, asking each candidate's patterns with the document's path through
+`ProjectSources.RoleOf` rather than listing the project's tree, since it runs whenever a document's
+settings are resolved; `RoleOf` asks the matcher expansion asks, over a directory that holds only
+that one path ([`PathToOneFile`](src/ProtoCross.Projects/PathToOneFile.cs)), so the two cannot
+disagree. The command line builds a project it is named. An editor resolves each document's settings
+through its project, and still compiles each document on its own.
 
 ### Serving an editor
 
@@ -585,7 +598,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
-`ProjectSourcesTests`, `ProjectBuildTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
+`ProjectSourcesTests`, `ProjectBuildTests`, `ProjectMembershipTests`, `ProjectDiscoveryTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
 `ProductionSchemaClosureTests`, `BackendTests`, `NameMappingTests`,
 `CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
