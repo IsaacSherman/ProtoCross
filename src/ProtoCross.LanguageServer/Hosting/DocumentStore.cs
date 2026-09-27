@@ -71,8 +71,18 @@ public sealed class DocumentStore
 {
     private readonly ConcurrentDictionary<string, OpenDocument> _documents = new(StringComparer.Ordinal);
 
+    private int _openings;
+
     /// <summary>Every open document, as a snapshot that will not change while it is walked.</summary>
     public IReadOnlyList<OpenDocument> All => [.. _documents.Values];
+
+    /// <summary>How many times a document has been opened, which moves whenever the set of open documents grows.</summary>
+    /// <remarks>
+    /// For a caller holding something built from the documents that were open at one moment, which has
+    /// to know whether another has opened since without walking every open document to find out. An
+    /// edit does not move it: an edit hands out a new instance, which is already how that is noticed.
+    /// </remarks>
+    public int Openings => Volatile.Read(ref _openings);
 
     public OpenDocument Open(DocumentUri uri, string languageId, int version, string text)
     {
@@ -80,6 +90,7 @@ public sealed class DocumentStore
 
         var document = new OpenDocument(uri, languageId, version, text);
         _documents[uri.Key] = document;
+        Interlocked.Increment(ref _openings);
 
         return document;
     }

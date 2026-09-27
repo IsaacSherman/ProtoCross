@@ -251,10 +251,11 @@ public sealed class DocumentSemantics
         return built.ViewOf(document, settings);
     }
 
-    /// <summary>The compilations held that read <paramref name="document"/>'s buffer, by <see cref="CompilationKey"/>.</summary>
+    /// <summary>The compilations held that read <paramref name="document"/>, from its buffer or its file, by <see cref="CompilationKey"/>.</summary>
     /// <remarks>
     /// Which compilations an edit to the document makes stale, and a close too, since a closed source
-    /// is read from disk instead. It includes a project other than the document's own that compiles
+    /// is read from disk instead -- and an open, since an open source is read from its buffer and the
+    /// buffer may already say something the file does not. It includes a project other than the document's own that compiles
     /// the document as well -- a project over a whole tree, beside a nearer one -- whose open documents
     /// would otherwise go on showing what the document said before the edit.
     /// </remarks>
@@ -265,7 +266,10 @@ public sealed class DocumentSemantics
         return [.. _entries.Where(entry => entry.Value.Reads(document)).Select(entry => entry.Key)];
     }
 
-    /// <summary>Discards what is held that read a document, because it is no longer open.</summary>
+    /// <summary>
+    /// Discards what is held that read a document, because it is no longer open or because its file
+    /// changed in a way its stamp may not show.
+    /// </summary>
     /// <remarks>
     /// The obligation spec 26.1 states and <see cref="CompileScheduler.ForgetAsync"/> and
     /// <see cref="CompletionProvider.Forget"/> already discharge. Without it an entry for a closed
@@ -340,7 +344,50 @@ public sealed class DocumentSemantics
             && held.Built.Settings.CompilesTheSameWayAs(settings)
             && held.Sources.Any(source => ReferenceEquals(source.Buffer, document))
             && held.Sources.All(source => StillReads(source, document))
+            && ReadsEveryOpenMember(held)
             && SchemasAreUnchanged(held.Built);
+
+    /// <summary>
+    /// Whether a project's compilation read every document now open that the project's patterns match.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The sources a compilation read are each checked for having moved, and a document that was not
+    /// among them cannot be: one the project's listing does not have yet -- created since, in a client
+    /// that did not say so -- is compiled with the project only when it is open, so opening it changes
+    /// what the project declares while nothing the compilation read has moved. A caller of a method it
+    /// declares went on being told the method did not exist.
+    /// </para>
+    /// <para>
+    /// Matching every open document against the patterns on every question would cost a pattern match
+    /// per open document per caret move, so the store's count of openings is asked first, and the walk
+    /// is made only once something has opened since the compilation last looked. A walk that finds
+    /// nothing missing moves the mark forward, so the next question does not walk again.
+    /// </para>
+    /// </remarks>
+    private bool ReadsEveryOpenMember(Held held)
+    {
+        if (_documents is null || held.Built.Settings.Project is not { } project)
+        {
+            return true;
+        }
+
+        var openings = _documents.Openings;
+        if (openings == held.CheckedOpenings)
+        {
+            return true;
+        }
+
+        if (_documents.All.Any(open => open.Uri.Path is { } path
+            && !held.ReadsBufferOf(open.Uri)
+            && ProjectSources.RoleOf(project, path) is not null))
+        {
+            return false;
+        }
+
+        held.CheckedOpenings = openings;
+        return true;
+    }
 
     /// <summary>Whether one source a compilation read would read the same now.</summary>
     /// <remarks>
@@ -419,6 +466,9 @@ public sealed class DocumentSemantics
         DocumentConfiguration settings,
         CancellationToken cancellationToken)
     {
+        // Before anything open is read, so a document opened while this compiles is noticed afterwards.
+        var openings = _documents?.Openings ?? 0;
+
         _loaders.TryGet(settings.ProtocPath, out var loader, out var failure);
 
         // The ways a document is stopped before it compiles, in the order the settings settle them: a
@@ -431,6 +481,7 @@ public sealed class DocumentSemantics
             return new Held(
                 new DocumentCompilation(document, configuration, settings, loader, failure, null),
                 [CompiledSource.Of(document, document.ToSource(settings.Folder?.Path))],
+                openings,
                 isWorthKeeping: true);
         }
 
@@ -455,6 +506,7 @@ public sealed class DocumentSemantics
         return new Held(
             settings.ProjectFiles is null ? built : built with { Semantics = built.Semantics?.In(IdentityOf(sources, document)) },
             sources,
+            openings,
             isWorthKeeping: unread.Count == 0 && sources.All(source => source.Buffer is not null || source.Stamp.IsSettled));
     }
 
@@ -560,8 +612,10 @@ public sealed class DocumentSemantics
 
     /// <summary>One compilation held, with what it read and one view of it per open document.</summary>
     /// <param name="built">The compilation, viewed from the document whose question built it.</param>
+    /// <param name="openings">The store's <see cref="DocumentStore.Openings"/> before the sources were read.</param>
     /// <param name="isWorthKeeping">Whether it may be held for later questions at all.</param>
-    private sealed class Held(DocumentCompilation built, IReadOnlyList<CompiledSource> sources, bool isWorthKeeping)
+    private sealed class Held(
+        DocumentCompilation built, IReadOnlyList<CompiledSource> sources, int openings, bool isWorthKeeping)
     {
         /// <summary>
         /// Each open document's view, made once, so that every question about a document shares one
@@ -575,7 +629,28 @@ public sealed class DocumentSemantics
 
         public bool IsWorthKeeping { get; } = isWorthKeeping;
 
-        public bool Reads(DocumentUri document)
+        /// <summary>
+        /// The store's count of openings as of which every open document the project's patterns match
+        /// was found among what this read; see <see cref="ReadsEveryOpenMember"/>.
+        /// </summary>
+        /// <remarks>
+        /// Moved forward by a question that looks again and finds nothing missing. Two questions doing
+        /// so at once each write a count that was true when they read it, so the worst a race costs is
+        /// one more look.
+        /// </remarks>
+        public int CheckedOpenings
+        {
+            get => Volatile.Read(ref _checkedOpenings);
+            set => Volatile.Write(ref _checkedOpenings, value);
+        }
+
+        private int _checkedOpenings = openings;
+
+        /// <summary>Whether this read <paramref name="document"/> at all, from its buffer or from its file.</summary>
+        public bool Reads(DocumentUri document) => Sources.Any(source => source.Uri.Equals(document));
+
+        /// <summary>Whether this read <paramref name="document"/>'s buffer.</summary>
+        public bool ReadsBufferOf(DocumentUri document)
             => Sources.Any(source => source.Buffer is not null && source.Uri.Equals(document));
 
         /// <summary>The compilation as <paramref name="document"/> sees it, under the settings just resolved for it.</summary>

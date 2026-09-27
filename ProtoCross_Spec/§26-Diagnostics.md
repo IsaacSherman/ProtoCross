@@ -126,7 +126,9 @@ Normative Requirements:
   edit in them: a method renamed in one file is an unresolved name in each file that calls it, and
   naming it back clears that. Edits to several documents of one project within one pause are one
   compile. Closing a document compiles the compilations it shared again, with its file, since any
-  edits it had not saved went with the buffer.
+  edits it had not saved went with the buffer; opening one compiles again every compilation that
+  read its file, since the buffer is what is compiled from then on and may already say something
+  else.
 - **A file's diagnostics survive while any open document still reports them.** Two documents
   importing one broken schema both report it, identical reports are published once, and closing one
   of them does not withdraw the other's.
@@ -159,14 +161,15 @@ Normative Requirements:
   project saved elsewhere, an imported `.proto` edited in another window, a branch switched
   underneath the session, a `protocross.config.xml` repaired after it was refused. So a kept
   compilation answers only while every buffer it read is still the one the editor holds, every closed
-  source it read is still closed with its file's stamp unmoved, the configuration still resolves the
-  same way and the schemas still stand as they were read. One that could not read a source, or read
-  one written too recently for its stamp to be trusted, is answered from and not kept; the second is the check a descriptor load
-  already makes on its own entries ([21.1](./§21-Interoperability%20With%20Protobuf.md#211-descriptor-input)), asked one level up, because a host that skips it answers
+  source it read is still closed with its file's stamp unmoved, every document now open that the
+  project's patterns match is among what it read, the configuration still resolves the same way and
+  the schemas still stand as they were read. The last is the check a descriptor load already makes
+  on its own entries ([21.1](./§21-Interoperability%20With%20Protobuf.md#211-descriptor-input)), asked one level up, because a host that skips it answers
   from a compilation the loader would itself have refused. Without this the cache is observable in
   exactly the way 21.1 forbids, and it is observable as the worst kind of wrong answer: a completion
   offering a field the schema no longer has, which goes on being offered until the user happens to
-  type in this buffer.
+  type in this buffer. A compilation that could not read a source, or read one written too recently
+  for its stamp to be trusted, is answered from and not kept.
 - **A compilation whose schemas failed to load is not reused at all**, which is 21.1's rule applied
   at a second layer rather than a new one. There is no closure to compare against, because `protoc`
   never reported one, and treating that as "nothing to check" makes the refusal permanent: the author
