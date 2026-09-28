@@ -96,10 +96,21 @@ public class ProjectCompilationReviewRegressionTests
     }
 
     /// <summary>A new matching buffer changes existing callers even though no held compilation read it yet.</summary>
-    [Fact]
-    public async Task OpeningANewUnlistedMemberRefreshesItsCallersDiagnostics()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task OpeningANewUnlistedMemberRefreshesItsCallersDiagnostics(bool nearerProject)
     {
         var workspace = new Workspace(withPricing: false);
+        var pricingName = nearerProject ? "sub/pricing.pcross" : "pricing.pcross";
+        if (nearerProject)
+        {
+            foreach (var path in TestPaths.WriteSources(workspace.Directory,
+                ("billing.pcproj", "<ProtoCrossProject><Sources Include=\"**/*.pcross\" /></ProtoCrossProject>"),
+                ("sub/sub.pcproj", "<ProtoCrossProject><Sources Include=\"*.pcross\" /><ProtoPath>..</ProtoPath></ProtoCrossProject>"),
+                ("sub/anchor.pcross", "import proto \"fixtures.proto\";")))
+                File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
+        }
         var shown = new ConcurrentDictionary<string, Diagnostic[]>();
         var router = new DiagnosticRouter(message =>
         {
@@ -114,7 +125,7 @@ public class ProjectCompilationReviewRegressionTests
         await Idle();
         Assert.Contains(shown[totals.Uri.Text], diagnostic => diagnostic.Message.Contains("doubled", StringComparison.Ordinal));
 
-        var pricing = workspace.Open("pricing.pcross", Pricing);
+        var pricing = workspace.Open(pricingName, Pricing);
         scheduler.Schedule(pricing.Uri);
         await Idle();
         Assert.True(shown.TryGetValue(pricing.Uri.Text, out var added));

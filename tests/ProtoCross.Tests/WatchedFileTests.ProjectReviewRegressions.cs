@@ -26,7 +26,8 @@ public partial class WatchedFileTests
         Assert.Equal(stamp, EntryStamp.OfFile(pricing));
         client.Notify(Methods.DidChangeWatchedFiles, Reported(pricing, FileChangeType.Changed));
 
-        var moved = await client.DiagnosticsAsync(uri);
+        var moved = await client.DiagnosticsAsync(uri,
+            published => published.Diagnostics.Any(diagnostic => diagnostic.Message.Contains("doubled", StringComparison.Ordinal)));
         Assert.Contains(moved.Diagnostics, diagnostic => diagnostic.Message.Contains("doubled", StringComparison.Ordinal));
     }
 
