@@ -133,13 +133,14 @@ public class TwoLibrariesTests
 
         // The arithmetic runtime is the same file in both, and an assembly takes one copy of it, as a
         // consumer building both libraries from source would.
-        var runtime = alpha.Single(file => file.RelativePath == CSharpRuntime.FileName);
+        static bool IsRuntime(GeneratedFile file) => file.RelativePath == CSharpRuntime.FileName;
+
         var workspace = CSharpTestWorkspace.Create("two-libraries-csharp");
         workspace.Write(
         [
-            runtime,
-            .. Under("alpha", alpha.Where(file => file != runtime)),
-            .. Under("beta", beta.Where(file => file.RelativePath != CSharpRuntime.FileName)),
+            alpha.Single(IsRuntime),
+            .. Under("alpha", alpha.Where(file => !IsRuntime(file))),
+            .. Under("beta", beta.Where(file => !IsRuntime(file))),
             new GeneratedFile("Consumer.cs", """
                 using Alpha;
 

@@ -124,7 +124,7 @@ public class ConformanceVectorTests
 
     /// <summary>
     /// A directory under <c>multi/</c> that holds a project is compiled as that project, and its
-    /// behavior is declared in the project's namespace (spec 24).
+    /// behavior is declared in the project's namespace (spec 24). There is at least one.
     /// </summary>
     /// <remarks>
     /// Asserted for the reason the test above is. Compiled without its project, the vector would
@@ -134,9 +134,10 @@ public class ConformanceVectorTests
     [Fact]
     public void TheCorpusHoldsAVectorCompiledAsAProject()
     {
-        var project = Assert.Single(ConformanceVectors.All, vector => vector.ProjectNamespace is not null);
+        var projects = ConformanceVectors.All.Where(vector => vector.ProjectNamespace is not null).ToList();
 
-        Assert.Equal(project.ProjectNamespace, ConformanceVectors.Compile(project).ProjectNamespace);
+        Assert.NotEmpty(projects);
+        Assert.All(projects, project => Assert.Equal(project.ProjectNamespace, ConformanceVectors.Compile(project).ProjectNamespace));
     }
 
     public static TheoryData<string> Names => ConformanceVectors.Names;

@@ -140,7 +140,7 @@ internal static class ConformanceVectors
                 .GroupBy(VectorPathOf, StringComparer.Ordinal)
                 .Select(sources => new ConformanceVector(Path.GetFileNameWithoutExtension(sources.Key), [.. sources])
                 {
-                    ProjectNamespace = ProjectNamespaceIn(sources.Key),
+                    ProjectNamespace = ProjectNamespaceIn(sources.Key, [.. sources]),
                 })
                 .ToList()
             : [];
@@ -152,11 +152,13 @@ internal static class ConformanceVectors
     /// <remarks>
     /// Read by the compiler's own project reader, so the vector is named as a command-line build of
     /// that project would name it. Only the name is taken: the vector's sources are its directory's,
-    /// as for every other vector of several sources, and the project says so with a pattern that
-    /// matches them all. A project that cannot be read stops discovery with its diagnostics, because
-    /// every conformance test would otherwise fail for a reason none of them names.
+    /// as for every other vector of several sources, and are compiled under the policy and include
+    /// paths every vector is. So the project may state one thing, <c>&lt;Sources&gt;</c> matching
+    /// exactly those sources, and one that states anything else stops discovery. So does one that
+    /// cannot be read. Either would otherwise have the corpus run a program the project does not
+    /// describe, and pass.
     /// </remarks>
-    private static ProjectNamespace? ProjectNamespaceIn(string vectorPath)
+    private static ProjectNamespace? ProjectNamespaceIn(string vectorPath, IReadOnlyList<string> vectorSources)
     {
         if (!Directory.Exists(vectorPath) || Directory.GetFiles(vectorPath, "*" + ProtoCrossProject.Extension) is not [var projectPath])
         {
@@ -164,9 +166,20 @@ internal static class ConformanceVectors
         }
 
         var diagnostics = new DiagnosticBag();
-        return ProtoCrossProject.Load(projectPath, diagnostics)?.Namespace
+        var project = ProtoCrossProject.Load(projectPath, diagnostics)
             ?? throw new InvalidOperationException(
                 $"{projectPath} cannot be read: " + string.Join("; ", diagnostics.Select(diagnostic => diagnostic.ToString())));
+
+        var matched = ProjectSources.Expand(project, diagnostics).Sources.ToHashSet(PathIdentity.Comparer);
+        if (project.Config is not null || project.ProtoPaths.Count > 0 || project.Tests.Count > 0
+            || !matched.SetEquals(vectorSources.Select(Path.GetFullPath)))
+        {
+            throw new InvalidOperationException(
+                $"{projectPath} may state only a <Sources> element matching every source in its directory, "
+                + "because the harness compiles those sources, under the corpus's policy and schemas.");
+        }
+
+        return project.Namespace;
     }
 
     /// <summary>
