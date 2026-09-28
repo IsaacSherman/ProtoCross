@@ -161,7 +161,8 @@ public class MultiSourceBindingTests
     /// the wrong source, or a reference recorded against the source bound before it, leaves a part
     /// that is missing something the source declares, or holding something it does not. The vectors
     /// declare no method twice between them (<c>NoTwoVectorsDeclareOneMethod</c>), so binding them
-    /// together has no diagnostic of its own to report.
+    /// together reports exactly what each reports alone and nothing of its own: a warning a vector
+    /// earns, such as <c>PC0077</c> for extending a well-known type, once, and no error at all.
     /// </para>
     /// <para>
     /// A vector of one source binds alone through the door that takes one unit. A vector written
@@ -180,13 +181,16 @@ public class MultiSourceBindingTests
         foreach (var group in byPolicy)
         {
             var config = group.First().Config;
+            var vectors = group.Select(entry => BindAlone(entry.Sources, config)).ToList();
 
             var jointDiagnostics = new DiagnosticBag();
             var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config)
                 .Bind([.. group.SelectMany(entry => entry.Sources)]);
-            Assert.Empty(jointDiagnostics);
+            Assert.Equal(
+                vectors.SelectMany(vector => vector.Diagnostics).Select(diagnostic => diagnostic.ToString()).Order(StringComparer.Ordinal),
+                jointDiagnostics.Select(diagnostic => diagnostic.ToString()).Order(StringComparer.Ordinal));
 
-            foreach (var (document, alone) in group.SelectMany(entry => BindAlone(entry.Sources, config)))
+            foreach (var (document, alone) in vectors.SelectMany(vector => vector.Parts))
             {
                 AssertSameModule(document, alone, joint.DeclaredIn(document), config);
                 swept++;
@@ -215,8 +219,11 @@ public class MultiSourceBindingTests
         => Compilation.ResolveConfig(Path.GetDirectoryName(vector.SourcePaths[0]), new DiagnosticBag())
             ?? throw new InvalidOperationException($"'{vector.Name}' has a configuration that does not load.");
 
-    /// <summary>What each of a vector's sources binds to when the vector is bound on its own.</summary>
-    private static IReadOnlyList<(SourceIdentity Document, IrModule Module)> BindAlone(
+    /// <summary>
+    /// What each of a vector's sources binds to when the vector is bound on its own, and the warnings
+    /// binding it reports; it may report no error.
+    /// </summary>
+    private static (IReadOnlyList<(SourceIdentity Document, IrModule Module)> Parts, DiagnosticBag Diagnostics) BindAlone(
         IReadOnlyList<SourceTree> sources,
         ProjectConfig config)
     {
@@ -226,13 +233,13 @@ public class MultiSourceBindingTests
         {
             var module = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config, document: only.Document)
                 .Bind(only.Unit);
-            Assert.Empty(diagnostics);
-            return [(only.Document, module)];
+            Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics));
+            return ([(only.Document, module)], diagnostics);
         }
 
         var program = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config).Bind(sources);
-        Assert.Empty(diagnostics);
-        return [.. sources.Select(source => (source.Document, program.DeclaredIn(source.Document)))];
+        Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics));
+        return ([.. sources.Select(source => (source.Document, program.DeclaredIn(source.Document)))], diagnostics);
     }
 
     private static void AssertSameModule(SourceIdentity document, IrModule expected, IrModule actual, ProjectConfig config)
