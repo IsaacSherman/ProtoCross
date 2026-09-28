@@ -154,6 +154,23 @@ public class ProjectCompilationTests
         Assert.Empty(Errors(workspace.Compile(workspace.Edit("totals.pcross", Totals + "\n"))));
     }
 
+    /// <summary>
+    /// An open document the patterns do not match is not compiled with the project, however near it is:
+    /// what it declares is not the project's, and a call into it is unresolved, as the build says.
+    /// </summary>
+    [Fact]
+    public void AnOpenDocumentThePatternsDoNotMatchIsLeftOut()
+    {
+        var workspace = Project(
+            "<ProtoCrossProject><Sources Include=\"*.pcross\" Exclude=\"pricing.pcross\" /></ProtoCrossProject>",
+            ("pricing.pcross", Pricing),
+            ("totals.pcross", Totals));
+        workspace.Open("pricing.pcross");
+
+        Assert.Contains(Errors(workspace.Compile(workspace.Open("totals.pcross"))),
+            error => error.Message.Contains("doubled", StringComparison.Ordinal));
+    }
+
     // ------- one compilation for every open document of a project
 
     /// <summary>A second open document of a project is answered from the compilation the first built.</summary>
@@ -264,11 +281,15 @@ public class ProjectCompilationTests
     {
         var workspace = Project(
             "<ProtoCrossProject><Sources Include=\"src/*.pcross\" /><Tests Include=\"*.pcross\" /></ProtoCrossProject>",
-            ("totals.pcross", Totals));
+            ("totals.pcross", Totals),
+            ("pricing.pcross", Pricing));
         var totals = workspace.Open("totals.pcross");
+        var pricing = workspace.Open("pricing.pcross");
 
         Assert.Null(workspace.Compile(totals).Result);
-        Assert.Equal([totals.Uri.Key], workspace.Semantics.CompilationsReading(totals.Uri));
+        Assert.Null(workspace.Compile(pricing).Result);
+        Assert.True(workspace.Semantics.Count == 2,
+            "each document's refusal must be held apart; under the project's name the second evicts the first");
     }
 
     /// <summary>
@@ -306,6 +327,28 @@ public class ProjectCompilationTests
 
         var refused = await Assert.ThrowsAsync<JsonRpcException>(async () => await answer);
         Assert.Equal(ErrorCodes.ContentModified, refused.Error.Code);
+    }
+
+    /// <summary>
+    /// A compilation stopped before it compiled rests on its document alone, so another member of its
+    /// project opening does not move it: it read nothing the member could change.
+    /// </summary>
+    [Fact]
+    public void AMemberOpeningDoesNotMoveACompilationThatWasStopped()
+    {
+        var workspace = Project(
+            "<ProtoCrossProject><Config>policy.xml</Config><Sources Include=\"*.pcross\" /></ProtoCrossProject>",
+            ("policy.xml", "<ProtoCrossConfig"),
+            ("pricing.pcross", Pricing),
+            ("totals.pcross", Totals));
+        var totals = workspace.Open("totals.pcross");
+        var stopped = workspace.Compile(totals);
+        Assert.True(stopped.Result is null && stopped.Settings.Project is not null,
+            "the policy the project names cannot be read, so the document must be stopped with its project");
+
+        workspace.Open("pricing.pcross");
+
+        Assert.Null(stopped.WhatMovedIn(workspace.Documents));
     }
 
     // ------- what the providers answer across files

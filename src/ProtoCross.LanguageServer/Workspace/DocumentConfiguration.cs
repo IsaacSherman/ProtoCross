@@ -132,6 +132,29 @@ public sealed record DocumentConfiguration
     public ProjectFiles? ProjectFiles { get; init; }
 
     /// <summary>
+    /// The role <paramref name="document"/> has among the sources <see cref="Project"/> compiles, or
+    /// null when there is no project to compile with or its patterns do not include it.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the patterns rather than of <see cref="ProjectFiles"/>, because a project's compilation
+    /// reads an open document its patterns include whether or not the listing has it yet: one created
+    /// since, in a client that did not say so. One statement of which documents a project compiles: the
+    /// compilation asks it when it reads its sources, the cache when it checks that nothing it did not
+    /// read has opened, and the scheduler when a document opens, changes or closes, so the three cannot
+    /// disagree about it. The document these settings were resolved for is not always the one asked
+    /// about: a project over a whole tree compiles a document a nearer project owns, and its other
+    /// documents are told what that document declares.
+    /// </remarks>
+    public SourceRole? ProjectRoleOf(DocumentUri document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return Project is { } project && document.Path is { } path
+            ? ProjectSources.RoleOf(project, path)
+            : null;
+    }
+
+    /// <summary>
     /// How the document came to have its project: <see cref="ConfigurationSource.Project"/> when it was
     /// found by searching, the scope of <c>protocross.project</c> when a setting named it -- whether or
     /// not that project includes the document -- and <see cref="ConfigurationSource.Default"/> when

@@ -128,8 +128,9 @@ Normative Requirements:
   compile. Closing a document compiles the compilations it shared again, with its file, since any
   edits it had not saved went with the buffer; opening one compiles again every compilation that
   read its file, since the buffer is what is compiled from then on and may already say something
-  else, and once it is found to belong to a project, every open document of that project, which
-  were compiled without it if the project's listing did not have it yet.
+  else, and every compilation of an open document whose project includes it, which was compiled
+  without it if the project's listing did not have it yet: its own project's, and a project's over a
+  whole tree beside it alike.
 - **A file's diagnostics survive while any open document still reports them.** Two documents
   importing one broken schema both report it, identical reports are published once, and closing one
   of them does not withdraw the other's.

@@ -68,8 +68,7 @@ public sealed record DocumentCompilation(
     /// </para>
     /// <para>
     /// One statement of the question, which a request asks before it answers and the scheduler before
-    /// it publishes, so the two cannot disagree about what moving means. A compilation that was
-    /// refused read nothing but its document, and rests on nothing else.
+    /// it publishes, so the two cannot disagree about what moving means.
     /// </para>
     /// </remarks>
     public DocumentUri? WhatMovedIn(DocumentStore documents)
@@ -81,10 +80,22 @@ public sealed record DocumentCompilation(
             return moved.Uri;
         }
 
-        return Result is null || documents.Openings == Openings
-            ? null
-            : DocumentSemantics.OpenMemberNotAmong(documents, Settings.Project, Buffers);
+        return documents.Openings == Openings ? null : OpenMemberNotRead(documents);
     }
+
+    /// <summary>
+    /// An open document this compilation's project includes whose buffer it did not read, or null when
+    /// there is none.
+    /// </summary>
+    /// <remarks>
+    /// A compilation that was refused read nothing but its document, and rests on nothing else, whatever
+    /// its project includes.
+    /// </remarks>
+    internal DocumentUri? OpenMemberNotRead(DocumentStore documents)
+        => Result is null
+            ? null
+            : documents.All.FirstOrDefault(open => !Buffers.Any(buffer => buffer.Uri.Equals(open.Uri))
+                && Settings.ProjectRoleOf(open.Uri) is not null)?.Uri;
 
     /// <summary>
     /// The sources of the document's project that could not be read, and were left out of the
@@ -288,21 +299,6 @@ public sealed class DocumentSemantics
         return built.ViewOf(document, settings);
     }
 
-    /// <summary>The compilations held that read <paramref name="document"/>, from its buffer or its file, by <see cref="CompilationKey"/>.</summary>
-    /// <remarks>
-    /// Which compilations an edit to the document makes stale, and a close too, since a closed source
-    /// is read from disk instead -- and an open, since an open source is read from its buffer and the
-    /// buffer may already say something the file does not. It includes a project other than the document's own that compiles
-    /// the document as well -- a project over a whole tree, beside a nearer one -- whose open documents
-    /// would otherwise go on showing what the document said before the edit.
-    /// </remarks>
-    public IReadOnlyList<string> CompilationsReading(DocumentUri document)
-    {
-        ArgumentNullException.ThrowIfNull(document);
-
-        return [.. _entries.Where(entry => entry.Value.Reads(document)).Select(entry => entry.Key)];
-    }
-
     /// <summary>
     /// Discards what is held that read a document, because it is no longer open or because its file
     /// changed in a way its stamp may not show.
@@ -404,7 +400,7 @@ public sealed class DocumentSemantics
     /// </remarks>
     private bool ReadsEveryOpenMember(Held held)
     {
-        if (_documents is null || held.Built.Settings.Project is not { } project)
+        if (_documents is null)
         {
             return true;
         }
@@ -415,7 +411,7 @@ public sealed class DocumentSemantics
             return true;
         }
 
-        if (OpenMemberNotAmong(_documents, project, held.Built.Buffers) is not null)
+        if (held.Built.OpenMemberNotRead(_documents) is not null)
         {
             return false;
         }
@@ -423,18 +419,6 @@ public sealed class DocumentSemantics
         held.CheckedOpenings = openings;
         return true;
     }
-
-    /// <summary>
-    /// An open document <paramref name="project"/>'s patterns match that is not among
-    /// <paramref name="read"/>, or null when there is none or no project.
-    /// </summary>
-    internal static DocumentUri? OpenMemberNotAmong(
-        DocumentStore documents, ProtoCrossProject? project, IReadOnlyList<OpenDocument> read)
-        => project is null
-            ? null
-            : documents.All.FirstOrDefault(open => open.Uri.Path is { } path
-                && !read.Any(buffer => buffer.Uri.Equals(open.Uri))
-                && ProjectSources.RoleOf(project, path) is not null)?.Uri;
 
     /// <summary>Whether one source a compilation read would read the same now.</summary>
     /// <remarks>
@@ -571,7 +555,7 @@ public sealed class DocumentSemantics
     {
         unread = [];
 
-        if (settings is not { Project: { } project, ProjectFiles: { } files })
+        if (settings is not { Project: not null, ProjectFiles: { } files })
         {
             return [CompiledSource.Of(document, document.ToSource(settings.Folder?.Path))];
         }
@@ -611,9 +595,8 @@ public sealed class DocumentSemantics
         // would report as missing what the author can see is there.
         foreach (var open in OpenDocuments(document))
         {
-            if (open.Uri.Path is { } path
-                && !sources.Any(source => source.Uri.Equals(open.Uri))
-                && ProjectSources.RoleOf(project, path) is { } role)
+            if (!sources.Any(source => source.Uri.Equals(open.Uri))
+                && settings.ProjectRoleOf(open.Uri) is { } role)
             {
                 sources.Add(CompiledSource.Of(open, open.ToSource(directory: null) with { Role = role }));
             }

@@ -117,6 +117,22 @@ public class ProjectDiagnosticsTests
             return Scheduler.ForgetAsync(uri);
         }
 
+        /// <summary>Waits until nothing is scheduled or compiling, failing when that never happens.</summary>
+        /// <remarks>
+        /// Asked before a test disturbs anything, so that what it sees afterwards was compiled because of
+        /// the disturbance: a compile left over from opening the documents would otherwise run after it,
+        /// read what it changed, and publish what the test is waiting for with nothing having scheduled it.
+        /// </remarks>
+        public async Task IdleAsync()
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (Scheduler.Pending != 0 || Scheduler.InFlight != 0)
+            {
+                Assert.True(DateTime.UtcNow < deadline, "what was scheduled must finish before the test goes on");
+                await Task.Delay(10, TestContext.Current.CancellationToken);
+            }
+        }
+
         /// <summary>Whether anything at all has been published for <paramref name="uri"/>.</summary>
         public bool HasPublished(DocumentUri uri)
         {
@@ -225,6 +241,7 @@ public class ProjectDiagnosticsTests
         editor.Open("pricing.pcross", Pricing.Replace("doubled", "tripled", StringComparison.Ordinal));
         var totals = editor.Open("totals.pcross");
         await editor.ShownAsync(totals, shown => Mentions(shown, "doubled"));
+        await editor.IdleAsync();
 
         await editor.CloseAsync("pricing.pcross");
 
@@ -247,6 +264,7 @@ public class ProjectDiagnosticsTests
         editor.Open("sub/pricing.pcross");
         var totals = editor.Open("totals.pcross");
         await editor.ShownAsync(totals, IsClean);
+        await editor.IdleAsync();
 
         editor.Edit("sub/pricing.pcross", Pricing.Replace("doubled", "tripled", StringComparison.Ordinal));
 

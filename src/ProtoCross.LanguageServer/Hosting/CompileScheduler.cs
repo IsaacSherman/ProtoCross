@@ -108,10 +108,15 @@ public sealed class CompileScheduler
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The compilation each open document was last compiled in, by <see cref="CompilationKey"/>; one
-    /// never compiled is absent, and is its own.
+    /// The compilation each open document was last compiled in, by <see cref="CompilationKey"/>, and the
+    /// settings that put it there; one never compiled is absent, and is its own.
     /// </summary>
-    private readonly ConcurrentDictionary<string, string> _compilationOf = new(StringComparer.Ordinal);
+    /// <remarks>
+    /// The settings are kept, and not only the name they give the compilation, because they are what
+    /// says which other documents the compilation reads, and an open or an edit asks that without
+    /// resolving anything from disk.
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, Membership> _compilationOf = new(StringComparer.Ordinal);
 
     public CompileScheduler(
         DocumentStore documents,
@@ -205,14 +210,14 @@ public sealed class CompileScheduler
     private int _peakInFlight;
 
     /// <summary>
-    /// Recompiles what one document is compiled in, and whatever else read its buffer, once the typing
-    /// settles.
+    /// Recompiles what one document is compiled in, and every other compilation that reads it, once the
+    /// typing settles.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Which compilation that is is settled here, on the caller's thread, because superseding has to
-    /// happen in the order the edits arrived. It is read from what compiling the document last found,
-    /// and what is held that read it, and neither touches the disk.
+    /// Which compilations those are is settled here, on the caller's thread, because superseding has to
+    /// happen in the order the edits arrived. It is read from what compiling the document last found and
+    /// from the settings the open documents were last compiled under, and neither touches the disk.
     /// </para>
     /// <para>
     /// The run is handed to the pool rather than started here, and that is not a preference. An
@@ -228,7 +233,7 @@ public sealed class CompileScheduler
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        foreach (var compilation in _semantics.CompilationsReading(document).Prepend(CompilationOf(document)).Distinct(StringComparer.Ordinal))
+        foreach (var compilation in CompilationsIncluding(document).Prepend(CompilationOf(document)).Distinct(StringComparer.Ordinal))
         {
             ScheduleCompilation(compilation);
         }
@@ -267,13 +272,9 @@ public sealed class CompileScheduler
         }
 
         _compilationOf.TryRemove(document.Key, out _);
-
-        // Asked before the entries are forgotten, since which compilations read the buffer is what the
-        // entries remember.
-        var shared = _semantics.CompilationsReading(document).Where(compilation => compilation != document.Key).ToList();
         _semantics.Forget(document);
 
-        foreach (var compilation in shared)
+        foreach (var compilation in CompilationsIncluding(document))
         {
             ScheduleCompilation(compilation);
         }
@@ -283,30 +284,54 @@ public sealed class CompileScheduler
 
     /// <summary>The compilation <paramref name="document"/> was last compiled in, or itself when it never has been.</summary>
     private string CompilationOf(DocumentUri document)
-        => _compilationOf.GetValueOrDefault(document.Key, document.Key);
+        => _compilationOf.TryGetValue(document.Key, out var member) ? member.Compilation : document.Key;
 
     /// <summary>
-    /// Records which compilation a document's settings put it in, unless it has closed since, and
-    /// says which that was.
+    /// The compilations of open documents whose projects include <paramref name="document"/>, whether or
+    /// not they have read it yet.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project's compilation reads exactly the documents its patterns include, from their buffers or
+    /// their files, so these are the compilations whose documents were told what this one said: an
+    /// edit or a close moves them, and so does an open, from which on the buffer is what counts. They
+    /// include those that have not read it at all, because the project's listing did not have it yet,
+    /// and nothing they did read has moved: a nearer project that owns it and a project over the whole
+    /// tree beside it alike, whose documents were told that a method the new one declares did not exist.
+    /// </para>
+    /// <para>
+    /// Asked of the settings each open document was last compiled under rather than of what is held.
+    /// A compilation is not always held -- one that read a file still settling is not, and a close
+    /// evicts what read the closed buffer -- and its documents go on showing what it found all the same,
+    /// so what is held answered for some of them and missed the rest.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<string> CompilationsIncluding(DocumentUri document)
+    {
+        // Enumerated rather than read through Values, which takes every lock the dictionary has, on
+        // every keystroke.
+        return _compilationOf.Select(entry => entry.Value)
+            .DistinctBy(member => member.Compilation, StringComparer.Ordinal)
+            .Where(member => member.Settings.ProjectRoleOf(document) is not null)
+            .Select(member => member.Compilation);
+    }
+
+    /// <summary>Records which compilation a document's settings put it in, unless it has closed since.</summary>
     /// <remarks>
     /// Checked after writing rather than before, because a close takes the document out of the store
     /// before it forgets this: either the check sees the close, or the forgetting comes after the write.
     /// Checked before writing, a close landing between the two would leave an entry for a document
     /// nothing will ever open again.
     /// </remarks>
-    private string Remember(DocumentCompilation compiled)
+    private void Remember(DocumentCompilation compiled)
     {
         var uri = compiled.Document.Uri;
-        var compilation = CompilationKey.Of(compiled.Settings);
-        _compilationOf[uri.Key] = compilation;
+        _compilationOf[uri.Key] = new Membership(CompilationKey.Of(compiled.Settings), compiled.Settings);
 
         if (_documents.Find(uri) is null)
         {
             _compilationOf.TryRemove(uri.Key, out _);
         }
-
-        return compilation;
     }
 
     private void ScheduleCompilation(string compilation)
@@ -449,7 +474,10 @@ public sealed class CompileScheduler
         var clock = System.Diagnostics.Stopwatch.StartNew();
         var compiled = documents.Select(document => _semantics.For(document, configuration, cancellationToken)).ToList();
 
-        var found = compiled.Select(Remember).Distinct(StringComparer.Ordinal).ToList();
+        foreach (var answer in compiled)
+        {
+            Remember(answer);
+        }
 
         // Before the staleness check and after the compile: what was measured is a compilation that
         // finished, whether or not anybody still wants its diagnostics. Recording after the check
@@ -474,16 +502,6 @@ public sealed class CompileScheduler
                 ScheduleIfAnotherBufferMoved(answer, configuration);
             }
         }
-
-        // A document found in a compilation other than the one this ran for joined it by being opened,
-        // or moved into it, since the scheduler last saw it; that compilation's other open documents
-        // were compiled without it and are compiled again now. A document opened that no compilation
-        // had read -- a source the project's listing did not have yet -- has no other way of reaching
-        // them: an open schedules the compilations held that read the document, and none had.
-        foreach (var elsewhere in found.Where(key => key != compilation))
-        {
-            ScheduleCompilation(elsewhere);
-        }
     }
 
     /// <summary>
@@ -491,9 +509,10 @@ public sealed class CompileScheduler
     /// buffer moving, which may have scheduled nothing that would publish for it.
     /// </summary>
     /// <remarks>
-    /// An edit schedules the compilations held that read the edited buffer, and one still being
-    /// compiled for the first time is not held yet: a document opened a moment earlier, whose project's
-    /// first compile read the other buffer before it moved, had its answer discarded here and nothing
+    /// An edit schedules the compilations open documents were last compiled in whose projects include
+    /// the edited document, and a document still being compiled for the first time has not been
+    /// compiled in any yet: a document opened a moment earlier, whose project's first compile read the
+    /// other buffer before it moved, had its answer discarded here and nothing
     /// left to replace it, and showed no diagnostics until it was edited itself. A move of the document's
     /// own buffer, or of the configuration, has always scheduled a compile of its own, so those are left
     /// to it rather than compiled twice.
@@ -720,4 +739,7 @@ public sealed class CompileScheduler
 
         contribution.Add(document, mapper.Map(diagnostic, document.Text, DiagnosticMapper.WholeDocumentStart));
     }
+
+    /// <summary>The compilation an open document was last compiled in, and the settings that put it there.</summary>
+    private readonly record struct Membership(string Compilation, DocumentConfiguration Settings);
 }
