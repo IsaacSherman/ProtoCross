@@ -701,7 +701,9 @@ public sealed class CppBackend : ITestProjectScaffold
         /// <remarks>
         /// Built from the project's name and the header's as one dotted name, so it is folded exactly
         /// as a header's own name always has been, and a source's guard outside a project does not
-        /// move.
+        /// move. The fold is not one-to-one: project <c>acme</c>'s <c>x.pc.h</c> and a bare
+        /// <c>acme_x.pc.h</c> share a guard, as <c>a-b</c> and <c>a_b</c> always have. No fold into a
+        /// macro keeps every name apart, and these need two libraries named to meet.
         /// </remarks>
         public string IncludeGuardOf(string headerName)
             => MakeIncludeGuard(Project is { } project ? $"{project.Package}.{headerName}" : headerName);

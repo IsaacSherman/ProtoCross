@@ -428,8 +428,9 @@ public sealed partial class Binder
             + "behavior. The generated extensions have to ship as their own library for anyone to "
             + "call them.",
             extend.Span,
-            "Two libraries that both extend this type also emit their extension classes into a "
-            + "namespace neither owns, and a consumer referencing both gets an ambiguous call.");
+            "Build it as a project, so that its behavior is declared in the project's own namespace. "
+            + "Compiled without one, it is declared in the runtime's namespace, where another library "
+            + "extending this type declares the same names.");
     }
 
     private MessageDescriptor? ResolveMessage(string name, SourceSpan span)
