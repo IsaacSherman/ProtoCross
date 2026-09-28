@@ -447,12 +447,16 @@ caret move. A kept compilation checks every buffer it read against the store, ev
 against its file's stamp, and, once another document has opened, that none the patterns match is
 missing from what it read. An answer is refused, and a compile's diagnostics are not published, if
 anything they were compiled with moved meanwhile -- a sibling's buffer edited, or a member opened --
-and not only the document asked about; `DocumentCompilation.WhatMovedIn` is that one question. A run
-that finds a document in a compilation other than the one it ran for schedules that one too, which is
-how a newly opened member reaches its project's other open documents. `CompileScheduler` keys its queue the same way: an edit schedules the
-document's compilation and every other held one that read its buffer, one run compiles it once, and
-each open document whose own compilation it is gets published its share, by the file each
-diagnostic's span names. A closed source is compiled and never published.
+and not only the document asked about; `DocumentCompilation.WhatMovedIn` is that one question.
+`CompileScheduler` keys its queue the same way, and remembers the settings each open document was last
+compiled under. An open, an edit or a close schedules the document's own compilation and every other
+open document's whose project includes it (`DocumentConfiguration.ProjectRoleOf`, which the
+compilation asks when it reads its sources), whether or not that compilation has read it yet: that is
+how a newly opened member reaches its project's other open documents, and those of a project over the
+whole tree beside it. It is asked of those settings rather than of what is held, because a compilation
+is not always held. One run compiles a compilation once, and each open document whose own compilation
+it is gets published its share, by the file each diagnostic's span names. A closed source is compiled
+and never published.
 
 Cancellation reaches the one step that can outlast a keystroke. A superseded or closed document's
 compile stops waiting on `protoc` and gives its worker back at once; everything after the load is
