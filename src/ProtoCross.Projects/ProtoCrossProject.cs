@@ -1,4 +1,5 @@
 using System.Xml.Linq;
+using ProtoCross.Backend;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 
@@ -40,6 +41,19 @@ public sealed record ProtoCrossProject
     /// <summary>The directory the project's relative paths and patterns are resolved against: its own.</summary>
     public string Directory => System.IO.Path.GetDirectoryName(Path)!;
 
+    /// <summary>
+    /// The namespace the project's behavior is declared in, which is the project's name: its file's
+    /// name without <see cref="Extension"/>, as its directory lists the file (spec 5.4, 24).
+    /// </summary>
+    /// <remarks>
+    /// Read from the name rather than stated by an element, so that a project has one name and not a
+    /// file called one thing declaring behavior under another. The spelling is the directory's rather
+    /// than the caller's because a file system that ignores case opens <c>Billing.pcproj</c> for
+    /// <c>billing.pcproj</c>, and C++ does not ignore it: a project named by how it was typed would
+    /// declare its behavior in <c>billing</c> on one command line and <c>Billing</c> on the next.
+    /// </remarks>
+    public required ProjectNamespace Namespace { get; init; }
+
     /// <summary>The configuration file the project names, or null when it names none.</summary>
     public NamedPath? Config { get; init; }
 
@@ -57,6 +71,7 @@ public sealed record ProtoCrossProject
     public bool Equals(ProtoCrossProject? other)
         => other is not null
             && string.Equals(Path, other.Path, StringComparison.Ordinal)
+            && Namespace == other.Namespace
             && Config == other.Config
             && Sources.SequenceEqual(other.Sources)
             && Tests.SequenceEqual(other.Tests)
@@ -116,6 +131,7 @@ public sealed record ProtoCrossProject
 
         public ProtoCrossProject? Read()
         {
+            var projectNamespace = ReadName();
             RefuseAttributes(file.Root);
             RefuseText(file.Root);
 
@@ -141,16 +157,75 @@ public sealed record ProtoCrossProject
                 }
             }
 
-            return _failed
+            return _failed || projectNamespace is null
                 ? null
                 : new ProtoCrossProject
                 {
                     Path = path,
+                    Namespace = projectNamespace,
                     Config = _config,
                     Sources = _sources,
                     Tests = _tests,
                     ProtoPaths = _protoPaths,
                 };
+        }
+
+        /// <summary>
+        /// The namespace the project's name names, or null, reported at the start of the file, when it
+        /// names none.
+        /// </summary>
+        /// <remarks>
+        /// A project that cannot name its namespace is refused whole rather than built into a namespace
+        /// nobody chose: the name is every name its consumers spell.
+        /// </remarks>
+        private ProjectNamespace? ReadName()
+        {
+            var name = System.IO.Path.GetFileNameWithoutExtension(ListedName(path));
+            if (ProjectNamespace.TryParse(name, out var projectNamespace))
+            {
+                return projectNamespace;
+            }
+
+            diagnostics.Report(
+                DiagnosticCodes.ProjectNameIsNotANamespace,
+                $"'{name}' cannot name a namespace, and a project's name is the namespace its behavior is "
+                    + "declared in.",
+                SourceSpan.SingleLine(file.Name, 0, 1, 1, 0),
+                "Rename the project file so that its name is identifiers separated by periods, each a letter "
+                    + "followed by letters, digits and underscores, as 'acme.billing.pcproj' is. Its consumers "
+                    + "import the namespace by that name.");
+            _failed = true;
+            return null;
+        }
+
+        /// <summary>
+        /// <paramref name="projectPath"/>'s file name as its directory lists it: the one entry naming
+        /// it in any case, or the name as given where there is not exactly one.
+        /// </summary>
+        /// <remarks>
+        /// Case is ignored in the search whatever the platform, because a directory that ignores case
+        /// is not only a Windows one. Two entries can match only in a directory that keeps case, where
+        /// the name that opened the file already is one of them. The name as given is kept, too, where
+        /// the directory cannot be listed, since the file was read a moment ago and the name that
+        /// opened it is the best there is.
+        /// </remarks>
+        private static string ListedName(string projectPath)
+        {
+            var name = System.IO.Path.GetFileName(projectPath);
+            try
+            {
+                var listed = System.IO.Directory
+                    .EnumerateFiles(System.IO.Path.GetDirectoryName(projectPath)!, "*" + Extension)
+                    .Select(entry => System.IO.Path.GetFileName(entry))
+                    .Where(entry => string.Equals(entry, name, StringComparison.OrdinalIgnoreCase))
+                    .ToList();
+
+                return listed is [var only] ? only : name;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                return name;
+            }
         }
 
         private void ReadItem(XElement element, List<ProjectItem> items)

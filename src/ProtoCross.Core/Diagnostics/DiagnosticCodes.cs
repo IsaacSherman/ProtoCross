@@ -520,4 +520,10 @@ public static class DiagnosticCodes
     /// <summary>A project whose <c>&lt;Sources&gt;</c> match no source, which no build of it can compile (spec 5.4).</summary>
     public static readonly DiagnosticDescriptor ProjectCompilesNothing =
         new("PC2012", DiagnosticSeverity.Error, "project compiles nothing");
+
+    /// <summary>
+    /// A project whose name cannot name the namespace its behavior is declared in (spec 5.4, 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectNameIsNotANamespace =
+        new("PC2013", DiagnosticSeverity.Error, "project name is not a namespace");
 }

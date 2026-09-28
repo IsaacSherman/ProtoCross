@@ -195,6 +195,15 @@ Normative Requirements:
   it names.
 - One project is one compilation and one file. Several may share a directory, and each is a
   compilation of its own.
+- A project's name is its file's name without `.pcproj`, spelled as its directory lists the file
+  rather than as whoever named it typed it, and it names the namespace the project's behavior is
+  declared in ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). It is read as a
+  protobuf package is: identifiers separated by periods, each an ASCII letter followed by ASCII
+  letters, digits and underscores, so `acme.billing.pcproj` is the project `acme.billing`. A project
+  whose name is anything else is `PC2013`, an error at the start of the project file, and is refused
+  whole: every target has to declare that namespace, and a component beginning with a digit or an
+  underscore names none that C# and C++ both can. Renaming a project renames its namespace, and so
+  every name its consumers spell.
 - A project's compilation runs under the configuration file its `<Config>` names, or else the
   nearest one at or above the project's directory, whichever directories its sources are in
   ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).

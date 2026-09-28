@@ -8,7 +8,7 @@ namespace ProtoCross.Tests;
 /// Reading a <c>.pcproj</c> (#106, spec 5.4): what it states, resolved against its own directory,
 /// and every way it can fail, reported at the element or attribute that failed.
 /// </summary>
-public class ProjectFileTests
+public partial class ProjectFileTests
 {
     private const string Wrapper = "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<ProtoCrossProject>\n{0}\n</ProtoCrossProject>\n";
 
