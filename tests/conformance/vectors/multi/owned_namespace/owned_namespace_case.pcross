@@ -1,0 +1,58 @@
+// Conformance vectors for a project's behavior, declared in the project's own namespace: the second
+// of two sources. See owned_namespace_stamps.pcross for what the two pin.
+//
+// Each method here calls one the other source declares, so the call crosses from one source's output
+// into the other's, names the project's namespace, and has two overloads of one name to choose from.
+
+import proto "owned_namespace.proto";
+
+extend OwnedNamespaceCase {
+    fn well_known_wait() -> int64 {
+        if not has started {
+            return -1;
+        }
+
+        return started.seconds_until(now_seconds);
+    }
+
+    fn local_wait() -> int64 {
+        if not has local {
+            return -1;
+        }
+
+        return local.seconds_until(now_seconds);
+    }
+}
+
+test OwnedNamespaceCase.well_known_wait "a method on the well-known type is the one it declares" {
+    receiver {
+        now_seconds = 100;
+
+        started {
+            seconds = 40;
+        }
+    }
+
+    expect return 60;
+}
+
+test OwnedNamespaceCase.local_wait "a message of the same simple name keeps a method of its own" {
+    receiver {
+        now_seconds = 100;
+
+        local {
+            seconds = 40;
+            offset_seconds = 1000;
+        }
+    }
+
+    expect return 1060;
+}
+
+test OwnedNamespaceCase.well_known_wait "an unset time is answered before any call is made" {
+    receiver {
+        now_seconds = 100;
+    }
+
+    expect return -1;
+}

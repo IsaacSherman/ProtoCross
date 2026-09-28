@@ -19,6 +19,7 @@ tests/conformance/
   vectors/<policy>/sweep/      generated vectors, under that directory's policy
   vectors/[<policy>/]multi/<vector>/
     <vector>_*.pcross           one vector written across several sources, compiled as one program
+    <vector>.pcproj             optional: a project, whose namespace the vector's behavior is declared in
 ```
 
 The harness lives in [`tests/ProtoCross.Tests/Conformance/`](../ProtoCross.Tests/Conformance) and runs
@@ -77,6 +78,11 @@ after the source, so a source named anything else could overwrite another vector
 (`ConformanceVectorTests.NoTwoSourcesInTheCorpusGenerateFilesOfOneName` catches it). A `multi/`
 directory goes under a policy directory the same way a single file does, as
 `vectors/checked/multi/foo/`, and its sources find that policy by the same upward search.
+
+A `multi/` directory may also hold a project, `foo.pcproj`, with a `<Sources>` element matching every
+source in it. The vector is then compiled as that project's is, and its behavior is declared in the
+project's namespace rather than beside each message it extends (spec 24). Every other vector is
+compiled without a project, as sources named on the command line are.
 
 One constraint is worth knowing before writing one:
 
@@ -166,6 +172,7 @@ failing. A fully equipped machine should report no skips.
 | `bitwise` | `&` `\|` `^` `~` `<<` `>>`: where each binds among the other operators, the type a literal beside one takes -- the value shifted takes the type expected of the shift and never the count's, and a count literal keeps its own -- a count reduced modulo the width whatever its type and sign, a signed right shift copying the sign bit in and an unsigned one zero-filling, a left shift discarding what passes the width, and the idioms of testing, clearing and packing bits (spec 9.2, 10.1) |
 | `compound_assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=`, each storing what its long form computes: the whole right side as one operand, an integer division's `on_zero` clause after its divisor, a literal on the right taking the target's type and a shift count keeping its own, the target as its own operand, and a local accumulating across a loop (spec 9.2) |
 | `multi/cross_file` | One program written across three sources. Two extend one receiver and each calls a method the other declares, so C# has two parts of one static class and each C++ header includes the other. The third holds only tests, so its behavior output is empty and its driver includes the headers of the sources it tests (spec 5.3, 24.1, 24.2) |
+| `multi/owned_namespace` | A project's behavior, in the project's namespace, compiled into the same assembly and the same link as every other vector's. It extends the well-known `google.protobuf.Timestamp` and a message of its schema's own with the same simple name, each with a method of one name, so C# has two overloads in the project's one class and C++ two in the project's namespace, and the other source calls both (spec 24) |
 | `sweep/integer_sweep` | Every integer `+ - * / %` and unary `-` over every pair of boundary values of each integer type, with the fallback for a zero divisor, and every comparison of the same pairs, under the default wrapping policy (spec 10.1, 10.2). Generated |
 | `sweep/bitwise_sweep` | Every `&` `\|` `^` over every pair of boundary values of each integer type, `~` of each one, and `<<` and `>>` of each one by every count worth trying, in the value's own type; and one value shifted by every count in each other integer type (spec 9.2, 10.1). Generated |
 | `sweep/floating_sweep` | Every floating-point `+ - * / %`, unary `-` and comparison, in `float` and `double`, over both zeros, an inexact fraction, the largest finite value, the smallest subnormal, both infinities and NaN (spec 10.2). Generated |
