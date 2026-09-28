@@ -94,7 +94,10 @@ Open Questions:
 The current implementation defines:
 
 - C# behavior is emitted as extension methods in generated static classes.
-- C++ behavior is emitted as header-only free functions in the protobuf namespace.
+- C++ behavior is emitted as header-only free functions.
+- A project's behavior is declared in a namespace named after the project, whatever message it
+  extends, and behavior compiled without a project is declared beside each message, in that message's
+  namespace. [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy) states why.
 - Target method names are mapped by the backend's protobuf naming convention helpers.
 - Namespace/package mapping follows the generated protobuf target's conventions exactly: a file's
   namespace is the one that generator declares for it. [24.1](./§24-Generated%20API%20Strategy.md#241-c)
@@ -106,7 +109,9 @@ The current implementation defines:
 - Behavior extended onto a message that comes from the protobuf runtime -- a well-known type such as
   `Timestamp` -- is `PC0077`, a warning rather than an error. The code is legal and generates, but a
   consumer already has that message from the runtime and will not have the extensions, which have to
-  ship as a library of their own before anyone can call them.
+  ship as a library of their own before anyone can call them. A project is that library: its
+  namespace keeps its behavior apart from any other library's that extends the same message, where
+  behavior compiled without one is declared in the runtime's namespace beside every other library's.
 - Messages, enums, enum values and package components are named the same way: as the target's
   protobuf generator names them, escaped where it escapes them. A message called `New`, an enum value
   called `new` and a package component called `default` are ordinary in ProtoCross and are not

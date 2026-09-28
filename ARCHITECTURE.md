@@ -138,8 +138,9 @@ each with a form that takes a list of sources.
    compilation produced a whole program.
 9. **Emit.** Backends consume the IR only, one source at a time:
    [`SourceEmission`](src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
-   part of the module (`IrModule.DeclaredIn`) with the options that name its files
-   (`BackendOptions.For`), and keeps one copy of the runtime file every source's output shares.
+   part of the module (`IrModule.DeclaredIn`) with the options that name its files and the namespace
+   its behavior is declared in (`BackendOptions.For`), and keeps one copy of the runtime file every
+   source's output shares.
    It also divides the output by each source's `SourceRole` (spec 25.3.1): a production source's
    behavior goes to the behavior output, and a test source's goes to the test output with every
    source's tests. The binder is what makes that division sound: a production method that calls a
@@ -612,10 +613,18 @@ operation is emitted comes from the behavior annotation the binder stamped on th
 reaches a backend only as prose for the generated file's header.
 
 A backend is handed one source's part of the module, and a call in it may name a method another
-source declares. C# reaches it by the receiver's `partial` extension class, whichever file declares
-the part. A C++ header includes the headers of the sources it calls, after its own declarations and
-before its definitions, so two sources that call each other compile whichever header comes first;
-one that calls none is laid out as it always was.
+source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
+declares the part. A C++ header includes the headers of the sources it calls, after its own
+declarations and before its definitions, so two sources that call each other compile whichever header
+comes first; one that calls none is laid out as it always was.
+
+Where that class or function is declared is each backend's `Placement` (spec 24). A project's
+compilation carries the project's namespace, read from the project's name, from `CompilationOptions`
+through `CompilationResult.ProjectNamespace` to `BackendOptions`, and every class, function, call and
+C++ include guard is placed in it, whatever message the method extends. Without a project there is no
+namespace to carry, and each receiver's behavior is declared beside its message, in the namespace
+protoc declared that message in. The compilation itself never reads the namespace: where behavior is
+declared changes every generated name and nothing a program means.
 
 ## Tests
 

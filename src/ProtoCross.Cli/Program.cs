@@ -182,7 +182,8 @@ static Compilation? CompilationOfProject(string projectPath, CommandLineOptions 
         ? null
         : new Compilation(
             [.. members.Select(member => SourceDocument.ReadFrom(member.Path) with { Role = member.Role })],
-            OptionsFor(options, [.. project.ProtoPaths.Select(protoPath => protoPath.Path), .. options.IncludePaths], config));
+            OptionsFor(options, [.. project.ProtoPaths.Select(protoPath => protoPath.Path), .. options.IncludePaths], config)
+                with { ProjectNamespace = project.Namespace });
 }
 
 /// <summary>What a compilation needs besides its sources, for the build this run asks for.</summary>

@@ -13,9 +13,10 @@ namespace ProtoCross.Backend.Cpp;
 /// Emits a header-only C++ library of free functions over the generated protobuf messages.
 /// </summary>
 /// <remarks>
-/// Spec 24.2 lists several candidate shapes. Free functions in the message's own namespace are
-/// chosen here because they subclass nothing, require no protoc insertion points, and work
-/// identically whether the protobuf codegen is regenerated or vendored. Declarations are emitted
+/// Spec 24.2 lists several candidate shapes. Free functions are chosen here because they subclass
+/// nothing, require no protoc insertion points, and work identically whether the protobuf codegen is
+/// regenerated or vendored. They are declared in the project's namespace, or beside the message in
+/// its own for sources that are not a project's; see <c>Placement</c>. Declarations are emitted
 /// ahead of definitions so methods may call one another in any order.
 /// <para>
 /// A header has two layouts. One whose methods call no other source's declares and defines a
@@ -54,12 +55,13 @@ public sealed class CppBackend : ITestProjectScaffold
     {
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
-        var guard = MakeIncludeGuard(baseName + HeaderExtension);
+        var placement = new Placement(options.ProjectNamespace);
+        var guard = placement.IncludeGuardOf(baseName + HeaderExtension);
 
         WriteHeader(writer, options, guard, module);
 
         var namespaces = module.Methods
-            .GroupBy(m => NameConventions.GetCppNamespace(m.Receiver.File))
+            .GroupBy(m => placement.NamespaceOf(m.Receiver))
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => (Namespace: g.Key, Methods: g.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal)
                 .ThenBy(m => m.Name, StringComparer.Ordinal)
@@ -75,13 +77,13 @@ public sealed class CppBackend : ITestProjectScaffold
                 {
                     WriteDeclarations(writer, methods);
                     writer.WriteLine();
-                    WriteDefinitions(writer, methods);
+                    WriteDefinitions(writer, methods, placement);
                 }
             }
         }
         else
         {
-            WriteAroundSiblings(writer, namespaces, siblings);
+            WriteAroundSiblings(writer, namespaces, siblings, placement);
         }
 
         writer.WriteLine();
@@ -116,7 +118,8 @@ public sealed class CppBackend : ITestProjectScaffold
     private static void WriteAroundSiblings(
         SourceWriter writer,
         IReadOnlyList<(string Namespace, List<IrMethod> Methods)> namespaces,
-        IReadOnlyList<string> siblings)
+        IReadOnlyList<string> siblings,
+        Placement placement)
     {
         foreach (var (name, methods) in namespaces)
         {
@@ -139,7 +142,7 @@ public sealed class CppBackend : ITestProjectScaffold
             writer.WriteLine();
             using (OpenNamespace(writer, name))
             {
-                WriteDefinitions(writer, methods);
+                WriteDefinitions(writer, methods, placement);
             }
         }
     }
@@ -158,7 +161,7 @@ public sealed class CppBackend : ITestProjectScaffold
         }
     }
 
-    private static void WriteDefinitions(SourceWriter writer, IReadOnlyList<IrMethod> methods)
+    private static void WriteDefinitions(SourceWriter writer, IReadOnlyList<IrMethod> methods, Placement placement)
     {
         var first = true;
         foreach (var method in methods)
@@ -169,7 +172,7 @@ public sealed class CppBackend : ITestProjectScaffold
             }
 
             first = false;
-            EmitMethod(writer, method);
+            EmitMethod(writer, method, placement);
         }
     }
 
@@ -215,6 +218,7 @@ public sealed class CppBackend : ITestProjectScaffold
 
         var hasFailTests = module.Tests.Any(t => t.Expectation is IrTestFailExpectation);
         var hasFloatingPointExpectations = module.Tests.Any(ExpectsFloatingPoint);
+        var placement = new Placement(options.ProjectNamespace);
 
         WriteTestHeader(writer, options, HeadersTestedBy(module, baseName), hasFailTests, hasFloatingPointExpectations);
 
@@ -231,7 +235,7 @@ public sealed class CppBackend : ITestProjectScaffold
         foreach (var test in module.Tests)
         {
             writer.WriteLine();
-            EmitCppTest(writer, test, functionNames[test]);
+            EmitCppTest(writer, test, functionNames[test], placement);
         }
 
         return [new GeneratedFile(baseName + NameConventions.TestsSuffix + ".cc", writer.ToString())];
@@ -465,11 +469,11 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine("return failures == 0 ? 0 : 1;");
     }
 
-    private static void EmitCppTest(SourceWriter writer, IrTest test, string functionName)
+    private static void EmitCppTest(SourceWriter writer, IrTest test, string functionName, Placement placement)
     {
         if (test.Expectation is IrTestFailExpectation)
         {
-            EmitCppFailTest(writer, test, functionName);
+            EmitCppFailTest(writer, test, functionName, placement);
             return;
         }
 
@@ -480,10 +484,10 @@ public sealed class CppBackend : ITestProjectScaffold
 
         using var scope = writer.Block($"static bool {functionName}()");
 
-        EmitCppReceiver(writer, test);
+        EmitCppReceiver(writer, test, placement);
 
-        writer.WriteLine($"const auto actual = {CppInvocation(test)};");
-        writer.WriteLine($"const auto expected = {Expression(returnExpectation.Value)};");
+        writer.WriteLine($"const auto actual = {CppInvocation(test, placement)};");
+        writer.WriteLine($"const auto expected = {Expression(returnExpectation.Value, placement)};");
         using (writer.Block($"if ({ExpectationUnmet(test)})"))
         {
             // Printed on stdout rather than stderr so a harness reading the driver sees every
@@ -538,30 +542,30 @@ public sealed class CppBackend : ITestProjectScaffold
     /// Emits the body a child process runs for an <c>expect fail</c> test. It is never called in
     /// the parent, because the call it makes is expected to end the process.
     /// </summary>
-    private static void EmitCppFailTest(SourceWriter writer, IrTest test, string functionName)
+    private static void EmitCppFailTest(SourceWriter writer, IrTest test, string functionName, Placement placement)
     {
         using var scope = writer.Block($"static void {functionName}()");
 
-        EmitCppReceiver(writer, test);
+        EmitCppReceiver(writer, test, placement);
 
         writer.WriteLine("// The call is expected not to return, so its result is deliberately unused.");
         writer.WriteLine(test.Target.ReturnType is VoidType
-            ? $"{CppInvocation(test)};"
-            : $"static_cast<void>({CppInvocation(test)});");
+            ? $"{CppInvocation(test, placement)};"
+            : $"static_cast<void>({CppInvocation(test, placement)});");
     }
 
-    private static void EmitCppReceiver(SourceWriter writer, IrTest test)
+    private static void EmitCppReceiver(SourceWriter writer, IrTest test, Placement placement)
     {
         writer.WriteLine($"{QualifiedTypeName(test.Target.Receiver)} receiver;");
-        EmitCppFixtureFields(writer, "receiver", false, test.Receiver, new NameAllocator());
+        EmitCppFixtureFields(writer, "receiver", false, test.Receiver, new NameAllocator(), placement);
     }
 
-    private static string CppInvocation(IrTest test)
+    private static string CppInvocation(IrTest test, Placement placement)
     {
         var arguments = new List<string> { "receiver" };
-        arguments.AddRange(test.Arguments.Select(a => Expression(a.Value)));
+        arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement)));
 
-        return $"{QualifiedFunctionName(test.Target)}({string.Join(", ", arguments)})";
+        return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
     private static void EmitCppFixtureFields(
@@ -569,7 +573,8 @@ public sealed class CppBackend : ITestProjectScaffold
         string target,
         bool targetIsPointer,
         IrTestMessageValue message,
-        NameAllocator names)
+        NameAllocator names,
+        Placement placement)
     {
         var access = targetIsPointer ? "->" : ".";
         foreach (var value in message.Fields.OrderBy(v => v.Field.FieldNumber))
@@ -581,12 +586,12 @@ public sealed class CppBackend : ITestProjectScaffold
                 var local = names.Next(field.Name);
                 var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
                 writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
-                EmitCppFixtureFields(writer, local, true, value.MessageValue, names);
+                EmitCppFixtureFields(writer, local, true, value.MessageValue, names, placement);
                 continue;
             }
 
             var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
-            writer.WriteLine($"{target}{access}{setter}({Expression(value.ScalarValue!)});");
+            writer.WriteLine($"{target}{access}{setter}({Expression(value.ScalarValue!, placement)});");
         }
     }
 
@@ -659,6 +664,49 @@ public sealed class CppBackend : ITestProjectScaffold
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Where one source's functions are declared, and the name a consumer's build knows its header
+    /// by.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sources that are not a project's declare their functions beside the message, in the namespace
+    /// protoc declared it in, as ProtoCross always has. A project's are declared in the project's
+    /// namespace instead (spec 24). Every function is <c>inline</c>, so two libraries that each
+    /// declared <c>google::protobuf::seconds_left(const Timestamp&amp;)</c> would each compile, link
+    /// together without a word, and share whichever body the linker kept. In namespaces of their own
+    /// they are two functions, which is what they always were.
+    /// </para>
+    /// <para>
+    /// A project's header carries the project's name in its guard for the same reason. Two libraries
+    /// with a <c>pricing.pcross</c> each generate a <c>pricing.pc.h</c>, and one guard between them
+    /// would make whichever was included second vanish from a translation unit that includes both.
+    /// </para>
+    /// </remarks>
+    private sealed record Placement(ProjectNamespace? Project)
+    {
+        public string NamespaceOf(MessageDescriptor receiver)
+            => Project is { } project
+                ? NameConventions.GetCppNamespace(project)
+                : NameConventions.GetCppNamespace(receiver.File);
+
+        public string QualifiedFunctionOf(IrMethodSignature signature)
+        {
+            var ns = NamespaceOf(signature.Receiver);
+            var name = Escape(signature.Name);
+            return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
+        }
+
+        /// <summary>The guard of the header named <paramref name="headerName"/>.</summary>
+        /// <remarks>
+        /// Built from the project's name and the header's as one dotted name, so it is folded exactly
+        /// as a header's own name always has been, and a source's guard outside a project does not
+        /// move.
+        /// </remarks>
+        public string IncludeGuardOf(string headerName)
+            => MakeIncludeGuard(Project is { } project ? $"{project.Package}.{headerName}" : headerName);
+    }
+
     private static string Signature(IrMethod method)
     {
         var parameters = new List<string> { $"const {QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
@@ -669,39 +717,39 @@ public sealed class CppBackend : ITestProjectScaffold
         return $"inline {TypeName(method.ReturnType)} {Escape(method.Name)}({string.Join(", ", parameters)})";
     }
 
-    private static void EmitMethod(SourceWriter writer, IrMethod method)
+    private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         using var scope = writer.Block(Signature(method));
-        EmitStatements(writer, method.Body.Statements);
+        EmitStatements(writer, method.Body.Statements, placement);
     }
 
-    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements)
+    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements, Placement placement)
     {
         foreach (var statement in statements)
         {
-            EmitStatement(writer, statement);
+            EmitStatement(writer, statement, placement);
         }
     }
 
-    private static void EmitStatement(SourceWriter writer, IrStatement statement)
+    private static void EmitStatement(SourceWriter writer, IrStatement statement, Placement placement)
     {
         switch (statement)
         {
             case IrBlock block:
             {
                 using var scope = writer.Block(string.Empty);
-                EmitStatements(writer, block.Statements);
+                EmitStatements(writer, block.Statements, placement);
                 break;
             }
 
             case IrVariableDeclaration declaration:
                 writer.WriteLine(
                     $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = "
-                    + $"{Expression(declaration.Initializer)};");
+                    + $"{Expression(declaration.Initializer, placement)};");
                 break;
 
             case IrAssignment assignment:
-                writer.WriteLine($"{Expression(assignment.Target)} = {Expression(assignment.Value)};");
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {Expression(assignment.Value, placement)};");
                 break;
 
             case IrReturn { Value: null }:
@@ -709,25 +757,25 @@ public sealed class CppBackend : ITestProjectScaffold
                 break;
 
             case IrReturn returnStatement:
-                writer.WriteLine($"return {Expression(returnStatement.Value!)};");
+                writer.WriteLine($"return {Expression(returnStatement.Value!, placement)};");
                 break;
 
             case IrForEach forEach:
             {
                 using var scope = writer.Block(
-                    $"for (const auto& {Escape(forEach.Loop.Name)} : {Expression(forEach.Collection)})");
-                EmitStatements(writer, forEach.Body.Statements);
+                    $"for (const auto& {Escape(forEach.Loop.Name)} : {Expression(forEach.Collection, placement)})");
+                EmitStatements(writer, forEach.Body.Statements, placement);
                 break;
             }
 
             case IrIf ifStatement:
-                EmitIf(writer, ifStatement);
+                EmitIf(writer, ifStatement, placement);
                 break;
 
             case IrWhile whileStatement:
             {
-                using var scope = writer.Block($"while ({Expression(whileStatement.Condition)})");
-                EmitStatements(writer, whileStatement.Body.Statements);
+                using var scope = writer.Block($"while ({Expression(whileStatement.Condition, placement)})");
+                EmitStatements(writer, whileStatement.Body.Statements, placement);
                 break;
             }
 
@@ -740,7 +788,7 @@ public sealed class CppBackend : ITestProjectScaffold
                 break;
 
             case IrExpressionStatement expression:
-                writer.WriteLine($"{Expression(expression.Expression)};");
+                writer.WriteLine($"{Expression(expression.Expression, placement)};");
                 break;
 
             default:
@@ -752,15 +800,15 @@ public sealed class CppBackend : ITestProjectScaffold
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the
     /// source stays an 'else if' in the output instead of gaining a brace level per branch.
     /// </summary>
-    private static void EmitIf(SourceWriter writer, IrIf statement)
+    private static void EmitIf(SourceWriter writer, IrIf statement, Placement placement)
     {
         var keyword = "if";
 
         while (true)
         {
-            using (writer.Block($"{keyword} ({Expression(statement.Condition)})"))
+            using (writer.Block($"{keyword} ({Expression(statement.Condition, placement)})"))
             {
-                EmitStatements(writer, statement.Then.Statements);
+                EmitStatements(writer, statement.Then.Statements, placement);
             }
 
             // The binder only ever puts a block or a nested 'if' in the else branch.
@@ -774,50 +822,46 @@ public sealed class CppBackend : ITestProjectScaffold
             if (statement.Else is IrBlock elseBlock)
             {
                 using var scope = writer.Block("else");
-                EmitStatements(writer, elseBlock.Statements);
+                EmitStatements(writer, elseBlock.Statements, placement);
             }
 
             return;
         }
     }
 
-    private static string Expression(IrExpression expression) => expression switch
+    private static string Expression(IrExpression expression, Placement placement) => expression switch
     {
         IrThis => ReceiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver)}.{NameConventions.GetCppFieldName(field.Field)}()",
+        IrFieldAccess field => $"{Expression(field.Receiver, placement)}.{NameConventions.GetCppFieldName(field.Field)}()",
 
         // Uniform in C++, unlike C#: protoc emits has_x() for every field with presence,
         // message-typed or not.
         IrFieldPresence presence
-            => $"{Expression(presence.Receiver)}.has_{NameConventions.GetCppFieldName(presence.Field)}()",
-        IrMethodCall call => EmitCall(call),
-        IrBinary binary => EmitBinary(binary),
-        IrIntegerDivision division => EmitIntegerDivision(division),
-        IrUnary unary => EmitUnary(unary),
-        IrConversion conversion => EmitConversion(conversion),
+            => $"{Expression(presence.Receiver, placement)}.has_{NameConventions.GetCppFieldName(presence.Field)}()",
+        IrMethodCall call => EmitCall(call, placement),
+        IrBinary binary => EmitBinary(binary, placement),
+        IrIntegerDivision division => EmitIntegerDivision(division, placement),
+        IrUnary unary => EmitUnary(unary, placement),
+        IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 
-    private static string EmitCall(IrMethodCall call)
+    private static string EmitCall(IrMethodCall call, Placement placement)
     {
-        var arguments = new List<string> { Expression(call.Receiver) };
-        arguments.AddRange(call.Arguments.Select(Expression));
+        var arguments = new List<string> { Expression(call.Receiver, placement) };
+        arguments.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
 
-        var ns = NameConventions.GetCppNamespace(call.Target.Receiver.File);
-        var name = Escape(call.Target.Name);
-        var qualified = string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
-
-        return $"{qualified}({string.Join(", ", arguments)})";
+        return $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments)})";
     }
 
-    private static string EmitBinary(IrBinary binary)
+    private static string EmitBinary(IrBinary binary, Placement placement)
     {
-        var left = Expression(binary.Left);
-        var right = Expression(binary.Right);
+        var left = Expression(binary.Left, placement);
+        var right = Expression(binary.Right, placement);
 
         if (binary.OverflowingType is { } scalar)
         {
@@ -952,7 +996,7 @@ public sealed class CppBackend : ITestProjectScaffold
     private static bool UsesFoldableFloatingDivision(IrModule module)
         => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFoldableFloatingDivision);
 
-    private static string EmitIntegerDivision(IrIntegerDivision division)
+    private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement)
     {
         if (division.ResultType is not ScalarType scalar)
         {
@@ -960,8 +1004,8 @@ public sealed class CppBackend : ITestProjectScaffold
                 nameof(division), division.ResultType, "Integer division must produce a scalar.");
         }
 
-        var left = Expression(division.Left);
-        var right = Expression(division.Right);
+        var left = Expression(division.Left, placement);
+        var right = Expression(division.Right, placement);
         var stem = CppRuntime.Stem(division.Behavior)
             + (division.Operator == IrBinaryOperator.Modulo ? "_mod" : "_div");
         var suffix = HelperSuffix(scalar);
@@ -971,15 +1015,15 @@ public sealed class CppBackend : ITestProjectScaffold
             ZeroDivisorBehavior.Unreachable => $"{RuntimeNamespace}::{stem}_{suffix}({left}, {right})",
             ZeroDivisorBehavior.Fail => $"{RuntimeNamespace}::{stem}_or_fail_{suffix}({left}, {right})",
             ZeroDivisorBehavior.Fallback =>
-                $"{RuntimeNamespace}::{stem}_or_{suffix}({left}, {right}, {Expression(division.OnZero!)})",
+                $"{RuntimeNamespace}::{stem}_or_{suffix}({left}, {right}, {Expression(division.OnZero!, placement)})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
     }
 
-    private static string EmitUnary(IrUnary unary)
+    private static string EmitUnary(IrUnary unary, Placement placement)
     {
-        var operand = Expression(unary.Operand);
+        var operand = Expression(unary.Operand, placement);
 
         if (unary.Operator == IrUnaryOperator.Negate)
         {
@@ -1027,7 +1071,7 @@ public sealed class CppBackend : ITestProjectScaffold
     /// and converting a floating-point value outside the target integer's range.
     /// </para>
     /// </remarks>
-    private static string EmitConversion(IrConversion conversion)
+    private static string EmitConversion(IrConversion conversion, Placement placement)
     {
         if (conversion.Behavior != ConversionBehavior.WrapOrSaturate)
         {
@@ -1035,7 +1079,7 @@ public sealed class CppBackend : ITestProjectScaffold
                 nameof(conversion), conversion.Behavior, "Unhandled conversion behavior.");
         }
 
-        var operand = Expression(conversion.Operand);
+        var operand = Expression(conversion.Operand, placement);
         var target = TypeName(conversion.TargetType);
 
         return conversion.Kind switch
@@ -1207,13 +1251,6 @@ public sealed class CppBackend : ITestProjectScaffold
     {
         var ns = NameConventions.GetCppNamespace(message.File);
         var name = NameConventions.GetCppTypeName(message);
-        return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
-    }
-
-    private static string QualifiedFunctionName(IrMethodSignature signature)
-    {
-        var ns = NameConventions.GetCppNamespace(signature.Receiver.File);
-        var name = Escape(signature.Name);
         return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
     }
 

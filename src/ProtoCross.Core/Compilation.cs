@@ -177,6 +177,19 @@ public sealed record CompilationResult(
     public IReadOnlyList<SchemaBesideSource> SchemasBesideSources { get; init; } = [];
 
     /// <summary>
+    /// The namespace this compilation's behavior is declared in, as its options named it, or null when
+    /// its sources are not a project's and each receiver's behavior is declared beside its message
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. Nothing
+    /// in the compilation depends on it. It is carried out because this result is what the generators
+    /// are handed, and the project a compilation was of is the one thing about it that decides where
+    /// every generated name is declared.
+    /// </remarks>
+    public ProjectNamespace? ProjectNamespace { get; init; }
+
+    /// <summary>
     /// What protoc reported about the schemas, one entry per line it wrote, empty when it reported
     /// nothing or was never reached.
     /// </summary>
@@ -235,6 +248,17 @@ public sealed record CompilationOptions
     /// </para>
     /// </remarks>
     public bool SkipTests { get; init; }
+
+    /// <summary>
+    /// The namespace the sources' behavior is declared in when they are a project's, named after the
+    /// project; null declares each receiver's beside its message (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// The compilation only carries it, to <see cref="CompilationResult.ProjectNamespace"/>: where
+    /// behavior is declared changes what every generated name is, and nothing about what the
+    /// program means.
+    /// </remarks>
+    public ProjectNamespace? ProjectNamespace { get; init; }
 }
 
 /// <summary>
@@ -725,7 +749,10 @@ public sealed class Compilation
         // source says, and the answer to it does not depend on the policy.
         if (!EverySourceHasNamesOfItsOwn(diagnostics))
         {
-            return new CompilationResult(null, null, [], diagnostics, Options.Config ?? ProjectConfig.Default, SearchPaths, []);
+            return new CompilationResult(null, null, [], diagnostics, Options.Config ?? ProjectConfig.Default, SearchPaths, [])
+            {
+                ProjectNamespace = Options.ProjectNamespace,
+            };
         }
 
         var config = Options.Config ?? ResolveSharedConfig([.. Sources.Select(source => source.Identity)], diagnostics);
@@ -733,7 +760,10 @@ public sealed class Compilation
         {
             // A project that states a policy and is then silently ignored is worse off than one that
             // states nothing, so a bad config file stops the compilation.
-            return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, SearchPaths, []);
+            return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, SearchPaths, [])
+            {
+                ProjectNamespace = Options.ProjectNamespace,
+            };
         }
 
         var trees = Sources.Select(source => Parse(source, diagnostics)).ToList();
@@ -880,11 +910,16 @@ public sealed class Compilation
             ProductionTypes = binder.ProductionTypes,
             SyntaxTrees = trees,
             SchemasBesideSources = [.. besides.Select(beside => beside.Beside).Distinct()],
+            ProjectNamespace = Options.ProjectNamespace,
         };
 
         // A compilation that parsed its sources and stopped before binding them.
         CompilationResult Stopped(IReadOnlyList<ImportResolution> resolved)
-            => new(null, trees[0].Unit, [], diagnostics, config, SearchPaths, resolved) { SyntaxTrees = trees };
+            => new(null, trees[0].Unit, [], diagnostics, config, SearchPaths, resolved)
+            {
+                SyntaxTrees = trees,
+                ProjectNamespace = Options.ProjectNamespace,
+            };
     }
 
     /// <summary>The imports production sources wrote, as each resolved.</summary>

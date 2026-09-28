@@ -215,7 +215,26 @@ public static class NameConventions
     public static string GetCSharpNamespace(FileDescriptor file)
         => file.GetOptions() is { HasCsharpNamespace: true } options
             ? options.CsharpNamespace
-            : UnderscoresToPascalCase(file.Package, preservePeriod: true);
+            : CSharpNamespaceOfPackage(file.Package);
+
+    /// <summary>
+    /// The C# namespace a project's behavior is declared in: the one protoc declares for a file of
+    /// that package with no <c>csharp_namespace</c>, so <c>acme.billing</c> is <c>Acme.Billing</c>
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// protoc's rule rather than one of this compiler's own, so that a project named after the package
+    /// of its schemas declares its behavior in the namespace their messages are in.
+    /// </remarks>
+    public static string GetCSharpNamespace(ProjectNamespace project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return CSharpNamespaceOfPackage(project.Package);
+    }
+
+    /// <summary>What protoc's C# generator names the namespace of a package.</summary>
+    private static string CSharpNamespaceOfPackage(string package)
+        => UnderscoresToPascalCase(package, preservePeriod: true);
 
     /// <summary>
     /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>, and
@@ -226,8 +245,25 @@ public static class NameConventions
     /// component through <see cref="EscapeCppKeyword"/>. Only the keyword list applies: a package is
     /// not a class, so a component named <c>New</c> or <c>Swap</c> is left alone.
     /// </remarks>
-    public static string GetCppNamespace(FileDescriptor file)
-        => string.Join("::", file.Package.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeCppKeyword));
+    public static string GetCppNamespace(FileDescriptor file) => CppNamespaceOfPackage(file.Package);
+
+    /// <summary>
+    /// The C++ namespace a project's behavior is declared in: the one protoc uses for a file of that
+    /// package, so <c>acme.billing</c> is <c>acme::billing</c> and <c>acme.new</c> is <c>acme::new_</c>
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// protoc's rule for the reason <see cref="GetCSharpNamespace(ProjectNamespace)"/> gives.
+    /// </remarks>
+    public static string GetCppNamespace(ProjectNamespace project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return CppNamespaceOfPackage(project.Package);
+    }
+
+    /// <summary>What protoc's C++ generator names the namespace of a package.</summary>
+    private static string CppNamespaceOfPackage(string package)
+        => string.Join("::", package.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeCppKeyword));
 
     /// <summary>The generated protobuf C++ header for a .proto file: <c>foo.proto</c> to <c>foo.pb.h</c>.</summary>
     public static string GetCppProtoHeader(FileDescriptor file)
