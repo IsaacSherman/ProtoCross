@@ -265,7 +265,7 @@ internal sealed class PerformanceReport
         heading.Append(PerformanceCorpus.Lines(PerformanceCorpus.Normal).ToString(CultureInfo.InvariantCulture));
         heading.Append(" lines; stress is `tests/perf/corpus/wide.pcross` at ");
         heading.Append(PerformanceCorpus.Lines(PerformanceCorpus.Stress).ToString(CultureInfo.InvariantCulture));
-        heading.Append(" lines.\n\n");
+        heading.Append(" lines; project is the stress file compiled with the normal one as the two sources of one project.\n\n");
 
         return heading.ToString();
     }

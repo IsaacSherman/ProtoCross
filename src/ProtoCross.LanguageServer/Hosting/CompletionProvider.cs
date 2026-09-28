@@ -130,7 +130,7 @@ public sealed class CompletionProvider
         // Shared where it is given, for the reason CompileScheduler takes the same argument: a
         // compile a keystroke scheduled and a list asked for between two keystrokes should be one
         // compile. A caller with no interest in that gets one of its own.
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
 
         _deferred = new DeferredAnswers("completion", documents, configuration, concurrency);
     }
@@ -324,7 +324,7 @@ public sealed class CompletionProvider
     private IReadOnlyList<CompletionItem> Symbols(
         CompletionRequest asked, SchemaSubject subject, CancellationToken cancellationToken)
     {
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         if (compiled.Semantics is not { } model || compiled.Result is not { } result)
         {
@@ -333,12 +333,17 @@ public sealed class CompletionProvider
 
         cancellationToken.ThrowIfCancellationRequested();
 
+        // The types a name written here may resolve to, which in a production method of a project
+        // compiled with its tests is fewer than the compilation loaded. Asked once, of the model,
+        // which asks what the binder asked.
+        var types = model.SchemaTypesAt(subject.Start);
+
         if (ExtendedAt(model, subject, asked.Document) is { } extended)
         {
-            return extended.Writable(Receivers(result, extended.Subject, asked.Document));
+            return extended.Writable(Receivers(types, result, extended.Subject, asked.Document));
         }
 
-        if (Targeted(model, result, subject, asked.Document) is { } target)
+        if (Targeted(model, types, result, subject, asked.Document) is { } target)
         {
             return target;
         }
@@ -346,7 +351,7 @@ public sealed class CompletionProvider
         // Before the scope query as well as before the dot, because a type position is one of the
         // places that query declines on purpose -- it returns nothing inside a type reference, and
         // taking that for "no names here" would leave the whole context silent.
-        if (TypesAt(model, result, subject, asked.Document) is { } typePosition)
+        if (TypesAt(model, types, result, subject, asked.Document) is { } typePosition)
         {
             return typePosition;
         }
@@ -708,7 +713,7 @@ public sealed class CompletionProvider
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem>? Targeted(
-        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+        SemanticModel model, SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
     {
         if (model.SyntaxAt(subject.Start)?.Enclosing<TestTarget>() is not { } target
             || result.Module is not { } module)
@@ -721,11 +726,11 @@ public sealed class CompletionProvider
         // are empty ranges at nearly the same place, and only one of them is what is being written.
         if (Covers(target.Method.Span, subject.Start))
         {
-            return Methods(module, result, target, Replacing(subject, target.Method.Span, document), document);
+            return Methods(module, types, target, Replacing(subject, target.Method.Span, document), document);
         }
 
         return Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
-            ? Receivers(module, result, target, Replacing(subject, target.Receiver.Span, document), document)
+            ? Receivers(module, types, result, target, Replacing(subject, target.Receiver.Span, document), document)
             : null;
     }
 
@@ -733,12 +738,12 @@ public sealed class CompletionProvider
     /// <inheritdoc cref="Targeted" path="/remarks/para[2]"/>
     private static IReadOnlyList<CompletionItem> Methods(
         IrModule module,
-        CompilationResult result,
+        SchemaTypes types,
         TestTarget target,
         QualifiedName written,
         OpenDocument document)
     {
-        if (target.Receiver.IsMissing || result.Types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
+        if (target.Receiver.IsMissing || types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
         {
             return [];
         }
@@ -760,15 +765,16 @@ public sealed class CompletionProvider
     /// <inheritdoc cref="Targeted" path="/remarks/para[2]"/>
     private static IReadOnlyList<CompletionItem> Receivers(
         IrModule module,
+        SchemaTypes types,
         CompilationResult result,
         TestTarget target,
         QualifiedName written,
         OpenDocument document)
         => written.Writable(
         [
-            .. result.Types.All
+            .. types.All
                 .Where(type => type.IsMessage && Declares(module, type.FullName, target.Method))
-                .SelectMany(type => Receiver(type, result, written.Subject, document)),
+                .SelectMany(type => Receiver(type, types, result, written.Subject, document)),
         ]);
 
     /// <summary>Whether this message declares the method a target names, or any at all when it names none.</summary>
@@ -790,20 +796,21 @@ public sealed class CompletionProvider
     /// would withhold a name the compiler accepts.
     /// </remarks>
     private static IReadOnlyList<CompletionItem> Receivers(
-        CompilationResult result, SchemaSubject subject, OpenDocument document)
+        SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
         =>
         [
-            .. result.Types.All
+            .. types.All
                 .Where(type => type.IsMessage)
-                .SelectMany(type => Receiver(type, result, subject, document)),
+                .SelectMany(type => Receiver(type, types, result, subject, document)),
         ];
 
+    /// <param name="types">The index <paramref name="type"/> came from, which is the one ambiguity is asked of.</param>
     private static IEnumerable<CompletionItem> Receiver(
-        SchemaTypeName type, CompilationResult result, SchemaSubject subject, OpenDocument document)
+        SchemaTypeName type, SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
     {
         var documentation = Documentation(result, type);
 
-        if (!result.Types.IsAmbiguousAsAReceiverName(type.SimpleName))
+        if (!types.IsAmbiguousAsAReceiverName(type.SimpleName))
         {
             yield return Member(
                 type.SimpleName, CompletionItemKind.Class, type.FullName, documentation, "0", subject, document);
@@ -963,7 +970,7 @@ public sealed class CompletionProvider
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem>? TypesAt(
-        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+        SemanticModel model, SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
     {
         if (model.SyntaxAt(subject.Start) is not { } at)
         {
@@ -997,7 +1004,7 @@ public sealed class CompletionProvider
                 .Select(spelling => Member(
                     spelling, CompletionItemKind.Keyword, "scalar type", null, "0", subject, document)),
 
-            .. result.Types.All.SelectMany(type => Spellings(type, result, subject, document)),
+            .. types.All.SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
     }
 
@@ -1045,13 +1052,14 @@ public sealed class CompletionProvider
                 : null;
 
     /// <summary>The ways one schema type may be written here: qualified always, simple when it is unambiguous.</summary>
+    /// <param name="types">The index <paramref name="type"/> came from, which is the one ambiguity is asked of.</param>
     private static IEnumerable<CompletionItem> Spellings(
-        SchemaTypeName type, CompilationResult result, SchemaSubject subject, OpenDocument document)
+        SchemaTypeName type, SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
     {
         var kind = type.IsMessage ? CompletionItemKind.Class : CompletionItemKind.Enum;
         var documentation = Documentation(result, type);
 
-        if (!result.Types.IsAmbiguousAsATypeName(type.SimpleName))
+        if (!types.IsAmbiguousAsATypeName(type.SimpleName))
         {
             yield return Member(
                 type.SimpleName, kind, type.FullName, documentation, "1", subject, document);

@@ -120,10 +120,39 @@ public sealed record DocumentConfiguration
     public string? ProjectPath { get; init; }
 
     /// <summary>
-    /// The project read from <see cref="ProjectPath"/>, or null when the document has none or it could
-    /// not be read.
+    /// The project read from <see cref="ProjectPath"/>, or null when the document has none, it could not
+    /// be read, or no build of it may compile anything.
     /// </summary>
     public ProtoCrossProject? Project { get; init; }
+
+    /// <summary>
+    /// The files <see cref="Project"/> compiles, which the document is compiled together with, or null
+    /// when the document has no project to compile with.
+    /// </summary>
+    public ProjectFiles? ProjectFiles { get; init; }
+
+    /// <summary>
+    /// The role <paramref name="document"/> has among the sources <see cref="Project"/> compiles, or
+    /// null when there is no project to compile with or its patterns do not include it.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the patterns rather than of <see cref="ProjectFiles"/>, because a project's compilation
+    /// reads an open document its patterns include whether or not the listing has it yet: one created
+    /// since, in a client that did not say so. One statement of which documents a project compiles: the
+    /// compilation asks it when it reads its sources, the cache when it checks that nothing it did not
+    /// read has opened, and the scheduler when a document opens, changes or closes, so the three cannot
+    /// disagree about it. The document these settings were resolved for is not always the one asked
+    /// about: a project over a whole tree compiles a document a nearer project owns, and its other
+    /// documents are told what that document declares.
+    /// </remarks>
+    public SourceRole? ProjectRoleOf(DocumentUri document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return Project is { } project && document.Path is { } path
+            ? ProjectSources.RoleOf(project, path)
+            : null;
+    }
 
     /// <summary>
     /// How the document came to have its project: <see cref="ConfigurationSource.Project"/> when it was
@@ -133,10 +162,13 @@ public sealed record DocumentConfiguration
     /// </summary>
     public ConfigurationSource ProjectSource { get; init; } = ConfigurationSource.Default;
 
-    /// <summary>Whether a project was found for this document and could not be read.</summary>
+    /// <summary>
+    /// Whether a project was found for this document and could not be read, or was read and no build of
+    /// it may compile anything.
+    /// </summary>
     /// <remarks>
     /// The document is then not compiled, and <see cref="Config"/> is null with no file to name: the
-    /// project that would have said which file governs is the thing that could not be read.
+    /// project that would have said which file governs is the thing that was refused.
     /// </remarks>
     public bool ProjectRefused => ProjectPath is not null && Project is null;
 
@@ -237,8 +269,8 @@ public sealed record DocumentConfiguration
     /// unchanged workspace produce the same warnings and are not the same objects, and a report
     /// legitimately cares about those while a compilation cannot see them at all. What this compares
     /// is exactly what <see cref="TryCreateCompilationOptions"/> hands over, plus the folder a source
-    /// path is made relative to -- so a value that could not change the compiled result cannot make
-    /// this answer no.
+    /// path is made relative to and the files compiled with the document -- so a value that could not
+    /// change the compiled result cannot make this answer no.
     /// </para>
     /// <para>
     /// The question exists because the configuration is resolved from files, and files change while
@@ -255,7 +287,9 @@ public sealed record DocumentConfiguration
         return Config == other.Config
             && string.Equals(ProtocPath, other.ProtocPath, StringComparison.Ordinal)
             && PathIdentity.AreSame(Folder?.Path, other.Folder?.Path)
-            && IncludeDirectories.SequenceEqual(other.IncludeDirectories, PathIdentity.Comparer);
+            && IncludeDirectories.SequenceEqual(other.IncludeDirectories, PathIdentity.Comparer)
+            && PathIdentity.AreSame(ProjectPath, other.ProjectPath)
+            && Equals(ProjectFiles, other.ProjectFiles);
     }
 
     /// <summary>
@@ -359,7 +393,7 @@ public sealed record DocumentConfiguration
 
         if (ProjectRefused)
         {
-            return "(not settled: the project could not be read)";
+            return "(not settled: the project was refused)";
         }
 
         return Config?.Path ?? "(defaults)";

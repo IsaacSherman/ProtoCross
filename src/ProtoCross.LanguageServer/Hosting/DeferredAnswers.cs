@@ -201,6 +201,16 @@ public sealed class DeferredAnswers
                     + "answered, so the answer describes text that is no longer there.");
         }
 
+        // Everything else the answer was compiled with as well: a document with a project is compiled
+        // with its siblings, and one of them moving -- edited, or opened with other text than its file
+        // -- changes what this one means.
+        if (asked.Compiled?.WhatMovedIn(_documents) is { } moved)
+        {
+            throw Refuse(
+                $"'{moved}', which '{asked.Uri}' is compiled with, was edited, opened, closed or reopened "
+                    + $"while this {What} was being answered, so the answer rests on text that is no longer there.");
+        }
+
         // The same question the compile scheduler asks, and for the same reason: an include path
         // removed while this ran would otherwise be answered against roots that no longer apply.
         if (_configuration.Current.Generation != asked.Configuration.Generation)

@@ -31,7 +31,7 @@ namespace ProtoCross.Tests.Performance;
 [Collection("Timing-sensitive regressions")]
 public class PerformanceBudgetTests
 {
-    /// <summary>Every budgeted operation, measured on the stress corpus, warm.</summary>
+    /// <summary>Every budgeted operation, measured on the stress corpus, warm, alone and as one source of a project.</summary>
     [Fact]
     public void EveryBudgetedOperationIsWithinItsBudget()
     {
@@ -59,7 +59,7 @@ public class PerformanceBudgetTests
 
         var report = new PerformanceReport();
 
-        foreach (var corpus in new[] { PerformanceCorpus.Normal, PerformanceCorpus.Stress })
+        foreach (var corpus in new[] { PerformanceCorpus.Normal, PerformanceCorpus.Stress, PerformanceCorpus.Project })
         {
             Measure(report, corpus);
         }
@@ -69,7 +69,7 @@ public class PerformanceBudgetTests
         var path = report.Append();
 
         var over = report.Samples
-            .Where(sample => sample.Corpus == PerformanceCorpus.Stress)
+            .Where(sample => sample.Corpus is PerformanceCorpus.Stress or PerformanceCorpus.Project)
             .Select(sample => (sample, budget: PerformanceBudgets.Find(sample.Operation)))
             // Negated rather than `>`, so that a sample which produced no runs at all -- p95 of NaN,
             // which compares false against everything -- fails here instead of passing silently. The
@@ -114,7 +114,7 @@ public class PerformanceBudgetTests
 
         // The widely referenced method, which is the worst case highlighting has and the whole
         // reason the stress file has one. On the normal corpus its nearest equivalent stands in.
-        var shared = corpus == PerformanceCorpus.Stress ? StressCorpus.Shared : "line_total_cents";
+        var shared = corpus == PerformanceCorpus.Normal ? "line_total_cents" : StressCorpus.Shared;
 
         // A call and not the declaration. `At(shared)` would find `fn base_cents(`, because a
         // declaration and a call are the same shape and the declaration comes first -- which is the

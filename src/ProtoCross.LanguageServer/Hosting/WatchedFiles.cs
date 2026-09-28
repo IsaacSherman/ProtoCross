@@ -12,14 +12,21 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Why the server has to be told at all.</b> A compilation is a function of the buffer, the
-/// configuration the buffer resolves to -- its project, and the policy file -- and the schemas that
-/// configuration reaches, and only the buffer arrives as a message. <see cref="DocumentSemantics"/> already refuses to answer from a
-/// compilation whose schemas or policy file have moved, so every <em>question</em> asked after a
-/// <c>.proto</c> is saved gets the new answer. What nothing did was ask: diagnostics are published when
+/// <b>Why the server has to be told at all.</b> A compilation is a function of its sources, the
+/// configuration they resolve to -- the project, and the policy file -- and the schemas that
+/// configuration reaches, and only the open buffers arrive as messages. A project's closed sources are
+/// read from disk. <see cref="DocumentSemantics"/> already refuses to answer from a compilation whose
+/// schemas, policy file or closed sources have moved, so every <em>question</em> asked after a file is
+/// saved gets the new answer. What nothing did was ask: diagnostics are published when
 /// a compile is scheduled, a compile is scheduled by a keystroke, and saving an imported schema in
 /// another tab is not a keystroke in this one. The errors on screen went on describing the schema as it
 /// was -- which #45 calls the most common way an editor lies.
+/// </para>
+/// <para>
+/// <b>A source added or removed is the one change nothing else would notice.</b> What a project
+/// compiles is remembered rather than listed at every question (<see cref="ProjectCatalog"/>), and a
+/// directory listing is not a file whose stamp can be asked. So the ProtoCross sources are watched as
+/// well, and a source created or deleted is what makes the server forget what each project compiles.
 /// </para>
 /// <para>
 /// <b>Every open document is rescheduled, not only the ones that import the file.</b> Which documents
@@ -52,10 +59,46 @@ public static class WatchedFiles
         new($"**/*{SchemaExtension}"),
         new($"**/{ProjectConfig.FileName}"),
         new($"**/*{ProtoCrossProject.Extension}"),
+        new($"**/*{ProjectSources.SourceExtension}"),
     ];
 
     /// <summary>The id the registration is made under, so it could be withdrawn by name.</summary>
     public const string RegistrationId = "protocross.watchedFiles";
+
+    /// <summary>These changes without the saves of documents the editor has open.</summary>
+    /// <remarks>
+    /// An open document is compiled from its buffer and never from its file, so saving it moves nothing a
+    /// compilation read. Left in, every save of a ProtoCross file would recompile every open document,
+    /// since the sources are watched too. A document created or deleted while open is kept: which files a
+    /// project compiles may have moved.
+    /// </remarks>
+    public static IReadOnlyList<FileEvent> ExceptSavesOfOpenDocuments(
+        IEnumerable<FileEvent> changes, Func<DocumentUri, bool> isOpen)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+        ArgumentNullException.ThrowIfNull(isOpen);
+
+        return [.. changes.Where(change => change.Type is not FileChangeType.Changed
+            || !DocumentUri.TryParse(change.Uri, out var uri)
+            || !isOpen(uri))];
+    }
+
+    /// <summary>The ProtoCross sources these changes are to.</summary>
+    /// <remarks>
+    /// What a host discards held compilations for. A closed source's stamp is what says whether a
+    /// compilation that read it is still current, and a tool that keeps a file's timestamp, or a clock
+    /// as coarse as FAT32's, can change the file without moving it; the client saying the file changed
+    /// is the stronger word.
+    /// </remarks>
+    public static IEnumerable<DocumentUri> SourcesIn(IEnumerable<FileEvent> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return changes
+            .Select(change => DocumentUri.TryParse(change.Uri, out var uri) ? uri : null)
+            .OfType<DocumentUri>()
+            .Where(uri => uri.Path is { } path && IsSource(path));
+    }
 
     /// <summary>Whether any of these changes could make an open document compile differently.</summary>
     /// <remarks>
@@ -79,6 +122,22 @@ public static class WatchedFiles
         return changes.Any(change => PathOf(change) is { } path && IsProject(path));
     }
 
+    /// <summary>
+    /// Whether any of these changes could move which files a project compiles: a project file changed,
+    /// or a source was created or deleted.
+    /// </summary>
+    /// <remarks>
+    /// A source that was only edited moves nothing a project lists, and its own stamp says that its text
+    /// moved; forgetting every project's files on each save would list every project again for nothing.
+    /// </remarks>
+    public static bool MoveAProjectsFiles(IEnumerable<FileEvent> changes)
+    {
+        ArgumentNullException.ThrowIfNull(changes);
+
+        return changes.Any(change => PathOf(change) is { } path
+            && (IsProject(path) || (IsSource(path) && change.Type is not FileChangeType.Changed)));
+    }
+
     private static bool Concerns(FileEvent change)
     {
         if (PathOf(change) is not { } path)
@@ -88,6 +147,7 @@ public static class WatchedFiles
 
         return path.EndsWith(SchemaExtension, StringComparison.OrdinalIgnoreCase)
             || IsProject(path)
+            || IsSource(path)
             || string.Equals(Path.GetFileName(path), ProjectConfig.FileName, StringComparison.OrdinalIgnoreCase);
     }
 
@@ -95,4 +155,6 @@ public static class WatchedFiles
         => DocumentUri.TryParse(change.Uri, out var uri) ? uri.Path : null;
 
     private static bool IsProject(string path) => path.EndsWith(ProtoCrossProject.Extension, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsSource(string path) => path.EndsWith(ProjectSources.SourceExtension, StringComparison.OrdinalIgnoreCase);
 }

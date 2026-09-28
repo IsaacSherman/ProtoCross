@@ -105,6 +105,32 @@ Normative Requirements:
   `removedPathEntries` in its initialization options. The account names them when there are any, so a
   `protoc` that lived in one is explained, and says nothing otherwise: a note about entries the user
   never had describes a defence to everybody and helps nobody.
+- **A document with a project is compiled with the project**
+  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), as its test build
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)):
+  every source and every test source, each once, so that a call into another file resolves and a
+  production method calling a test source's method is reported where it is written, as the
+  production build would refuse it. A source the editor has open is compiled from its buffer, and one
+  it does not from its file; a document the project's patterns match is compiled with it even before
+  the project's listing of its files has caught up with it. One compilation serves every open
+  document of the project, and each is published only its own share of it: a diagnostic goes to the
+  document whose file its position is in, and one with no position to every open document of the
+  compilation. **Only open documents are published.** A closed source's problems are shown when it is
+  opened, because nothing would ever withdraw what was published about a file nobody opened. A
+  document that two projects compile, a nearer one and one over a whole tree, is published by its
+  own project, the nearer. A closed source that cannot be read is left out of the compilation and
+  every open document of it is told so, as `PC2111`, a warning at its start: otherwise the only sign
+  is an unresolved name wherever a document calls into that source. It is read again at the next
+  question.
+- **An edit moves every open document of every compilation that read the edited buffer**, with no
+  edit in them: a method renamed in one file is an unresolved name in each file that calls it, and
+  naming it back clears that. Edits to several documents of one project within one pause are one
+  compile. Closing a document compiles the compilations it shared again, with its file, since any
+  edits it had not saved went with the buffer; opening one compiles again every compilation that
+  read its file, since the buffer is what is compiled from then on and may already say something
+  else, and every compilation of an open document whose project includes it, which was compiled
+  without it if the project's listing did not have it yet: its own project's, and a project's over a
+  whole tree beside it alike.
 - **A file's diagnostics survive while any open document still reports them.** Two documents
   importing one broken schema both report it, identical reports are published once, and closing one
   of them does not withdraw the other's.
@@ -116,7 +142,11 @@ Normative Requirements:
   kind of answer and not only for diagnostics -- a hover or a completion computed against text the
   user has already replaced is describing something nobody is looking at -- so a request that can
   answer only about a superseded version is refused as such rather than answered. A stale
-  computation is discarded silently; a refusal is only for a request that is owed a reply.
+  computation is discarded silently; a refusal is only for a request that is owed a reply. **The
+  same holds of everything an answer was compiled with**: a document compiled with its project
+  rests on the project's other sources, and a method renamed in one of them -- edited, or opened
+  with other text than its file, or opened for the first time -- while go-to-definition was being
+  answered would send the caret to a declaration that is gone.
 - **Which buffer an answer is about is settled when the request arrives, not when it is answered**,
   and **the version number alone does not settle it**. A host that reads messages in order and then
   defers the lookup lets the edit queued behind a request be applied first, and measures the position
@@ -130,17 +160,22 @@ Normative Requirements:
 - **A compilation kept and answered from again is checked against everything it was computed from,
   and the buffer is only one of those things.** A host that answers questions between keystrokes
   keeps the compilation it built, because lexing, parsing and binding one file per keystroke is what
-  it is avoiding. Three things decide that compilation and the editor owns one: the buffer, the
-  configuration the document resolves to, and the schemas that configuration reaches. The other two
-  live in files, and a file changes with no keystroke to notice it -- an imported `.proto` edited in
-  another window, a branch switched underneath the session, a `protocross.config.xml` repaired after
-  it was refused. So a kept compilation answers only while the configuration still resolves the same
-  way and the schemas still stand as they were read; the second is the check a descriptor load
-  already makes on its own entries ([21.1](./§21-Interoperability%20With%20Protobuf.md#211-descriptor-input)), asked one level up, because a host that skips it answers
+  it is avoiding. Three things decide that compilation and the editor owns part of one: the sources,
+  of which only the open buffers are the editor's, the configuration the document resolves to --
+  which includes the files its project compiles -- and the schemas that configuration reaches. The
+  rest live in files, and a file changes with no keystroke to notice it -- a closed source of the
+  project saved elsewhere, an imported `.proto` edited in another window, a branch switched
+  underneath the session, a `protocross.config.xml` repaired after it was refused. So a kept
+  compilation answers only while every buffer it read is still the one the editor holds, every closed
+  source it read is still closed with its file's stamp unmoved, every document now open that the
+  project's patterns match is among what it read, the configuration still resolves the same way and
+  the schemas still stand as they were read. The last is the check a descriptor load already makes
+  on its own entries ([21.1](./§21-Interoperability%20With%20Protobuf.md#211-descriptor-input)), asked one level up, because a host that skips it answers
   from a compilation the loader would itself have refused. Without this the cache is observable in
   exactly the way 21.1 forbids, and it is observable as the worst kind of wrong answer: a completion
   offering a field the schema no longer has, which goes on being offered until the user happens to
-  type in this buffer.
+  type in this buffer. A compilation that could not read a source, or read one written too recently
+  for its stamp to be trusted, is answered from and not kept.
 - **A compilation whose schemas failed to load is not reused at all**, which is 21.1's rule applied
   at a second layer rather than a new one. There is no closure to compare against, because `protoc`
   never reported one, and treating that as "nothing to check" makes the refusal permanent: the author
@@ -161,16 +196,23 @@ Normative Requirements:
   one, and diagnostics are published when a compile runs. Saving an imported `.proto` in another tab,
   or repairing a refused `protocross.config.xml`, is not a keystroke in the ProtoCross buffer, so without
   this the errors on screen go on describing the file as it was. A host that can ask its client to
-  watch files asks for `**/*.proto` and `**/protocross.config.xml` once initialized, and on any change
-  to such a file recompiles every open document; each compile answers from what it holds wherever the
-  schemas and policy it read still stand. Every document rather than only the importers, because the
+  watch files asks for `**/*.proto`, `**/protocross.config.xml`, `**/*.pcproj` and `**/*.pcross` once
+  initialized, and on any change to such a file recompiles every open document; each compile answers
+  from what it holds wherever the schemas, policy and closed sources it read still stand. A save of a
+  document the editor has open recompiles nothing, because its buffer is what is compiled. What each
+  project compiles is remembered rather than listed at every question, so a project file changed, or
+  a source created or deleted, is what makes the host list them again: that is a change no file's
+  stamp shows. A reported change to a source discards what is kept that read it, whatever its stamp
+  says, because a tool that keeps a file's timestamp, or a clock as coarse as FAT32's, can change a
+  file without moving it. Every document rather than only the importers, because the
   document that most needs recompiling is the one whose load failed and so recorded nothing. A change
   to any other file recompiles nothing. A schema outside every workspace folder is outside what a
   client watches, and is seen on the next edit.
   **The host also recompiles every open document once, when the client agrees to watch.** Until then
   a change is reported to nobody, and the first compile may already have read the file as it was, so
   a save in a session's first moments would otherwise leave diagnostics describing the old file until
-  the next change to it. Every document rather than only those whose kept compilation is out of date,
+  the next change to it. It forgets which files each project compiles then as well, since a source
+  created before the client was watching was reported to nobody either. Every document rather than only those whose kept compilation is out of date,
   because what is kept is not necessarily what was published: a question asked after the save can
   rebuild it, and the diagnostics on screen would then be passed over as current.
 - **Closing a document withdraws what it published and abandons what is outstanding for it.** Work

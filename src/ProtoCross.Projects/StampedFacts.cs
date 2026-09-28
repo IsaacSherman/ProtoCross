@@ -5,8 +5,23 @@ namespace ProtoCross.Projects;
 /// <summary>When a file-system entry last changed, as far as a stat can tell without reading it.</summary>
 /// <param name="Written">Its last write, in UTC.</param>
 /// <param name="Length">Its length for a file, and zero for a directory.</param>
-internal readonly record struct EntryStamp(DateTime Written, long Length)
+/// <remarks>
+/// Public because an editor holding what it read from a project's closed sources has to ask whether each
+/// of them has changed since, and a second statement of what "changed" means would be a second answer
+/// to when a stamp may be trusted.
+/// </remarks>
+public readonly record struct EntryStamp(DateTime Written, long Length)
 {
+    /// <summary>How old a stamp has to be before what was read under it may be kept.</summary>
+    /// <remarks>See <see cref="StampedFacts{T}"/>, which says why a recent stamp is not trusted and why this long.</remarks>
+    public static TimeSpan Settling { get; } = TimeSpan.FromMilliseconds(50);
+
+    /// <summary>
+    /// Whether this stamp is old enough that a change made after it was taken would move it, so that
+    /// what was read under it may be kept.
+    /// </summary>
+    public bool IsSettled => DateTime.UtcNow - Written >= Settling;
+
     /// <summary>A directory's stamp: its last write moves whenever an entry is added, removed or renamed in it.</summary>
     public static EntryStamp OfDirectory(string path) => new(Directory.GetLastWriteTimeUtc(path), 0);
 
@@ -34,7 +49,7 @@ internal readonly record struct EntryStamp(DateTime Written, long Length)
 /// <para>
 /// <b>A stamp too recent to trust is not trusted.</b> A timestamp is only as fine as the clock that
 /// wrote it, so an entry changed again within the same tick as the read that was kept would show no
-/// change. What was read from an entry whose stamp is less than <see cref="Settling"/> old is therefore
+/// change. What was read from an entry whose stamp is less than <see cref="EntryStamp.Settling"/> old is therefore
 /// not kept, and the entry is read again next time, which is how a version-control tool treats the same
 /// question about its own index. An entry written a moment ago -- the case an editor meets most, since
 /// the user has just saved it -- is always read afresh.
@@ -55,9 +70,6 @@ internal readonly record struct EntryStamp(DateTime Written, long Length)
 /// </remarks>
 internal sealed class StampedFacts<T>
 {
-    /// <summary>How old a stamp has to be before what was read under it is kept.</summary>
-    internal static readonly TimeSpan Settling = TimeSpan.FromMilliseconds(50);
-
     private readonly ConcurrentDictionary<string, (EntryStamp Stamp, T Value)> _entries = new(PathIdentity.Comparer);
 
     /// <summary>How many times everything has been forgotten; see <see cref="Clear"/>.</summary>
@@ -91,7 +103,7 @@ internal sealed class StampedFacts<T>
         lock (_publication)
         {
             if (_clears == clears
-                && DateTime.UtcNow - stamp.Written >= Settling
+                && stamp.IsSettled
                 && (worthKeeping?.Invoke(value) ?? true))
             {
                 _entries[path] = (stamp, value);

@@ -19,6 +19,10 @@ public partial class WatchedFileTests
     {
         var (directory, uri) = Workspace(WithWidth);
         var project = Path.Combine(directory, "billing.pcproj");
+
+        // On disk as well as open, because a project is built from what its patterns find there, and
+        // one whose only source has never been written compiles nothing once it is repaired either.
+        File.WriteAllText(new Uri(uri).LocalPath, ReadsWidth);
         File.WriteAllText(project, "<ProtoCrossProject><Sources Include=\"*.pcross\">");
 
         await using var client = await WatchingAsync(directory);
@@ -63,6 +67,10 @@ public partial class WatchedFileTests
     {
         var (directory, uri) = Workspace(WithWidth);
         var project = Path.Combine(directory, "billing.pcproj");
+
+        // On disk as well as open, because a project is built from what its patterns find there, and
+        // one whose only source has never been written compiles nothing once it is repaired either.
+        File.WriteAllText(new Uri(uri).LocalPath, ReadsWidth);
         var stamp = DateTime.UtcNow.AddHours(-1);
 
         // The same length either way: a space where the repaired project closes its element.

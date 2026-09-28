@@ -26,6 +26,15 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// text would say everything twice.
 /// </para>
 /// <para>
+/// <b>One document's share of a compilation that holds several.</b> A document compiled with its
+/// project shares a compilation with the project's other sources, and what the compiler says about each
+/// of them is placed in that source's text. A diagnostic is filed under the document unless its span
+/// names another source of the compilation, and not this one, by the name spans carry; <c>PC2006</c> is
+/// what keeps two sources of one compilation from sharing a name, and when two do, the diagnostic saying
+/// so is filed under both. One with no position at all is about the compilation, and every document of
+/// it gets it, as a lone document always has.
+/// </para>
+/// <para>
 /// <b>When protoc could not be found at all, PC0003 keeps its code and its place and says what an editor
 /// user can do.</b> The command line's message suggests restoring a NuGet package and gives no address,
 /// which is advice for somebody building the repository rather than somebody who installed an
@@ -75,9 +84,15 @@ public static class CompilationDiagnostics
         contribution.Claim(owner);
 
         var protoc = result.SchemaFailure is { Output.Count: > 0 } failure ? failure.Output : null;
+        var sources = SourcesSeenFrom.Of(result, owner);
 
         foreach (var diagnostic in result.Diagnostics)
         {
+            if (!sources.Owns(diagnostic.Span))
+            {
+                continue;
+            }
+
             var isSchemaLoadFailure = string.Equals(diagnostic.Code, SchemaLoadFailed, StringComparison.Ordinal);
 
             if (protoc is not null && isSchemaLoadFailure)
@@ -94,10 +109,28 @@ public static class CompilationDiagnostics
 
         if (protoc is not null)
         {
-            Route(protoc, result, owner, resolvePaths, contribution);
+            Route(protoc, result, owner, sources, resolvePaths, contribution);
         }
 
         return contribution;
+    }
+
+    /// <summary>A compilation's sources, told apart into the one a document is and the others.</summary>
+    /// <param name="Owner">The name the document's spans carry, or null when the compilation never parsed it.</param>
+    /// <param name="Others">The names every other source's spans carry.</param>
+    private sealed record SourcesSeenFrom(string? Owner, IReadOnlySet<string> Others)
+    {
+        public static SourcesSeenFrom Of(CompilationResult result, DocumentUri owner)
+            => new(
+                result.SyntaxTrees.FirstOrDefault(tree => SymbolLocations.IsIn(tree.Document, owner))?.Document.Name,
+                result.SyntaxTrees
+                    .Where(tree => !SymbolLocations.IsIn(tree.Document, owner))
+                    .Select(tree => tree.Document.Name)
+                    .ToHashSet(StringComparer.Ordinal));
+
+        /// <summary>Whether a diagnostic or declaration at <paramref name="span"/> is in the document.</summary>
+        public bool Owns(ProtoCross.Diagnostics.SourceSpan span)
+            => span.IsNone || span.File == Owner || !Others.Contains(span.File);
     }
 
     /// <summary>Files each line protoc wrote against the schema it blamed and against the import.</summary>
@@ -105,15 +138,17 @@ public static class CompilationDiagnostics
         IReadOnlyList<ProtocDiagnostic> output,
         CompilationResult result,
         DocumentUri owner,
+        SourcesSeenFrom sources,
         IReadOnlyList<string> resolvePaths,
         DiagnosticContribution contribution)
     {
         var texts = new Dictionary<string, string?>(PathIdentity.Comparer);
+        var imports = result.Imports.Where(import => sources.Owns(import.Span)).ToList();
 
         foreach (var entry in output)
         {
             var schema = Locate(entry.File, resolvePaths);
-            var import = ImportFor(result, schema);
+            var import = ImportFor(imports, schema);
 
             Location? location = null;
 
@@ -141,9 +176,9 @@ public static class CompilationDiagnostics
     /// The one diagnostic the ProtoCross buffer always gets, whatever else was published elsewhere.
     /// </summary>
     /// <remarks>
-    /// Attached to the import that reached the failing schema when one can be identified, and to the
-    /// first import otherwise -- there always is one, because a compilation with no imports never
-    /// reaches protoc. When the blamed file is not the imported file the message says so, because a
+    /// Attached to the document's import that reached the failing schema when one can be identified, to
+    /// its first import otherwise, and to its start when it has none -- which only a document compiled
+    /// with others can be, since a compilation with no imports never reaches protoc. When the blamed file is not the imported file the message says so, because a
     /// squiggle on <c>import proto "invoice.proto"</c> reporting an error in <c>money.proto</c> is
     /// otherwise simply confusing.
     /// </remarks>
@@ -188,17 +223,17 @@ public static class CompilationDiagnostics
     private static string? Locate(string? file, IReadOnlyList<string> resolvePaths)
         => string.IsNullOrWhiteSpace(file) ? null : SchemaLookup.Find(file, resolvePaths);
 
-    /// <summary>Which import reached this schema, or the first one when that cannot be told.</summary>
-    private static ImportResolution? ImportFor(CompilationResult result, string? schema)
+    /// <summary>Which of the document's imports reached this schema, or its first when that cannot be told.</summary>
+    private static ImportResolution? ImportFor(IReadOnlyList<ImportResolution> imports, string? schema)
     {
-        if (result.Imports.Count == 0)
+        if (imports.Count == 0)
         {
             return null;
         }
 
         if (schema is not null)
         {
-            foreach (var import in result.Imports)
+            foreach (var import in imports)
             {
                 if (import.ResolvedPath is { } resolved && PathIdentity.AreSame(resolved, schema))
                 {
@@ -207,7 +242,7 @@ public static class CompilationDiagnostics
             }
         }
 
-        return result.Imports[0];
+        return imports[0];
     }
 
     /// <summary>

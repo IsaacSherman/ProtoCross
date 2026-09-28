@@ -189,6 +189,10 @@ Normative Requirements:
   code nobody asked for.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a
   typo, and the rest of the project still stands.
+- A project whose `<Sources>` match no source compiles nothing, and is `PC2012`, an error at the
+  start of the project file, in either build. A test build generates what the production build does,
+  so a project with nothing to ship leaves both builds nothing to generate, however many test sources
+  it names.
 - One project is one compilation and one file. Several may share a directory, and each is a
   compilation of its own.
 - A project's compilation runs under the configuration file its `<Config>` names, or else the
@@ -206,5 +210,5 @@ Implementation Note:
   `--test-out` it runs the production build, and with it the test build
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - An editor settles each document's settings through its project
-  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), but still compiles each document
-  on its own.
+  ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)), and compiles each document with
+  its project, as the project's test build ([26.1](./§26-Diagnostics.md#261-diagnostics-in-an-editor)).

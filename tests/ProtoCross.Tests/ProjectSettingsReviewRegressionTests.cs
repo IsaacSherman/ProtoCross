@@ -25,9 +25,12 @@ public class ProjectSettingsReviewRegressionTests
             ("a.pcproj", Project("*.pcross")),
             ("b.pcproj", Project(initiallyShared ? "*.pcross" : "other/*.pcross")));
         var uri = DocumentUri.FromPath(Path.Combine(root, "source.pcross"));
-        var document = new DocumentStore().Open(
-            uri, "protocross", 1,
-            "import proto \"invoice.proto\"; extend InvoiceItem { fn value() -> int64 { return quantity; } }");
+        const string Text = "import proto \"invoice.proto\"; extend InvoiceItem { fn value() -> int64 { return quantity; } }";
+
+        // On disk as well as open: a project whose only source has never been written compiles
+        // nothing, and is refused (spec 5.4).
+        File.WriteAllText(uri.Path!, Text);
+        var document = new DocumentStore().Open(uri, "protocross", 1, Text);
         var configuration = WorkspaceConfiguration.Empty with
         {
             Generation = 1,

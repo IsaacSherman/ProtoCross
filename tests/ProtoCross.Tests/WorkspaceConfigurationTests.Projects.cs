@@ -20,6 +20,19 @@ public partial class WorkspaceConfigurationTests
     private static string WriteProject(string directory, string name, string body)
         => TestPaths.WriteSources(directory, (name, $"<ProtoCrossProject>\n{body}\n</ProtoCrossProject>\n"))[0];
 
+    /// <summary>
+    /// A source <paramref name="name"/> in <paramref name="directory"/>, written to disk as an empty file.
+    /// </summary>
+    /// <remarks>
+    /// On disk, and not only named, because a project is built from what its patterns find there: a
+    /// project whose only source has never been written compiles nothing, and is refused (spec 5.4).
+    /// </remarks>
+    private static DocumentUri Member(string directory, string name = "source.pcross")
+    {
+        TestPaths.WriteSources(directory, (name, string.Empty));
+        return Document(directory, name);
+    }
+
     /// <summary>A directory below <paramref name="directory"/>, created.</summary>
     private static string Subdirectory(string directory, string name)
         => Directory.CreateDirectory(Path.Combine(directory, name)).FullName;
@@ -41,7 +54,7 @@ public partial class WorkspaceConfigurationTests
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { IncludePaths = [folderSchemas] }))
             .WithUserSettings(new ProtoCrossSettings { IncludePaths = [userSchemas] })
-            .Resolve(Document(directory));
+            .Resolve(Member(directory));
 
         Assert.Equal([projectSchemas, folderSchemas, userSchemas], resolved.IncludePaths.Select(include => include.Path));
         Assert.Equal(
@@ -62,7 +75,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(directory, "billing.pcproj", "<Config>strict.xml</Config>\n<Sources Include=\"*.pcross\" />");
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { ConfigPath = settingPolicy }))
-            .Resolve(Document(directory));
+            .Resolve(Member(directory));
 
         Assert.Equal(OverflowPolicy.Checked, resolved.Config?.Overflow);
         Assert.Equal(projectPolicy, resolved.ConfigPath);
@@ -88,7 +101,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(billing, "billing.pcproj", "<Sources Include=\"../shared/*.pcross\" />");
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { ProjectPath = "billing/billing.pcproj" }))
-            .Resolve(Document(shared));
+            .Resolve(Member(shared));
 
         Assert.Equal(OverflowPolicy.Checked, resolved.Config?.Overflow);
         Assert.Empty(resolved.Diagnostics);
@@ -107,7 +120,7 @@ public partial class WorkspaceConfigurationTests
         TempFile(legacy, ProjectConfig.FileName, SaturatingOverflow);
         WriteProject(directory, "billing.pcproj", "<Sources Include=\"**/*.pcross\" />");
 
-        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Document(legacy));
+        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Member(legacy));
 
         Assert.Equal(OverflowPolicy.Checked, resolved.Config?.Overflow);
         Assert.Contains(resolved.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.MemberUnderAnotherConfig.Code);
@@ -126,7 +139,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(directory, "billing.pcproj", "<Config>missing.xml</Config>\n<Sources Include=\"src/*.pcross\" />\n<ProtoPath>schemas</ProtoPath>");
         var workspace = Workspace(WorkspaceFolder.FromPath(directory));
 
-        var resolved = workspace.Resolve(Document(directory, "scratch.pcross"));
+        var resolved = workspace.Resolve(Member(directory, "scratch.pcross"));
 
         Assert.Null(resolved.ProjectPath);
         Assert.Empty(resolved.IncludePaths);
@@ -148,7 +161,7 @@ public partial class WorkspaceConfigurationTests
         var first = WriteProject(directory, "audit.pcproj", "<Sources Include=\"*.pcross\" />");
         WriteProject(directory, "billing.pcproj", "<Sources Include=\"*.pcross\" />");
 
-        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Document(directory));
+        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Member(directory));
 
         Assert.Equal(first, resolved.ProjectPath);
         var warning = Assert.Single(resolved.Diagnostics, diagnostic => diagnostic.Code == HostDiagnosticCodes.ProjectsShareADocument.Code);
@@ -165,7 +178,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(src, "local.pcproj", "<Sources Include=\"*.pcross\" />");
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { ProjectPath = "build/release.pcproj" }))
-            .Resolve(Document(src));
+            .Resolve(Member(src));
 
         Assert.Equal(named, resolved.ProjectPath);
         Assert.Equal(ConfigurationSource.FolderSetting, resolved.ProjectSource);
@@ -184,7 +197,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(scratch, "local.pcproj", "<Sources Include=\"*.pcross\" />");
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { ProjectPath = "build/release.pcproj" }))
-            .Resolve(Document(scratch));
+            .Resolve(Member(scratch));
 
         Assert.Null(resolved.ProjectPath);
         Assert.Contains(
@@ -203,7 +216,7 @@ public partial class WorkspaceConfigurationTests
         var nearest = WriteProject(directory, "billing.pcproj", "<Sources Include=\"*.pcross\" />");
 
         var resolved = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { ProjectPath = "gone.pcproj" }))
-            .Resolve(Document(directory));
+            .Resolve(Member(directory));
 
         Assert.Equal(nearest, resolved.ProjectPath);
         Assert.Contains(resolved.Diagnostics, diagnostic => diagnostic.Code == HostDiagnosticCodes.ProjectNotFound.Code);
@@ -235,7 +248,7 @@ public partial class WorkspaceConfigurationTests
         var directory = TempDirectory();
         WriteProject(directory, "billing.pcproj", "<Sources Include=\"*.pcross\" />\n<Arithmetic />");
 
-        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Document(directory));
+        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Member(directory));
 
         Assert.True(resolved.ProjectRefused);
         Assert.False(resolved.IsUsable, "a document whose project cannot be read must not be compiled");
@@ -257,7 +270,7 @@ public partial class WorkspaceConfigurationTests
         var directory = TempDirectory();
         WriteProject(directory, "billing.pcproj", "<Config>strict.xml</Config>\n<Sources Include=\"*.pcross\" />");
 
-        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Document(directory));
+        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Member(directory));
 
         Assert.False(resolved.IsUsable);
         Assert.True(resolved.ConfigRefused);
@@ -276,7 +289,7 @@ public partial class WorkspaceConfigurationTests
         TempFile(directory, "strict.xml", CheckedOverflow);
         WriteProject(directory, "billing.pcproj", "<Config>strict.xml</Config>\n<Sources Include=\"*.pcross\" />\n<ProtoPath>schemas</ProtoPath>");
 
-        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).WithTrust(WorkspaceTrust.Untrusted).Resolve(Document(directory));
+        var resolved = Workspace(WorkspaceFolder.FromPath(directory)).WithTrust(WorkspaceTrust.Untrusted).Resolve(Member(directory));
 
         Assert.Equal([schemas], resolved.IncludeDirectories);
         Assert.Equal(OverflowPolicy.Checked, resolved.Config?.Overflow);
@@ -292,7 +305,7 @@ public partial class WorkspaceConfigurationTests
         WriteProject(directory, "billing.pcproj", "<Sources Include=\"*.pcross\" />\n<ProtoPath>schemas</ProtoPath>");
 
         var roots = Workspace(WorkspaceFolder.FromPath(directory, settings: new ProtoCrossSettings { IncludePaths = [folderSchemas] }))
-            .ResolveImportRoots(Document(directory));
+            .ResolveImportRoots(Member(directory));
 
         Assert.Equal([schemas, folderSchemas], roots.IncludeDirectories);
     }
@@ -304,7 +317,7 @@ public partial class WorkspaceConfigurationTests
         var directory = TempDirectory();
         var project = WriteProject(directory, "billing.pcproj", "<Sources Include=\"*.pcross\" />");
 
-        var facts = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Document(directory)).Describe();
+        var facts = Workspace(WorkspaceFolder.FromPath(directory)).Resolve(Member(directory)).Describe();
 
         Assert.Equal(new ConfigurationFact("project", project, ConfigurationSource.Project), facts[0]);
     }

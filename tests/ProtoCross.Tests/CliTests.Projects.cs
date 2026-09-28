@@ -467,6 +467,7 @@ public partial class CliTests
         var run = Run(directory, ["billing.pcproj", "-o", "out", .. buildTests ? new[] { "--test-out", "tests-out" } : []]);
 
         Assert.True(run.ExitCode == 2, run.Output);
-        Assert.Contains("error: billing.pcproj compiles nothing", run.Output, StringComparison.Ordinal);
+        Assert.Contains(DiagnosticCodes.ProjectCompilesNothing.Code, run.Output, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(Path.Combine(directory, "out")), "a project that compiles nothing writes nothing");
     }
 }

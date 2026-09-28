@@ -44,6 +44,34 @@ public abstract class DocumentRequest
 
     /// <summary>The settings this is about, as an object rather than as a generation.</summary>
     public WorkspaceConfiguration Configuration { get; }
+
+    private DocumentCompilation? _compiled;
+
+    /// <summary>The compilation the answer was worked out from, or null until it has compiled.</summary>
+    /// <remarks>
+    /// A document with a project is compiled with the project's other sources, so an answer about this
+    /// one can be made out of date by a change to another: a method renamed in a sibling, or a sibling
+    /// read from its file opened with other text, while go-to-definition was being answered would send
+    /// the caret to a declaration that is no longer there. <see cref="DeferredAnswers.Require"/> asks
+    /// it what moved, so the refusal covers everything the answer rests on and not only the document it
+    /// was asked about.
+    /// </remarks>
+    public DocumentCompilation? Compiled => Volatile.Read(ref _compiled);
+
+    /// <summary>Compiles the buffer this is about, and remembers the compilation.</summary>
+    /// <remarks>
+    /// The one way an answer compiles, so that no answer can rest on a compilation
+    /// <see cref="Compiled"/> does not name.
+    /// </remarks>
+    public DocumentCompilation CompileWith(DocumentSemantics semantics, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(semantics);
+
+        var compiled = semantics.For(Document, Configuration, cancellationToken);
+        Volatile.Write(ref _compiled, compiled);
+
+        return compiled;
+    }
 }
 
 /// <summary>A request about one caret.</summary>
