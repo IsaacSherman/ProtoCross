@@ -122,6 +122,24 @@ public class ConformanceVectorTests
         Assert.Contains(ConformanceVectors.All, vector => vector.SourcePaths.Count > 1);
     }
 
+    /// <summary>
+    /// A directory under <c>multi/</c> that holds a project is compiled as that project, and its
+    /// behavior is declared in the project's namespace (spec 24). There is at least one.
+    /// </summary>
+    /// <remarks>
+    /// Asserted for the reason the test above is. Compiled without its project, the vector would
+    /// still pass in both backends, beside its messages, and the corpus would stop running a
+    /// project's behavior with nothing saying so.
+    /// </remarks>
+    [Fact]
+    public void TheCorpusHoldsAVectorCompiledAsAProject()
+    {
+        var projects = ConformanceVectors.All.Where(vector => vector.ProjectNamespace is not null).ToList();
+
+        Assert.NotEmpty(projects);
+        Assert.All(projects, project => Assert.Equal(project.ProjectNamespace, ConformanceVectors.Compile(project).ProjectNamespace));
+    }
+
     public static TheoryData<string> Names => ConformanceVectors.Names;
 
     /// <summary>

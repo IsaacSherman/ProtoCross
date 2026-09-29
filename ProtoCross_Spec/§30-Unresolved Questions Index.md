@@ -85,6 +85,11 @@ This section should be maintained as the authoritative list of open decisions.
 - Third-party backend support.
 - ~~Generated API shape for implemented backends.~~ Decided: C# extension methods and C++ header-only
   free functions ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). Python remains open because no backend exists.
+- ~~Which namespace generated behavior is declared in, and who owns it.~~ Decided: a project's is
+  declared in a namespace named after the project, whatever message it extends, and behavior
+  compiled without a project beside each message it extends
+  ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy),
+  [5.4](./§5-Source%20Organization.md#54-projects)).
 - Diagnostic compatibility.
 - Language version declaration.
 - Generated API compatibility.

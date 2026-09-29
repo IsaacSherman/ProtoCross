@@ -1,0 +1,25 @@
+// Conformance vectors for a project's behavior, declared in the project's own namespace: the first of
+// two sources.
+//
+// This directory holds a project, owned_namespace.pcproj, so the behavior of both sources is declared
+// in the namespace named after it -- OwnedNamespace in C#, owned_namespace in C++ -- whatever message
+// it extends (spec 24). This source extends google.protobuf.Timestamp, which the project does not own
+// and which arrives with the protobuf runtime (PC0077 says so), and the schema's own message of the
+// same simple name, each with a method of one name. In C# the two are overloads in the project's one
+// class, told apart by the type of `this`; in C++ they are overloads in the project's namespace. Beside
+// their messages, a second library extending the well-known type the same way would have declared
+// exactly these names. owned_namespace_case.pcross calls both, and holds the tests.
+
+import proto "owned_namespace.proto";
+
+extend google.protobuf.Timestamp {
+    fn seconds_until(later: int64) -> int64 {
+        return later - seconds;
+    }
+}
+
+extend protocross.conformance.Timestamp {
+    fn seconds_until(later: int64) -> int64 {
+        return later - seconds + offset_seconds;
+    }
+}

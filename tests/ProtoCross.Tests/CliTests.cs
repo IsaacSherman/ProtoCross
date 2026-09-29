@@ -90,12 +90,15 @@ public partial class CliTests
                 StringComparer.Ordinal);
 
     /// <summary>
-    /// What the library generates for <paramref name="sources"/> compiled together, laid out as the
-    /// command line lays it out under <c>-o out --test-out tests</c>.
+    /// What the library generates for <paramref name="sources"/> compiled together, as a project's
+    /// behavior in <paramref name="projectNamespace"/> when there is one, laid out as the command line
+    /// lays it out under <c>-o out --test-out tests</c>.
     /// </summary>
-    private static Dictionary<string, string> GeneratedByTheLibrary(IReadOnlyList<string> sources)
+    private static Dictionary<string, string> GeneratedByTheLibrary(
+        IReadOnlyList<string> sources,
+        ProjectNamespace? projectNamespace = null)
     {
-        var result = Compilation.Compile(sources, [TestPaths.ExampleProtoDirectory]);
+        var result = Compilation.Compile(sources, [TestPaths.ExampleProtoDirectory]) with { ProjectNamespace = projectNamespace };
         Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics));
 
         var diagnostics = new DiagnosticBag();
@@ -149,13 +152,21 @@ public partial class CliTests
         var run = Run(directory, "pricing.pcross", "discounts.pcross", "-o", "out", "--test-out", "tests");
         Assert.True(run.ExitCode == 0, run.Output);
 
+        AssertWroteExactly(GeneratedByTheLibrary(sources), directory);
+    }
+
+    /// <summary>
+    /// That the build in <paramref name="directory"/> wrote <paramref name="expected"/> below
+    /// <c>out</c> and <c>tests</c>, file for file and byte for byte, and nothing else.
+    /// </summary>
+    private static void AssertWroteExactly(Dictionary<string, string> expected, string directory)
+    {
         var written = FilesUnder(Path.Combine(directory, "out"))
             .Select(file => KeyValuePair.Create("out/" + file.Key, file.Value))
             .Concat(FilesUnder(Path.Combine(directory, "tests"))
                 .Select(file => KeyValuePair.Create("tests/" + file.Key, file.Value)))
             .ToDictionary(StringComparer.Ordinal);
 
-        var expected = GeneratedByTheLibrary(sources);
         Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), written.Keys.Order(StringComparer.Ordinal));
         foreach (var (path, contents) in expected)
         {

@@ -22,6 +22,30 @@ public sealed record BackendOptions(string SourceFileName)
     public IReadOnlyList<string> PolicyDescription { get; init; } =
         Config.ProjectConfig.Default.DescribeForHeader();
 
+    /// <summary>
+    /// The namespace the behavior is declared in, or null when it is declared beside each message it
+    /// extends, in the namespace protoc declared that message in (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// A project's compilation has one, named after the project, and sources compiled without a
+    /// project have none: they are not a library, so they have no name to own a namespace by, and their
+    /// behavior stays where it always was.
+    /// </remarks>
+    public ProjectNamespace? ProjectNamespace { get; init; }
+
+    /// <summary>The options for generating one source of <paramref name="result"/>.</summary>
+    /// <remarks>
+    /// Everything the compilation settled that reaches its generated files: the policy it ran under
+    /// and the namespace its behavior is declared in. <see cref="SourceEmission"/> asks this, so a
+    /// caller generating a compilation a source at a time cannot pair the one without the other.
+    /// </remarks>
+    public static BackendOptions For(SourceIdentity document, CompilationResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        return For(document, result.Config) with { ProjectNamespace = result.ProjectNamespace };
+    }
+
     /// <summary>The options for generating one source of a compilation run under <paramref name="config"/>.</summary>
     /// <remarks>
     /// One home for the pairing, because every caller that emits has to make it and each used to

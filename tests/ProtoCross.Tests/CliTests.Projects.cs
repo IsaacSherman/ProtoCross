@@ -1,3 +1,4 @@
+using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Harness;
 using Xunit;
@@ -61,25 +62,24 @@ public partial class CliTests
     // ------- what a project compiles
 
     /// <summary>
-    /// A project compiles the sources it names, and writes exactly what naming those sources on the
-    /// command line writes: a project says what is compiled, not how.
+    /// A project compiles the sources it names, and writes exactly what the library generates for
+    /// them compiled together, declared in the namespace the project's name names: a project says what
+    /// is compiled, and its name where the behavior goes (spec 5.4, 24).
     /// </summary>
     [Fact]
-    public void AProjectBuildsWhatNamingItsSourcesBuilds()
+    public void AProjectBuildsItsSourcesInItsNamespace()
     {
         var directory = TestPaths.CreateTempDirectory();
-        TestPaths.WriteSources(
+        var sources = TestPaths.WriteSources(
             directory,
             ("billing.pcproj", Project("<Sources Include=\"src/*.pcross\" />")),
-            ("src/pricing.pcross", Pricing),
-            ("src/discounts.pcross", Discounts));
+            ("src/discounts.pcross", Discounts),
+            ("src/pricing.pcross", Pricing));
 
-        var fromProject = Run(directory, "billing.pcproj", "-o", "project");
-        var fromSources = Run(directory, "src/discounts.pcross", "src/pricing.pcross", "-o", "sources");
-        Assert.True(fromProject.ExitCode == 0, fromProject.Output);
-        Assert.True(fromSources.ExitCode == 0, fromSources.Output);
+        var run = Run(directory, "billing.pcproj", "-o", "out", "--test-out", "tests");
+        Assert.True(run.ExitCode == 0, run.Output);
 
-        Assert.Equal(FilesUnder(Path.Combine(directory, "sources")), FilesUnder(Path.Combine(directory, "project")));
+        AssertWroteExactly(GeneratedByTheLibrary(sources.Skip(1).ToList(), new ProjectNamespace("billing")), directory);
     }
 
     /// <summary>

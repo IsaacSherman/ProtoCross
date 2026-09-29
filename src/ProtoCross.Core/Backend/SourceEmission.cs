@@ -117,7 +117,7 @@ public static class SourceEmission
 
             foreach (var document in result.SyntaxTrees.Where(included).Select(source => source.Document))
             {
-                AddRange(emit(module.DeclaredIn(document), BackendOptions.For(document, result.Config), diagnostics));
+                AddRange(emit(module.DeclaredIn(document), BackendOptions.For(document, result), diagnostics));
             }
         }
 

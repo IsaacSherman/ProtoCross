@@ -1,3 +1,4 @@
+using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Projects;
 using Xunit;
@@ -173,6 +174,7 @@ public class ProjectSourcesTests
         var project = new ProtoCrossProject
         {
             Path = Path.Combine(directory, "billing" + ProtoCrossProject.Extension),
+            Namespace = new ProjectNamespace("billing"),
             Sources = [new ProjectItem(["src/**/../*.pcross"], [], span)],
         };
         var diagnostics = new DiagnosticBag();

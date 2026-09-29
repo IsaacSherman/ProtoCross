@@ -211,7 +211,9 @@ Patterns and paths are relative to the project's directory. `<ProtoPath>` direct
 before any `-I`, and output goes where `-o` says, because a project says what is compiled and not
 where it goes. `<Tests>` names sources that are there only to test with: they are compiled, and
 their methods generated beside the tests, only when `--test-out` asks for the tests. A project is
-built only when it is named, one at a time, and never beside sources of its own (spec 5.4).
+built only when it is named, one at a time, and never beside sources of its own (spec 5.4). Its
+behavior is declared in a namespace named after it; see
+[Calling the generated behavior](#calling-the-generated-behavior).
 
 The compiler needs a `protoc` executable, because it consumes protobuf descriptors rather than
 reparsing `.proto` files itself (spec 21.1). It looks at `PROTOCROSS_PROTOC`, then `PATH`, then a
@@ -323,6 +325,42 @@ protoc -I examples/protos --cpp_out generated/protobuf/cpp examples/protos/invoi
 The C# generated ProtoCross behavior and tests must compile in a project that also includes the
 C# protobuf output. The C++ generated ProtoCross behavior and tests must compile with the C++
 protobuf output, protobuf headers, and protobuf libraries.
+
+### Calling the generated behavior
+
+A project declares its behavior in a namespace of its own, named after the project, whichever
+messages it extends. The behavior of `acme.billing.pcproj` is in `Acme.Billing` in C# and in
+`acme::billing` in C++, spelled as protoc would spell a package of that name:
+
+```csharp
+using Acme.Billing;
+
+long cents = invoice.TotalCents();
+```
+
+```cpp
+#include "pricing.pc.h"
+
+std::int64_t cents = acme::billing::total_cents(invoice);
+```
+
+A C# project's extension methods are all in one class, `Acme.Billing.ProtoCrossExtensions`, so a
+call can also be written `ProtoCrossExtensions.TotalCents(invoice)`. That is how you choose between
+two libraries that each declare a method of one name for one message, and it is why they never
+collide: a library declares nothing in a namespace it does not own. Behavior for a well-known type
+such as `google.protobuf.Timestamp`, or for a schema another team publishes, is declared in the
+project's namespace like any other.
+
+Name a project after the package of its own schemas, `acme.billing.pcproj` for `package
+acme.billing;`, and its behavior is declared beside their messages, so the namespace you already
+import for the messages brings the behavior with it. A project's name has to be one a package could
+have: identifiers separated by periods, each starting with a letter. Renaming the project renames the
+namespace.
+
+Sources compiled without a project are not a library, so their behavior is declared beside each
+message it extends, in the namespace protoc declares that message in. The example's is in
+`ProtoCross.Examples`, beside `Invoice`, so `invoice.TotalCents()` needs only the `using` the
+message already did, and in C++ it is `protocross::examples::total_cents(invoice)`.
 
 ### Generating ProtoCross Unit Tests
 
