@@ -44,7 +44,11 @@ source's part lists its methods by the message they extend. One class rather tha
 because the namespace is the project's rather than a schema's, and two messages of one name from
 two packages would otherwise need two classes of one name in it. Method names are PascalCased to
 match the C# protobuf generator, so `line_total_cents` becomes `LineTotalCents` and reads the same
-as a hand-written member.
+as a hand-written member. A method whose name would then be the name of the class it is declared in,
+which C# does not allow, has an underscore appended wherever it is declared or called, as protoc
+appends one to a property named after its message: `proto_cross_extensions` is
+`ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
+`TimestampProtoCrossExtensions_` beside it.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture

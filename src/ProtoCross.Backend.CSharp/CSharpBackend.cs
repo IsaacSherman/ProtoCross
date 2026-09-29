@@ -321,7 +321,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement, "receiver")));
 
         return $"{placement.QualifiedClassOf(test.Target.Receiver)}."
-            + $"{NameConventions.ToPascalCase(test.Target.Name)}({string.Join(", ", arguments)})";
+            + $"{placement.MethodNameOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
     private static void EmitReceiverCreation(SourceWriter writer, IrTestMessageValue receiver, Placement placement)
@@ -445,7 +445,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         var returnType = TypeName(method.ReturnType);
-        var methodName = NameConventions.ToPascalCase(method.Name);
+        var methodName = placement.MethodNameOf(method.Signature);
         var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
 
         var parameters = new List<string> { $"this {receiverType} {ReceiverName}" };
@@ -588,7 +588,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         var arguments = new List<string> { Expression(call.Receiver, placement, receiverName) };
         arguments.AddRange(call.Arguments.Select(a => Expression(a, placement, receiverName)));
 
-        var methodName = NameConventions.ToPascalCase(call.Target.Name);
+        var methodName = placement.MethodNameOf(call.Target);
         return $"{placement.QualifiedClassOf(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
     }
 
@@ -634,6 +634,24 @@ public sealed class CSharpBackend : ITestProjectScaffold
 
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
+
+        /// <summary>
+        /// The name a method is declared and called by: its name PascalCased, with an underscore
+        /// appended when that is the name of the class it is declared in.
+        /// </summary>
+        /// <remarks>
+        /// C# refuses a member named after its enclosing type (CS0542), and a method name is ordinary
+        /// ProtoCross however its target spells it: <c>proto_cross_extensions</c> is a method like any
+        /// other, and C++ declares it as it stands. The escape is protoc's own for a property named
+        /// after its message, <c>Probe_</c>, and it cannot meet another method's name, because a
+        /// PascalCased name never ends in an underscore. It applies wherever the class is: beside a
+        /// message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets the class too.
+        /// </remarks>
+        public string MethodNameOf(IrMethodSignature method)
+        {
+            var name = NameConventions.ToPascalCase(method.Name);
+            return name == ClassOf(method.Receiver) ? name + "_" : name;
+        }
 
         /// <summary>
         /// What decides which of one file's parts of a class a receiver's methods are written in: one
