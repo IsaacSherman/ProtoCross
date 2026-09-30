@@ -27,9 +27,20 @@ Normative Requirements:
   - in the `else` of `if not has f { ... } else { ... }`;
   - after `if not has f { return ...; }`, or any guard whose branch cannot complete normally;
   - in the right operand of `and` when the left proved it, and after `or` on the false side.
-- A fact, once established, holds for the remainder of the method. ProtoCross cannot assign to a
-  field ([18](./§18-Mutability.md#18-mutability)), so nothing shown to be set can become unset. A guard before a loop therefore holds
-  inside it.
+- A fact is about the message a guard tested. ProtoCross cannot assign to a field ([18](./§18-Mutability.md#18-mutability)), so nothing
+  shown to be set can become unset, but a local can be assigned another message, and what was shown
+  about the one it held says nothing about the next:
+  - A fact about the receiver or a parameter holds for the remainder of the method. Neither can be
+    assigned, so a guard before a loop holds inside it.
+  - A fact reached through a local holds until the local is assigned. Assigning it ends every fact
+    reached through it, however deep: `c = b;` ends what was shown about `c.inner` and about
+    `c.inner.stamp` alike.
+  - A statement that assigns a local anywhere inside it, in any branch or loop body, ends those
+    facts for everything after the statement. That includes a branch that cannot complete normally,
+    which costs a guard written again, never a read let through.
+  - A loop's body, and a `while` loop's condition, run again after the body may have assigned a
+    local, so they see no fact about a local the body assigns. What a `while` condition itself
+    proves still holds inside the body, because it is proved afresh on every pass.
 - A message field reached through a value that has no name -- a method result -- cannot be guarded,
   and is `PC0078`. Binding the intermediate to a local first gives it the name a guard needs.
 - The receiver, parameters, locals, and `for` bindings are present by construction and are never
