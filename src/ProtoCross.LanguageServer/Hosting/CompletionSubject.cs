@@ -86,6 +86,21 @@ internal sealed record SchemaSubject(
 {
     public override CompletionContextKind Kind => CompletionContextKind.Schema;
 
+    /// <summary>Whether the word before the name under the caret is <c>new</c>, with space between.</summary>
+    /// <remarks>
+    /// <para>
+    /// A fourth token fact, for the state the other three describe: one the tree cannot. A type name
+    /// is what makes <c>new</c> begin a literal (<see cref="ContextualKeywords"/>), so before the
+    /// first letter of it is typed, <c>new</c> is an ordinary name to the parser and there is no
+    /// literal and no type slot in the tree to find. The caret after it is where that type name is
+    /// about to go all the same.
+    /// </para>
+    /// <para>
+    /// Init-only beside the positional members, so the constructor keeps the shape it has.
+    /// </para>
+    /// </remarks>
+    public bool PrecededByNew { get; init; }
+
     /// <summary>Whether <paramref name="offset"/> is somewhere a schema name could be written.</summary>
     /// <remarks>
     /// False inside a comment and inside a string literal. Both are places where an identifier is not
@@ -134,11 +149,14 @@ internal sealed record SchemaSubject(
             offset,
             start,
             end,
-            PrecededByDot: preceding is TokenKind.Dot,
-            PrecededByExtend: preceding is TokenKind.Extend,
-            PrecededByArg: preceding is TokenKind.Arg,
+            PrecededByDot: preceding?.Kind is TokenKind.Dot,
+            PrecededByExtend: preceding?.Kind is TokenKind.Extend,
+            PrecededByArg: preceding?.Kind is TokenKind.Arg,
             FollowedByDot: following is TokenKind.Dot,
-            FollowedByCall: following is TokenKind.OpenParen);
+            FollowedByCall: following is TokenKind.OpenParen)
+        {
+            PrecededByNew = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.New },
+        };
 
         return true;
     }
@@ -202,15 +220,15 @@ internal sealed record SchemaSubject(
         return null;
     }
 
-    /// <summary>The kind of the last token that ends at or before <paramref name="start"/>.</summary>
+    /// <summary>The last token that ends at or before <paramref name="start"/>.</summary>
     /// <remarks>
     /// Measured from the start of the identifier rather than from the caret, so that a caret in the
     /// middle of a name already written -- <c>line.to|tal</c>, where completion is invoked rather than
     /// triggered -- finds the dot in front of the name rather than the name itself.
     /// </remarks>
-    private static TokenKind? Preceding(IReadOnlyList<Token> tokens, int start)
+    private static Token? Preceding(IReadOnlyList<Token> tokens, int start)
     {
-        TokenKind? found = null;
+        Token? found = null;
 
         foreach (var token in tokens)
         {
@@ -219,7 +237,7 @@ internal sealed record SchemaSubject(
                 break;
             }
 
-            found = token.Kind;
+            found = token;
         }
 
         return found;

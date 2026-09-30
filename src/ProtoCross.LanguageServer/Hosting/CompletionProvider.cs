@@ -979,7 +979,17 @@ public sealed class CompletionProvider
             return null;
         }
 
-        if ((at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start)) is not { } reference)
+        var reference = at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start);
+
+        // A literal's type not yet begun leaves no node at all: 'new' with nothing after it is a name
+        // to the parser (SchemaSubject.PrecededByNew). Only inside a fixture for now, where a value
+        // names nothing and 'new' followed by a word can only be a literal. In a method body it can
+        // still be a field named 'new' with 'and' being typed after it.
+        var beginningALiteral = reference is null
+            && subject.PrecededByNew
+            && at.Enclosing<TestReceiverFixture>() is not null;
+
+        if (reference is null && !beginningALiteral)
         {
             return null;
         }
@@ -988,13 +998,10 @@ public sealed class CompletionProvider
 
         // A literal builds a message, so the type after 'new' is a message and nothing else: a scalar
         // or an enum offered there is a name the binder refuses the moment it is accepted.
-        var building = at.Enclosing<MessageLiteralExpression>() is { } literal && ReferenceEquals(literal.Type, reference);
+        var building = beginningALiteral
+            || (at.Enclosing<MessageLiteralExpression>() is { } literal && ReferenceEquals(literal.Type, reference));
 
-        // The whole written name, dots included. A qualified type is one name rather than a chain of
-        // members, so replacing only the segment under the caret turns 'protocross.tests.Outer' into
-        // 'Duration.tests.Outer'. The parser's own idea of where the name starts and ends is used,
-        // because it is the one that decided this was a single qualified name in the first place.
-        var written = Replacing(subject, reference.Name.Span, document);
+        var written = TypeEdit(subject, reference, document);
 
         subject = written.Subject;
 
@@ -1014,6 +1021,47 @@ public sealed class CompletionProvider
                 .Where(type => !building || type.IsMessage)
                 .SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
+    }
+
+    /// <summary>What a type accepted in the slot <paramref name="reference"/> stands for replaces.</summary>
+    /// <remarks>
+    /// <para>
+    /// The whole written name, dots included. A qualified type is one name rather than a chain of
+    /// members, so replacing only the segment under the caret turns <c>protocross.tests.Outer</c> into
+    /// <c>Duration.tests.Outer</c>. The parser's own idea of where the name starts and ends is used,
+    /// because it is the one that decided this was a single qualified name in the first place.
+    /// </para>
+    /// <para>
+    /// A caret in the space before a name already written -- <c>new | Inner</c> -- is in the slot but
+    /// not in the name, and the name after it would otherwise be read as a qualifier every offer has to
+    /// end with, which none does. The edit runs from the caret through the name instead: it keeps the
+    /// caret inside the range, as a client requires, and writes the type in the name's place rather than
+    /// beside it. Only on one line, because a range may not span two.
+    /// </para>
+    /// <para>
+    /// With no name written at all there is nothing to replace, and the word under the caret is the
+    /// range.
+    /// </para>
+    /// </remarks>
+    private static QualifiedName TypeEdit(SchemaSubject subject, TypeReference? reference, OpenDocument document)
+    {
+        if (reference is null)
+        {
+            return new QualifiedName(subject, string.Empty, string.Empty);
+        }
+
+        var name = reference.Name.Span;
+
+        if (subject.Offset < name.Start.Offset
+            && !document.Text.AsSpan(subject.Offset, name.End.Offset - subject.Offset).Contains('\n'))
+        {
+            return new QualifiedName(
+                subject with { Start = subject.Offset, End = name.End.Offset },
+                string.Empty,
+                string.Empty);
+        }
+
+        return Replacing(subject, name, document);
     }
 
     /// <summary>
@@ -1038,6 +1086,12 @@ public sealed class CompletionProvider
     /// synthetic one, so the range that gets replaced is the parser's -- an empty range at the
     /// insertion point when nothing was written, which is exactly where the text belongs.
     /// </para>
+    /// <para>
+    /// A message literal has a slot of the same shape, bounded by the <c>new</c> that begins it and
+    /// the end of the type written after it: a caret in the space between <c>new</c> and its type is
+    /// in the type too. A literal whose type has not been started is not in the tree at all, and
+    /// <c>TypesAt</c> asks <c>SchemaSubject.PrecededByNew</c> for that one.
+    /// </para>
     /// </remarks>
     private static TypeReference? TypeSlotAt(SyntaxLocation at, int offset)
     {
@@ -1046,9 +1100,17 @@ public sealed class CompletionProvider
             return Slot(parameter.Name, parameter.Type, offset);
         }
 
-        return at.Enclosing<VariableDeclarationStatement>() is { } local
-            ? Slot(local.Name, local.DeclaredType, offset)
-            : null;
+        if (at.Enclosing<VariableDeclarationStatement>() is { } local
+            && Slot(local.Name, local.DeclaredType, offset) is { } declared)
+        {
+            return declared;
+        }
+
+        return at.Enclosing<MessageLiteralExpression>() is { } literal
+            && offset > literal.Span.Start.Offset + ContextualKeywords.New.Length
+            && offset <= literal.Type.Span.End.Offset
+                ? literal.Type
+                : null;
     }
 
     /// <inheritdoc cref="TypeSlotAt"/>

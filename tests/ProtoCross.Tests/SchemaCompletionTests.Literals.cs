@@ -30,6 +30,37 @@ public partial class SchemaCompletionTests
         Assert.DoesNotContain("Deep", Labels(offered));
     }
 
+    /// <summary>The type slot is already a type slot before its first letter is typed.</summary>
+    [Theory]
+    [InlineData("        inner: new ")]
+    [InlineData("        inner: new  Inner { deep: Deep.DEEP_NONE },")]
+    public async Task AfterNewBeforeTheTypeNameMessagesAreOffered(string receiver)
+    {
+        var offered = await OfferedAsync(Built(receiver), "inner: new ");
+
+        Assert.Contains("Inner", Labels(offered));
+        Assert.DoesNotContain("count", Labels(offered));
+        Assert.DoesNotContain("int64", Labels(offered));
+        Assert.DoesNotContain("TopLevelStatus", Labels(offered));
+    }
+
+    /// <summary>
+    /// Accepted in the space before a type already written, a type takes that one's place rather than
+    /// landing beside it, so the literal still names one type and still compiles.
+    /// </summary>
+    [Fact]
+    public async Task ATypeAcceptedBeforeOneAlreadyWrittenReplacesIt()
+    {
+        var (provider, uri, text) = Beside(Built("        inner: new  Inner { deep: Deep.DEEP_NONE },"));
+
+        var applied = await CompletionProbe.SweepAsync(
+            provider, uri, text, [After(text, "inner: new ")], uri.Path!, Loader());
+        var inner = Assert.Single(applied, attempt => attempt.Item.Label == "Inner");
+
+        Assert.Contains("inner: new Inner { deep:", inner.Applied, StringComparison.Ordinal);
+        Assert.True(inner.Result.Success, "the literal must still name exactly one type: " + inner.Describe());
+    }
+
     /// <summary>Inside a nested literal's braces, the fields are the nested message's.</summary>
     [Fact]
     public async Task InsideANestedLiteralItsOwnMessagesFieldsAreOffered()
