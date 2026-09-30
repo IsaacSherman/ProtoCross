@@ -130,6 +130,63 @@ public class FixtureLiteralTests
             $"the help must show the literal to write, but says: {refused.Help}");
     }
 
+    /// <summary>
+    /// Help says what to type, so it spells the type the way it resolves: a simple name another type
+    /// shares is PC0074 the moment it is written, and help that offered it would be a second mistake.
+    /// </summary>
+    [Fact]
+    public void TheHelpForANestedMessageSpellsATypeWhoseSimpleNameIsTakenInFull()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        File.WriteAllText(
+            Path.Combine(directory, "ambiguous.proto"),
+            """
+            syntax = "proto3";
+
+            package ambiguity;
+
+            message Point {
+              int64 x = 1;
+            }
+
+            // The enum shares the message's simple name, which is what makes 'Point' ambiguous as a type.
+            message Holder {
+              enum Point {
+                POINT_NONE = 0;
+              }
+
+              .ambiguity.Point at = 1;
+              int64 count = 2;
+            }
+            """);
+
+        var source = Path.Combine(directory, "ambiguous.pcross");
+        File.WriteAllText(
+            source,
+            """
+            import proto "ambiguous.proto";
+
+            extend Holder {
+                fn f() -> int64 { return count; }
+            }
+
+            test Holder.f "the help names a type that resolves" {
+                receiver {
+                    at: 1,
+                }
+
+                expect return 0;
+            }
+            """);
+
+        var refused = TheOnly(Compilation.Compile(source, [directory]));
+
+        Assert.Equal(DiagnosticCodes.FixtureFieldRequiresANestedValue.Code, refused.Code);
+        Assert.True(
+            refused.Help?.Contains("at: new ambiguity.Point {", StringComparison.Ordinal) == true,
+            $"the help must spell the type in full where its simple name is ambiguous, but says: {refused.Help}");
+    }
+
     [Fact]
     public void AScalarFieldGivenALiteralIsNotAMessage()
     {

@@ -115,11 +115,13 @@ public sealed class Parser
 
     /// <summary>Reports that the current token is not what the grammar wanted here.</summary>
     /// <param name="expected">What was wanted, as <see cref="TokenKindExtensions.Describe"/> spells a token.</param>
-    private void ReportUnexpectedToken(string expected)
+    /// <param name="help">What to write instead, where the mistake is one a reader could make on purpose.</param>
+    private void ReportUnexpectedToken(string expected, string? help = null)
         => _diagnostics.Report(
             DiagnosticCodes.UnexpectedToken,
             $"Expected {expected} but found {Current.Kind.Describe()}.",
-            Current.Span);
+            Current.Span,
+            help);
 
     /// <summary>
     /// Parses an identifier into a <see cref="SyntaxName"/>, modelling its absence rather than
@@ -472,10 +474,8 @@ public sealed class Parser
 
         if (Current.Kind is TokenKind.Equals or TokenKind.OpenBrace)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.UnexpectedToken,
-                $"Expected {TokenKind.Colon.Describe()} but found {Current.Kind.Describe()}.",
-                Current.Span,
+            ReportUnexpectedToken(
+                TokenKind.Colon.Describe(),
                 $"Write a field as '{name.Text}: value,', and a message as '{name.Text}: new T {{ ... }},' (spec 25.3).");
             SkipRestOfField();
             return null;
@@ -504,7 +504,11 @@ public sealed class Parser
             return;
         }
 
-        ReportUnexpectedToken(TokenKind.Comma.Describe());
+        // A semicolon is the separator fixtures had before #80, so it is the one that gets typed out
+        // of habit, and the one worth saying so about.
+        ReportUnexpectedToken(
+            TokenKind.Comma.Describe(),
+            Current.Kind == TokenKind.Semicolon ? "Fields are separated by commas (spec 25.3)." : null);
 
         if (!StartsAField())
         {
@@ -577,7 +581,10 @@ public sealed class Parser
 
         ReportUnexpectedToken(TokenKind.OpenBrace.Describe());
 
+        // The next field is where this one ended, if its braces were never typed: stepping over it
+        // looking for one would take a field the author did write.
         while (!EndsAFieldList(Current.Kind)
+            && !StartsAField()
             && Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma or TokenKind.Semicolon
                 or TokenKind.CloseBracket))
         {

@@ -971,7 +971,7 @@ public sealed partial class Binder
                     DiagnosticCodes.FixtureFieldRequiresANestedValue,
                     $"Field '{descriptorField.Name}' is message '{expectedType.DisplayName}' and cannot be set from an expression.",
                     value.Span,
-                    $"Write '{descriptorField.Name}: new {messageType.Descriptor.Name} {{ ... }}' to build the nested message.");
+                    $"Write '{descriptorField.Name}: new {WritableName(messageType.Descriptor)} {{ ... }}' to build the nested message.");
                 return null;
             }
 
@@ -1007,6 +1007,14 @@ public sealed partial class Binder
 
         return new IrTestFieldValue(descriptorField, bound, null, span);
     }
+
+    /// <summary>The shortest name that resolves to <paramref name="message"/> where a type is written.</summary>
+    /// <remarks>
+    /// For help that tells the author what to type. A simple name another message or enum shares is
+    /// <c>PC0074</c> the moment it is written, so help that offered it would be a second mistake.
+    /// </remarks>
+    private string WritableName(MessageDescriptor message)
+        => Visible.IsAmbiguousAsATypeName(message.Name) ? message.FullName : message.Name;
 
     /// <summary>A list written as an element of a list, which no protobuf field can hold.</summary>
     /// <remarks>

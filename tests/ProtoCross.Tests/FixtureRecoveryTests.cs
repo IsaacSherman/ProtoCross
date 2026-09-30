@@ -120,6 +120,39 @@ public class FixtureRecoveryTests
             $"the help must show both halves of the new spelling, but says: {only.Help}");
     }
 
+    /// <summary>
+    /// A literal whose braces have not been typed yet ends where the next field begins, rather than
+    /// taking that field with it while it looks for a brace.
+    /// </summary>
+    [Fact]
+    public void ALiteralMissingItsBracesEndsAtTheNextField()
+    {
+        var text = Test("inner: new Inner\n        unit_price: 2,");
+
+        var (unit, diagnostics) = Parse(text);
+
+        Assert.Equal(["inner", "unit_price"], unit.Tests[0].Receiver.Fields.Select(field => field.Name.Text));
+        Assert.All(
+            diagnostics,
+            diagnostic => Assert.Equal(text.IndexOf("unit_price", StringComparison.Ordinal), diagnostic.Span.Start.Offset));
+    }
+
+    /// <summary>
+    /// A semicolon is the separator fixtures had before #80, so it is the one typed out of habit, and
+    /// the diagnostic says what goes there instead.
+    /// </summary>
+    [Fact]
+    public void ASemicolonAfterAFieldSaysFieldsAreSeparatedByCommas()
+    {
+        var (unit, diagnostics) = Parse(Test("quantity: 1; unit_price: 2,"));
+
+        var only = Assert.Single(diagnostics);
+        Assert.True(
+            only.Help?.Contains("commas", StringComparison.Ordinal) == true,
+            $"the help must say fields are separated by commas, but says: {only.Help}");
+        Assert.Equal(["quantity", "unit_price"], unit.Tests[0].Receiver.Fields.Select(field => field.Name.Text));
+    }
+
     // ------- what follows is untouched
 
     /// <summary>
