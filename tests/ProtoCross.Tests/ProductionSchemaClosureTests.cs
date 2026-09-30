@@ -137,7 +137,7 @@ public class ProductionSchemaClosureTests
                 }
 
                 test InvoiceItem.moody "a production source's test names a test source's enum" {
-                    receiver { quantity = 1; }
+                    receiver { quantity: 1 }
                     arg m = Mood.MOOD_HAPPY;
                     expect return 1;
                 }

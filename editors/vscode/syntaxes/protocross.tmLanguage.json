@@ -60,6 +60,11 @@
         {
           "name": "keyword.control.pcross",
           "match": "(?<![\\p{L}\\p{Nd}_])(?:and|arg|as|bool|break|bytes|case|continue|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])"
+        },
+        {
+          "comment": "'new' is a keyword only where it begins a message literal, with a type name after it (spec 13.2); anywhere else it is a name, and the identifier rule colours it. A grammar sees one line, so a type name on the next line leaves 'new' coloured as a name until the server answers.",
+          "name": "keyword.control.pcross",
+          "match": "(?<![\\p{L}\\p{Nd}_])new(?=[ \\t]+[\\p{L}_])"
         }
       ]
     },

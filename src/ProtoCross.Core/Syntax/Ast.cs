@@ -73,21 +73,24 @@ public sealed record TestDeclaration(
     TestExpectation Expectation,
     SourceSpan Span) : SyntaxNode(Span);
 
+/// <summary>A test's <c>receiver { ... }</c> block: the fields of the message the method is called on.</summary>
+/// <remarks>
+/// Its body is a message literal's field list, written the way a literal writes it (spec 25.3), so a
+/// fixture and a literal are one spelling of one idea. The type is the one the test's target names,
+/// which is why the block does not say <c>new T</c> itself.
+/// </remarks>
 public sealed record TestReceiverFixture(
-    IReadOnlyList<TestFieldInitializer> Fields,
+    IReadOnlyList<FieldInitializer> Fields,
     SourceSpan Span) : SyntaxNode(Span);
 
-public abstract record TestFieldInitializer(SyntaxName FieldName, SourceSpan Span) : SyntaxNode(Span);
-
-public sealed record TestScalarFieldInitializer(
-    SyntaxName Name,
-    Expression Value,
-    SourceSpan Span) : TestFieldInitializer(Name, Span);
-
-public sealed record TestMessageFieldInitializer(
-    SyntaxName Name,
-    IReadOnlyList<TestFieldInitializer> Fields,
-    SourceSpan Span) : TestFieldInitializer(Name, Span);
+/// <summary>One field of a message literal or a fixture: <c>name: value</c> (spec 13.2).</summary>
+/// <remarks>
+/// The value is any expression the field's type accepts: a scalar expression, a
+/// <see cref="MessageLiteralExpression"/> for a message field, or a <see cref="ListExpression"/>
+/// for a repeated one. Which of those it may be is the binder's question, because only the field's
+/// descriptor can answer it.
+/// </remarks>
+public sealed record FieldInitializer(SyntaxName Name, Expression Value, SourceSpan Span) : SyntaxNode(Span);
 
 public sealed record TestArgumentDeclaration(SyntaxName Name, Expression Value, SourceSpan Span) : SyntaxNode(Span);
 
@@ -307,6 +310,35 @@ public sealed record FloatLiteralExpression(double Value, SourceSpan Span) : Exp
     /// </remarks>
     public float SingleValue { get; init; } = (float)Value;
 }
+
+/// <summary>
+/// A message built in place, <c>new Invoice { number: 5, customer: new Customer { ... } }</c>
+/// (spec 13.2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <c>new</c> is contextual rather than reserved. It starts a literal only when a type name follows
+/// it, which no expression can otherwise do, so a schema field named <c>new</c> still reads as one:
+/// <c>new.this</c> and <c>has new</c> are field accesses.
+/// </para>
+/// <para>
+/// The leading word is what makes the braces unambiguous. An <c>if</c> or <c>while</c> condition is
+/// not parenthesized, so <c>Invoice { ... }</c> in expression position could as well be a condition
+/// followed by the block it guards.
+/// </para>
+/// </remarks>
+public sealed record MessageLiteralExpression(
+    TypeReference Type,
+    IReadOnlyList<FieldInitializer> Fields,
+    SourceSpan Span) : Expression(Span);
+
+/// <summary>The values of a repeated field, in order: <c>items: [first, second]</c> (spec 13.2).</summary>
+/// <remarks>
+/// A value only where a field is given one. There are no list values in the language, so a list is
+/// the whole of a repeated field's contents rather than something that could be stored or passed.
+/// Lists do not nest, because no protobuf field holds a list of lists.
+/// </remarks>
+public sealed record ListExpression(IReadOnlyList<Expression> Elements, SourceSpan Span) : Expression(Span);
 
 public sealed record BooleanLiteralExpression(bool Value, SourceSpan Span) : Expression(Span);
 

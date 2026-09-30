@@ -49,7 +49,7 @@ public class DefinitionTests
         }
 
         test protocross.tests.Outer.scaled "doubles what it is given" {
-            receiver { count = 2; }
+            receiver { count: 2 }
             arg scale = 3;
             expect return 12;
         }

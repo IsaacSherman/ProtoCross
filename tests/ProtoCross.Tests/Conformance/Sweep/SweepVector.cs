@@ -13,8 +13,9 @@ internal sealed record SweepRow(IReadOnlyList<(string Field, string Value)> Valu
     {
     }
 
-    public string Render(string table)
-        => $"{table} {{ {string.Join(" ", Values.Select(value => $"{value.Field} = {value.Value};"))} }}";
+    /// <summary>The row as one element of its table's list: a literal of the row's message.</summary>
+    public string Render(string rowMessage)
+        => $"new {rowMessage} {{ {string.Join(", ", Values.Select(value => $"{value.Field}: {value.Value}"))} }}";
 }
 
 /// <summary>
@@ -32,6 +33,9 @@ internal sealed record SweepTable(
     IReadOnlyList<string> Wrong,
     string Description,
     IReadOnlyList<SweepRow> Rows);
+
+/// <summary>One test a vector declares: a table's method, handed some of its rows, and what it must do.</summary>
+internal sealed record SweepTest(SweepTable Table, string Description, IReadOnlyList<SweepRow> Rows, string Expectation);
 
 /// <summary>
 /// One generated conformance vector and the schema it owns, built up table by table and rendered
@@ -65,7 +69,7 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
 
     private readonly List<(string Name, IReadOnlyList<string> Fields)> _messages = [];
     private readonly List<(string Receiver, string Text)> _methods = [];
-    private readonly List<string> _tests = [];
+    private readonly List<SweepTest> _tests = [];
 
     public string Name => name;
 
@@ -77,7 +81,7 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
     public void Table(SweepTable table)
     {
         Method(table.Receiver, Walk(table));
-        _tests.Add(Test(table.Receiver, table.Method, table.Description, table.Field, table.Rows, "return -1"));
+        _tests.Add(new SweepTest(table, table.Description, table.Rows, "return -1"));
     }
 
     /// <summary>
@@ -85,7 +89,7 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
     /// terminates rather than produce a value.
     /// </summary>
     public void Failure(SweepTable table, string description, SweepRow row)
-        => _tests.Add(Test(table.Receiver, table.Method, description, table.Field, [row], "fail"));
+        => _tests.Add(new SweepTest(table, description, [row], "fail"));
 
     public IEnumerable<SweepFile> Files()
     {
@@ -127,9 +131,11 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
             text.Append("}\n");
         }
 
+        // Rendered here rather than as each table is added, because a row is spelled with its
+        // message's name, and a vector may declare the receiver that names it after its tables.
         foreach (var test in _tests)
         {
-            text.Append('\n').Append(test);
+            text.Append('\n').Append(Test(test, RowMessageOf(test.Table)));
         }
 
         return text.ToString().ReplaceLineEndings("\n");
@@ -146,6 +152,21 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
         }
 
         text.Append('\n');
+    }
+
+    /// <summary>
+    /// The message a table's rows are, read off the field the receiver declares for them.
+    /// </summary>
+    /// <remarks>
+    /// Read from the schema rather than told a second time, because the schema is where the vector
+    /// already says it, and a table that named its row type as well would be a second place to get
+    /// it wrong.
+    /// </remarks>
+    private string RowMessageOf(SweepTable table)
+    {
+        var fields = _messages.Single(message => message.Name == table.Receiver).Fields;
+        var declaration = fields.Single(field => field.EndsWith($" {table.Field}", StringComparison.Ordinal));
+        return declaration.Split(' ')[1];
     }
 
     private static string Walk(SweepTable table)
@@ -170,22 +191,27 @@ internal sealed class SweepVector(string name, string policyDirectory, IReadOnly
             """;
     }
 
-    private static string Test(
-        string receiver,
-        string method,
-        string description,
-        string field,
-        IReadOnlyList<SweepRow> rows,
-        string expectation)
+    private static string Test(SweepTest test, string rowMessage)
     {
+        var (table, description, rows, expectation) = test;
+
         var text = new StringBuilder();
-        text.Append($"test {receiver}.{method} \"{description}\" {{\n");
+        text.Append($"test {table.Receiver}.{table.Method} \"{description}\" {{\n");
         text.Append($"{Indent}receiver {{\n");
 
-        for (var i = 0; i < rows.Count; i++)
+        if (rows.Count == 1)
         {
-            text.Append($"{Indent}{Indent}{rows[i].Render(field)}");
-            text.Append(rows.Count > 1 ? $" // {i}\n" : "\n");
+            text.Append($"{Indent}{Indent}{table.Field}: [{rows[0].Render(rowMessage)}],\n");
+        }
+        else
+        {
+            text.Append($"{Indent}{Indent}{table.Field}: [\n");
+            for (var i = 0; i < rows.Count; i++)
+            {
+                text.Append($"{Indent}{Indent}{Indent}{rows[i].Render(rowMessage)}, // {i}\n");
+            }
+
+            text.Append($"{Indent}{Indent}],\n");
         }
 
         text.Append($"{Indent}}}\n\n{Indent}expect {expectation};\n}}\n");

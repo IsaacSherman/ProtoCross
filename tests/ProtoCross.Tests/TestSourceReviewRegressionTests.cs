@@ -14,7 +14,7 @@ public class TestSourceReviewRegressionTests
             fn gross() -> int64 { return 1 / quantity on_zero fail; }
         }
         test InvoiceItem.gross "zero terminates" {
-            receiver { quantity = 0; }
+            receiver { quantity: 0 }
             expect fail;
         }
         """;

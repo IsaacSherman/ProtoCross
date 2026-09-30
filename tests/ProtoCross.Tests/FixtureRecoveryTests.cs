@@ -45,12 +45,15 @@ public class FixtureRecoveryTests
     // ------- one diagnostic, where the token is
 
     [Theory]
-    [InlineData("quantity = 1 2;")]
-    [InlineData("quantity = 1; 2;")]
-    [InlineData("2 quantity = 1;")]
-    [InlineData("quantity 2 = 1;")]
-    [InlineData("inner { deep = 1 2; }")]
-    [InlineData("inner { 2 }")]
+    [InlineData("quantity: 1 2,")]
+    [InlineData("quantity: 1, 2,")]
+    [InlineData("2 quantity: 1,")]
+    [InlineData("quantity 2: 1,")]
+    [InlineData("inner: new Inner { deep: 1 2 },")]
+    [InlineData("inner: new Inner { 2 },")]
+    [InlineData("inner: new Inner 2 { deep: 1 },")]
+    [InlineData("values: [1 2],")]
+    [InlineData("values: [1, 3] 2,")]
     public void AStrayTokenInAFixtureIsReportedOnceWhereItStands(string receiver)
     {
         var text = Test(receiver);
@@ -66,31 +69,55 @@ public class FixtureRecoveryTests
     [Fact]
     public void TheFieldsOnEitherSideOfAStrayTokenAreStillRead()
     {
-        var (unit, _) = Parse(Test("quantity = 1; 2; unit_price = 3;"));
+        var (unit, _) = Parse(Test("quantity: 1, 2, unit_price: 3,"));
 
         var fixture = unit.Tests[0].Receiver;
 
-        Assert.Equal(["quantity", "unit_price"], fixture.Fields.Select(field => field.FieldName.Text));
+        Assert.Equal(["quantity", "unit_price"], fixture.Fields.Select(field => field.Name.Text));
     }
 
     [Fact]
-    public void AForgottenSemicolonKeepsTheFieldAfterIt()
+    public void AForgottenCommaKeepsTheFieldAfterIt()
     {
-        var text = Test("quantity = 1 unit_price = 2;");
+        var text = Test("quantity: 1 unit_price: 2,");
 
         var (unit, diagnostics) = Parse(text);
 
         Assert.Equal(text.IndexOf("unit_price", StringComparison.Ordinal), Assert.Single(diagnostics).Span.Start.Offset);
-        Assert.Equal(["quantity", "unit_price"], unit.Tests[0].Receiver.Fields.Select(field => field.FieldName.Text));
+        Assert.Equal(["quantity", "unit_price"], unit.Tests[0].Receiver.Fields.Select(field => field.Name.Text));
     }
 
     [Fact]
     public void AFixtureAfterAStrayTokenKeepsItsTestsExpectation()
     {
-        var (unit, diagnostics) = Parse(Test("quantity = 1 2;"));
+        var (unit, diagnostics) = Parse(Test("quantity: 1 2,"));
 
         Assert.DoesNotContain(diagnostics, d => d.Code == DiagnosticCodes.TestHasNoExpectation.Code);
         Assert.IsType<TestReturnExpectation>(unit.Tests[0].Expectation);
+    }
+
+    /// <summary>
+    /// The spelling fixtures had before #80 is the mistake everyone who wrote a test then will make,
+    /// so each field written that way costs one diagnostic, at the token that gives it away, with
+    /// help that shows the spelling that replaced it.
+    /// </summary>
+    [Theory]
+    [InlineData("quantity = 1;", "=")]
+    [InlineData("inner { deep = 1; }", "{")]
+    public void AFieldInTheOldSpellingIsReportedOnceWithTheNewOneAsHelp(string receiver, string giveaway)
+    {
+        var text = Test(receiver);
+
+        var (_, diagnostics) = Parse(text);
+
+        var only = Assert.Single(diagnostics);
+        Assert.Equal(
+            text.IndexOf(receiver, StringComparison.Ordinal) + receiver.IndexOf(giveaway, StringComparison.Ordinal),
+            only.Span.Start.Offset);
+        Assert.True(
+            only.Help?.Contains(": value,", StringComparison.Ordinal) == true
+                && only.Help.Contains(": new T {", StringComparison.Ordinal),
+            $"the help must show both halves of the new spelling, but says: {only.Help}");
     }
 
     // ------- what follows is untouched
@@ -102,15 +129,15 @@ public class FixtureRecoveryTests
     [Fact]
     public void ADeclarationAfterABrokenFixtureIsStillDiagnosed()
     {
-        var text = Test("quantity = 1 2;") + """
+        var text = Test("quantity: 1 2,") + """
 
             test InvoiceItem.g "after" {
-                receiver { quantity = 1; }
+                receiver { quantity: 1 }
                 expect return 1;
             }
 
             test InvoiceItem.missing "the one that must still be reported" {
-                receiver { quantity = 1; }
+                receiver { quantity: 1 }
                 expect return 1;
             }
             """;
@@ -136,7 +163,7 @@ public class FixtureRecoveryTests
     /// <remarks>
     /// Two rather than one, because a token can break two things at once where it lands: typed
     /// between a dot and the name after it in a field's value, it is both the missing name and the
-    /// missing semicolon. Both are reported at the token itself.
+    /// missing comma. Both are reported at the token itself.
     /// </remarks>
     [Fact]
     public void AStrayTokenAnywhereInAnyFixtureStaysInThatFixture()
@@ -174,12 +201,12 @@ public class FixtureRecoveryTests
     }
 
     /// <summary>
-    /// A forgotten semicolon is the commonest slip in a fixture, and the one a recovery that skips
-    /// to the next semicolon gets wrong: it takes the next field with it. Deleting each semicolon of
-    /// every fixture in the corpus costs one diagnostic and not one field.
+    /// A forgotten comma is the commonest slip in a fixture, and the one a recovery that skips to the
+    /// next comma gets wrong: it takes the next field with it. Deleting each comma that separates two
+    /// fields or two values, in every fixture in the corpus, costs one diagnostic and not one value.
     /// </summary>
     [Fact]
-    public void AForgottenSemicolonInAnyFixtureCostsOneDiagnosticAndNoField()
+    public void AForgottenCommaInAnyFixtureCostsOneDiagnosticAndNoValue()
     {
         var failures = new List<string>();
         var swept = 0;
@@ -188,16 +215,16 @@ public class FixtureRecoveryTests
         {
             var original = File.ReadAllText(path);
             var (originalUnit, _) = Parse(original);
-            var fieldCount = FieldCount(originalUnit);
+            var valueCount = ValueCount(originalUnit);
 
-            foreach (var (at, fixtureEnd) in PositionsInsideFixtures(original).Where(position => original[position.InsertAt] == ';'))
+            foreach (var (at, fixtureEnd) in CommasInsideFixtures(original, trailing: false))
             {
                 swept++;
                 var (unit, diagnostics) = Parse(original.Remove(at, 1));
 
                 var wrong = diagnostics.Count != 1 ? $"{diagnostics.Count} diagnostics"
                     : diagnostics.Single().Span.Start.Offset > fixtureEnd ? "the diagnostic landed after the fixture"
-                    : FieldCount(unit) != fieldCount ? $"{fieldCount - FieldCount(unit)} fields went missing"
+                    : ValueCount(unit) != valueCount ? $"{valueCount - ValueCount(unit)} values went missing"
                     : unit.Tests.Count != originalUnit.Tests.Count ? "test declarations went missing"
                     : null;
 
@@ -208,7 +235,42 @@ public class FixtureRecoveryTests
             }
         }
 
-        Assert.True(swept > 100, $"the corpus must give the sweep semicolons to delete; it found {swept}");
+        Assert.True(swept > 100, $"the corpus must give the sweep commas to delete; it found {swept}");
+        Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures.Take(20)));
+    }
+
+    /// <summary>
+    /// A comma after the last field or value is allowed and not required, so deleting every trailing
+    /// comma in the corpus, one at a time, costs nothing at all.
+    /// </summary>
+    [Fact]
+    public void ATrailingCommaInAnyFixtureCanBeLeftOut()
+    {
+        var failures = new List<string>();
+        var swept = 0;
+
+        foreach (var path in CorpusSources())
+        {
+            var original = File.ReadAllText(path);
+            var valueCount = ValueCount(Parse(original).Unit);
+
+            foreach (var (at, _) in CommasInsideFixtures(original, trailing: true))
+            {
+                swept++;
+                var (unit, diagnostics) = Parse(original.Remove(at, 1));
+
+                var wrong = diagnostics.Count != 0 ? $"{diagnostics.Count} diagnostics"
+                    : ValueCount(unit) != valueCount ? $"{valueCount - ValueCount(unit)} values went missing"
+                    : null;
+
+                if (wrong is not null)
+                {
+                    failures.Add($"{Path.GetFileName(path)} at offset {at}: {wrong}");
+                }
+            }
+        }
+
+        Assert.True(swept > 100, $"the corpus must give the sweep trailing commas to delete; it found {swept}");
         Assert.True(failures.Count == 0, string.Join(Environment.NewLine, failures.Take(20)));
     }
 
@@ -219,7 +281,7 @@ public class FixtureRecoveryTests
             import proto "invoice.proto";
 
             test InvoiceItem.f "unclosed" {
-                receiver { quantity = 1;
+                receiver { quantity: 1,
                 expect return 1;
             }
             """;
@@ -233,8 +295,12 @@ public class FixtureRecoveryTests
 
     // ------- helpers
 
-    private static int FieldCount(CompilationUnit unit)
-        => SyntaxWalk.DescendantsAndSelf(unit).OfType<TestFieldInitializer>().Count();
+    /// <summary>Every field, and every value in a list, that a unit's fixtures hold.</summary>
+    private static int ValueCount(CompilationUnit unit)
+    {
+        var nodes = SyntaxWalk.DescendantsAndSelf(unit).ToList();
+        return nodes.OfType<FieldInitializer>().Count() + nodes.OfType<ListExpression>().Sum(list => list.Elements.Count);
+    }
 
     private static IEnumerable<string> CorpusSources()
         => ConformanceVectors.HandWrittenSources.Append(TestPaths.SimpleScript);
@@ -244,6 +310,19 @@ public class FixtureRecoveryTests
     /// paired with the offset of that closing brace.
     /// </summary>
     private static IEnumerable<(int InsertAt, int FixtureEnd)> PositionsInsideFixtures(string text)
+        => TokensInsideFixtures(text).Select(inside => (inside.Token.Span.Start.Offset, inside.FixtureEnd));
+
+    /// <summary>
+    /// Every comma inside a receiver fixture: the trailing ones, before a closing brace or bracket,
+    /// or the ones that separate two fields or two values.
+    /// </summary>
+    private static IEnumerable<(int At, int FixtureEnd)> CommasInsideFixtures(string text, bool trailing)
+        => TokensInsideFixtures(text)
+            .Where(inside => inside.Token.Kind == TokenKind.Comma
+                && (inside.Next.Kind is TokenKind.CloseBrace or TokenKind.CloseBracket) == trailing)
+            .Select(inside => (inside.Token.Span.Start.Offset, inside.FixtureEnd));
+
+    private static IEnumerable<(Token Token, Token Next, int FixtureEnd)> TokensInsideFixtures(string text)
     {
         var tokens = new Lexer(text, "fixture.pcross", new DiagnosticBag()).Tokenize();
 
@@ -273,7 +352,7 @@ public class FixtureRecoveryTests
             var fixtureEnd = tokens[close].Span.Start.Offset;
             for (var inside = i + 2; inside <= close; inside++)
             {
-                yield return (tokens[inside].Span.Start.Offset, fixtureEnd);
+                yield return (tokens[inside], tokens[Math.Min(inside + 1, tokens.Count - 1)], fixtureEnd);
             }
         }
     }

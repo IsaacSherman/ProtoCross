@@ -194,7 +194,7 @@ test BitwiseCase.a_shift_binds_tighter_than_a_comparison "'<<' binds tighter tha
 
 test BitwiseCase.both_flags_set "two bits tested, both set" {
     receiver {
-        flags = 5;
+        flags: 5,
     }
 
     expect return true;
@@ -202,7 +202,7 @@ test BitwiseCase.both_flags_set "two bits tested, both set" {
 
 test BitwiseCase.both_flags_set "two bits tested, one set" {
     receiver {
-        flags = 4;
+        flags: 4,
     }
 
     expect return false;
@@ -215,7 +215,7 @@ test BitwiseCase.a_complement_binds_tighter_than_and "'~' binds tighter than '&'
 
 test BitwiseCase.a_conversion_binds_tighter_than_a_shift "'as' binds tighter than '<<'" {
     receiver {
-        narrow = 1;
+        narrow: 1,
     }
 
     expect return 1 << 40;
@@ -235,7 +235,7 @@ test BitwiseCase.negated_complement "a negated complement" {
 
 test BitwiseCase.masked "the low byte of an int64" {
     receiver {
-        wide = 0x1234;
+        wide: 0x1234,
     }
 
     expect return 0x34;
@@ -243,7 +243,7 @@ test BitwiseCase.masked "the low byte of an int64" {
 
 test BitwiseCase.combined "the top bit of a uint32 set" {
     receiver {
-        narrow_unsigned = 1;
+        narrow_unsigned: 1,
     }
 
     expect return 2147483649;
@@ -251,7 +251,7 @@ test BitwiseCase.combined "the top bit of a uint32 set" {
 
 test BitwiseCase.toggled "the low byte of a uint64 flipped" {
     receiver {
-        wide_unsigned = 0x0F0F;
+        wide_unsigned: 0x0F0F,
     }
 
     expect return 0x0FF0;
@@ -259,7 +259,7 @@ test BitwiseCase.toggled "the low byte of a uint64 flipped" {
 
 test BitwiseCase.inverted "the complement of a uint32 zero is its MAX" {
     receiver {
-        narrow_unsigned = 0;
+        narrow_unsigned: 0,
     }
 
     expect return 4294967295;
@@ -279,7 +279,7 @@ test BitwiseCase.complement_of_zero_on_its_own "the complement of a literal type
 
 test BitwiseCase.one_shifted_into_the_top_bit "the value shifted adopts the type expected of the shift, not the count's" {
     receiver {
-        count = 63;
+        count: 63,
     }
 
     expect return 9223372036854775808;
@@ -287,7 +287,7 @@ test BitwiseCase.one_shifted_into_the_top_bit "the value shifted adopts the type
 
 test BitwiseCase.a_count_no_int32_can_hold "a count literal keeps its own type" {
     receiver {
-        narrow = 1;
+        narrow: 1,
     }
 
     expect return 2;
@@ -297,8 +297,8 @@ test BitwiseCase.a_count_no_int32_can_hold "a count literal keeps its own type" 
 
 test BitwiseCase.shifted_by_count "a count of 33 shifts an int32 by 1" {
     receiver {
-        narrow = 1;
-        count = 33;
+        narrow: 1,
+        count: 33,
     }
 
     expect return 2;
@@ -306,8 +306,8 @@ test BitwiseCase.shifted_by_count "a count of 33 shifts an int32 by 1" {
 
 test BitwiseCase.shifted_by_count "a count of -1 shifts an int32 by 31" {
     receiver {
-        narrow = 1;
-        count = -1;
+        narrow: 1,
+        count: -1,
     }
 
     expect return -2147483648;
@@ -315,8 +315,8 @@ test BitwiseCase.shifted_by_count "a count of -1 shifts an int32 by 31" {
 
 test BitwiseCase.shifted_by_count "a count of 0 leaves the value alone" {
     receiver {
-        narrow = 5;
-        count = 0;
+        narrow: 5,
+        count: 0,
     }
 
     expect return 5;
@@ -324,8 +324,8 @@ test BitwiseCase.shifted_by_count "a count of 0 leaves the value alone" {
 
 test BitwiseCase.wide_shifted_by_a_narrow_count "an int32 count shifts an int64 into its sign bit" {
     receiver {
-        wide = 1;
-        count = 63;
+        wide: 1,
+        count: 63,
     }
 
     expect return -9223372036854775808;
@@ -333,8 +333,8 @@ test BitwiseCase.wide_shifted_by_a_narrow_count "an int32 count shifts an int64 
 
 test BitwiseCase.wide_shifted_by_a_narrow_count "a count of 64 leaves an int64 alone" {
     receiver {
-        wide = 1;
-        count = 64;
+        wide: 1,
+        count: 64,
     }
 
     expect return 1;
@@ -342,8 +342,8 @@ test BitwiseCase.wide_shifted_by_a_narrow_count "a count of 64 leaves an int64 a
 
 test BitwiseCase.narrow_shifted_right_by_a_wide_count "uint64 MAX as a count shifts a uint32 by 31" {
     receiver {
-        narrow_unsigned = 0x8000_0000;
-        wide_count = 0xFFFF_FFFF_FFFF_FFFF;
+        narrow_unsigned: 0x8000_0000,
+        wide_count: 0xFFFF_FFFF_FFFF_FFFF,
     }
 
     expect return 1;
@@ -351,7 +351,7 @@ test BitwiseCase.narrow_shifted_right_by_a_wide_count "uint64 MAX as a count shi
 
 test BitwiseCase.halved "a negative value shifted right rounds toward negative infinity" {
     receiver {
-        narrow = -7;
+        narrow: -7,
     }
 
     expect return -4;
@@ -359,7 +359,7 @@ test BitwiseCase.halved "a negative value shifted right rounds toward negative i
 
 test BitwiseCase.sign_filled "int64 MIN shifted right by 63 is all sign bits" {
     receiver {
-        wide = -9223372036854775808;
+        wide: -9223372036854775808,
     }
 
     expect return -1;
@@ -367,7 +367,7 @@ test BitwiseCase.sign_filled "int64 MIN shifted right by 63 is all sign bits" {
 
 test BitwiseCase.zero_filled "uint64 MAX shifted right by 63 is 1" {
     receiver {
-        wide_unsigned = 0xFFFF_FFFF_FFFF_FFFF;
+        wide_unsigned: 0xFFFF_FFFF_FFFF_FFFF,
     }
 
     expect return 1;
@@ -375,7 +375,7 @@ test BitwiseCase.zero_filled "uint64 MAX shifted right by 63 is 1" {
 
 test BitwiseCase.doubled_past_max "int32 MAX shifted left by 1 discards the top bit" {
     receiver {
-        narrow = 2147483647;
+        narrow: 2147483647,
     }
 
     expect return -2;
@@ -385,7 +385,7 @@ test BitwiseCase.doubled_past_max "int32 MAX shifted left by 1 discards the top 
 
 test BitwiseCase.has_flag "a bit that is set" {
     receiver {
-        flags = 1 << 3 | 1 << 1;
+        flags: 1 << 3 | 1 << 1,
     }
 
     arg bit = 3;
@@ -394,7 +394,7 @@ test BitwiseCase.has_flag "a bit that is set" {
 
 test BitwiseCase.has_flag "a bit that is not set" {
     receiver {
-        flags = 1 << 3 | 1 << 1;
+        flags: 1 << 3 | 1 << 1,
     }
 
     arg bit = 2;
@@ -403,7 +403,7 @@ test BitwiseCase.has_flag "a bit that is not set" {
 
 test BitwiseCase.with_flag_cleared "one bit cleared and the others kept" {
     receiver {
-        flags = 0b1010;
+        flags: 0b1010,
     }
 
     arg bit = 1;
@@ -412,8 +412,8 @@ test BitwiseCase.with_flag_cleared "one bit cleared and the others kept" {
 
 test BitwiseCase.packed "two halves packed into a uint64" {
     receiver {
-        wide_unsigned = 1;
-        narrow_unsigned = 2;
+        wide_unsigned: 1,
+        narrow_unsigned: 2,
     }
 
     expect return 0x1_0000_0002;

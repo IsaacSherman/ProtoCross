@@ -88,7 +88,7 @@ extend ControlFlowCase {
 
 test ControlFlowCase.bucket "takes the else branch below ten" {
     receiver {
-        threshold = 5;
+        threshold: 5,
     }
 
     expect return 0;
@@ -96,7 +96,7 @@ test ControlFlowCase.bucket "takes the else branch below ten" {
 
 test ControlFlowCase.bucket "takes the else if branch at ten" {
     receiver {
-        threshold = 10;
+        threshold: 10,
     }
 
     expect return 1;
@@ -104,7 +104,7 @@ test ControlFlowCase.bucket "takes the else if branch at ten" {
 
 test ControlFlowCase.bucket "takes the if branch at a hundred" {
     receiver {
-        threshold = 100;
+        threshold: 100,
     }
 
     expect return 2;
@@ -112,12 +112,8 @@ test ControlFlowCase.bucket "takes the if branch at a hundred" {
 
 test ControlFlowCase.count_until_zero "skips values below the threshold and stops at a zero" {
     receiver {
-        threshold = 3;
-        values = 5;
-        values = 1;
-        values = 4;
-        values = 0;
-        values = 9;
+        threshold: 3,
+        values: [5, 1, 4, 0, 9],
     }
 
     expect return 2;
@@ -125,7 +121,7 @@ test ControlFlowCase.count_until_zero "skips values below the threshold and stop
 
 test ControlFlowCase.count_until_zero "counts nothing for an empty repeated field" {
     receiver {
-        threshold = 3;
+        threshold: 3,
     }
 
     expect return 0;
@@ -133,10 +129,8 @@ test ControlFlowCase.count_until_zero "counts nothing for an empty repeated fiel
 
 test ControlFlowCase.sum_first "sums only the leading values" {
     receiver {
-        threshold = 2;
-        values = 10;
-        values = 20;
-        values = 30;
+        threshold: 2,
+        values: [10, 20, 30],
     }
 
     expect return 30;
@@ -144,7 +138,7 @@ test ControlFlowCase.sum_first "sums only the leading values" {
 
 test ControlFlowCase.countdown "runs the loop once per step" {
     receiver {
-        threshold = 4;
+        threshold: 4,
     }
 
     expect return 4;
@@ -152,7 +146,7 @@ test ControlFlowCase.countdown "runs the loop once per step" {
 
 test ControlFlowCase.countdown "exits immediately when there is nothing to do" {
     receiver {
-        threshold = 0;
+        threshold: 0,
     }
 
     expect return 0;
@@ -160,7 +154,7 @@ test ControlFlowCase.countdown "exits immediately when there is nothing to do" {
 
 test ControlFlowCase.doubling_steps "runs a conditional loop until it passes the threshold" {
     receiver {
-        threshold = 8;
+        threshold: 8,
     }
 
     expect return 3;
@@ -168,7 +162,7 @@ test ControlFlowCase.doubling_steps "runs a conditional loop until it passes the
 
 test ControlFlowCase.doubling_steps "runs a conditional loop zero times" {
     receiver {
-        threshold = 1;
+        threshold: 1,
     }
 
     expect return 0;

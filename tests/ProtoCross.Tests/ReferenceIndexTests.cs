@@ -59,7 +59,7 @@ public class ReferenceIndexTests
 
         test Outer.scaled "multiplies the count" {
             receiver {
-                count = 7;
+                count: 7,
             }
 
             arg factor = 2;
@@ -320,7 +320,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.scale "supplies one argument twice" {
                 receiver {
-                    quantity = 2;
+                    quantity: 2,
                 }
 
                 arg by = 3;
@@ -363,7 +363,7 @@ public class ReferenceIndexTests
     public void ATestNamesTheMethodItRunsTheFieldsItSetsAndTheParametersItSupplies()
     {
         var target = ReferenceAt(Offset("Outer.scaled \"multiplies") + "Outer.".Length);
-        var field = ReferenceAt(Offset("count = 7"));
+        var field = ReferenceAt(Offset("count: 7"));
         var argument = ReferenceAt(Offset("factor = 2"));
 
         Assert.Equal(ReferenceAt(Offset("scaled(2)")).Symbol, target.Symbol);
@@ -409,7 +409,7 @@ public class ReferenceIndexTests
 
             test protocross.examples.InvoiceItem.f "reads the quantity" {
                 receiver {
-                    quantity = 3;
+                    quantity: 3,
                 }
 
                 expect return 3;
@@ -450,7 +450,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.f "names the duplicated parameter once" {
                 receiver {
-                    quantity = 1;
+                    quantity: 1,
                 }
 
                 arg n = 1;
@@ -552,7 +552,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.nope "names a method that is not there" {
                 receiver {
-                    quantity = 1;
+                    quantity: 1,
                 }
 
                 expect return 1;

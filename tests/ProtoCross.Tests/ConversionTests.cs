@@ -155,7 +155,7 @@ public class ConversionTests
 
             test Outer.f "a conversion binds in a fixture and an expectation" {
                 receiver {
-                    small_count = 7 as int32;
+                    small_count: 7 as int32,
                 }
 
                 expect return 7 as int32;

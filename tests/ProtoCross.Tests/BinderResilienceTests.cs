@@ -145,7 +145,7 @@ public class BinderResilienceTests(ITestOutputHelper logger)
     [InlineData("extend . { }")]
     [InlineData("test . \"x\" { }")]
     [InlineData("test InvoiceItem. \"x\" { receiver { . } expect return ; }")]
-    [InlineData("test InvoiceItem.f \"x\" { receiver { = 1; } arg = 1; expect return 1; }")]
+    [InlineData("test InvoiceItem.f \"x\" { receiver { : 1, } arg = 1; expect return 1; }")]
     public async Task MalformedInputBinds(string body)
     {
         await WithinBudget($"'{body}'", _ => Assert.NotNull(Bind("import proto \"invoice.proto\";\n" + body)));

@@ -67,15 +67,21 @@ public static class SemanticTokenEncoder
         var classified = new List<Classified>(tokens.Count + lexer.Comments.Count);
         var resolved = new Resolved(references);
 
-        foreach (var token in tokens)
+        for (var index = 0; index < tokens.Count; index++)
         {
-            if (SemanticTokenLegend.IndexOf(token.Kind) is not { } type || token.Span.Length == 0)
+            var token = tokens[index];
+            var next = tokens[Math.Min(index + 1, tokens.Count - 1)];
+
+            if (SemanticTokenLegend.IndexOf(token, next) is not { } type || token.Span.Length == 0)
             {
                 continue;
             }
 
+            // A contextual keyword where it is one names nothing, so there is nothing to refine it by.
+            var isAName = token.Kind is TokenKind.Identifier && !ContextualKeywords.BeginsAMessageLiteral(token, next);
+
             classified.Add(
-                token.Kind is TokenKind.Identifier && resolved.Covering(token.Span) is { } reference
+                isAName && resolved.Covering(token.Span) is { } reference
                     ? Refined(token.Span, type, reference, client)
                     : Classified.From(token.Span, type));
         }

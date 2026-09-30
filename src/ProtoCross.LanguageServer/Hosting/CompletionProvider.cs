@@ -840,16 +840,16 @@ public sealed class CompletionProvider
     /// is for.
     /// </para>
     /// <para>
-    /// A field already given a value is dropped, because a singular field written twice is
-    /// <c>PC0061</c>. A map field is dropped as everywhere else, this time because a map in a fixture
-    /// is <c>PC0060</c> rather than <c>PC0038</c> -- a different code for the same unsupported thing.
-    /// Repeated fields stay, since a repeated field may be written as many times as the author likes.
+    /// A field already given a value is dropped, because a field written twice is <c>PC0061</c>. That
+    /// includes a repeated one, which takes all of its values in one list. A map field is dropped as
+    /// everywhere else, this time because a map in a fixture is <c>PC0060</c> rather than
+    /// <c>PC0038</c> -- a different code for the same unsupported thing.
     /// </para>
     /// <para>
     /// <b>Being inside a fixture is not the same as naming one of its fields</b>, and the values are
     /// inside it too. A fixture field's value is an ordinary expression bound against an empty scope
-    /// with no implicit receiver, so a field name accepted at <c>count = tr|ue</c> writes
-    /// <c>count = count</c> and is <c>PC0037</c> -- a name that resolves nowhere, offered because the
+    /// with no implicit receiver, so a field name accepted at <c>count: tr|ue</c> writes
+    /// <c>count: count</c> and is <c>PC0037</c> -- a name that resolves nowhere, offered because the
     /// enclosing message value was found and nothing asked whether the caret was in a name position
     /// at all. An expression under the caret is what says it is not, and the value region then
     /// answers the way every other expression in a test does.
@@ -894,27 +894,40 @@ public sealed class CompletionProvider
             ];
         }
 
-        // Which message the caret is naming a field of, and the two ways to get it wrong are opposite.
-        // A value's span covers its fields and not the braces around them, so a caret on the blank
-        // line just inside 'items {' falls outside the nested value and would take the outer
-        // message's fields. But a caret on the word 'items' itself is inside that same field value
-        // and is naming a field of the outer message, not of the nested one. What separates them is
-        // that a field value begins at its own name: sitting there means naming it, and anywhere else
-        // inside it means being within the block it opens.
-        var holder = at.Enclosing<IrTestFieldValue>();
+        // What the caret is written inside: the fields of a fixture or of a literal, or a list's
+        // values. The innermost of the three, since a literal inside a list is a message again.
+        var container = model.SyntaxAt(subject.Start)?.Path
+            .LastOrDefault(node => node is ListExpression or MessageLiteralExpression or TestReceiverFixture);
 
-        var level = holder is { MessageValue: { } nested } && Within(holder.Span, subject.Start)
-            ? nested
-            : at.Enclosing<IrTestMessageValue>();
+        // Among a list's values, where a message is built with 'new' and no field name belongs.
+        if (container is ListExpression)
+        {
+            return [];
+        }
 
-        if (level is null)
+        // Which message the caret is naming a field of. A nested message value spans its literal,
+        // 'new' through the closing brace, so a caret anywhere inside those braces is in it, and a
+        // caret on the name of the field it is given is outside it and names a field of the message
+        // around it -- which is the innermost value holding the caret either way.
+        if (at.Enclosing<IrTestMessageValue>() is not { } level)
         {
             return null;
         }
 
-        var already = level.Fields
-            .Where(field => !field.Field.IsRepeated && !Covers(field.Span, subject.Start))
-            .Select(field => field.Field.Name)
+        // What is spent is read from the fields as written, not from the values bound: a list's values
+        // span only themselves, so none of them covers the name the caret is on, and an empty list has
+        // no values at all. Either way the field is written, and the one under the caret is the one
+        // being chosen, whatever it currently reads.
+        IReadOnlyList<FieldInitializer> fieldsHere = container switch
+        {
+            MessageLiteralExpression literal => literal.Fields,
+            TestReceiverFixture fixture => fixture.Fields,
+            _ => [],
+        };
+
+        var already = fieldsHere
+            .Where(field => !field.Name.IsMissing && !Covers(field.Span, subject.Start))
+            .Select(field => field.Name.Text)
             .ToHashSet(StringComparer.Ordinal);
 
         return
@@ -935,17 +948,6 @@ public sealed class CompletionProvider
     /// <summary>Both ends inclusive, so a caret that has just finished typing a name is still in it.</summary>
     private static bool Covers(SourceSpan span, int offset)
         => offset >= span.Start.Offset && offset <= span.End.Offset;
-
-    /// <summary>Strictly inside, which is what "in the block this opens" means.</summary>
-    /// <remarks>
-    /// Neither end counts, and each is excluded for its own reason. The start is where the field's
-    /// own name is written, so a caret there is naming that field rather than filling it in. The end
-    /// is the brace that closes it, so a caret there has left the block and is back among the fields
-    /// of the message outside. Containment elsewhere is inclusive at both ends, deliberately, which is
-    /// exactly why this needs saying rather than reusing it.
-    /// </remarks>
-    private static bool Within(SourceSpan span, int offset)
-        => offset > span.Start.Offset && offset < span.End.Offset;
 
     /// <summary>The types that could be named where the caret is, or null when it is not a type position.</summary>
     /// <remarks>
@@ -984,6 +986,10 @@ public sealed class CompletionProvider
 
         var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference);
 
+        // A literal builds a message, so the type after 'new' is a message and nothing else: a scalar
+        // or an enum offered there is a name the binder refuses the moment it is accepted.
+        var building = at.Enclosing<MessageLiteralExpression>() is { } literal && ReferenceEquals(literal.Type, reference);
+
         // The whole written name, dots included. A qualified type is one name rather than a chain of
         // members, so replacing only the segment under the caret turns 'protocross.tests.Outer' into
         // 'Duration.tests.Outer'. The parser's own idea of where the name starts and ends is used,
@@ -998,13 +1004,15 @@ public sealed class CompletionProvider
             // written out again -- so a scalar added to the language is offered without this line
             // being touched, and one that is only a keyword is never offered as a type.
             .. Lexer.Keywords.Keys
-                .Where(spelling => TypeFactory.TryGetScalar(spelling) is not null
-                    || (returning && spelling == "void"))
+                .Where(spelling => !building
+                    && (TypeFactory.TryGetScalar(spelling) is not null || (returning && spelling == "void")))
                 .Order(StringComparer.Ordinal)
                 .Select(spelling => Member(
                     spelling, CompletionItemKind.Keyword, "scalar type", null, "0", subject, document)),
 
-            .. types.All.SelectMany(type => Spellings(type, types, result, subject, document)),
+            .. types.All
+                .Where(type => !building || type.IsMessage)
+                .SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
     }
 

@@ -81,35 +81,33 @@ extend Invoice {
 
 test Invoice.total_cents "sums line totals" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 300;
-        }
-
-        items {
-            quantity = 4;
-            unit_price_cents = 125;
-        }
+        items: [
+            new InvoiceItem { quantity: 2, unit_price_cents: 300 },
+            new InvoiceItem { quantity: 4, unit_price_cents: 125 },
+        ],
     }
 
     expect return 1100;
 }
 ```
 
-The `receiver` block is a descriptor-bound fixture initializer, not a general ProtoCross message
-literal. Each entry names a protobuf field. Scalar fields use `field = expression;`; message fields
-use nested blocks. Repeated fields may appear multiple times. The compiler binds field names and
-fixture value types against protobuf descriptors, then a backend may lower the fixture to
-target-language message construction code. A future test syntax may also accept protobuf text
-format, but fixture semantics must still come from protobuf descriptors.
+The body of the `receiver` block is a message literal's list of fields ([13.2](./§13-Messages.md#132-message-construction)): `field: value`,
+separated by commas, with a comma after the last allowed. The message is the one the test's target
+extends, which is why the block does not say `new T` itself. A message field takes a literal of its
+type, `customer: new Customer { … }`, and a repeated field takes a list of every element,
+`items: [ … ]`. Each field is written once. A value names nothing in scope: a fixture has no
+locals, no parameters, and no implicit receiver. The compiler binds field names and value types
+against protobuf descriptors, then a backend lowers the fixture to target-language message
+construction code. A future test syntax may also accept protobuf text format, but fixture semantics
+must still come from protobuf descriptors.
 
 For methods with parameters, the test declaration should name each argument:
 
 ```protocross
 test InvoiceItem.discounted_total "applies discount" {
     receiver {
-        quantity = 2;
-        unit_price_cents = 300;
+        quantity: 2,
+        unit_price_cents: 300,
     }
 
     arg discount_cents = 50;
@@ -123,8 +121,8 @@ mechanism:
 ```protocross
 test InvoiceItem.strict_ratio "zero divisor fails" {
     receiver {
-        quantity = 2;
-        unit_price_cents = 0;
+        quantity: 2,
+        unit_price_cents: 0,
     }
 
     expect fail;

@@ -17,7 +17,7 @@ public partial class CliTests
 
         test InvoiceItem.renamed_long_ago "targets a method that is gone" {
             receiver {
-                quantity = 2;
+                quantity: 2,
             }
 
             expect return 2;

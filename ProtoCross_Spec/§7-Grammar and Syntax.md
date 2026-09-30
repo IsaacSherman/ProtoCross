@@ -49,9 +49,16 @@ expression_stmt   = expression ";";
 
 test_decl         = "test" qualified_name string_literal
                     "{" { receiver_fixture | test_arg | test_expectation } "}";
-receiver_fixture  = "receiver" "{" { fixture_field } "}";
+receiver_fixture  = "receiver" "{" [ field_list ] "}";
 test_arg          = "arg" identifier "=" expression ";";
 test_expectation  = "expect" ( "return" expression | "fail" ) ";";
+
+field_list        = field_init { "," field_init } [ "," ];
+field_init        = identifier ":" field_value;
+field_value       = message_literal | list_value | expression;
+message_literal   = "new" qualified_name "{" [ field_list ] "}";
+list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";
+list_element      = message_literal | expression;
 ```
 
 Normative Requirement:
@@ -59,8 +66,13 @@ Normative Requirement:
 - The final grammar must be unambiguous.
 - Backend code generation must not depend on parser quirks or target-language parsing.
 - Semicolons are mandatory after imports, variable declarations, `return`, `break`, `continue`,
-  assignment and compound assignment statements, expression statements, scalar fixture fields, test
-  arguments, and test expectations.
+  assignment and compound assignment statements, expression statements, test arguments, and test
+  expectations.
+- The fields of a fixture or a message literal, and the elements of a list, are separated by commas,
+  and a comma after the last one is allowed ([13.2](./§13-Messages.md#132-message-construction)).
+- `new` is not a keyword. It begins a message literal only when an identifier follows it, and is an
+  identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). A message literal and a list are a field's value only: neither is
+  yet an expression that may appear anywhere else.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order

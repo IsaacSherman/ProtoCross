@@ -52,8 +52,8 @@ public class TestSourceTests
         """
         test InvoiceItem.doubled "twice the gross" {
             receiver {
-                quantity = 2;
-                unit_price_cents = 300;
+                quantity: 2,
+                unit_price_cents: 300,
             }
 
             expect return 1200;
@@ -73,12 +73,12 @@ public class TestSourceTests
                      {{Extend(Gross)}}
 
                      test InvoiceItem.renamed "a target that is gone" {
-                         receiver { quantity = 1; }
+                         receiver { quantity: 1 }
                          expect return 1;
                      }
 
                      test InvoiceItem.gross "a fixture field that is not in the schema" {
-                         receiver { quantity = 1; discount = 2; }
+                         receiver { quantity: 1, discount: 2 }
                          expect return 1;
                      }
                      """;
@@ -103,7 +103,7 @@ public class TestSourceTests
                      {{Extend(Gross)}}
 
                      test InvoiceItem.gross "a stray token" {
-                         receiver { quantity = 1 2; }
+                         receiver { quantity: 1 2 }
                          expect return 1;
                      }
                      """;
@@ -113,7 +113,7 @@ public class TestSourceTests
         Assert.True(
             result.Diagnostics.Any(diagnostic =>
                 diagnostic.Severity == DiagnosticSeverity.Error
-                && diagnostic.Span.Start.Offset == text.IndexOf("1 2;", StringComparison.Ordinal) + "1 ".Length),
+                && diagnostic.Span.Start.Offset == text.IndexOf("1 2 }", StringComparison.Ordinal) + "1 ".Length),
             "the syntax error at the stray token must still be reported: " + Described(result));
     }
 

@@ -55,8 +55,8 @@ public class CompilationTests
 
             test InvoiceItem.line_total_cents "line total" {
                 receiver {
-                    quantity = 2;
-                    unit_price_cents = "oops";
+                    quantity: 2,
+                    unit_price_cents: "oops",
                 }
 
                 expect return 600;
@@ -80,8 +80,8 @@ public class CompilationTests
 
             test InvoiceItem.line_total_cents "line total" {
                 receiver {
-                    quantity = unit_price_cents;
-                    unit_price_cents = 300;
+                    quantity: unit_price_cents,
+                    unit_price_cents: 300,
                 }
 
                 expect return 600;
