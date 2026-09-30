@@ -140,6 +140,38 @@ public partial class PresenceTests
             "the read inside the loop runs again after the assignment");
     }
 
+    /// <summary>
+    /// Guarding inside the body is how the author answers the refusal above, so it has to be
+    /// accepted. The loop forgets the local at its head, not for the whole of its body: the guard is
+    /// proved again on every pass, before the assignment that ends it.
+    /// </summary>
+    [Fact]
+    public void AGuardInsideTheLoopCoversTheReadThatFollowsIt()
+    {
+        AssertOk(CompileBody(
+            """
+            fn f(a: Outer, b: Outer) -> int64 {
+                var c: Outer = a;
+                var passes: int64 = 0;
+                var unset: int64 = 0;
+                while passes < 2 {
+                    passes += 1;
+                    if not has c.inner {
+                        continue;
+                    }
+
+                    if c.inner.deep == Deep.DEEP_NONE {
+                        unset += 1;
+                    }
+
+                    c = b;
+                }
+
+                return unset;
+            }
+            """));
+    }
+
     /// <summary>The same for a <c>for</c> body, which is bound once and runs once per element.</summary>
     [Fact]
     public void AGuardBeforeAForLoopDoesNotReachAPassAfterTheBodyAssignsTheLocal()
