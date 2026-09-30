@@ -2,6 +2,7 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
@@ -1132,8 +1133,13 @@ public sealed partial class Binder
             statements.Add(bound);
 
             // A guard clause establishes presence for everything after it, not only inside its own
-            // branch: 'if not has x { return 0; }' leaves x set for the rest of the block.
-            context = context with { Present = Advance(context.Present, bound) };
+            // branch: 'if not has x { return 0; }' leaves x set for the rest of the block. What the
+            // statement assigns is forgotten after that rather than before, because an assignment
+            // inside it runs after its condition was tested, and so ends what the condition proved.
+            context = context with
+            {
+                Present = ForgetAssignedIn(statement, Advance(context.Present, bound)),
+            };
         }
 
         return new IrBlock(statements, block.Span) { IsClosed = block.IsClosed };
@@ -1241,12 +1247,14 @@ public sealed partial class Binder
     /// names are unique within a method, because shadowing is rejected at declaration.
     /// </remarks>
     private static string? PresencePath(IrExpression receiver, FieldDescriptor field)
-        => PresenceRoot(receiver) is { } root ? $"{root}.{field.Name}" : null;
+        => PresenceRoot(receiver) is { } root ? $"{root}{PresencePathSeparator}{field.Name}" : null;
+
+    private const char PresencePathSeparator = '.';
 
     private static string? PresenceRoot(IrExpression expression) => expression switch
     {
         IrThis => "this",
-        IrLocalReference local => $"local:{local.Local.Name}",
+        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
         IrParameterReference parameter => $"param:{parameter.Parameter.Name}",
 
         // Only a singular message field extends a path; a scalar cannot be read through, and a
@@ -1261,6 +1269,75 @@ public sealed partial class Binder
 
     private static bool IsSingularMessage(FieldDescriptor field)
         => !field.IsRepeated && !field.IsMap && field.FieldType is FieldType.Message or FieldType.Group;
+
+    private static string LocalPresenceRoot(string name) => $"local:{name}";
+
+    /// <summary>
+    /// <paramref name="facts"/> without the ones reached through a local that
+    /// <paramref name="statement"/> assigns anywhere inside it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A field cannot be unset, but a local can be given another message, and what a guard proved
+    /// about the message it held says nothing about the next one (#151). So an assignment ends every
+    /// fact reached through its target, however deep: <c>c = b;</c> ends <c>c.inner</c> and
+    /// <c>c.inner.stamp</c> alike.
+    /// </para>
+    /// <para>
+    /// Asked of the syntax, and of the whole statement rather than of each branch's IR. A loop has
+    /// to ask before its body is bound, because the body is bound once and stands for every pass,
+    /// and at that point there is no IR to ask. An assignment in a branch that returns counts too,
+    /// although nothing after the statement can see it. That costs a guard the author writes again,
+    /// never a read the analysis lets through, which is the trade <see cref="PresenceFacts"/> makes
+    /// for a condition it does not recognise.
+    /// </para>
+    /// <para>
+    /// <see cref="SyntaxWalk"/> finds the assignments rather than a recursion here, because it is
+    /// the one place that says what each node holds, and a test holds it to the records. A
+    /// statement kind added later is searched without anyone remembering this method, and a
+    /// statement it missed would reopen #151 without a single test noticing.
+    /// </para>
+    /// <para>
+    /// Only locals are named. The receiver and parameters cannot be assigned (PC0034), so a fact
+    /// about one of them holds for the rest of the method.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlySet<string> ForgetAssignedIn(Statement statement, IReadOnlySet<string> facts)
+    {
+        // Most methods prove nothing, and then there is nothing to forget and no reason to walk.
+        if (facts.Count == 0)
+        {
+            return facts;
+        }
+
+        var reassigned = NamesAssignedIn(statement)
+            .Select(name => LocalPresenceRoot(name) + PresencePathSeparator)
+            .ToList();
+
+        if (reassigned.Count == 0)
+        {
+            return facts;
+        }
+
+        return new HashSet<string>(
+            facts.Where(fact => !reassigned.Any(root => fact.StartsWith(root, StringComparison.Ordinal))),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>Every name <paramref name="statement"/> assigns, anywhere inside it.</summary>
+    private static IEnumerable<string> NamesAssignedIn(Statement statement)
+        => SyntaxWalk.DescendantsAndSelf(statement)
+            .Select(AssignmentTarget)
+            .OfType<NameExpression>()
+            .Select(target => target.Name.Text)
+            .Distinct(StringComparer.Ordinal);
+
+    private static Expression? AssignmentTarget(SyntaxNode node) => node switch
+    {
+        AssignmentStatement assignment => assignment.Target,
+        CompoundAssignmentStatement assignment => assignment.Target,
+        _ => null,
+    };
 
     private IrStatement BindStatement(Statement statement, Scope scope, MethodContext context) => statement switch
     {
@@ -1436,7 +1513,17 @@ public sealed partial class Binder
             }
         }
 
-        var body = BindBlock(statement.Body, loopScope, context with { LoopDepth = context.LoopDepth + 1 });
+        // The collection is read once, before the first pass, so it keeps every fact. The body is
+        // bound once for every pass, so it keeps only the facts a pass cannot end (#151).
+        var body = BindBlock(
+            statement.Body,
+            loopScope,
+            context with
+            {
+                LoopDepth = context.LoopDepth + 1,
+                Present = ForgetAssignedIn(statement.Body, context.Present),
+            });
+
         return new IrForEach(loop, collection, body, statement.Span);
     }
 
@@ -1455,17 +1542,24 @@ public sealed partial class Binder
         return new IrIf(condition, then, elseBranch, statement.Span);
     }
 
+    /// <remarks>
+    /// The condition is tested again after every pass, so it is bound with only the facts that
+    /// survive the body: a fact about a local the body assigns held on the first test and may not
+    /// on the second (#151). What the condition proves is added after that, not forgotten with it,
+    /// because it is proved afresh each time the body is entered.
+    /// </remarks>
     private IrStatement BindWhile(WhileStatement statement, Scope scope, MethodContext context)
     {
-        var condition = BindCondition(statement.Condition, scope, context, "while");
+        var everyPass = context with { Present = ForgetAssignedIn(statement.Body, context.Present) };
+        var condition = BindCondition(statement.Condition, scope, everyPass, "while");
         var (whenTrue, _) = PresenceFacts(condition);
         var body = BindBlock(
             statement.Body,
             scope,
-            context with
+            everyPass with
             {
                 LoopDepth = context.LoopDepth + 1,
-                Present = Union(context.Present, whenTrue),
+                Present = Union(everyPass.Present, whenTrue),
             });
 
         return new IrWhile(condition, body, statement.Span);
@@ -2959,10 +3053,19 @@ public sealed partial class Binder
         /// being bound (spec 13.1).
         /// </summary>
         /// <remarks>
-        /// A set rather than a lattice, and no fixpoint over loops, because presence facts are
-        /// monotone within a method: ProtoCross cannot assign to a field, so nothing that has been
-        /// shown to be set can become unset before the method ends. If receiver mutation ever
-        /// arrives (spec 18), this is the assumption that has to be revisited.
+        /// <para>
+        /// A set rather than a lattice, and no fixpoint over loops. ProtoCross cannot assign to a
+        /// field, so nothing that has been shown to be set can become unset before the method ends.
+        /// If receiver mutation ever arrives (spec 18), this is the assumption that has to be
+        /// revisited.
+        /// </para>
+        /// <para>
+        /// That does not make the facts monotone, which is what this once said. A local can be
+        /// assigned another message, so a fact reached through a local ends when the local is
+        /// assigned, and a loop enters its body with only the facts its body cannot end. See
+        /// <see cref="ForgetAssignedIn"/>. No fixpoint is needed for that either: which locals a loop
+        /// assigns is written in its body, and asking the syntax answers it in one pass.
+        /// </para>
         /// </remarks>
         public IReadOnlySet<string> Present { get; init; } = EmptyPresence;
     }
