@@ -87,9 +87,9 @@ public class ReferenceIndexTests
 
         foreach (var source in CompiledCorpus.All)
         {
-            var model = SemanticModel.For(source.Result);
+            var model = source.Model;
 
-            foreach (var reference in source.Result.Module!.References)
+            foreach (var reference in source.Module!.References)
             {
                 var written = source.Text[reference.Span.Start.Offset..reference.Span.End.Offset];
                 var segment = written[(written.LastIndexOf('.') + 1)..];
@@ -658,9 +658,9 @@ public class ReferenceIndexTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var model = SemanticModel.For(source.Result);
+            var model = source.Model;
 
-            foreach (var reference in source.Result.Module!.References)
+            foreach (var reference in source.Module!.References)
             {
                 var found = model.ReferenceAt(reference.Span.Start.Offset);
 
@@ -691,7 +691,7 @@ public class ReferenceIndexTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var starts = source.Result.Module!.References
+            var starts = source.Module!.References
                 .Select(reference => reference.Span.Start.Offset)
                 .ToList();
 

@@ -17,6 +17,9 @@ tests/conformance/
     *.pcross
   vectors/sweep/               generated vectors, under the default policy
   vectors/<policy>/sweep/      generated vectors, under that directory's policy
+  vectors/[<policy>/]multi/<vector>/
+    <vector>_*.pcross           one vector written across several sources, compiled as one program
+    <vector>.pcproj             optional: a project, whose namespace the vector's behavior is declared in
 ```
 
 The harness lives in [`tests/ProtoCross.Tests/Conformance/`](../ProtoCross.Tests/Conformance) and runs
@@ -49,9 +52,9 @@ serialization format of their own.
 1. Add a schema for it to `protos/`, named after the vector (`foo.proto` for `foo.pcross`), in
    `package protocross.conformance` unless the package is the subject. Every schema there is
    generated and linked, so dropping the file in is enough. **Give it a message of its own.** Every
-   vector is compiled into a single C# assembly, and the C# backend names its extension class after
-   the receiver, so two vectors extending the same message would emit that class twice.
-   `ConformanceVectorTests.EveryVectorExtendsItsOwnMessage` enforces this. A schema per vector, rather
+   vector is compiled into a single C# assembly, so two vectors declaring a method of one name on one
+   message would declare it twice there (`ConformanceVectorTests.NoTwoVectorsDeclareOneMethod`
+   enforces this), and a message of its own means never having to check. A schema per vector, rather
    than one they all share, is what lets two branches add vectors at once without meeting at the end
    of the same file.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
@@ -65,6 +68,21 @@ discovery rather than a hook that exists only for tests. `vectors/checked/` and
 `vectors/saturating/` are the two that do this today. Vectors compiled under different policies
 still build into the one C# assembly and the one C++ link, because both generated runtime files
 carry every policy and are therefore identical whichever one was selected.
+
+To pin what happens *between* sources -- a call from one into another, one receiver extended in two,
+a file that holds only tests -- give the vector a directory of its own under `multi/`.
+`vectors/multi/foo/` is the vector `foo`: every `.pcross` in it is compiled together as one program
+(spec 5.3), against the schema `protos/foo.proto`. Name each source after the vector,
+`foo_<part>.pcross`. Every vector is generated into one workspace, and each source's files are named
+after the source, so a source named anything else could overwrite another vector's files
+(`ConformanceVectorTests.NoTwoSourcesInTheCorpusGenerateFilesOfOneName` catches it). A `multi/`
+directory goes under a policy directory the same way a single file does, as
+`vectors/checked/multi/foo/`, and its sources find that policy by the same upward search.
+
+A `multi/` directory may also hold a project, `foo.pcproj`, with a `<Sources>` element matching every
+source in it. The vector is then compiled as that project's is, and its behavior is declared in the
+project's namespace rather than beside each message it extends (spec 24). Every other vector is
+compiled without a project, as sources named on the command line are.
 
 One constraint is worth knowing before writing one:
 
@@ -117,9 +135,9 @@ already meet, and they would multiply what the sweeps cost.
 
 | Test | Checks |
 |---|---|
-| `ConformanceVectorTests` | Every vector compiles, declares at least one test, and owns its receiver. Needs only protoc, so it always runs |
+| `ConformanceVectorTests` | Every vector compiles, declares at least one test, and declares no method another vector does, and no two sources generate files of one name. Needs only protoc, so it always runs |
 | `ConformanceTests.CSharpRunsEveryConformanceVector` | The vectors build into one C# project and every test passes |
-| `ConformanceTests.CppRunsEveryConformanceVector` | Each vector builds into a C++ executable and every test passes |
+| `ConformanceTests.CppRunsEveryConformanceVector` | Each source that declares tests builds into a C++ executable, and every test passes |
 | `ConformanceTests.BothBackendsRunTheSameVectors` | The set of tests C# ran, the set C++ ran, and the set declared in the corpus are the same set |
 
 The last one is the one that matters. Each backend passing on its own is not enough: a driver that
@@ -153,6 +171,8 @@ failing. A fully equipped machine should report no skips.
 | `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
 | `bitwise` | `&` `\|` `^` `~` `<<` `>>`: where each binds among the other operators, the type a literal beside one takes -- the value shifted takes the type expected of the shift and never the count's, and a count literal keeps its own -- a count reduced modulo the width whatever its type and sign, a signed right shift copying the sign bit in and an unsigned one zero-filling, a left shift discarding what passes the width, and the idioms of testing, clearing and packing bits (spec 9.2, 10.1) |
 | `compound_assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=`, each storing what its long form computes: the whole right side as one operand, an integer division's `on_zero` clause after its divisor, a literal on the right taking the target's type and a shift count keeping its own, the target as its own operand, and a local accumulating across a loop (spec 9.2) |
+| `multi/cross_file` | One program written across three sources. Two extend one receiver and each calls a method the other declares, so C# has two parts of one static class and each C++ header includes the other. The third holds only tests, so its behavior output is empty and its driver includes the headers of the sources it tests (spec 5.3, 24.1, 24.2) |
+| `multi/owned_namespace` | A project's behavior, in the project's namespace, compiled into the same assembly and the same link as every other vector's. It extends the well-known `google.protobuf.Timestamp` and a message of its schema's own with the same simple name, each with a method of one name, so C# has two overloads in the project's one class and C++ two in the project's namespace, and the other source calls both (spec 24) |
 | `sweep/integer_sweep` | Every integer `+ - * / %` and unary `-` over every pair of boundary values of each integer type, with the fallback for a zero divisor, and every comparison of the same pairs, under the default wrapping policy (spec 10.1, 10.2). Generated |
 | `sweep/bitwise_sweep` | Every `&` `\|` `^` over every pair of boundary values of each integer type, `~` of each one, and `<<` and `>>` of each one by every count worth trying, in the value's own type; and one value shifted by every count in each other integer type (spec 9.2, 10.1). Generated |
 | `sweep/floating_sweep` | Every floating-point `+ - * / %`, unary `-` and comparison, in `float` and `double`, over both zeros, an inexact fraction, the largest finite value, the smallest subnormal, both infinities and NaN (spec 10.2). Generated |

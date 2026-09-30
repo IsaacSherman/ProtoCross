@@ -12,7 +12,7 @@ Behavior is defined once and generated per target, and it has to mean the same t
 
 ## The solution
 
-`ProtoCross.slnx`, six projects, `net10.0`. Settings are central in
+`ProtoCross.slnx`, seven projects, `net10.0`. Settings are central in
 [Directory.Build.props](Directory.Build.props): nullable enabled, implicit usings, **warnings as
 errors**, and `CheckForOverflowUnderflow=false` on purpose — the compiler must never inherit the
 arithmetic behavior it exists to define.
@@ -24,11 +24,14 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Backend.Cpp](src/ProtoCross.Backend.Cpp) | The same for C++. |
 | [src/ProtoCross.Cli](src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
 | [src/ProtoCross.LanguageServer](src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
+| [src/ProtoCross.Projects](src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
 | [tests/ProtoCross.Tests](tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
-dragging the CLI along, and it is worth preserving.
+dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` references Core and a
+globbing package and nothing else, so that listing directories to find sources happens beside Core
+rather than in it. The CLI references it too.
 
 Outside the solution, [editors/vscode](editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
@@ -36,14 +39,18 @@ npm, and consuming the server only as a process it starts. See *The VS Code exte
 ## The pipeline
 
 Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into it: the constructor
-(hold it to recompile the same buffer), `Compile(SourceDocument, …)`, and `Compile(string path, …)`.
+(hold it to recompile the same buffer), `Compile(SourceDocument, …)`, and `Compile(string path, …)`,
+each with a form that takes a list of sources.
 
 1. **Source.** [`SourceDocument`](src/ProtoCross.Core/SourceDocument.cs) is text plus a
    `SourceIdentity` — the name diagnostics print, the directory that settles policy and anchors
    imports, and the path, which is `null` for a buffer that was never saved. `ReadFrom` is the only
-   place the compiler reads ProtoCross source from disk.
+   place the compiler reads ProtoCross source from disk. A compilation takes one source or several;
+   several are one program, and are refused (`PC2006`) when two would be generated under one name —
+   compared by `NameConventions.OutputKey`, which folds a name the way every generated name does.
 2. **Policy.** The nearest `protocross.config.xml` at or above the source directory
-   ([`ProjectConfig.Discover`/`Load`](src/ProtoCross.Core/Config/ProjectConfig.cs)). A config that
+   ([`ProjectConfig.Discover`/`Load`](src/ProtoCross.Core/Config/ProjectConfig.cs)). Every source of
+   a compilation must find the same one (`PC2005`). A config that
    exists and cannot be read **stops** the compilation rather than falling back to defaults. A host
    serving an editor settles this per document instead, through
    [`WorkspaceConfiguration`](src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) — see
@@ -52,13 +59,16 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    more than one line.
 4. **Parse.** [`Parser.ParseCompilationUnit`](src/ProtoCross.Core/Syntax/Parser.cs) → the AST in
    [Ast.cs](src/ProtoCross.Core/Syntax/Ast.cs). Recursive descent, error-recovering, depth-budgeted
-   (`MaxNestingDepth`) because a `StackOverflowException` cannot be caught. A name it expected and
-   did not find is a [`SyntaxName`](src/ProtoCross.Core/Syntax/SyntaxName.cs) that says so, carrying
-   the empty range where the name would go.
+   (`MaxNestingDepth`) because a `StackOverflowException` cannot be caught. The budget bounds the
+   tree as well as the recursion: an expression built by a loop -- `a.b.c`, `1 + 2 + 3` -- is held
+   to it by height, because every later stage recurses over what the parser builds. A name it
+   expected and did not find is a [`SyntaxName`](src/ProtoCross.Core/Syntax/SyntaxName.cs) that
+   says so, carrying the empty range where the name would go.
 5. **No gate.** Parse errors do not stop the pipeline. A buffer being typed into is broken most of
    the time an editor asks anything about it, and what it most often asks — what may follow this
    dot — only the binder can answer.
-6. **Descriptors.** Each import is resolved into an
+6. **Descriptors.** Every source's imports are loaded together, each schema once, and every source
+   binds against all of them. Each import is resolved into an
    [`ImportResolution`](src/ProtoCross.Core/ImportResolution.cs) — resolved, not found, or never
    written — against the roots
    [`SchemaCatalog.RootsFor`](src/ProtoCross.Core/Binding/SchemaCatalog.cs) settles: the search paths,
@@ -95,7 +105,10 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
 7. **Bind.** [`Binder.Bind`](src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
-   descriptors and produces typed IR. Sugar ends here: a compound assignment `x += y` is bound as the
+   descriptors and produces typed IR. It binds several sources, each a
+   [`SourceTree`](src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
+   so a call or a test may reach from one source into another, and `IrModule.DeclaredIn` divides the
+   module back into what each source declares. Sugar ends here: a compound assignment `x += y` is bound as the
    assignment of `x + y` to `x`, so the IR has no node for one and no backend knows it exists. It does
    **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
    continues, a name the parser never saw resolves to `ErrorType`
@@ -123,7 +136,22 @@ Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into 
    unreadable config, an unusable include path, or a schema that could not be found or loaded.
    **`Module` is the partial one. Emit from `EmittableModule`**, which is null unless the
    compilation produced a whole program.
-9. **Emit.** Backends consume the IR only.
+9. **Emit.** Backends consume the IR only, one source at a time:
+   [`SourceEmission`](src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
+   part of the module (`IrModule.DeclaredIn`) with the options that name its files and the namespace
+   its behavior is declared in (`BackendOptions.For`), and keeps one copy of the runtime file every
+   source's output shares.
+   It also divides the output by each source's `SourceRole` (spec 25.3.1): a production source's
+   behavior goes to the behavior output, and a test source's goes to the test output with every
+   source's tests. The binder is what makes that division sound: a production method that calls a
+   test source's method is `PC0088`, so nothing in the behavior output calls into the test output;
+   and production behavior is bound against the production schema closure alone
+   ([`ProductionSchemaClosure`](src/ProtoCross.Core/ProductionSchemaClosure.cs)), so a schema only a
+   test source brings is `PC0089` there rather than a name that resolves. A schema in that closure
+   that the compilation loaded through a test source's directory is `PC0090`, since the production
+   build would load it from somewhere else or not at all.
+   A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test. The
+   command line runs one whenever it is not asked for `--test-out`.
 
 Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)
 answers "what is at this offset" for the syntax tree and for the IR, hands back the chain of nodes
@@ -238,12 +266,19 @@ divide-by-zero, unset-message reads. Discovery walks up from the source director
 An editor adds an axis the command line never had: one process, many documents, one or more
 workspace folders, each able to state settings of its own. Spec 10.4.1 settles that in the server
 and `WorkspaceConfiguration.Resolve` is the only place it is applied. Configuration is resolved
-**per document**, in the order folder → workspace → user setting → `PROTOCROSS_PROTOC` → discovery.
+**per document**, in the order project → folder → workspace → user setting → `PROTOCROSS_PROTOC` →
+discovery.
 Language policy stays out of settings entirely — a host may name a different `protocross.config.xml`
 and may not restate what is in one — and **every setting that is not being used is reported**
 (`PC2101`–`PC2105`), because a user who cannot tell a typo from a refusal has nothing to go on. A
 `protocross.config.xml` that is found and cannot be read stops the document and is named as *refused*
 (`PC2106`), rather than being reported as having supplied the defaults it did not supply.
+A document's project is the scope at the head of that order: the one `protocross.project` names, or
+the nearest `.pcproj` at or above the document that includes it. Its `<ProtoPath>` directories come
+before every editor include path and its policy replaces `protocross.configPath`, as they do when the
+command line builds it, and a project that cannot be read stops the document (`PC2109`) as a refused
+configuration file does. A diagnostic positioned in the project file or the configuration file is
+published in that file, chosen by the file its span names.
 `DocumentUri` and `PathIdentity` are between them the only places a URI becomes a path and two paths
 are compared, which is what makes one file one document and one cache entry however it is spelled.
 
@@ -262,6 +297,34 @@ withheld too, and protoc is located instead. And nothing withheld is discarded, 
 new generation and a recompile like any other change. What was withheld is said once per process as a
 message, and listed in the status report — never as a diagnostic, since nothing about the document or
 the setting needs editing.
+
+### Projects
+
+A `.pcproj` (spec 5.4) says which sources one compilation is made of and which of them hold its
+tests, and names the `protocross.config.xml` its policy comes from: two files, because what is
+compiled and what it means are two questions.
+[`ProtoCrossProject.Load`](src/ProtoCross.Projects/ProtoCrossProject.cs) reads the project file
+alone, through the same [`XmlInput`](src/ProtoCross.Core/Config/XmlInput.cs) the configuration
+file is read with, so a position in either is placed the same way.
+[`ProjectSources.Expand`](src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
+directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
+an element whose patterns match nothing is a warning (`PC2010`).
+[`ProjectFiles`](src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
+role, and [`ProjectPolicy`](src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
+file the compilation runs under, warning about a member whose own search finds another (`PC2011`).
+Both live here rather than in the command line, because an editor compiling a project has to answer
+the same two questions the same way.
+[`ProjectDiscovery`](src/ProtoCross.Projects/ProjectDiscovery.cs) finds the project a document
+compiles with, asking each candidate's patterns with the document's path through
+`ProjectSources.RoleOf` rather than listing the project's tree, since it runs whenever a document's
+settings are resolved; `RoleOf` asks the matcher expansion asks, over a directory that holds only
+that one path ([`PathToOneFile`](src/ProtoCross.Projects/PathToOneFile.cs)), so the two cannot
+disagree. Discovery runs whenever a document's settings are resolved, so what each directory held
+and what each project said are kept while a stat says the entry has not changed
+([`StampedFacts`](src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
+drops them, and a project that could not be read is never kept, since releasing a lock moves no
+stamp. The command line builds a project it is named. An editor resolves each document's settings
+through its project and compiles each document with it; see *Serving an editor*.
 
 ### Serving an editor
 
@@ -370,10 +433,36 @@ generation it began under, and its result is **discarded rather than published**
 The rule is not only about diagnostics: every answer describes the version it read, and a request
 that could only answer about a superseded one refuses instead.
 
+**A document with a project is compiled with it** (spec 26.1). `DocumentSemantics` keys what it holds
+by [`CompilationKey`](src/ProtoCross.LanguageServer/Hosting/CompilationKey.cs) — the project, or the
+document when it has none — so the open documents of one project share one compilation: the
+project's test build, each open source read from its buffer and each closed one from its file. Each
+document gets a view of it whose `SemanticModel` is opened on that document with `In`, sharing one
+reference index, so position questions measure offsets in the document's own text while
+find-references and go-to-definition cross into the others. Which files a project compiles is part of
+a document's settings, found by [`ProjectCatalog`](src/ProtoCross.Projects/ProjectCatalog.cs) through
+the rule the command line asks (`ProjectSources.ExpandForBuild`), so a project the build refuses is
+refused in the editor too, and remembered until the project file changes or a watched source is
+created or deleted, because a walk of every directory a pattern searches is too much to repeat per
+caret move. A kept compilation checks every buffer it read against the store, every closed source
+against its file's stamp, and, once another document has opened, that none the patterns match is
+missing from what it read. An answer is refused, and a compile's diagnostics are not published, if
+anything they were compiled with moved meanwhile -- a sibling's buffer edited, or a member opened --
+and not only the document asked about; `DocumentCompilation.WhatMovedIn` is that one question.
+`CompileScheduler` keys its queue the same way, and remembers the settings each open document was last
+compiled under. An open, an edit or a close schedules the document's own compilation and every other
+open document's whose project includes it (`DocumentConfiguration.ProjectRoleOf`, which the
+compilation asks when it reads its sources), whether or not that compilation has read it yet: that is
+how a newly opened member reaches its project's other open documents, and those of a project over the
+whole tree beside it. It is asked of those settings rather than of what is held, because a compilation
+is not always held. One run compiles a compilation once, and each open document whose own compilation
+it is gets published its share, by the file each diagnostic's span names. A closed source is compiled
+and never published.
+
 Cancellation reaches the one step that can outlast a keystroke. A superseded or closed document's
 compile stops waiting on `protoc` and gives its worker back at once; everything after the load is
-milliseconds and simply finishes into the discard. The queue holds one entry per document and a new
-request supersedes the last, so it cannot outgrow the number of open documents, and `Pending`,
+milliseconds and simply finishes into the discard. The queue holds one entry per compilation and a
+new request supersedes the last, so it cannot outgrow the number of open documents, and `Pending`,
 `InFlight` and `PeakInFlight` publish the backlog, what is running and the high-water mark. The
 interval and the concurrency limit were #57's to pin and both stand: a whole-buffer compile is 33 ms
 at p95, so the quarter-second debounce is almost all of the delay a reader feels, and four concurrent
@@ -408,15 +497,18 @@ one array write per answer, in a fifty-deep ring, and **only answers are recorde
 refused for staleness produced no answer and folding those in would make a server look faster the
 more work it was abandoning.
 
-A compilation rests on two kinds of file the editor does not hold, the schemas it imports and the
-policy file it discovers, and a kept compilation already refuses to answer once either has moved. What
-nothing did was *ask*: diagnostics are published when a compile runs, and saving a `.proto` in another
-tab is not a keystroke in this one. So once initialized the server asks a client that can watch files
-to report `**/*.proto` and `**/protocross.config.xml`
-([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to either
-reschedules every open document. So does the client agreeing to watch, since a save before its watcher
+A compilation rests on files the editor does not hold — the schemas it imports, the policy file and
+project it settles on, and a project's closed sources — and a kept compilation already refuses to
+answer once any of them has moved. What nothing did was *ask*: diagnostics are published when a
+compile runs, and saving a `.proto` in another tab is not a keystroke in this one. So once initialized
+the server asks a client that can watch files to report `**/*.proto`, `**/protocross.config.xml`,
+`**/*.pcproj` and `**/*.pcross`
+([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to any of them
+reschedules every open document. A project file changed, or a source created or deleted, also makes
+the server forget which files each project compiles, since no stamp shows that. So does the client agreeing to watch, since a save before its watcher
 was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
-schemas still stand costs a hash per schema rather than a compile. The server registers the patterns rather than
+schemas still stand costs a hash per schema rather than a compile. That includes a schema beside a
+source that another directory shadows: protoc never reads it, but `PC0087` was decided from it. The server registers the patterns rather than
 an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
 
 When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
@@ -520,6 +612,20 @@ rather than emitting something that quietly differs. A backend **cannot branch o
 operation is emitted comes from the behavior annotation the binder stamped on the IR node. Policy
 reaches a backend only as prose for the generated file's header.
 
+A backend is handed one source's part of the module, and a call in it may name a method another
+source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
+declares the part. A C++ header includes the headers of the sources it calls, after its own
+declarations and before its definitions, so two sources that call each other compile whichever header
+comes first; one that calls none is laid out as it always was.
+
+Where that class or function is declared is each backend's `Placement` (spec 24). A project's
+compilation carries the project's namespace, read from the project's name, from `CompilationOptions`
+through `CompilationResult.ProjectNamespace` to `BackendOptions`, and every class, function, call and
+C++ include guard is placed in it, whatever message the method extends. Without a project there is no
+namespace to carry, and each receiver's behavior is declared beside its message, in the namespace
+protoc declared that message in. The compilation itself never reads the namespace: where behavior is
+declared changes every generated name and nothing a program means.
+
 ## Tests
 
 One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized by layer:
@@ -532,13 +638,17 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `SemanticRefinementTests`, `SchemaCatalogTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
-`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `BackendTests`, `NameMappingTests`,
-and the scaffolding and smoke suites.
+`TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
+`ProjectSourcesTests`, `ProjectBuildTests`, `ProjectMembershipTests`, `ProjectDiscoveryTests`, `XmlInputTests`, `TestSourceTests`, `GeneratedNameTests`,
+`ProductionSchemaClosureTests`, `BackendTests`, `NameMappingTests`,
+`CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
 - **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`
   files whose `test` blocks *are* the vectors, compiled and executed in both backends. This is the
   semantic gate: spec 25.2 left the vector format open and this repository answers it with the
   language's own `test` declaration, so a vector with a wrong-typed expectation is a compile error.
+  A directory under `multi/` is one vector written across several files and compiled as one
+  program, which is where what happens between sources is pinned.
 - **Harness** — [tests/ProtoCross.Tests/Harness](tests/ProtoCross.Tests/Harness) builds and runs real
   generated projects. Needs `protoc`, the .NET SDK, and a C++ toolchain.
 - **Paths** — [TestPaths.cs](tests/ProtoCross.Tests/TestPaths.cs) finds the repository root and the
@@ -568,8 +678,10 @@ three suites on Windows, Linux and macOS, before and after a `protoc` is install
    diagnostics. A long-lived host must survive all of them, through binding as well as parsing.
    Neither stage may throw, hang, or recurse without bound on any input at all.
 5. **Backends see the IR only**, and cannot branch on policy.
-6. **Do not assume single-file forever.** #27 proposes multi-file compilation units; `Compilation`
-   already holds a *set* of sources for that reason.
+6. **A compilation is a set of sources.** Anything keyed by an offset is keyed by a document as well,
+   because an offset names a place only within one source: `SemanticModel.For(result, document)`
+   answers position questions for one source, and `IrModule.DeclaredIn` is one source's part of the
+   module.
 7. **The IR keeps the contract in spec 22.2**, invariants included: a node lies inside the node
    holding it, an expression's type is an error type only after an error, a reference resolves or is
    no reference, and one walk reaches every construct. `IrContractTests` sweeps the corpus for each,

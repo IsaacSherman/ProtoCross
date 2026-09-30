@@ -62,6 +62,12 @@ The IR preserves:
   identities. Every source in one compilation carries a distinct identity of its own -- a path, or
   the name its caller gave an unsaved buffer -- because a declaration site is only unique within a
   source.
+- **Which source each method and each test is declared in.** A module binds every source of a
+  compilation together, because a call or a test may reach from one source into another, and it is
+  divided back into its sources to emit each to a file of its own. A method says which source it is
+  in through its declaration site; a test, which declares nothing a name could refer to, carries its
+  source itself. A part divided out this way is not a module its source could have produced alone:
+  a call in it may name a method another source declares.
 - **A literal's value in one stated representation**: a 64-bit signed integer for a signed type and
   a 64-bit unsigned one for an unsigned type, whatever the width; a double-precision value for both
   floating-point types, and for a `float` literal the value its decimal rounds to in one rounding;
@@ -133,6 +139,13 @@ Normative Requirements:
 - **What a bare identifier written here could mean**: the names in scope, with their types and
   declarations, and the receiver they are looked up against. Everything offered binds and nothing that
   binds is missing, which is what makes the answer safe to accept without re-checking.
+- **Which schema types a name written here may resolve to**: those of the production schema closure
+  in production behavior, and every schema's anywhere else
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
+  In a compilation with test sources the two differ, and a type only a test source's schema declares
+  is `PC0089` in a production method, so a host offering type names asks this rather than listing
+  every type the compilation loaded. Whether two types share a simple name is asked of the same
+  answer, since a production method cannot see the test schema's type to be confused by it.
 - **A part nobody wrote answers only where it would be written.** 22.2's rule about recovered nodes,
   read from the caller's side: every offset is answered, and an offset over text the author did write
   is answered with something the author did write. A caret on the target of a `test` missing its

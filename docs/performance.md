@@ -22,7 +22,8 @@ rather than a feeling that things got worse.
 a schema closure and writing a descriptor set, and this project does not choose how long that takes.
 The budget on a cold load is that it happens once.
 
-Each budget is the **95th percentile over the stress corpus, warm**. A median hides the keystroke
+Each budget is the **95th percentile over the stress corpus, warm**, both alone and compiled as one
+source of a project. A median hides the keystroke
 that stutters, and the stutter is the whole experience being budgeted for — nobody notices the
 nineteen fast hovers. Warm means the descriptors are loaded and the buffer has been compiled, which
 is the state an editor is in for every keystroke after the first.
@@ -48,6 +49,7 @@ Stated rather than assumed, which is what #57 asks for.
 |---|---|---|
 | normal | [`examples/simpleScript.pcross`](../examples/simpleScript.pcross) | 274 |
 | stress | [`tests/perf/corpus/wide.pcross`](../tests/perf/corpus/wide.pcross) | 2,814 |
+| project | the stress file and the normal one, as the two sources of one project | 3,088 |
 
 **The normal case is a real file on purpose.** `simpleScript.pcross` is maintained for its own
 reasons and goes on being edited by people who are not thinking about measurement, which is exactly
@@ -71,10 +73,18 @@ It is shaped rather than merely long, because the operations above are bounded b
 
 To raise it, change `StressCorpus.Steps` and rewrite the committed file from the generator.
 
+**The project case is the stress file again, compiled with its project.** Since #106 a document with a
+project is compiled with the project's other sources, so every warm answer about it stands on a
+compilation of more than the file being edited, and a keystroke recompiles all of it. The project row
+asks the stress file's questions of the stress file compiled with the normal one as the two sources
+of one project, the normal one closed and read from disk — which is how a project is usually open:
+one file at a time. So the stress and project rows differ by exactly what the project adds, and the
+budgets hold both.
+
 ## How to measure
 
 ```bash
-PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release --filter "FullyQualifiedName~Performance"
+PROTOCROSS_BENCH=1 DOTNET_gcServer=0 dotnet test ProtoCross.slnx -c Release --filter "FullyQualifiedName~Performance"
 ```
 
 **`-c Release` is not optional, and the benchmark refuses to run without it.** `dotnet test` builds
@@ -84,10 +94,17 @@ the ones on the larger corpus — which is to say, the rows the budgets are defi
 figures published for this file came out of a Debug build, and the row nearest its budget was the one
 the optimizer moved most. Every report now states the configuration it was taken on.
 
-In PowerShell the variable is set separately — `$env:PROTOCROSS_BENCH = 1` — and stays set for the
-rest of the session, so clear it with `$env:PROTOCROSS_BENCH = $null`.
+**`DOTNET_gcServer=0` is not optional either, and for the same reason.** The test project runs the
+server garbage collector, which the resilience sweeps need to use every core, and the language server
+ships with the workstation one. A collector is chosen once, when the process starts, so no test can
+switch it for itself: the variable starts the whole run on the workstation collector, the benchmark
+refuses to run on the other, and every report states which one it was taken under.
 
-Every run writes `artifacts/perf/report.md`: every operation, both corpora, median, p95, min, max,
+In PowerShell the variables are set separately — `$env:PROTOCROSS_BENCH = 1` and
+`$env:DOTNET_gcServer = 0` — and stay set for the rest of the session, so clear both afterwards with
+`= $null`. Left set, the second makes every later run of the suite in that session slower.
+
+Every run writes `artifacts/perf/report.md`: every operation, every corpus, median, p95, min, max,
 and whether it was within budget. The report is written whether the run passes or fails, because the
 question after "too slow" is always "by how much, and was it always?".
 
@@ -173,6 +190,31 @@ threshold a person can feel, not a ratchet against the last measurement. Tighten
 because it measures 0.9 ms would fail on a slower machine without anything having got worse, and
 would say nothing about whether a hover felt slow. Regressions are the cost assertions' job.
 
+### Compiling with a project
+
+Measured 2026-09-27 on the same desktop, .NET 10.0.12, **Release**, three runs, when a document with a
+project began to be compiled with it (#106).
+
+| Operation | Stress p95 | Project p95 | Budget |
+|---|---:|---:|---:|
+| hover | 1.4–3.1 ms | 1.3–1.7 ms | 50 ms |
+| occurrence highlighting | 1.5–2.3 ms | 1.6–2.0 ms | 20 ms |
+| go-to-definition | 1.1–1.4 ms | 1.3–1.5 ms | 100 ms |
+| diagnostics after edit | 15–21 ms | 23–26 ms | 400 ms |
+| completion | 35–46 ms | 22–29 ms | 50 ms |
+
+**Diagnostics moves, by about what compiling the normal file costs**, since an edit now compiles the
+project and not only the file. **The warm answers do not move**: a held compilation answers a
+question for the cost it did before, plus one stat of each closed source to see that it is unchanged.
+
+**Completion's figures are the machine that day, not the project.** Taken the same hour on the
+commit before the project work, the stress row's completion p95 was 24–36 ms, and the medians either
+side were 16–22 ms. The project row coming out below the stress row is the order the rows are taken
+in: it runs after the stress row, on code the JIT has already optimized, not a project making
+completion faster. One run put the stress row's completion p95 at 46 ms, 4 ms under its budget, which
+is the twenty-sample noise described above rather than a trend; it is still the row to measure a new
+feature against.
+
 ### Descriptor loads, and the bounds that come off them
 
 **A cold load of the examples' schema closure is 21–33 ms**, essentially all of it `protoc` starting.
@@ -234,7 +276,16 @@ mistake — describing a bound by the first caller that came to mind:
   resolved before the held entry is checked, deliberately — it is half of what decides whether the
   entry still answers. So it is paid on every hover, every highlight, every caret move, and it is
   already inside all ten warm figures in the table above rather than absent from them. What has not
-  been done is separating its cost out from the answer's.
+  been done is separating its cost out from the answer's. Since #106 it also finds the document's
+  project, which means looking at every directory above the document; listing them afresh each time
+  put every warm row at 15–20 ms when the document sat beneath a directory of 20,000 entries, and
+  highlighting over its budget. Discovery now keeps what each directory held and what each project
+  said while a stat says the entry has not changed (`StampedFacts`). It also finds the files the
+  project compiles, which are remembered rather than listed per question (`ProjectCatalog`), since a
+  pattern over a whole repository walks all of it. On the machine that measured
+  15–20 ms, the same run afterwards put the warm hover, highlighting and go-to-definition rows at
+  0.7–1.0 ms median, against 0.5–0.8 ms at the commit before #106's editor work; the table above was
+  not re-measured.
 
 Neither is urgent — the totals they sit inside are one to two orders of magnitude under budget, which
 bounds them from above. But "not urgent because it is small" is a different claim from "not on the
@@ -257,6 +308,7 @@ in-flight counts on `DeferredAnswers` are what a stuck server shows instead, and
 prints both.
 
 `DocumentSemantics` does not serialize two concurrent misses for one buffer, so a classification
-request overlapping the debounced compile can compile the same text twice. It is a known cost, it is
+request overlapping the debounced compile can compile the same text twice. The same holds for two
+documents of one project asked about at the same moment, before either compile has finished. It is a known cost, it is
 counted by `DocumentSemantics.Compilations`, and at these latencies it is not worth the machinery to
 prevent — which is a conclusion this measurement licenses rather than an omission.

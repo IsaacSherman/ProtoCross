@@ -110,7 +110,7 @@ public sealed class ClassificationProvider
         // Shared where it is given, for the reason hover and go-to-definition take it: a compile a
         // keystroke scheduled and a classification asked for between two keystrokes should be one
         // compile.
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
 
         _deferred = new DeferredAnswers("classification", documents, configuration, concurrency);
     }
@@ -220,7 +220,7 @@ public sealed class ClassificationProvider
         // own: what this is watching for is a close that lands while the compile runs.
         var withdrawals = Volatile.Read(ref _withdrawals);
 
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         var classified = SemanticTokenEncoder.Encode(
             asked.Document.Text,

@@ -36,11 +36,31 @@ namespace ProtoCross.LanguageServer.Hosting;
 /// off.
 /// </para>
 /// <para>
-/// <b>How deep the queue goes.</b> One entry per document, and a new request replaces the entry the
+/// <b>What is compiled is a compilation, not a document.</b> The open documents of one project are one
+/// compilation (<see cref="CompilationKey"/>), so an edit schedules the project, and one run compiles it
+/// once and publishes each open document's share of what it found. Edits to two of its documents
+/// within one pause are one compile, and an edit to one of them moves what is shown on the others --
+/// which is the point, since a method renamed in one file is an unresolved name in every file that
+/// calls it. An edit also schedules every other compilation that read the document's buffer, such as a
+/// project over the whole tree beside the document's nearer one.
+/// </para>
+/// <para>
+/// <b>Which compilation a document is in is learned from compiling it, not looked up on a keystroke.</b>
+/// Finding a document's project walks every directory above it, and a scheduler that walked them per
+/// keystroke put a directory listing on the one worker that reads every notification -- one of
+/// <c>%TEMP%</c>'s twenty thousand entries, per keystroke, wherever the directory changed too often for
+/// a listing of it to be kept. So a document is its own compilation until it has been compiled once,
+/// and after that is the one its settings said. A guess that has gone stale -- a project added, a
+/// setting changed -- costs coalescing and nothing else: every compile resolves each document's
+/// settings afresh, so what is published is the document's own compilation whichever run published
+/// it, and the run corrects the guess.
+/// </para>
+/// <para>
+/// <b>How deep the queue goes.</b> One entry per compilation, and a new request replaces the entry the
 /// previous one left rather than joining it -- so the queue cannot outgrow the number of open
 /// documents however fast anybody types, and superseding is what "the queue is full" means here.
-/// Dropping anything else would be worse: every entry is the newest thing known about its document,
-/// and discarding one leaves that document showing squiggles for text it no longer contains, with
+/// Dropping anything else would be worse: every entry is the newest thing known about its compilation,
+/// and discarding one leaves its documents showing squiggles for text they no longer contain, with
 /// nothing scheduled that would correct them.
 /// </para>
 /// <para>
@@ -87,6 +107,17 @@ public sealed class CompileScheduler
 
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The compilation each open document was last compiled in, by <see cref="CompilationKey"/>, and the
+    /// settings that put it there; one never compiled is absent, and is its own.
+    /// </summary>
+    /// <remarks>
+    /// The settings are kept, and not only the name they give the compilation, because they are what
+    /// says which other documents the compilation reads, and an open or an edit asks that without
+    /// resolving anything from disk.
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, Membership> _compilationOf = new(StringComparer.Ordinal);
+
     public CompileScheduler(
         DocumentStore documents,
         ConfigurationSync configuration,
@@ -106,7 +137,7 @@ public sealed class CompileScheduler
         // a buffer goes through, so a compile scheduled by a keystroke and a completion asked between
         // two keystrokes are the same compile rather than two of them. A caller with no interest in
         // that -- a test exercising the scheduler alone -- gets one of its own and behaves as before.
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
 
         _router = router ?? throw new ArgumentNullException(nameof(router));
         _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
@@ -138,17 +169,17 @@ public sealed class CompileScheduler
     /// </remarks>
     public int Compilations => Volatile.Read(ref _compilations);
 
-    /// <summary>Documents whose scheduled compile is still live.</summary>
+    /// <summary>Compilations whose scheduled compile is still live.</summary>
     /// <remarks>
     /// <para>
-    /// The queue depth, and the whole of it, because the queue is keyed by document. Published so
+    /// The queue depth, and the whole of it, because the queue is keyed by compilation. Published so
     /// that "sustained editing does not grow the backlog" is a measurement rather than an argument
     /// about a dictionary, and for the status report in #58, where a server that feels stuck should
     /// be able to say whether it is holding work or merely idle.
     /// </para>
     /// <para>
-    /// Live means supersedable: a later request for that document would replace this one, and a
-    /// close would cancel it. It is deliberately not "how much work is running", because a compile
+    /// Live means supersedable: a later request for that compilation would replace this one, and
+    /// closing the document it alone compiles would cancel it. It is deliberately not "how much work is running", because a compile
     /// abandoned by a close leaves this the instant it is abandoned and may take a moment longer to
     /// notice. <see cref="InFlight"/> is the other question, and the two are only equal when nothing
     /// has been given up on.
@@ -178,8 +209,17 @@ public sealed class CompileScheduler
     private int _inFlight;
     private int _peakInFlight;
 
-    /// <summary>Recompiles one document once the typing settles.</summary>
+    /// <summary>
+    /// Recompiles what one document is compiled in, and every other compilation that reads it, once the
+    /// typing settles.
+    /// </summary>
     /// <remarks>
+    /// <para>
+    /// Which compilations those are is settled here, on the caller's thread, because superseding has to
+    /// happen in the order the edits arrived. It is read from what compiling the document last found and
+    /// from the settings the open documents were last compiled under, and neither touches the disk.
+    /// </para>
+    /// <para>
     /// The run is handed to the pool rather than started here, and that is not a preference. An
     /// <c>await</c> on an interval of zero completes synchronously, and so does a wait on a
     /// semaphore with a slot free -- so started inline, this method runs the whole compilation,
@@ -187,28 +227,41 @@ public sealed class CompileScheduler
     /// the one worker reading every notification the client sends, which would stop the server dead
     /// for the length of a schema load. The default interval hides it, because a real delay does
     /// yield; a shorter one, which is exactly what #57 might choose, would not.
+    /// </para>
     /// </remarks>
     public void Schedule(DocumentUri document)
     {
         ArgumentNullException.ThrowIfNull(document);
 
-        var cancellation = new CancellationTokenSource();
-
-        _pending.AddOrUpdate(document.Key, cancellation, (_, previous) => Supersede(previous, cancellation));
-
-        _ = Task.Run(() => RunAsync(document, cancellation), CancellationToken.None);
-    }
-
-    /// <summary>Recompiles everything, because something that affects every document changed.</summary>
-    public void ScheduleAll()
-    {
-        foreach (var document in _documents.All)
+        foreach (var compilation in CompilationsIncluding(document).Prepend(CompilationOf(document)).Distinct(StringComparer.Ordinal))
         {
-            Schedule(document.Uri);
+            ScheduleCompilation(compilation);
         }
     }
 
-    /// <summary>Abandons a document's outstanding work and clears what it published.</summary>
+    /// <summary>Recompiles everything, because something that affects every document changed.</summary>
+    /// <remarks>
+    /// Each compilation once, however many of its documents are open. What changed may have moved a
+    /// document into another compilation, and compiling it is what finds that out.
+    /// </remarks>
+    public void ScheduleAll()
+    {
+        foreach (var compilation in _documents.All.Select(document => CompilationOf(document.Uri)).Distinct(StringComparer.Ordinal))
+        {
+            ScheduleCompilation(compilation);
+        }
+    }
+
+    /// <summary>
+    /// Abandons a document's outstanding work, forgets what was held that read it, and clears what it
+    /// published.
+    /// </summary>
+    /// <remarks>
+    /// A compilation the document shared with other open documents is scheduled again rather than
+    /// abandoned: their diagnostics were worked out against this buffer, and with it closed the file on
+    /// disk is what they compile with, which may say something else -- a closed buffer's unsaved edits
+    /// are gone. Only a compile of this document alone is cancelled, since nobody is left to want it.
+    /// </remarks>
     public Task ForgetAsync(DocumentUri document)
     {
         ArgumentNullException.ThrowIfNull(document);
@@ -218,7 +271,76 @@ public sealed class CompileScheduler
             Cancel(pending);
         }
 
+        _compilationOf.TryRemove(document.Key, out _);
+        _semantics.Forget(document);
+
+        foreach (var compilation in CompilationsIncluding(document))
+        {
+            ScheduleCompilation(compilation);
+        }
+
         return _router.ClearAsync(document);
+    }
+
+    /// <summary>The compilation <paramref name="document"/> was last compiled in, or itself when it never has been.</summary>
+    private string CompilationOf(DocumentUri document)
+        => _compilationOf.TryGetValue(document.Key, out var member) ? member.Compilation : document.Key;
+
+    /// <summary>
+    /// The compilations of open documents whose projects include <paramref name="document"/>, whether or
+    /// not they have read it yet.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project's compilation reads exactly the documents its patterns include, from their buffers or
+    /// their files, so these are the compilations whose documents were told what this one said: an
+    /// edit or a close moves them, and so does an open, from which on the buffer is what counts. They
+    /// include those that have not read it at all, because the project's listing did not have it yet,
+    /// and nothing they did read has moved: a nearer project that owns it and a project over the whole
+    /// tree beside it alike, whose documents were told that a method the new one declares did not exist.
+    /// </para>
+    /// <para>
+    /// Asked of the settings each open document was last compiled under rather than of what is held.
+    /// A compilation is not always held -- one that read a file still settling is not, and a close
+    /// evicts what read the closed buffer -- and its documents go on showing what it found all the same,
+    /// so what is held answered for some of them and missed the rest.
+    /// </para>
+    /// </remarks>
+    private IEnumerable<string> CompilationsIncluding(DocumentUri document)
+    {
+        // Enumerated rather than read through Values, which takes every lock the dictionary has, on
+        // every keystroke.
+        return _compilationOf.Select(entry => entry.Value)
+            .DistinctBy(member => member.Compilation, StringComparer.Ordinal)
+            .Where(member => member.Settings.ProjectRoleOf(document) is not null)
+            .Select(member => member.Compilation);
+    }
+
+    /// <summary>Records which compilation a document's settings put it in, unless it has closed since.</summary>
+    /// <remarks>
+    /// Checked after writing rather than before, because a close takes the document out of the store
+    /// before it forgets this: either the check sees the close, or the forgetting comes after the write.
+    /// Checked before writing, a close landing between the two would leave an entry for a document
+    /// nothing will ever open again.
+    /// </remarks>
+    private void Remember(DocumentCompilation compiled)
+    {
+        var uri = compiled.Document.Uri;
+        _compilationOf[uri.Key] = new Membership(CompilationKey.Of(compiled.Settings), compiled.Settings);
+
+        if (_documents.Find(uri) is null)
+        {
+            _compilationOf.TryRemove(uri.Key, out _);
+        }
+    }
+
+    private void ScheduleCompilation(string compilation)
+    {
+        var cancellation = new CancellationTokenSource();
+
+        _pending.AddOrUpdate(compilation, cancellation, (_, previous) => Supersede(previous, cancellation));
+
+        _ = Task.Run(() => RunAsync(compilation, cancellation), CancellationToken.None);
     }
 
     /// <remarks>
@@ -245,7 +367,7 @@ public sealed class CompileScheduler
         }
     }
 
-    private async Task RunAsync(DocumentUri document, CancellationTokenSource cancellation)
+    private async Task RunAsync(string compilation, CancellationTokenSource cancellation)
     {
         var token = cancellation.Token;
 
@@ -258,7 +380,7 @@ public sealed class CompileScheduler
             {
                 Enter();
 
-                await CompileAsync(document, token).ConfigureAwait(false);
+                await CompileAsync(compilation, token).ConfigureAwait(false);
             }
             finally
             {
@@ -270,13 +392,13 @@ public sealed class CompileScheduler
         {
             // Either a keystroke superseded this compile or the document closed. Both are ordinary,
             // and both leave the descriptor load that was under way to finish into the cache.
-            _log.Trace($"Abandoned a compilation of '{document}' that was superseded before it finished.");
+            _log.Trace($"Abandoned a compilation of '{compilation}' that was superseded before it finished.");
         }
         catch (Exception ex)
         {
             // The compiler is written not to throw on bad input, and a server that dies when it does
             // anyway is worse than one that says so and keeps answering about every other file.
-            _log.Error($"Compiling '{document}' failed.", ex);
+            _log.Error($"Compiling '{compilation}' failed.", ex);
         }
         finally
         {
@@ -286,7 +408,7 @@ public sealed class CompileScheduler
             // one instead. What is left is a compile nothing holds a handle to -- the next edit cannot
             // supersede it and closing the document cannot cancel it, so it runs to completion holding
             // a concurrency slot to publish an answer about text that has already moved on.
-            _pending.TryRemove(KeyValuePair.Create(document.Key, cancellation));
+            _pending.TryRemove(KeyValuePair.Create(compilation, cancellation));
         }
     }
 
@@ -312,25 +434,50 @@ public sealed class CompileScheduler
         }
     }
 
-    private async Task CompileAsync(DocumentUri uri, CancellationToken cancellationToken)
+    /// <summary>
+    /// Compiles one compilation and publishes each of its open documents' share of what it found.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Its documents are the open ones last compiled in it, and one never compiled whose own it is. A
+    /// project that compiles a document belonging to a nearer project reads its buffer, and does not
+    /// publish for it: that document's diagnostics are its own project's. A closed source is compiled and not published for (spec 26.1),
+    /// because nothing would ever clear what was published about a file nobody opened.
+    /// </para>
+    /// <para>
+    /// Each document is compiled through the same object every other question about its buffer goes
+    /// through, so there is one spelling of "compile this document under these settings". Two would agree
+    /// until one of them passed a different directory to ToSource, at which point the editor would
+    /// predict imports resolving somewhere the compile does not look. The first compiles, and the rest
+    /// are answered from what it held.
+    /// </para>
+    /// </remarks>
+    private async Task CompileAsync(string compilation, CancellationToken cancellationToken)
     {
         // Asked before the work rather than only after it. A compile that waited for a slot behind
         // three others has usually been superseded by the time it gets one, and running it anyway
         // spends a protoc on text nobody is looking at.
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (_documents.Find(uri) is not { } document)
+        var configuration = _configuration.Current;
+        var documents = _documents.All.Where(document => CompilationOf(document.Uri) == compilation).ToList();
+
+        if (documents.Count == 0)
         {
             return;
         }
 
         Interlocked.Increment(ref _compilations);
 
-        var configuration = _configuration.Current;
         var mapper = _mapper();
 
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        var contribution = Diagnose(document, configuration, mapper, cancellationToken);
+        var compiled = documents.Select(document => _semantics.For(document, configuration, cancellationToken)).ToList();
+
+        foreach (var answer in compiled)
+        {
+            Remember(answer);
+        }
 
         // Before the staleness check and after the compile: what was measured is a compilation that
         // finished, whether or not anybody still wants its diagnostics. Recording after the check
@@ -340,46 +487,68 @@ public sealed class CompileScheduler
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // The staleness question is handed to the router rather than asked here, because the router's
-        // lock is the only thing that orders this publication against the withdrawal a close performs.
-        // Asked here, it could be answered "still fresh" and then overtaken by the close, leaving
-        // diagnostics on a document the editor has shut and nothing left that would ever clear them.
-        if (!await _router.PublishAsync(uri, contribution, () => IsStale(document, configuration)).ConfigureAwait(false))
+        foreach (var answer in compiled)
         {
-            _log.Trace($"Discarding a compilation of '{uri}' that no longer describes the buffer.");
+            var uri = answer.Document.Uri;
+
+            // The staleness question is handed to the router rather than asked here, because the
+            // router's lock is the only thing that orders this publication against the withdrawal a
+            // close performs. Asked here, it could be answered "still fresh" and then overtaken by the
+            // close, leaving diagnostics on a document the editor has shut and nothing left that would
+            // ever clear them.
+            if (!await _router.PublishAsync(uri, Diagnose(answer, mapper), () => IsStale(answer, configuration)).ConfigureAwait(false))
+            {
+                _log.Trace($"Discarding a compilation of '{uri}' that no longer describes the buffer.");
+                ScheduleIfAnotherBufferMoved(answer, configuration);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Compiles a document's compilation again when what made its answer stale was another document's
+    /// buffer moving, which may have scheduled nothing that would publish for it.
+    /// </summary>
+    /// <remarks>
+    /// An edit schedules the compilations open documents were last compiled in whose projects include
+    /// the edited document, and a document still being compiled for the first time has not been
+    /// compiled in any yet: a document opened a moment earlier, whose project's first compile read the
+    /// other buffer before it moved, had its answer discarded here and nothing
+    /// left to replace it, and showed no diagnostics until it was edited itself. A move of the document's
+    /// own buffer, or of the configuration, has always scheduled a compile of its own, so those are left
+    /// to it rather than compiled twice.
+    /// </remarks>
+    private void ScheduleIfAnotherBufferMoved(DocumentCompilation compiled, WorkspaceConfiguration configuration)
+    {
+        if (_documents.Find(compiled.Document.Uri) is { } current
+            && current.Version == compiled.Document.Version
+            && _configuration.Current.Generation == configuration.Generation)
+        {
+            ScheduleCompilation(CompilationOf(compiled.Document.Uri));
         }
     }
 
     /// <summary>
     /// Whether what was just computed describes text, or settings, that have since moved on.
     /// </summary>
-    private bool IsStale(OpenDocument document, WorkspaceConfiguration configuration)
+    /// <remarks>
+    /// Everything the compilation read has to be unchanged, not only the document's own buffer: in a
+    /// project, a method renamed in one open file is what another is being told about. The question is
+    /// <see cref="DocumentCompilation.WhatMovedIn"/>'s, which a request asks too.
+    /// </remarks>
+    private bool IsStale(DocumentCompilation compiled, WorkspaceConfiguration configuration)
     {
-        if (_documents.Find(document.Uri) is not { } current)
-        {
-            // Closed while this ran. ForgetAsync has already cleared it, and publishing now would put
-            // diagnostics on a document the editor is no longer showing.
-            return true;
-        }
-
-        return current.Version != document.Version
+        // A buffer closed while this ran counts as moved. For the document itself, ForgetAsync has
+        // already cleared it, and publishing now would put diagnostics on a document the editor is no
+        // longer showing; for another, the file on disk is what is compiled now, and closing it
+        // scheduled that compile.
+        return compiled.WhatMovedIn(_documents) is not null
             || _configuration.Current.Generation != configuration.Generation;
     }
 
-    /// <summary>Everything wrong with one document, under one settled configuration.</summary>
-    private DiagnosticContribution Diagnose(
-        OpenDocument document,
-        WorkspaceConfiguration configuration,
-        DiagnosticMapper mapper,
-        CancellationToken cancellationToken)
+    /// <summary>Everything wrong with one document, as one compilation of it found.</summary>
+    private DiagnosticContribution Diagnose(DocumentCompilation compiled, DiagnosticMapper mapper)
     {
-        var uri = document.Uri;
-
-        // Compiled through the same object every other question about this buffer goes through, so
-        // there is one spelling of "compile this document under these settings". Two would agree
-        // until one of them passed a different directory to ToSource, at which point the editor would
-        // predict imports resolving somewhere the compile does not look.
-        var compiled = _semantics.For(document, configuration, cancellationToken);
+        var uri = compiled.Document.Uri;
         var settings = compiled.Settings;
 
         // A protoc that was named and cannot be built into a loader stops this document. Falling back
@@ -426,11 +595,33 @@ public sealed class CompileScheduler
         // here -- a second spelling is how this comes to name a root the compilation never searched.
         var resolvePaths = SchemaCatalog.RootsFor(result.SearchPaths, compiled.Loader);
 
-        return WithConfiguration(
-            CompilationDiagnostics.Build(result, uri, resolvePaths, mapper, MissingProtocIn(compiled)),
-            uri,
-            settings,
-            mapper);
+        var found = CompilationDiagnostics.Build(result, uri, resolvePaths, mapper, MissingProtocIn(compiled));
+        foreach (var unread in compiled.UnreadSources)
+        {
+            found.Add(uri, mapper.Map(Unread(unread, settings), uri.Text, DiagnosticMapper.WholeDocumentStart));
+        }
+
+        return WithConfiguration(found, uri, settings, mapper);
+    }
+
+    /// <summary>Says that a source of the document's project could not be read (<c>PC2111</c>).</summary>
+    /// <remarks>
+    /// On the document rather than on the source, which nobody has open, and a warning rather than an
+    /// error: what went wrong is outside the document, and the document was compiled all the same.
+    /// Without it the only sign is an unresolved name wherever the document calls into that source.
+    /// </remarks>
+    private static Diagnostics.Diagnostic Unread(UnreadSource unread, DocumentConfiguration settings)
+    {
+        var reported = new Diagnostics.DiagnosticBag();
+        reported.Report(
+            HostDiagnosticCodes.ProjectSourceUnreadable,
+            $"'{Path.GetFileName(unread.Path)}', a source of '{Path.GetFileName(settings.ProjectPath)}', could not "
+                + $"be read, so this document was compiled without it: {unread.Reason} Whatever it declares "
+                + "is unknown here until it can be read.",
+            Diagnostics.SourceSpan.None,
+            "Close whatever holds the file open, or make it readable; it is read again at the next edit.");
+
+        return reported.Single();
     }
 
     /// <summary>The account of a missing protoc when this compilation had none to run, or null.</summary>
@@ -483,16 +674,21 @@ public sealed class CompileScheduler
     {
         contribution.Claim(uri);
 
-        var configuration = settings.ConfigPath is { } path && DocumentUri.TryParse(path, out var file) ? file : null;
+        List<DocumentUri> files =
+        [
+            .. new[] { settings.ProjectPath, settings.ConfigPath }
+                .Select(path => path is not null && DocumentUri.TryParse(path, out var file) ? file : null)
+                .OfType<DocumentUri>(),
+        ];
 
         foreach (var diagnostic in settings.Diagnostics)
         {
-            Attribute(contribution, uri, configuration, diagnostic, mapper);
+            Attribute(contribution, uri, files, diagnostic, mapper);
         }
 
         foreach (var diagnostic in _configuration.SettingsDiagnostics)
         {
-            Attribute(contribution, uri, configuration, diagnostic, mapper);
+            Attribute(contribution, uri, files, diagnostic, mapper);
         }
 
         return contribution;
@@ -507,7 +703,13 @@ public sealed class CompileScheduler
     /// the configuration file draws a squiggle on line 4 of the source, which is a different file
     /// saying a different thing -- or past the end of it, on a source shorter than the configuration.
     /// The file it belongs to is <see cref="DocumentConfiguration.ConfigPath"/>, the same file
-    /// <c>PC2106</c> names.
+    /// <c>PC2106</c> names, and a project reports in its own file, <see cref="DocumentConfiguration.ProjectPath"/>,
+    /// the same way.
+    /// </para>
+    /// <para>
+    /// Which of those two a diagnostic is in is read from the file its span names, since a document
+    /// with a project has both, and one diagnostic may name neither: <c>PC2011</c> is placed at the
+    /// start of the document it is about.
     /// </para>
     /// <para>
     /// A diagnostic with no position is the other kind: a setting being ignored, a path that would not
@@ -520,19 +722,24 @@ public sealed class CompileScheduler
     /// worse than one that admits it knows nothing: the message already names the file.
     /// </para>
     /// </remarks>
+    /// <param name="files">The files a configuration diagnostic may be positioned in: the project's, and the configuration's.</param>
     private static void Attribute(
         DiagnosticContribution contribution,
         DocumentUri document,
-        DocumentUri? configuration,
+        IReadOnlyList<DocumentUri> files,
         Diagnostics.Diagnostic diagnostic,
         DiagnosticMapper mapper)
     {
-        if (!diagnostic.Span.IsNone && configuration is not null)
+        if (!diagnostic.Span.IsNone
+            && files.FirstOrDefault(file => string.Equals(Path.GetFileName(file.Path), diagnostic.Span.File, StringComparison.Ordinal)) is { } named)
         {
-            contribution.Add(configuration, mapper.Map(diagnostic, configuration.Text));
+            contribution.Add(named, mapper.Map(diagnostic, named.Text));
             return;
         }
 
         contribution.Add(document, mapper.Map(diagnostic, document.Text, DiagnosticMapper.WholeDocumentStart));
     }
+
+    /// <summary>The compilation an open document was last compiled in, and the settings that put it there.</summary>
+    private readonly record struct Membership(string Compilation, DocumentConfiguration Settings);
 }

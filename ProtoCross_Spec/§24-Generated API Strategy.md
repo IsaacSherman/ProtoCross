@@ -2,6 +2,26 @@
 
 This section captures backend-specific integration choices.
 
+**Decided: a project's behavior is declared in a namespace the project owns, in every backend.** The
+namespace is the project's name ([5.4](./§5-Source%20Organization.md#54-projects)), spelled as protoc
+spells a package of that name: the behavior of `acme.billing.pcproj` is declared in `Acme.Billing` in
+C# and in `acme::billing` in C++. Every receiver's behavior goes there alike, whether its message
+comes from the project's own schemas, from a well-known type, or from a third party's package, so
+there is no rule for telling those apart. A project named after the package of its own schemas
+therefore declares its behavior beside their messages, and a consumer that imports their namespace
+for the messages has the behavior too.
+
+Sources compiled without a project are not a library, and have no name to own a namespace by. Their
+behavior is declared beside each message it extends, in the namespace protoc declares that message
+in, as it always has been.
+
+A library that declares its symbols in a namespace someone else owns shares it with every other
+library that does the same. Two libraries extending one message there declare the same names: in C#
+two classes a consumer referencing both cannot tell apart, and in C++ two `inline` functions the
+linker merges without a diagnostic, keeping one body for both. Protobuf's own extensions are placed
+the way a project's behavior is: an `extend` is declared in the package of the file that writes it,
+not the package of the message it extends.
+
 ### 24.1 C#
 
 Potential strategies:
@@ -11,11 +31,24 @@ Potential strategies:
 - Generated companion classes.
 - Wrapper/adaptor classes.
 
-**Decided for the current implementation: extension methods**, in a
-`{Message}ProtoCrossExtensions` static class per receiver. This imposes nothing on the protobuf
-codegen: the generated messages may live in a different assembly, and nothing depends on their
-being partial. Method names are PascalCased to match the C# protobuf generator, so
-`line_total_cents` becomes `LineTotalCents` and reads the same as a hand-written member.
+**Decided for the current implementation: extension methods.** A project's are declared in one
+static class, `ProtoCrossExtensions`, in the project's namespace, where every receiver's methods are
+overloads told apart by the type of `this`. A consumer writes `using Acme.Billing;` and then
+`order.LineTotalCents()`. Sources compiled without a project declare them in a
+`{Message}ProtoCrossExtensions` static class per receiver, in the receiver's own namespace. This
+imposes nothing on the protobuf codegen: the generated messages may live in a different assembly,
+and nothing depends on their being partial. The extension class is `partial` itself, because it
+belongs to the project or the receiver rather than to the source that extends it: two sources
+extending one message each emit a part of it, and a consumer compiles both into one assembly. Each
+source's part lists its methods by the message they extend. One class rather than one per receiver,
+because the namespace is the project's rather than a schema's, and two messages of one name from
+two packages would otherwise need two classes of one name in it. Method names are PascalCased to
+match the C# protobuf generator, so `line_total_cents` becomes `LineTotalCents` and reads the same
+as a hand-written member. A method whose name would then be the name of the class it is declared in,
+which C# does not allow, has an underscore appended wherever it is declared or called, as protoc
+appends one to a property named after its message: `proto_cross_extensions` is
+`ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
+`TimestampProtoCrossExtensions_` beside it.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
@@ -40,13 +73,15 @@ Keywords need nothing, because every C# keyword is lowercase and a PascalCased n
 `class` is `Class`. The rule is protoc's `GetPropertyName`, reproduced rather than approximated for
 the same reason as the C++ rule in [24.2](#242-c), and it is the same in protoc 31.1 and 33.4.
 
-**The namespace is the one protoc declares for the file.** Each extension class is declared in the
-namespace protoc's C# generator declares its receiver's file in, and every message and enum is
-qualified with it. That namespace is the file's `csharp_namespace` option whenever the file sets it,
-even to the empty string, which is the global namespace. Otherwise it is the file's package,
-converted by the same rule as a field name but in one pass over the whole package, with each period
-kept and starting a new word: `acme.v1beta1` is `Acme.V1Beta1`, `snake_case.pkg` is `SnakeCase.Pkg`,
-and a file with no package is in the global namespace. The underscore kept in front of a leading
+**A message's namespace is the one protoc declares for its file.** Every message and enum is
+qualified with the namespace protoc's C# generator declares its file in, and a source compiled
+without a project declares each extension class there too. That namespace is the file's
+`csharp_namespace` option whenever the file sets it, even to the empty string, which is the global
+namespace. Otherwise it is the file's package, converted by the same rule as a field name but in one
+pass over the whole package, with each period kept and starting a new word: `acme.v1beta1` is
+`Acme.V1Beta1`, `snake_case.pkg` is `SnakeCase.Pkg`, and a file with no package is in the global
+namespace. A project's namespace is its name converted by the same rule, as though it were a
+package: `acme.billing` is `Acme.Billing`. The underscore kept in front of a leading
 digit is therefore kept only at the start of the package, so `_1x.acme` is `_1X.Acme` and `acme._1x`
 is `Acme.1X`. That last is not a C# namespace, and protoc's own output for such a package does not
 compile, but it is what protoc names, and no other spelling would name a namespace its classes are
@@ -71,10 +106,30 @@ Potential strategies:
 - Protobuf insertion points.
 - Wrapper/adaptor classes.
 
-**Decided for the current implementation: header-only free functions** in the message's own
-protobuf namespace, taking the receiver as `const T&`. This subclasses nothing, needs no protoc
-insertion points, and behaves the same whether the protobuf codegen is regenerated or vendored.
-All declarations are emitted before any definition so methods may call one another in any order.
+**Decided for the current implementation: header-only free functions**, taking the receiver as
+`const T&`, in the project's namespace, or in the message's own protobuf namespace for sources
+compiled without a project. A consumer calls `acme::billing::line_total_cents(order)`. This
+subclasses nothing, needs no protoc insertion points, and behaves the same whether the protobuf
+codegen is regenerated or vendored. All declarations are emitted before any definition so methods
+may call one another in any order. Every call a generated function or test makes to another is
+qualified with the callee's namespace, so argument-dependent lookup cannot find another library's
+function of the same name.
+
+A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
+`acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is
+`acme::new_`. A project's header is guarded by a macro built from the project's name and the
+header's own, so `pricing.pc.h` in `acme.billing` is guarded by
+`PROTOCROSS_ACME_BILLING_PRICING_PC_H_`, and a translation unit can include the `pricing.pc.h` of two
+libraries. Outside a project it is `PROTOCROSS_PRICING_PC_H_`.
+
+Every source of a compilation ([5.3](./§5-Source%20Organization.md#53-compilation-unit)) is generated
+into a header of its own, and a method may call one another source declares. A header whose methods
+do includes each such source's header after its own declarations and before its definitions. Two
+sources may therefore call each other, and whichever of their headers a translation unit includes
+first, the other's definitions find the functions they call already declared, while the include
+guard stops the inclusion going round again. A header that calls no other source includes none, and
+is laid out as it always was. A generated test driver includes the header of each source its tests
+target.
 
 Const-correctness follows from the read-only method model: every receiver is `const T&` and every
 message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be

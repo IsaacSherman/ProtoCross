@@ -71,9 +71,9 @@ internal static class SymbolLocations
     /// </para>
     /// <para>
     /// Whether it <em>is</em> the same file is asked of <see cref="PathIdentity"/> rather than
-    /// assumed, although a compilation holds one source today: #27 makes it stop being true, and a
-    /// declaration that silently claimed to be in the wrong file would navigate to the right line of
-    /// the wrong buffer. A source with no path is an unsaved buffer, whose only handle is the URI the
+    /// assumed, because a document compiled with its project shares a compilation with the project's
+    /// other sources, and a declaration that silently claimed to be in the wrong file would navigate to
+    /// the right line of the wrong buffer. A source with no path is an unsaved buffer, whose only handle is the URI the
     /// client opened it under -- which is this one.
     /// </para>
     /// </remarks>
@@ -82,9 +82,22 @@ internal static class SymbolLocations
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(asked);
 
-        return source.Path is { } path && !PathIdentity.AreSame(path, asked.Path)
-            ? DocumentUri.FromPath(path).ToString()
-            : asked.ToString();
+        return IsIn(source, asked)
+            ? asked.ToString()
+            : DocumentUri.FromPath(source.Path!).ToString();
+    }
+
+    /// <summary>Whether a ProtoCross source is the document <paramref name="asked"/> names.</summary>
+    /// <remarks>
+    /// Asked of the path, as <see cref="UriOf"/> says why. A source with no path is an unsaved buffer,
+    /// which only ever compiles alone, so it is the document being asked about.
+    /// </remarks>
+    public static bool IsIn(SourceIdentity source, DocumentUri asked)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(asked);
+
+        return source.Path is null || PathIdentity.AreSame(source.Path, asked.Path);
     }
 
     /// <summary>A declaration reduced to what the wire carries: a document and two ranges.</summary>

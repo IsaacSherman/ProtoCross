@@ -28,7 +28,7 @@ namespace ProtoCross.Backend.CSharp;
 /// </remarks>
 public static class CSharpRuntime
 {
-    public const string FileName = "ProtoCrossArithmetic.g.cs";
+    public const string FileName = NameConventions.CSharpRuntimeName + ".g.cs";
 
     public const string NamespaceName = "ProtoCross.Runtime";
 

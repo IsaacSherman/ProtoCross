@@ -1,0 +1,21 @@
+// Conformance vectors for one program written across several sources: the second of three. See
+// cross_file_totals.pcross for what the three pin.
+
+import proto "cross_file.proto";
+
+extend CrossFileLine {
+    fn line_cents() -> int64 {
+        return quantity * unit_price_cents;
+    }
+}
+
+extend CrossFileOrder {
+    // Calls back into the totals source, which is what makes each of the two headers include the other.
+    fn discount_applied_cents() -> int64 {
+        if subtotal_cents() >= discount_threshold_cents {
+            return discount_cents;
+        }
+
+        return 0;
+    }
+}

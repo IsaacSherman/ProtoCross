@@ -1,14 +1,14 @@
 # ProtoCross
 
-ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages.
+ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages, with tests that run across every target it supports.
 
-Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams often reimplement the same methods in every target language and hope the implementations stay semantically identical.
+Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams reimplement the same methods in every target language, write parallel test suites using similar-but-not-identical frameworks and extension points, and hope both the implementations and their tests stay semantically identical.
 
-ProtoCross is an attempt to fill that gap without turning protobuf into a full programming platform.
+ProtoCross makes that shared behavior a shared, executable contract. Define a method and its declarative tests once; the compiler generates native behavior and test artifacts for each backend, while the conformance suite requires the same observable results everywhere. The goal is not merely similar code in several languages, but behavior we can verify is equivalent as closely as the targets allow, without turning protobuf into a full programming platform.
 
 ## Vision
 
-The goal is simple: define behavior once, then transpile it into the languages where the protobuf messages are used.
+The goal is simple: define behavior and its tests once, then transpile both into the languages where the protobuf messages are used.
 
 ProtoCross should let a team write small, explicit methods against protobuf message types:
 
@@ -20,7 +20,7 @@ extend InvoiceItem {
 }
 ```
 
-That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target.
+That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
 
 This is not meant to be a clever language. It is meant to be deliberately plain: old-fashioned pseudocode with enough type information and control flow to express common domain behavior clearly.
 
@@ -181,6 +181,40 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 
 That writes `generated/csharp/` and `generated/cpp/`. Pass `-t csharp` or `-t cpp` for one target.
 
+Several sources are compiled together by naming each of them:
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- billing/pricing.pcross billing/discounts.pcross -I protos -o generated
+```
+
+They are one program, so a method in either may call one declared in the other, and each is still
+generated into files named after it: `pricing.g.cs` and `discounts.g.cs`, `pricing.pc.h` and
+`discounts.pc.h`. Nothing is written unless every source compiles.
+
+A project file names them instead, so that building is one command however many there are. This is
+`billing/billing.pcproj`:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Tests Include="tests/**/*.pcross" />
+  <ProtoPath>../protos</ProtoPath>
+</ProtoCrossProject>
+```
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- billing/billing.pcproj -o generated
+```
+
+Patterns and paths are relative to the project's directory. `<ProtoPath>` directories are searched
+before any `-I`, and output goes where `-o` says, because a project says what is compiled and not
+where it goes. `<Tests>` names sources that are there only to test with: they are compiled, and
+their methods generated beside the tests, only when `--test-out` asks for the tests. A project is
+built only when it is named, one at a time, and never beside sources of its own (spec 5.4). Its
+behavior is declared in a namespace named after it; see
+[Calling the generated behavior](#calling-the-generated-behavior).
+
 The compiler needs a `protoc` executable, because it consumes protobuf descriptors rather than
 reparsing `.proto` files itself (spec 21.1). It looks at `PROTOCROSS_PROTOC`, then `PATH`, then a
 restored `Grpc.Tools` NuGet package, so a separate protoc install is usually unnecessary.
@@ -195,7 +229,11 @@ them, so they never appear in an emitted project.
 Some questions have more than one defensible answer, and which one you want is a property of your
 project rather than of the language. Those answers live in `protocross.config.xml`, next to the code
 they govern. The compiler looks for it in the source file's directory and every directory above it,
-nearest first -- the way `.editorconfig` is found -- so a repository states its policy once.
+nearest first -- the way `.editorconfig` is found -- so a repository states its policy once. Sources
+compiled together must all find the same file, because one program runs under one policy. A project
+settles that for its sources: it compiles under the file its `<Config>` names, or else the nearest one
+at or above the project file, and a source under a different file of its own is compiled under the
+project's with a warning.
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
@@ -268,11 +306,11 @@ The compiler options used in those commands are:
 |---|---|
 | `-I`, `--proto_path <dir>` | Directory searched for imported `.proto` files. May be repeated. |
 | `-o`, `--out <dir>` | Root directory for generated behavior artifacts. Each backend writes below `<dir>/<target>/`. |
-| `--test-out <dir>` | Root directory for generated test artifacts. Each test backend writes below `<dir>/<target>/`. |
+| `--test-out <dir>` | Build the tests too, into this root directory. Each test backend writes below `<dir>/<target>/`. Without it, tests are neither checked nor generated. |
 | `--scaffold` | Also write the build file that builds and runs the generated tests. Requires `--test-out`. |
 | `-t`, `--target <list>` | Comma-separated backend list: `csharp`, `cpp`. Defaults to all current backends. |
-| `--config <file>` | Use this `protocross.config.xml` instead of searching for one. |
-| `--no-config` | Ignore any config file and use the built-in defaults. |
+| `--config <file>` | Use this `protocross.config.xml` instead of searching for one. Not with a project, which settles its own. |
+| `--no-config` | Ignore any config file and use the built-in defaults. Not with a project. |
 | `--arithmetic-overflow <mode>` | `wrapping` (default), `checked`, or `saturating`. |
 | `--override-config` | Let a policy flag win over a setting the config file states. |
 
@@ -287,6 +325,42 @@ protoc -I examples/protos --cpp_out generated/protobuf/cpp examples/protos/invoi
 The C# generated ProtoCross behavior and tests must compile in a project that also includes the
 C# protobuf output. The C++ generated ProtoCross behavior and tests must compile with the C++
 protobuf output, protobuf headers, and protobuf libraries.
+
+### Calling the generated behavior
+
+A project declares its behavior in a namespace of its own, named after the project, whichever
+messages it extends. The behavior of `acme.billing.pcproj` is in `Acme.Billing` in C# and in
+`acme::billing` in C++, spelled as protoc would spell a package of that name:
+
+```csharp
+using Acme.Billing;
+
+long cents = invoice.TotalCents();
+```
+
+```cpp
+#include "pricing.pc.h"
+
+std::int64_t cents = acme::billing::total_cents(invoice);
+```
+
+A C# project's extension methods are all in one class, `Acme.Billing.ProtoCrossExtensions`, so a
+call can also be written `ProtoCrossExtensions.TotalCents(invoice)`. That is how you choose between
+two libraries that each declare a method of one name for one message, and it is why they never
+collide: a library declares nothing in a namespace it does not own. Behavior for a well-known type
+such as `google.protobuf.Timestamp`, or for a schema another team publishes, is declared in the
+project's namespace like any other.
+
+Name a project after the package of its own schemas, `acme.billing.pcproj` for `package
+acme.billing;`, and its behavior is declared beside their messages, so the namespace you already
+import for the messages brings the behavior with it. A project's name has to be one a package could
+have: identifiers separated by periods, each starting with a letter. Renaming the project renames the
+namespace.
+
+Sources compiled without a project are not a library, so their behavior is declared beside each
+message it extends, in the namespace protoc declares that message in. The example's is in
+`ProtoCross.Examples`, beside `Invoice`, so `invoice.TotalCents()` needs only the `using` the
+message already did, and in C++ it is `protocross::examples::total_cents(invoice)`.
 
 ### Generating ProtoCross Unit Tests
 
@@ -318,6 +392,11 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 
 That writes production C# to `generated/csharp/` and generated xUnit tests to
 `generated/tests/csharp/`.
+
+Tests are built only when `--test-out` asks for them. Without it the program alone is built, and
+its tests are neither checked nor generated, so a test left behind by a rename never stops a release.
+With it the tests are part of the build, and nothing is written unless all of it compiles: the
+production output of a build whose tests failed would look like a finished one.
 
 Generated test source is not runnable on its own: it needs a project that also compiles the
 generated behavior and the protobuf message classes. Adding `--scaffold` writes that project too,

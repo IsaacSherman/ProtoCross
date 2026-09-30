@@ -63,6 +63,16 @@ public sealed record SourceIdentity
     /// </remarks>
     public string? Directory { get; }
 
+    /// <summary>
+    /// The empty point at the start of this source, for a diagnostic about the source as a whole.
+    /// </summary>
+    /// <remarks>
+    /// Such a diagnostic is reported before the source is lexed, so there is nothing inside it to
+    /// place one at, and <see cref="Diagnostics.SourceSpan.None"/> would say which file only by leaving
+    /// it out. The start is also where an editor puts a diagnostic that has no position (spec 26.1).
+    /// </remarks>
+    public Diagnostics.SourceSpan Start => Diagnostics.SourceSpan.SingleLine(Name, 0, 1, 1, 0);
+
     /// <summary>Identifies text by the file it is stored in.</summary>
     public static SourceIdentity FromPath(string path)
     {
@@ -115,6 +125,14 @@ public sealed record SourceIdentity
 /// </remarks>
 public sealed record SourceDocument(SourceIdentity Identity, string Text)
 {
+    /// <summary>What this source is compiled for; a production source unless a caller says otherwise.</summary>
+    /// <remarks>
+    /// Init-only and beside the positional members, so that every existing caller builds a document
+    /// exactly as it did and gets what it always compiled: a source whose methods are the program.
+    /// Only a project can name a test source (spec 5.4), so only a caller that read one sets this.
+    /// </remarks>
+    public SourceRole Role { get; init; }
+
     /// <summary>Reads the file <paramref name="identity"/> names.</summary>
     /// <remarks>
     /// The only place the compiler reads ProtoCross source from the file system. Text a caller

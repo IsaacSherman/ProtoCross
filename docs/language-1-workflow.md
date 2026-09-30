@@ -15,17 +15,20 @@ the table on #108. A sprint branch is cut from `main`, each issue branches off i
 into it by pull request, and the sprint then goes to `main` as one pull request, the way
 `epics/language-server-N` did.
 
-The current sprint branch is **`sprints/language-1-1`**. This line is the only record of that, so
-moving to the next sprint means editing it here.
+The current sprint branch is **`sprints/language-1-2`**. This line is the only record of that, so
+moving to the next sprint means editing it here. `sprints/language-1-1` carried sprint 1 — #10,
+#65, #105, #28 and the catch-up half of #107 — and reached `main` as #129. Sprint 2 is the
+multi-file sprint: #69, #127, #27, #106 and #29, in that order, with the plan and its decisions in
+the comments on #108 and on each issue.
 
 ```bash
-git checkout sprints/language-1-1 && git pull && git checkout -b issue-10-drop-virtual
+git checkout sprints/language-1-2 && git pull && git checkout -b issue-69-chain-depth
 ```
 
 Issue pull requests use the sprint branch as their base, never `main`:
 
 ```bash
-gh pr create --draft --base sprints/language-1-1 --title "..." --body-file pr-body.md
+gh pr create --draft --base sprints/language-1-2 --title "..." --body-file pr-body.md
 ```
 
 They land one at a time. A ruleset on `sprints/**` requires a pull request, the CI checks, and a
@@ -82,5 +85,5 @@ issue over, name what to try in the extension alongside the short list of what d
 
 The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, the
 byte-for-byte proof against a base worktree, and ARCHITECTURE.md updates once the shape settles. All
-of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-1` in
+of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-2` in
 place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.`

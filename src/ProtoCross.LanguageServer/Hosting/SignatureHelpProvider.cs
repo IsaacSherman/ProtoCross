@@ -71,7 +71,7 @@ public sealed class SignatureHelpProvider
 
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
         _deferred = new DeferredAnswers("signature help", documents, configuration, concurrency);
     }
 
@@ -123,7 +123,7 @@ public sealed class SignatureHelpProvider
             return null;
         }
 
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         // A declaration is not a call, and lexically the two are the same shape: `fn scaled(` has an
         // identifier before an open parenthesis exactly as `scaled(` does. What tells them apart is

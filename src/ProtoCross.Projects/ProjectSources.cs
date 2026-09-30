@@ -1,0 +1,271 @@
+using System.Security;
+using Microsoft.Extensions.FileSystemGlobbing;
+using Microsoft.Extensions.FileSystemGlobbing.Abstractions;
+using ProtoCross.Diagnostics;
+
+namespace ProtoCross.Projects;
+
+/// <summary>Finds the sources a project's <c>&lt;Sources&gt;</c> and <c>&lt;Tests&gt;</c> patterns match on disk.</summary>
+/// <remarks>
+/// <para>
+/// A pattern names sources, so only <c>.pcross</c> files are taken from what it matches:
+/// <c>src/**</c> means every source under <c>src</c>, rather than every source and every README beside
+/// them, which would be a compilation of files that are not ProtoCross at all.
+/// </para>
+/// <para>
+/// Patterns are compared the way <see cref="PathIdentity"/> compares paths -- without regard to case
+/// where the file system has none -- so that a pattern and the file it plainly names never disagree
+/// about whether they are the same, and one file matched under two spellings is one source.
+/// </para>
+/// </remarks>
+public static class ProjectSources
+{
+    /// <summary>The extension a ProtoCross source carries (spec 5.1).</summary>
+    public const string SourceExtension = ".pcross";
+
+    /// <summary>
+    /// The sources <paramref name="project"/>'s patterns match. An element that matches nothing is
+    /// reported as a warning; a directory that cannot be listed is reported as an error, and the
+    /// element that needed it contributes nothing.
+    /// </summary>
+    public static ProjectFiles Expand(ProtoCrossProject project, DiagnosticBag diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
+        return new ProjectFiles(
+            Expand(project, "Sources", project.Sources, diagnostics),
+            Expand(project, "Tests", project.Tests, diagnostics));
+    }
+
+    /// <summary>
+    /// The sources a build of <paramref name="project"/> compiles, or null when no build of it may
+    /// compile anything: a directory one of its patterns searches could not be listed (<c>PC2007</c>),
+    /// or its <c>&lt;Sources&gt;</c> match no source (<c>PC2012</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A project whose files could not all be listed is refused rather than built from the ones that
+    /// could be, because a project missing some of its sources builds a program nobody wrote. One whose
+    /// <c>&lt;Sources&gt;</c> find nothing is refused in either build, although a test build would have
+    /// test sources to compile: a test build generates what the production build does, and the
+    /// production build has nothing to generate.
+    /// </para>
+    /// <para>
+    /// One rule the command line and the editor both ask. The command line used to state it by itself,
+    /// in a line of its own on standard error with no code, and an editor compiling a project's
+    /// documents had no way to say that the build would refuse to.
+    /// </para>
+    /// </remarks>
+    public static ProjectFiles? ExpandForBuild(ProtoCrossProject project, DiagnosticBag diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
+        // Collected apart and then handed on, so that what decides is what the expansion reported: the
+        // caller's bag may already hold errors about something else.
+        var expansion = new DiagnosticBag();
+        var files = Expand(project, expansion);
+        foreach (var diagnostic in expansion)
+        {
+            diagnostics.Add(diagnostic);
+        }
+
+        if (expansion.HasErrors)
+        {
+            return null;
+        }
+
+        if (files.Sources.Count == 0)
+        {
+            var name = Path.GetFileName(project.Path);
+            diagnostics.Report(
+                DiagnosticCodes.ProjectCompilesNothing,
+                $"{name} compiles nothing: no <Sources> element matches a {SourceExtension} file.",
+                SourceSpan.SingleLine(name, 0, 1, 1, 0),
+                "Add a <Sources> element whose patterns match the sources that ship. A file only <Tests> "
+                    + "names is compiled to test with, and is not what a build generates.");
+            return null;
+        }
+
+        return files;
+    }
+
+    private static List<string> Expand(
+        ProtoCrossProject project,
+        string group,
+        IReadOnlyList<ProjectItem> items,
+        DiagnosticBag diagnostics)
+    {
+        var files = new HashSet<string>(PathIdentity.Comparer);
+
+        foreach (var item in items)
+        {
+            var matched = Match(project.Directory, group, item, diagnostics);
+            if (matched is { Count: 0 })
+            {
+                diagnostics.Report(
+                    DiagnosticCodes.ProjectPatternMatchesNothing,
+                    $"{Describe(group, item)} matches no {SourceExtension} file.",
+                    item.Span,
+                    "Patterns are matched below the project's directory, and ../ reaches above it.");
+            }
+
+            files.UnionWith(matched ?? []);
+        }
+
+        return [.. files.OrderBy(file => RelativeKey(project.Directory, file), StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// The role <paramref name="path"/> takes in <paramref name="project"/>: production when a
+    /// <c>&lt;Sources&gt;</c> element matches it, test when only a <c>&lt;Tests&gt;</c> element does,
+    /// and null when neither does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the patterns alone, without listing a directory. An editor asks it of each document it
+    /// is settling the settings of, which it does on every hover and every caret move, and walking a
+    /// project's tree to answer would put a directory walk under each of them.
+    /// </para>
+    /// <para>
+    /// It answers exactly what <see cref="Expand"/> finds, because it asks the same matcher, built from
+    /// the same element by the same method; only where the candidate files come from differs. A pattern
+    /// the matcher cannot take matches nothing here, where <see cref="Expand"/> reports it: a project
+    /// read by <see cref="ProtoCrossProject.Load"/> holds no such pattern, and the question asked here
+    /// is membership, not whether the project is sound.
+    /// </para>
+    /// </remarks>
+    public static SourceRole? RoleOf(ProtoCrossProject project, string path)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        ArgumentNullException.ThrowIfNull(path);
+
+        var full = Path.GetFullPath(path);
+        if (!IsSource(full))
+        {
+            return null;
+        }
+
+        if (AnyMatches(project.Directory, project.Sources, full))
+        {
+            return SourceRole.Production;
+        }
+
+        return AnyMatches(project.Directory, project.Tests, full) ? SourceRole.Test : null;
+    }
+
+    private static bool AnyMatches(string directory, IReadOnlyList<ProjectItem> items, string path)
+        => items.Any(item =>
+        {
+            try
+            {
+                return MatcherFor(item).Execute(new PathToOneFile(directory, path)).HasMatches;
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        });
+
+    /// <summary>Why <paramref name="pattern"/> cannot be matched, or null when it can.</summary>
+    /// <remarks>
+    /// Asked of the matcher itself, which refuses a pattern as it is added -- <c>..</c> anywhere but at
+    /// the start is the one a reader is likeliest to write -- so that the project reader refuses exactly
+    /// what matching would, rather than a second statement of the matcher's grammar that drifts from it.
+    /// </remarks>
+    internal static string? ProblemWith(string pattern)
+    {
+        try
+        {
+            NewMatcher().AddInclude(WithForwardSlashes(pattern));
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// The sources one element matches, or null when a pattern of it cannot be matched or a directory
+    /// it searches could not be listed.
+    /// </summary>
+    /// <remarks>
+    /// A project read by <see cref="ProtoCrossProject.Load"/> has had every pattern checked with
+    /// <see cref="ProblemWith"/> already. An element built by hand has not, and meeting an unmatchable
+    /// pattern here is reported rather than thrown, since the pattern still came from somebody's input.
+    /// </remarks>
+    private static List<string>? Match(string directory, string group, ProjectItem item, DiagnosticBag diagnostics)
+    {
+        PatternMatchingResult result;
+        try
+        {
+            result = MatcherFor(item).Execute(new DirectoryInfoWrapper(new DirectoryInfo(directory)));
+        }
+        catch (ArgumentException ex)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidProjectSetting,
+                $"{Describe(group, item)} holds a pattern ProtoCross cannot match: {ex.Message}",
+                item.Span,
+                UnmatchableHelp);
+            return null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.ProjectCouldNotBeRead,
+                $"The files {Describe(group, item)} names could not be listed: {ex.Message}",
+                item.Span);
+            return null;
+        }
+
+        return
+        [
+            .. result.Files
+                .Select(match => Path.GetFullPath(Path.Combine(directory, match.Path)))
+                .Where(IsSource),
+        ];
+    }
+
+    /// <summary>What to write instead of a pattern the matcher refuses.</summary>
+    internal const string UnmatchableHelp =
+        "../ may only begin a pattern, as in ../shared/*.pcross. * matches within one directory and ** across any number.";
+
+    /// <summary>How a file name is compared with a pattern or an extension: as <see cref="PathIdentity"/> compares it.</summary>
+    internal static StringComparison NameComparison
+        => PathIdentity.IsCaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase;
+
+    private static Matcher NewMatcher() => new(NameComparison);
+
+    /// <summary>The matcher for one element: its includes, less its excludes.</summary>
+    /// <exception cref="ArgumentException">A pattern of the element is one the matcher cannot take.</exception>
+    private static Matcher MatcherFor(ProjectItem item)
+    {
+        var matcher = NewMatcher();
+        matcher.AddIncludePatterns(item.Include.Select(WithForwardSlashes));
+        matcher.AddExcludePatterns(item.Exclude.Select(WithForwardSlashes));
+        return matcher;
+    }
+
+    /// <summary>The element as written, excludes included, since an exclude can be what emptied it.</summary>
+    private static string Describe(string group, ProjectItem item)
+        => item.Exclude.Count == 0
+            ? $"<{group} Include=\"{string.Join(';', item.Include)}\">"
+            : $"<{group} Include=\"{string.Join(';', item.Include)}\" Exclude=\"{string.Join(';', item.Exclude)}\">";
+
+    /// <summary>
+    /// A pattern with either separator written as a forward slash, so that one project matches the
+    /// same files on every platform rather than leaving a backslash to mean a separator on one and a
+    /// character of a file name on another.
+    /// </summary>
+    private static string WithForwardSlashes(string pattern) => pattern.Replace('\\', '/');
+
+    private static bool IsSource(string path)
+        => string.Equals(Path.GetExtension(path), SourceExtension, NameComparison);
+
+    /// <summary>A file's path below the project's directory, with forward slashes, which is what it is sorted by.</summary>
+    private static string RelativeKey(string directory, string file)
+        => Path.GetRelativePath(directory, file).Replace('\\', '/');
+}

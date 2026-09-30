@@ -41,7 +41,7 @@ public class DiagnosticCodeTests
         new("the compiler front end", 1, 999, nameof(DiagnosticCodes)),
         new("the C# backend", 1001, 1099, nameof(DiagnosticCodes)),
         new("the C++ backend", 1101, 1199, nameof(DiagnosticCodes)),
-        new("the driver and the configuration file", 2001, 2099, nameof(DiagnosticCodes)),
+        new("the driver, the configuration file and the project file", 2001, 2099, nameof(DiagnosticCodes)),
         new("host configuration", 2100, 2199, nameof(HostDiagnosticCodes)),
     ];
 

@@ -10,6 +10,17 @@ namespace ProtoCross.LanguageServer.Workspace;
 /// </remarks>
 public enum ConfigurationSource
 {
+    /// <summary>The project the document belongs to: its <c>.pcproj</c>.</summary>
+    /// <remarks>
+    /// First, narrower than a folder setting, because a project is written about the very files it
+    /// names and a folder setting about whatever is in the folder. It is also what the command line
+    /// builds, so the editor answering it first is the editor agreeing with the build: its
+    /// <c>&lt;ProtoPath&gt;</c> directories are searched before any include path an editor adds, as
+    /// they are before <c>-I</c>, and the policy it settles beats <c>protocross.configPath</c>. It
+    /// names no protoc, so which protoc runs is unaffected.
+    /// </remarks>
+    Project,
+
     /// <summary>An editor setting written for one workspace folder.</summary>
     FolderSetting,
 
@@ -54,6 +65,7 @@ public static class ConfigurationSources
     /// </remarks>
     public static string Label(this ConfigurationSource source) => source switch
     {
+        ConfigurationSource.Project => "<project>",
         ConfigurationSource.FolderSetting => "<folder settings>",
         ConfigurationSource.WorkspaceSetting => "<workspace settings>",
         ConfigurationSource.UserSetting => "<user settings>",
@@ -67,6 +79,7 @@ public static class ConfigurationSources
     /// <summary>How this source reads in a sentence, for the resolved-configuration report.</summary>
     public static string Describe(this ConfigurationSource source) => source switch
     {
+        ConfigurationSource.Project => "the project file",
         ConfigurationSource.FolderSetting => "an editor setting for this workspace folder",
         ConfigurationSource.WorkspaceSetting => "an editor setting for this workspace",
         ConfigurationSource.UserSetting => "an editor setting at user scope",
@@ -83,13 +96,21 @@ public static class ConfigurationSources
             or ConfigurationSource.WorkspaceSetting
             or ConfigurationSource.UserSetting;
 
-    /// <summary>Whether a repository can write this source, by committing an editor's settings file.</summary>
+    /// <summary>Whether a repository can write this source, by committing an editor's settings file or a project.</summary>
     /// <remarks>
+    /// <para>
     /// Folder and workspace scope, and not user scope: a <c>.vscode/settings.json</c> travels with a
     /// clone, and a user's own settings do not. This is the line spec 10.4.1 draws for trust, and the
     /// environment and a discovered <c>protocross.config.xml</c> are on the far side of it for different
     /// reasons -- the first is the machine's, and the second states policy and names no executable.
+    /// </para>
+    /// <para>
+    /// A project is on this side, because a repository commits it. It can state nothing trust withholds
+    /// -- it names directories and a policy file, and no program -- so counting it here withholds
+    /// nothing today; it is so that a setting a project gains later is withheld with the rest rather than
+    /// by someone remembering to.
+    /// </para>
     /// </remarks>
     public static bool IsWrittenByTheWorkspace(this ConfigurationSource source)
-        => source is ConfigurationSource.FolderSetting or ConfigurationSource.WorkspaceSetting;
+        => source is ConfigurationSource.Project or ConfigurationSource.FolderSetting or ConfigurationSource.WorkspaceSetting;
 }

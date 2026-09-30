@@ -12,7 +12,7 @@ namespace ProtoCross.Ir;
 /// </summary>
 public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrTest> Tests)
 {
-    /// <summary>The methods this file declares on one receiver, in declaration order.</summary>
+    /// <summary>The methods this module declares on one receiver, in declaration order.</summary>
     /// <remarks>
     /// <para>
     /// The binder answers this privately when it resolves a call, keyed by the receiver's full name
@@ -22,7 +22,7 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// descriptor pool is in play.
     /// </para>
     /// <para>
-    /// Methods are not indexed, because a file declares few of them and the alternative is a
+    /// Methods are not indexed, because a compilation declares few of them and the alternative is a
     /// dictionary built for every compilation whether or not anything asks.
     /// </para>
     /// </remarks>
@@ -95,6 +95,41 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// </para>
     /// </remarks>
     public IReadOnlyList<ScopeEntry> Scope { get; init; } = [];
+
+    /// <summary>
+    /// The part of this module one source declares: its methods and its tests, the names written in
+    /// it, and the names it put in scope.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A module binds every source of a compilation together, because a call may cross from one
+    /// source into another, and each source is still emitted to a file of its own. This is how one
+    /// is divided back into the other, asked of what each declaration already records rather than
+    /// of a second list kept beside the module.
+    /// </para>
+    /// <para>
+    /// A part is not a module the binder could have produced from that source alone. A method in it
+    /// may call one declared in another source, and a test in it may target one, so a reference in
+    /// it may name a declaration it does not hold. A backend needs nothing more than the call
+    /// carries: the callee's signature, which says the name and receiver it is emitted by.
+    /// </para>
+    /// <para>
+    /// A test with no <see cref="IrTest.Document"/>, which only a test built by hand can be, is in
+    /// no source and so in no part.
+    /// </para>
+    /// </remarks>
+    public IrModule DeclaredIn(SourceIdentity document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+
+        return new IrModule(
+            [.. Methods.Where(method => method.Signature.Declaration.Document == document)],
+            [.. Tests.Where(test => test.Document == document)])
+        {
+            References = [.. References.Where(reference => reference.Document == document)],
+            Scope = [.. Scope.Where(entry => entry.Declaration.Document == document)],
+        };
+    }
 }
 
 /// <summary>Anything in the IR that is somewhere in the source text.</summary>
@@ -611,12 +646,12 @@ public sealed record IrMissingMemberAccess(IrExpression Receiver, SourceSpan Spa
 /// <para>
 /// <paramref name="Receiver"/> is null exactly where there is no receiver to speak of: a call
 /// through an expression that could never name a method, <c>1()</c> or <c>(quantity + 1)()</c>, has
-/// nothing that was resolved to hold. <b>Its callee is not bound either, and that is a limit rather
-/// than an oversight.</b> The parser's nesting budget bounds its own recursion but not the chain its
-/// postfix loop builds, so a file of 5000 unbalanced parentheses recovers into 2436 nested
-/// invocations; descending them turned a bind that took 183ms into one that did not finish inside a
-/// minute, and a language server may not be hung by a buffer. A position on such a callee is a
-/// question for the syntax tree, which has the whole of it.
+/// nothing that was resolved to hold. <b>Its callee is not bound either.</b> It is not a receiver,
+/// and this node has no other place for it. That was once a limit as well: a file of 5000
+/// unbalanced parentheses recovered into 2436 nested invocations, and descending them turned a bind
+/// that took 183ms into one that did not finish inside a minute. The parser now holds every
+/// expression to its height budget (spec 28), so that chain is refused rather than built. A
+/// position on such a callee is a question for the syntax tree, which has the whole of it.
 /// </para>
 /// <para>
 /// A wrong-typed argument does <em>not</em> produce one of these. That call resolved: the receiver,
@@ -652,6 +687,23 @@ public sealed record IrTest(
     /// that every backend ran the same set of tests rather than merely that each ran some.
     /// </remarks>
     public string Identity => $"{Target.Receiver.FullName}.{Target.Name}: {Name}";
+
+    /// <summary>
+    /// The source this test is declared in, or null for a test nothing bound.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A method says where it is through its declaration site, and a test is not a declaration: no
+    /// name refers to one. So it says so here, because a test may target a method in another source
+    /// and is emitted with the source it is written in, and neither its target nor its span can tell
+    /// which that is. A span carries the label diagnostics print, which two files of one name share.
+    /// </para>
+    /// <para>
+    /// Init-only beside the positional members rather than among them, so the constructor keeps the
+    /// shape it has. The binder always sets it; a test built by hand for a unit test has none.
+    /// </para>
+    /// </remarks>
+    public SourceIdentity? Document { get; init; }
 }
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);

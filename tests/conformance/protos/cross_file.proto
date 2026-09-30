@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// multi/cross_file -- one program written across three sources and compiled as one (spec 5.3). Two
+// of them extend CrossFileOrder and call into each other; the third holds only tests.
+message CrossFileOrder {
+  repeated CrossFileLine lines = 1;
+  int64 discount_cents = 2;
+  int64 discount_threshold_cents = 3;
+}
+
+message CrossFileLine {
+  int64 quantity = 1;
+  int64 unit_price_cents = 2;
+}

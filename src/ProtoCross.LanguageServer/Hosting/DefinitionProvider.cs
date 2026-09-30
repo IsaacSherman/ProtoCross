@@ -60,7 +60,7 @@ public sealed class DefinitionProvider
 
         _documents = documents ?? throw new ArgumentNullException(nameof(documents));
         _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-        _semantics = semantics ?? new DocumentSemantics(loaders);
+        _semantics = semantics ?? new DocumentSemantics(loaders, documents);
         _deferred = new DeferredAnswers("go to definition", documents, configuration, concurrency);
     }
 
@@ -113,7 +113,7 @@ public sealed class DefinitionProvider
 
     private object? Answer(PositionRequest asked, CancellationToken cancellationToken)
     {
-        var compiled = _semantics.For(asked.Document, asked.Configuration, cancellationToken);
+        var compiled = asked.CompileWith(_semantics, cancellationToken);
 
         if (DeclaredSymbol.At(compiled, asked.Offset) is not { } symbol
             || SymbolLocations.DeclarationOf(symbol, asked.Uri) is not { } target)

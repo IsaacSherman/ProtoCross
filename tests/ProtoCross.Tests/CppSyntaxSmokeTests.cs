@@ -11,32 +11,12 @@ namespace ProtoCross.Tests;
 /// Optional smoke coverage that asks a real C++ compiler to parse and execute generated C++ code
 /// together with protoc's generated C++ output.
 /// </summary>
-public class CppSyntaxSmokeTests
+public partial class CppSyntaxSmokeTests
 {
     [Fact]
     public void GeneratedCppParsesWithARealCompiler()
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        if (compiler is null)
-        {
-            Assert.Skip(
-                "No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools "
-                + "to run C++ smoke tests.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ headers found. Install protobuf headers or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to their include directory.");
-        }
-
-        var protoc = protobuf.ProtocPath ?? Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc to run C++ smoke tests.");
-        }
+        var protoc = RequireSyntaxToolchain(out var compiler, out var protobuf);
 
         var workspace = PrepareSmokeWorkspace(protoc, out var driver);
 
@@ -87,6 +67,40 @@ public class CppSyntaxSmokeTests
             runResult.Succeeded,
             $"C++ link-and-run smoke test failed with {compiler.DisplayName}.{Environment.NewLine}"
             + $"exit code {runResult.ExitCode}{Environment.NewLine}{runResult.Output}");
+    }
+
+    /// <summary>
+    /// The protoc, C++ compiler and protobuf headers a syntax check needs, or a skip naming the one
+    /// missing.
+    /// </summary>
+    private static string RequireSyntaxToolchain(out CppCompiler compiler, out ProtobufCppInstall protobuf)
+    {
+        var locatedCompiler = Toolchain.LocateCppCompiler();
+        if (locatedCompiler is null)
+        {
+            Assert.Skip(
+                "No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools "
+                + "to run C++ smoke tests.");
+        }
+
+        var locatedProtobuf = Toolchain.LocateProtobufCpp();
+        if (locatedProtobuf is null)
+        {
+            Assert.Skip(
+                "No protobuf C++ headers found. Install protobuf headers or set "
+                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to their include directory.");
+        }
+
+        compiler = locatedCompiler;
+        protobuf = locatedProtobuf;
+
+        var protoc = protobuf.ProtocPath ?? Toolchain.LocateProtoc();
+        if (protoc is null)
+        {
+            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc to run C++ smoke tests.");
+        }
+
+        return protoc;
     }
 
     private static CppTestWorkspace PrepareSmokeWorkspace(string protoc, out string driverSource)

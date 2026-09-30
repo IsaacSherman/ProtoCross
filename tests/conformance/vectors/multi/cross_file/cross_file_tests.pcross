@@ -1,0 +1,60 @@
+// Conformance vectors for one program written across several sources: the third of three, which
+// holds only tests. See cross_file_totals.pcross for what the three pin.
+
+import proto "cross_file.proto";
+
+test CrossFileLine.line_cents "a test reaches a method another source declares" {
+    receiver {
+        quantity = 3;
+        unit_price_cents = 250;
+    }
+
+    expect return 750;
+}
+
+test CrossFileOrder.total_cents "a discount one source decides comes off a subtotal the other adds up" {
+    receiver {
+        discount_cents = 100;
+        discount_threshold_cents = 500;
+
+        lines {
+            quantity = 2;
+            unit_price_cents = 300;
+        }
+
+        lines {
+            quantity = 1;
+            unit_price_cents = 150;
+        }
+    }
+
+    expect return 650;
+}
+
+test CrossFileOrder.total_cents "below the threshold nothing comes off" {
+    receiver {
+        discount_cents = 100;
+        discount_threshold_cents = 1000;
+
+        lines {
+            quantity = 2;
+            unit_price_cents = 300;
+        }
+    }
+
+    expect return 600;
+}
+
+test CrossFileOrder.discount_applied_cents "the discount is decided from the subtotal the other source adds up" {
+    receiver {
+        discount_cents = 40;
+        discount_threshold_cents = 500;
+
+        lines {
+            quantity = 5;
+            unit_price_cents = 100;
+        }
+    }
+
+    expect return 40;
+}

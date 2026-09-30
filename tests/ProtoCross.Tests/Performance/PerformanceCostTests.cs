@@ -26,7 +26,7 @@ namespace ProtoCross.Tests.Performance;
 /// </para>
 /// </remarks>
 [Collection("Timing-sensitive regressions")]
-public class PerformanceCostTests
+public partial class PerformanceCostTests
 {
     /// <summary>
     /// Moving the caret through a buffer nobody has edited compiles nothing further.

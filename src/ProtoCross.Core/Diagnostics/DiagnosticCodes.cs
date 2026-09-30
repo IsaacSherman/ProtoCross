@@ -388,7 +388,7 @@ public static class DiagnosticCodes
 
     // ------------------------------------------------------- limits and the toolchain
 
-    /// <summary>A construct nested deeper than the parser will descend (spec 7.1).</summary>
+    /// <summary>A construct nested deeper than the parser will descend or build (spec 28).</summary>
     public static readonly DiagnosticDescriptor NestingIsTooDeep =
         new("PC0081", DiagnosticSeverity.Error, "nesting is too deep");
 
@@ -422,6 +422,36 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor BitwiseNotRequiresAnIntegerOperand =
         new("PC0086", DiagnosticSeverity.Error, "bitwise not requires an integer operand");
 
+    // ------------------------------------------------------- sources and schemas, continued
+
+    /// <summary>
+    /// An import resolved to a schema other than the different one of that path beside its own
+    /// source, because another directory in the one search order held it first (spec 5.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SchemaBesideSourceIsShadowed =
+        new("PC0087", DiagnosticSeverity.Warning, "schema beside the source is shadowed");
+
+    /// <summary>
+    /// A method of a production source that calls a method a test source declares, which is
+    /// generated with the tests and not with the program (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionMethodCallsTestHelper =
+        new("PC0088", DiagnosticSeverity.Error, "production method calls a test helper");
+
+    /// <summary>
+    /// Production behavior naming a type only schemas the test sources bring declare, which the
+    /// production build never loads (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionNamesATestOnlyType =
+        new("PC0089", DiagnosticSeverity.Error, "production behavior names a test-only type");
+
+    /// <summary>
+    /// A schema the production sources bring that was found through a directory only test sources
+    /// bring, so the production build would not load it from there (spec 25.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProductionSchemaNeedsATestDirectory =
+        new("PC0090", DiagnosticSeverity.Error, "production schema found through a test directory");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
@@ -439,4 +469,61 @@ public static class DiagnosticCodes
     /// <summary>A configuration file stating one setting more than once (spec 10.4).</summary>
     public static readonly DiagnosticDescriptor DuplicateConfigurationSetting =
         new("PC2004", DiagnosticSeverity.Error, "duplicate configuration setting");
+
+    // ------------------------------------------------------- the driver
+
+    /// <summary>
+    /// Two sources of one compilation find different configuration files, or one finds a file and
+    /// another none (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SourcesDisagreeOnPolicy =
+        new("PC2005", DiagnosticSeverity.Error, "sources disagree on policy");
+
+    /// <summary>
+    /// Two sources of one compilation would be generated under the same names, or one source is
+    /// given twice (spec 5.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SourcesShareGeneratedNames =
+        new("PC2006", DiagnosticSeverity.Error, "sources share generated names");
+
+    // ------------------------------------------------------- the project file
+
+    /// <summary>
+    /// A project file that is missing, malformed, or not a ProtoCross one, or a directory its
+    /// patterns search that could not be listed (spec 5.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectCouldNotBeRead =
+        new("PC2007", DiagnosticSeverity.Error, "project could not be read");
+
+    /// <summary>An element or attribute a project file has no meaning for (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor UnknownProjectElement =
+        new("PC2008", DiagnosticSeverity.Error, "unknown project element or attribute");
+
+    /// <summary>
+    /// A project element that is known but unusable: a pattern or a path that is missing, empty, or
+    /// cannot be one, or a setting stated twice (spec 5.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidProjectSetting =
+        new("PC2009", DiagnosticSeverity.Error, "invalid project setting");
+
+    /// <summary>A <c>&lt;Sources&gt;</c> or <c>&lt;Tests&gt;</c> element that matches no source (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor ProjectPatternMatchesNothing =
+        new("PC2010", DiagnosticSeverity.Warning, "project pattern matches no source");
+
+    /// <summary>
+    /// A source a project compiles that finds a configuration file above it other than the one the
+    /// project compiles it under (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MemberUnderAnotherConfig =
+        new("PC2011", DiagnosticSeverity.Warning, "project member is under another configuration file");
+
+    /// <summary>A project whose <c>&lt;Sources&gt;</c> match no source, which no build of it can compile (spec 5.4).</summary>
+    public static readonly DiagnosticDescriptor ProjectCompilesNothing =
+        new("PC2012", DiagnosticSeverity.Error, "project compiles nothing");
+
+    /// <summary>
+    /// A project whose name cannot name the namespace its behavior is declared in (spec 5.4, 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectNameIsNotANamespace =
+        new("PC2013", DiagnosticSeverity.Error, "project name is not a namespace");
 }

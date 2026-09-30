@@ -364,7 +364,6 @@ public class NumericLiteralTests
 
     private static IEnumerable<IrLiteral> CorpusLiterals()
         => CompiledCorpus.All
-            .Where(source => source.Result.Module is not null)
-            .SelectMany(source => IrWalk.DescendantsAndSelf(source.Result.Module!))
+            .SelectMany(source => source.Module is { } module ? IrWalk.DescendantsAndSelf(module) : [])
             .OfType<IrLiteral>();
 }

@@ -5,6 +5,7 @@
     <Project Path="src/ProtoCross.Cli/ProtoCross.Cli.csproj" />
     <Project Path="src/ProtoCross.Core/ProtoCross.Core.csproj" />
     <Project Path="src/ProtoCross.LanguageServer/ProtoCross.LanguageServer.csproj" />
+    <Project Path="src/ProtoCross.Projects/ProtoCross.Projects.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/ProtoCross.Tests/ProtoCross.Tests.csproj" />

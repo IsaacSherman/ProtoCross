@@ -121,7 +121,13 @@
           "type": "string",
           "default": "",
           "scope": "resource",
-          "markdownDescription": "A `protocross.config.xml` to use instead of searching upward from each file. The editor's answer to the compiler's `--config`."
+          "markdownDescription": "A `protocross.config.xml` to use instead of searching upward from each file. The editor's answer to the compiler's `--config`. A file's project, when it has one, settles its policy instead."
+        },
+        "protocross.project": {
+          "type": "string",
+          "default": "",
+          "scope": "resource",
+          "markdownDescription": "The `.pcproj` each file compiles with, instead of the nearest one above it that includes it. A file the named project does not include has no project. A relative path resolves against the workspace folder that states it."
         },
         "protocross.logLevel": {
           "type": "string",

@@ -40,6 +40,11 @@ internal sealed class PerformanceWorkspace
         Path = System.IO.Path.Combine(directory, $"{which}.pcross");
         File.WriteAllText(Path, Text);
 
+        if (which == PerformanceCorpus.Project)
+        {
+            WriteProjectAround(directory);
+        }
+
         Uri = DocumentUri.FromPath(Path);
         Documents = new DocumentStore();
         Documents.Open(Uri, "protocross", 1, Text);
@@ -48,12 +53,34 @@ internal sealed class PerformanceWorkspace
 
         var loaders = EditorFixture.Loaders();
 
-        Semantics = new DocumentSemantics(loaders);
+        Semantics = new DocumentSemantics(loaders, Documents);
         Completion = new CompletionProvider(Documents, _configuration, loaders, semantics: Semantics);
         Hover = new HoverProvider(Documents, _configuration, loaders, semantics: Semantics);
         Definition = new DefinitionProvider(Documents, _configuration, loaders, semantics: Semantics);
         Highlights = new HighlightProvider(Documents, _configuration, loaders, semantics: Semantics);
         References = new ReferenceProvider(Documents, _configuration, loaders, semantics: Semantics);
+    }
+
+    /// <summary>
+    /// Makes the directory a project: the normal file beside the one being asked about, as its other
+    /// source, and a project over both.
+    /// </summary>
+    /// <remarks>
+    /// Every file is stamped an hour back, because what a compilation reads from a file written a
+    /// moment ago is not kept -- its stamp could still change without moving -- and a workspace whose
+    /// every answer recompiled would be measuring the wrong thing.
+    /// </remarks>
+    private static void WriteProjectAround(string directory)
+    {
+        File.Copy(TestPaths.SimpleScript, System.IO.Path.Combine(directory, System.IO.Path.GetFileName(TestPaths.SimpleScript)));
+        File.WriteAllText(
+            System.IO.Path.Combine(directory, "bench" + ProtoCross.Projects.ProtoCrossProject.Extension),
+            "<ProtoCrossProject><Sources Include=\"*.pcross\" /></ProtoCrossProject>");
+
+        foreach (var file in Directory.EnumerateFiles(directory))
+        {
+            File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddHours(-1));
+        }
     }
 
     public string Which { get; }

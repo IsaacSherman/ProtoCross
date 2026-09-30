@@ -26,7 +26,7 @@ public class TreeWalkTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var tree = source.Result.SyntaxTree;
+            var tree = source.SyntaxTree;
             Assert.NotNull(tree);
 
             foreach (var node in SyntaxWalk.DescendantsAndSelf(tree))
@@ -41,7 +41,7 @@ public class TreeWalkTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            var module = source.Result.Module;
+            var module = source.Module;
             Assert.NotNull(module);
 
             foreach (var node in IrWalk.DescendantsAndSelf(module))
@@ -65,7 +65,7 @@ public class TreeWalkTests
     public void EveryKindOfIrNodeOccursSomewhereInTheCorpus()
     {
         var occurring = CompiledCorpus.All
-            .SelectMany(source => IrWalk.DescendantsAndSelf(source.Result.Module!))
+            .SelectMany(source => IrWalk.DescendantsAndSelf(source.Module!))
             .Select(node => node.GetType())
             .ToHashSet();
 
@@ -89,7 +89,7 @@ public class TreeWalkTests
         {
             var seen = new HashSet<IrNode>(ReferenceEqualityComparer.Instance);
 
-            foreach (var node in IrWalk.DescendantsAndSelf(source.Result.Module!))
+            foreach (var node in IrWalk.DescendantsAndSelf(source.Module!))
             {
                 Assert.True(seen.Add(node), $"{source.Name}: {node.GetType().Name} at {node.Span} was reached twice");
             }
@@ -107,7 +107,7 @@ public class TreeWalkTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            foreach (var node in SyntaxWalk.DescendantsAndSelf(source.Result.SyntaxTree!))
+            foreach (var node in SyntaxWalk.DescendantsAndSelf(source.SyntaxTree!))
             {
                 var starts = SyntaxWalk.ChildrenOf(node).Select(child => child.Span.Start.Offset).ToList();
 
@@ -126,14 +126,45 @@ public class TreeWalkTests
     {
         foreach (var source in CompiledCorpus.All)
         {
-            foreach (var node in SyntaxWalk.DescendantsAndSelf(source.Result.SyntaxTree!))
+            foreach (var node in SyntaxWalk.DescendantsAndSelf(source.SyntaxTree!))
             {
                 Assert.False(node.Span.IsNone, $"{source.Name}: {node.GetType().Name} has no location");
             }
 
-            foreach (var node in IrWalk.DescendantsAndSelf(source.Result.Module!))
+            foreach (var node in IrWalk.DescendantsAndSelf(source.Module!))
             {
                 Assert.False(node.Span.IsNone, $"{source.Name}: {node.GetType().Name} has no location");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Every node is in the source it came from. A compilation of several sources is one result, and
+    /// each source's tree and part of the module are the ones that source wrote, so every node a
+    /// sweep is handed for a source carries that source's name.
+    /// </summary>
+    /// <remarks>
+    /// Without it, a sweep handed the first source's tree for every source of a program would still
+    /// pass everything else here: any tree is a tree, and walking the same one twice while never
+    /// walking the other breaks no property of either.
+    /// </remarks>
+    [Fact]
+    public void EveryNodeInTheCorpusIsInTheSourceItCameFrom()
+    {
+        foreach (var source in CompiledCorpus.All)
+        {
+            foreach (var node in SyntaxWalk.DescendantsAndSelf(source.SyntaxTree!))
+            {
+                Assert.True(
+                    node.Span.File == source.Document.Name,
+                    $"{source.Name}: a {node.GetType().Name} at {node.Span} is in another source");
+            }
+
+            foreach (var node in IrWalk.DescendantsAndSelf(source.Module!))
+            {
+                Assert.True(
+                    node.Span.File == source.Document.Name,
+                    $"{source.Name}: a {node.GetType().Name} at {node.Span} is in another source");
             }
         }
     }

@@ -3,6 +3,7 @@ using System.Text.Json;
 using ProtoCross.LanguageServer.Protocol;
 using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.LanguageServer.Workspace;
+using ProtoCross.Projects;
 using LspFolder = ProtoCross.LanguageServer.Protocol.Lsp.WorkspaceFolder;
 
 namespace ProtoCross.LanguageServer.Hosting;
@@ -93,8 +94,9 @@ public sealed class LanguageServerHost : IDisposable
         // One per server rather than one per component, because it is the point of it: a compile the
         // scheduler ran and a question a request asks about the same untouched buffer are the same
         // compile, and two of these would be two answers about one document with nothing keeping them
-        // in agreement.
-        _semantics = new DocumentSemantics(_loaders);
+        // in agreement. It reads the store, because a document compiled with its project is compiled
+        // with the buffers of the project's other open documents rather than their files.
+        _semantics = new DocumentSemantics(_loaders, _documents);
 
         _scheduler = new CompileScheduler(
             _documents,
@@ -781,6 +783,13 @@ public sealed class LanguageServerHost : IDisposable
             // for: its queue is a concurrent one, and a run it hands out for a document closed meanwhile
             // finds it closed and publishes nothing.
             _log.Trace("The client is watching schema and policy files; recompiling open documents in case one changed before it was.");
+
+            // And forgetting what was remembered on the strength of reports nobody could have sent yet.
+            // A source created before now is in no project's listing, and no stamp shows it: that
+            // listing is dropped only when the client says a source was created, which it has not been
+            // able to say until this moment.
+            ProjectDiscovery.Forget();
+            _configuration.Current.Projects.Forget();
             _scheduler.ScheduleAll();
         }
     }
@@ -879,11 +888,11 @@ public sealed class LanguageServerHost : IDisposable
         _highlights.Forget(uri);
         _signatures.Forget(uri);
 
-        // And what was remembered about it. Every question comes through the store, so once the
-        // document is closed nothing can ask -- and an entry nothing can ask for is a syntax tree and
-        // an IR module held until the process exits.
-        _semantics.Forget(uri);
-
+        // And what was remembered about it, which the scheduler forgets for it: every question comes
+        // through the store, so once the document is closed nothing can ask, and an entry nothing can
+        // ask for is a syntax tree and an IR module held until the process exits. The scheduler is the
+        // one to do it because a compilation the document shared with its project's other open
+        // documents has to be compiled again, and which those are is what the entries remember.
         return _scheduler.ForgetAsync(uri);
     }
 
@@ -1030,15 +1039,40 @@ public sealed class LanguageServerHost : IDisposable
 
     /// <summary>Files changed on disk; recompile if any of them is one a compilation can rest on.</summary>
     /// <remarks>
-    /// Nothing is invalidated here, because nothing needs to be. The compile each document is given asks
-    /// <see cref="DocumentSemantics"/>, which already declines to answer from a compilation whose schemas
-    /// or policy file have moved; what was missing was a reason to ask. See <see cref="WatchedFiles"/>.
+    /// Almost nothing is invalidated here, because almost nothing needs to be. The compile each document
+    /// is given asks <see cref="DocumentSemantics"/>, which already declines to answer from a compilation
+    /// whose schemas, policy file or project settings have moved; what was missing was a reason to ask.
+    /// See <see cref="WatchedFiles"/>. When a project changed, what project discovery remembers is
+    /// dropped, although it checks itself against each file's stamp, because a stamp can be too coarse
+    /// to show a change made within the same two seconds (<see cref="ProjectDiscovery.Forget"/>). Only
+    /// then: a saved schema changes nothing discovery read, and dropping its listings would only have
+    /// every directory above every document listed again. The files each project compiles are dropped
+    /// when a project changed or a source was added or removed, since that is the one change a stamp
+    /// cannot show at all (<see cref="ProjectCatalog"/>). What is held that read a reported source is
+    /// dropped as well, whatever its stamp says (<see cref="WatchedFiles.SourcesIn"/>).
     /// </remarks>
     private Task WatchedFilesChanged(DidChangeWatchedFilesParams message)
     {
-        if (WatchedFiles.MoveAnyCompilation(message.Changes))
+        var changes = WatchedFiles.ExceptSavesOfOpenDocuments(message.Changes, uri => _documents.Find(uri) is not null);
+
+        if (WatchedFiles.MoveAnyCompilation(changes))
         {
-            _log.Trace($"{message.Changes.Count} watched file(s) changed on disk; recompiling open documents.");
+            _log.Trace($"{changes.Count} watched file(s) changed on disk; recompiling open documents.");
+            if (WatchedFiles.MoveAProject(changes))
+            {
+                ProjectDiscovery.Forget();
+            }
+
+            if (WatchedFiles.MoveAProjectsFiles(changes))
+            {
+                _configuration.Current.Projects.Forget();
+            }
+
+            foreach (var source in WatchedFiles.SourcesIn(changes))
+            {
+                _semantics.Forget(source);
+            }
+
             _scheduler.ScheduleAll();
         }
 

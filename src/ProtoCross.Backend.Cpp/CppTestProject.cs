@@ -197,7 +197,7 @@ public static class CppTestProject
     private static string TargetName(string driver)
     {
         var stem = Path.GetFileName(driver);
-        foreach (var suffix in new[] { ".tests.cc", ".cc", ".cpp" })
+        foreach (var suffix in new[] { NameConventions.TestsSuffix + ".cc", ".cc", ".cpp" })
         {
             if (stem.EndsWith(suffix, StringComparison.Ordinal))
             {

@@ -20,7 +20,12 @@ Normative Requirements:
   with a field is `PC0023`. An extension declared inside the receiver is not one of its fields
   ([13.4](./§13-Messages.md#134-extensions)), so a method may take its name.
 - Overloading is not supported. Two methods with the same name on the same receiver are `PC0022`,
-  even if their parameter lists differ.
+  even if their parameter lists differ, and even if they are declared in different sources of one
+  compilation. The diagnostic stands on the later declaration, and when the earlier one is in
+  another source, the message says where it is.
+- A method may call any method the compilation declares, whichever source it is in and wherever in
+  that source it is written, and a `test` may target any of them. Sources are not ordered: every
+  method in every source is declared before any body is bound.
 - A method whose declaration is syntactically incomplete may still be bound into a partial semantic
   model for editor use, but it is not callable when it lacks a usable declaration name.
 

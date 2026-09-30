@@ -6,7 +6,7 @@ using Xunit;
 
 namespace ProtoCross.Tests;
 
-public class BackendTests
+public partial class BackendTests
 {
     private static IReadOnlyList<GeneratedFile> Emit(IBackend backend, string sourcePath, out DiagnosticBag diagnostics)
     {

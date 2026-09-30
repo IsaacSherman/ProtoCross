@@ -10,8 +10,8 @@ namespace ProtoCross.Binding;
 
 /// <summary>
 /// Resolves names against protobuf descriptors, type-checks the AST, and lowers it to the typed
-/// IR. Runs in two passes so a method may call another method declared later in the file, or in a
-/// different extend block.
+/// IR. Runs in two passes so a method may call another method declared later in the file, in a
+/// different extend block, or in another source of the compilation.
 /// </summary>
 public sealed partial class Binder
 {
@@ -55,15 +55,49 @@ public sealed partial class Binder
     private readonly List<ScopeEntry> _scope = [];
     private readonly NumericPolicy _policy;
     private readonly ProjectConfig _config;
-    private readonly SourceIdentity _document;
+
+    /// <summary>The source whose declarations and names are being bound.</summary>
+    /// <remarks>
+    /// Mutable, and set by <see cref="Bind(IReadOnlyList{SourceTree})"/> before anything in a source
+    /// is bound, because every declaration site and every reference recorded below is stamped with
+    /// it. Threading it through every method that records one instead would put a parameter on
+    /// most of this class for the sake of a value that changes only between sources.
+    /// </remarks>
+    private SourceIdentity _document;
+
+    /// <summary>The sources being bound that are compiled only to test with (spec 25.3.1).</summary>
+    /// <remarks>
+    /// Set by <see cref="Bind(IReadOnlyList{SourceTree})"/> before anything is declared, and asked
+    /// of the source a call resolves into: a method in one of these is generated with the tests, so
+    /// a method that ships may not call it.
+    /// </remarks>
+    private HashSet<SourceIdentity> _testSources = [];
+
+    /// <summary>
+    /// Whether what is being bound is production behavior: a production source's <c>extend</c>
+    /// blocks and methods, and never a test (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Set as binding moves between sources, and between a source's methods and its tests, the way
+    /// <see cref="_document"/> is. Production behavior is what ships, so it is what may neither call
+    /// a test source's method (<c>PC0088</c>) nor name a type only the test sources' schemas declare
+    /// (<c>PC0089</c>). A test, and a test source's own methods, are generated with the tests and may
+    /// do both.
+    /// </remarks>
+    private bool _productionBehavior;
+
+    /// <summary>The index of <see cref="ProductionSchemas"/>, built the first time production behavior asks.</summary>
+    private SchemaTypes? _productionTypes;
 
     /// <param name="document">
-    /// What the source being bound is, which every declaration site records so that a reference can
-    /// say not just where its declaration is but which file that is in. Optional because a caller
-    /// that only wants diagnostics -- the resilience suite binds thousands of generated trees --
-    /// has nothing to say here and no one to say it to. Omitting it leaves every declaration keyed
-    /// under one anonymous buffer, which is sound for a single compilation and useless to index
-    /// across several, so anything building an index must supply it. The pipeline always does.
+    /// What the source handed to <see cref="Bind(CompilationUnit)"/> is, which every declaration
+    /// site records so that a reference can say not just where its declaration is but which file
+    /// that is in. Optional because a caller that only wants diagnostics -- the resilience suite
+    /// binds thousands of generated trees -- has nothing to say here and no one to say it to.
+    /// Omitting it leaves every declaration keyed under one anonymous buffer, which is sound for one
+    /// source and useless to index across several, so anything building an index must supply it.
+    /// <see cref="Bind(IReadOnlyList{SourceTree})"/> takes each source's identity from its tree
+    /// instead, and the pipeline always supplies one.
     /// </param>
     public Binder(
         IReadOnlyList<FileDescriptor> files,
@@ -88,6 +122,38 @@ public sealed partial class Binder
     /// </remarks>
     public SchemaTypes Types => _types;
 
+    /// <summary>
+    /// Whether the sources' <c>test</c> declarations are passed over, as a production build passes
+    /// them over (spec 25.3.1). See <see cref="CompilationOptions.SkipTests"/>.
+    /// </summary>
+    public bool SkipTests { get; init; }
+
+    /// <summary>
+    /// The schemas production behavior may name: the production schema closure (spec 25.3.1). Null
+    /// when that is every schema, which it is whenever no test source is being bound.
+    /// </summary>
+    public IReadOnlyList<FileDescriptor>? ProductionSchemas { get; init; }
+
+    /// <summary>
+    /// The types production behavior may name, as this binder resolved against them: those of the
+    /// production schema closure, and <see cref="Types"/> itself when no test source is bound
+    /// (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Published for the reason <see cref="Types"/> is. A host offering type names inside a production
+    /// method has to offer the ones the binder will accept there, and in a test build that is not every
+    /// type the compilation loaded: a name only a test source's schema declares is <c>PC0089</c>.
+    /// </remarks>
+    public SchemaTypes ProductionTypes => ProductionSchemas is { } production
+        ? _productionTypes ??= SchemaTypes.From(production)
+        : _types;
+
+    /// <summary>
+    /// The types what is being bound may name: the production schema closure's for production
+    /// behavior, and every schema's for everything else.
+    /// </summary>
+    private SchemaTypes Visible => _productionBehavior ? ProductionTypes : _types;
+
     /// <summary>Binds a compilation unit to typed IR, whether or not it parsed cleanly.</summary>
     /// <remarks>
     /// <para>
@@ -103,12 +169,80 @@ public sealed partial class Binder
     /// requires no errors as well as a module, and the diagnostics are still there.
     /// </para>
     /// </remarks>
-    public IrModule Bind(CompilationUnit unit)
+    public IrModule Bind(CompilationUnit unit) => Bind([new SourceTree(_document, unit)]);
+
+    /// <summary>
+    /// Binds several compilation units into one module, as one program: a method in any of them
+    /// may call a method declared in any other, and a test in any of them may target it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every source is declared before any body is bound, which is the two passes a single file
+    /// always had, widened to the compilation. Nothing in the language orders sources, so a call
+    /// into a file named later is the same as a call to a method written further down.
+    /// </para>
+    /// <para>
+    /// The second pass goes a source at a time, its bodies and then its tests, so what binding one
+    /// source's bodies and tests reports comes together, after what declaring every source reported.
+    /// One source bound alone reports in the order it always has.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentException">
+    /// Two sources carry one identity. A declaration is identified by its source and its offset, so
+    /// two sources that are one source to the binder would share identities and could not be divided
+    /// back apart; spec 22.2 asks every caller for distinct ones.
+    /// </exception>
+    public IrModule Bind(IReadOnlyList<SourceTree> sources)
     {
-        // Pass 1: resolve extend targets and collect signatures.
+        ArgumentNullException.ThrowIfNull(sources);
+
+        if (sources.GroupBy(source => source.Document).FirstOrDefault(group => group.Count() > 1) is { } shared)
+        {
+            throw new ArgumentException(
+                $"'{shared.Key.Path ?? shared.Key.Name}' was given as more than one source. Give each source "
+                + "an identity of its own.",
+                nameof(sources));
+        }
+
+        _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
+
+        var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
+
+        var methods = new List<IrMethod>();
+        var tests = new List<IrTest>();
+
+        foreach (var (source, extends) in declared)
+        {
+            _document = source.Document;
+            _productionBehavior = source.Role is SourceRole.Production;
+            methods.AddRange(BindMethods(extends));
+
+            _productionBehavior = false;
+            if (!SkipTests)
+            {
+                tests.AddRange(BindTests(source.Unit));
+            }
+        }
+
+        return new IrModule(methods, tests)
+        {
+            References = SymbolReference.InSourceOrder(_references),
+            Scope = [.. _scope],
+        };
+    }
+
+    /// <summary>
+    /// The first pass over one source: resolves what each <c>extend</c> names, and declares every
+    /// method in it so that any source may call it.
+    /// </summary>
+    /// <returns>The <c>extend</c> blocks whose receiver resolved, which are the ones with bodies to bind.</returns>
+    private List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> Declare(SourceTree source)
+    {
+        _document = source.Document;
+        _productionBehavior = source.Role is SourceRole.Production;
         var resolvedExtends = new List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)>();
 
-        foreach (var extend in unit.Extends)
+        foreach (var extend in source.Unit.Extends)
         {
             if (extend.MessageName.IsMissing)
             {
@@ -131,10 +265,15 @@ public sealed partial class Binder
             }
         }
 
-        // Pass 2: bind bodies now that every signature is visible.
+        return resolvedExtends;
+    }
+
+    /// <summary>The second pass over one source's methods, now that every signature is visible.</summary>
+    private List<IrMethod> BindMethods(IEnumerable<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> extends)
+    {
         var methods = new List<IrMethod>();
 
-        foreach (var (declaration, receiver) in resolvedExtends)
+        foreach (var (declaration, receiver) in extends)
         {
             foreach (var method in declaration.Methods)
             {
@@ -146,21 +285,22 @@ public sealed partial class Binder
             }
         }
 
+        return methods;
+    }
+
+    private List<IrTest> BindTests(CompilationUnit unit)
+    {
         var tests = new List<IrTest>();
+
         foreach (var test in unit.Tests)
         {
-            var bound = BindTest(test);
-            if (bound is not null)
+            if (BindTest(test) is { } bound)
             {
                 tests.Add(bound);
             }
         }
 
-        return new IrModule(methods, tests)
-        {
-            References = SymbolReference.InSourceOrder(_references),
-            Scope = [.. _scope],
-        };
+        return tests;
     }
 
     /// <summary>Records that a name at <paramref name="span"/> resolved to <paramref name="symbol"/>.</summary>
@@ -288,8 +428,9 @@ public sealed partial class Binder
             + "behavior. The generated extensions have to ship as their own library for anyone to "
             + "call them.",
             extend.Span,
-            "Two libraries that both extend this type also emit their extension classes into a "
-            + "namespace neither owns, and a consumer referencing both gets an ambiguous call.");
+            "Build it as a project, so that its behavior is declared in the project's own namespace. "
+            + "Compiled without one, it is declared in the runtime's namespace, where another library "
+            + "extending this type declares the same names.");
     }
 
     private MessageDescriptor? ResolveMessage(string name, SourceSpan span)
@@ -299,12 +440,12 @@ public sealed partial class Binder
         // ambiguous against messages alone rather than against every type. What stays here is which
         // of the two ways it failed, because that is a choice between two diagnostics and the index
         // issues none.
-        if (_types.ResolveReceiver(name) is { } resolved)
+        if (Visible.ResolveReceiver(name) is { } resolved)
         {
             return resolved;
         }
 
-        var candidates = _types.MessagesNamed(name);
+        var candidates = Visible.MessagesNamed(name);
 
         if (candidates.Count > 0)
         {
@@ -314,6 +455,11 @@ public sealed partial class Binder
                 + string.Join(", ", candidates.Select(c => c.FullName)) + ".",
                 span,
                 "Qualify the name with its protobuf package.");
+            return null;
+        }
+
+        if (ReportIfOnlyTestSchemasDeclare(name, span, types => [types.ResolveReceiver(name), .. types.MessagesNamed(name)]))
+        {
             return null;
         }
 
@@ -349,11 +495,11 @@ public sealed partial class Binder
 
         var key = (receiver.FullName, method.Name.Text);
 
-        if (_methods.ContainsKey(key))
+        if (_methods.TryGetValue(key, out var first))
         {
             _diagnostics.Report(
                 DiagnosticCodes.DuplicateMethod,
-                $"'{receiver.FullName}' already defines a method named '{method.Name}'.",
+                $"'{receiver.FullName}' already defines a method named '{method.Name}'{WhereElse(first)}.",
                 method.Span,
                 "Overloading is not supported; give the method a distinct name.");
             return;
@@ -371,6 +517,18 @@ public sealed partial class Binder
 
         _methods[key] = _signatures[method];
     }
+
+    /// <summary>
+    /// Where <paramref name="first"/> is declared, as a clause to end a sentence with, when that is
+    /// in another source; nothing when it is in this one.
+    /// </summary>
+    /// <remarks>
+    /// Only across sources. The diagnostic stands on the second declaration, so across sources the
+    /// message is the one thing that can say where the first one is. Within one source the first is
+    /// in the file being read, and that message is published output that has never named a place.
+    /// </remarks>
+    private string WhereElse(IrMethodSignature first)
+        => first.Declaration.Document == _document ? string.Empty : $", at {first.Declaration.Name.Span}";
 
     /// <summary>Resolves what a method declares into the signature the IR carries.</summary>
     private IrMethodSignature DescribeMethod(MessageDescriptor receiver, MethodDeclaration method)
@@ -473,22 +631,22 @@ public sealed partial class Binder
 
         // A fully qualified name is unambiguous by construction, so it is tried before any
         // simple-name lookup that could report a false ambiguity.
-        if (_types.FindMessage(name) is { } messageByFullName)
+        if (Visible.FindMessage(name) is { } messageByFullName)
         {
             return NamedMessage(messageByFullName);
         }
 
-        if (_types.FindEnum(name) is { } enumByFullName)
+        if (Visible.FindEnum(name) is { } enumByFullName)
         {
             return NamedEnum(enumByFullName);
         }
 
-        var messages = _types.MessagesNamed(name);
-        var enums = _types.EnumsNamed(name);
+        var messages = Visible.MessagesNamed(name);
+        var enums = Visible.EnumsNamed(name);
 
         // Asked of the index rather than counted here, because completion has to predict exactly this
         // and a second count is a second rule. The index names it for the position it governs.
-        if (_types.IsAmbiguousAsATypeName(name))
+        if (Visible.IsAmbiguousAsATypeName(name))
         {
             // Messages and enums share one type name space here, so a name matching one of each is
             // just as ambiguous as a name matching two enums.
@@ -506,6 +664,14 @@ public sealed partial class Binder
         if (enums is [var onlyEnum])
         {
             return NamedEnum(onlyEnum);
+        }
+
+        if (ReportIfOnlyTestSchemasDeclare(
+                name,
+                reference.Span,
+                types => [types.FindMessage(name), types.FindEnum(name), .. types.MessagesNamed(name), .. types.EnumsNamed(name)]))
+        {
+            return ErrorType.Instance;
         }
 
         _diagnostics.Report(
@@ -598,7 +764,10 @@ public sealed partial class Binder
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
 
-        return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span);
+        return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span)
+        {
+            Document = _document,
+        };
     }
 
     /// <remarks>
@@ -1713,31 +1882,38 @@ public sealed partial class Binder
     {
         descriptor = null;
 
-        if (!TryFlattenName(receiver, out var typeName, out var leadingName))
+        // The leading name is settled before anything is joined, because this runs at every link of
+        // a member chain and most chains start at a value: a chain that only reads fields would
+        // otherwise build its whole dotted spelling once per link, to throw every copy away.
+        if (LeadingNameOf(receiver) is not { } leadingName
+            || IsValueName(leadingName.Name.Text, scope, context))
         {
             return false;
         }
 
-        if (IsValueName(leadingName, scope, context))
-        {
-            return false;
-        }
+        var typeName = DottedName(receiver);
 
         // A fully qualified name is unambiguous by construction, so it is tried before the
         // simple-name lookup that could report a false ambiguity.
-        if (_types.FindEnum(typeName) is { } byFullName)
+        if (Visible.FindEnum(typeName) is { } byFullName)
         {
             descriptor = byFullName;
             Use(SymbolId.ForType(descriptor), receiver.Span);
             return true;
         }
 
-        var candidates = _types.EnumsNamed(typeName);
+        var candidates = Visible.EnumsNamed(typeName);
 
         if (candidates.Count == 0)
         {
-            // Not an enum. Whatever this is, the ordinary path reports it.
-            return false;
+            // Not an enum production behavior may name, when only a test source's schemas declare
+            // it: settled here, as an ambiguous one is, so the ordinary path does not go on to
+            // report the same name as an unknown value. Otherwise not an enum at all, and the
+            // ordinary path reports whatever it is.
+            return ReportIfOnlyTestSchemasDeclare(
+                typeName,
+                receiver.Span,
+                types => [types.FindEnum(typeName), .. types.EnumsNamed(typeName)]);
         }
 
         if (candidates.Count > 1)
@@ -1783,13 +1959,11 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Flattens a chain of member accesses over a bare identifier back into a dotted name, and
-    /// reports the leading identifier separately. Returns false for anything else, such as a call
-    /// or a literal at the root.
+    /// The bare identifier a chain of member accesses starts from, when the chain is a dotted name;
+    /// null for anything else, such as a call or a literal at the root.
     /// </summary>
-    private static bool TryFlattenName(Expression expression, out string name, out string leadingName)
+    private static NameExpression? LeadingNameOf(Expression expression)
     {
-        var parts = new List<string>();
         var current = expression;
 
         while (current is MemberAccessExpression member)
@@ -1798,26 +1972,33 @@ public sealed partial class Binder
             // flattened into one that happens to have an empty segment.
             if (member.Name.IsMissing)
             {
-                name = string.Empty;
-                leadingName = string.Empty;
-                return false;
+                return null;
             }
 
-            parts.Insert(0, member.Name.Text);
             current = member.Receiver;
         }
 
-        if (current is not NameExpression root)
+        return current as NameExpression;
+    }
+
+    /// <summary>
+    /// Spells a chain of member accesses over a bare identifier as the dotted name it is, once
+    /// <see cref="LeadingNameOf"/> has found that it is one.
+    /// </summary>
+    private static string DottedName(Expression expression)
+    {
+        var parts = new List<string>();
+        var current = expression;
+
+        while (current is MemberAccessExpression member)
         {
-            name = string.Empty;
-            leadingName = string.Empty;
-            return false;
+            parts.Add(member.Name.Text);
+            current = member.Receiver;
         }
 
-        parts.Insert(0, root.Name.Text);
-        name = string.Join('.', parts);
-        leadingName = root.Name.Text;
-        return true;
+        parts.Add(((NameExpression)current).Name.Text);
+        parts.Reverse();
+        return string.Join('.', parts);
     }
 
     /// <summary>Whether an identifier names a value in scope, using the same order as BindName.</summary>
@@ -1967,12 +2148,12 @@ public sealed partial class Binder
                     invocation.Span,
                     "Calling target-language functions is not permitted (spec 20).");
 
-                // The callee is deliberately not bound. It is the author's expression and a position
-                // query would like it, but descending it is not safe: the parser's nesting budget
-                // bounds its own recursion and not the chain its postfix loop builds, so a file of
-                // 5000 unbalanced parentheses recovers into 2436 nested invocations, and binding
-                // through them turns a 183ms bind into one that does not finish. The syntax tree
-                // answers about a callee that cannot be called; the IR stops at the call.
+                // The callee is not bound: it is not a receiver, and the node has no other place to
+                // hold it. It was once left alone for safety as well, when recovery from 5000
+                // unbalanced parentheses built 2436 nested invocations and binding through them
+                // did not finish. The parser now holds every expression to its height budget
+                // (spec 28), so that chain is refused rather than built. The syntax tree answers
+                // about a callee that cannot be called; the IR stops at the call.
                 return Uncallable(null);
         }
 
@@ -1987,6 +2168,14 @@ public sealed partial class Binder
         }
 
         Use(signature.Id, methodNameSpan);
+
+        // Reported and then bound as the call it is. The call is well formed and resolves; what is
+        // wrong is only where its target is generated, and binding it for what it is keeps a
+        // mistake inside an argument from hiding behind this one.
+        if (_productionBehavior && _testSources.Contains(signature.Declaration.Document))
+        {
+            ReportCallIntoATestSource(signature, invocation.Span);
+        }
 
         var arguments = new List<IrExpression>();
         for (var i = 0; i < invocation.Arguments.Count; i++)
@@ -2037,6 +2226,77 @@ public sealed partial class Binder
                 boundReceiver,
                 [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))],
                 invocation.Span);
+    }
+
+    /// <summary>
+    /// Refuses a call from a method that ships to a method a test source declares (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test source's methods are generated with the tests, and only a test build compiles them at
+    /// all. A production method that called one would be generated into the behavior output calling
+    /// something that is not there, and the production build, which leaves test sources out, would
+    /// report it as a method that does not exist. So it is refused wherever the two are compiled
+    /// together, which is what lets a test build's behavior output be the production build's.
+    /// </para>
+    /// <para>
+    /// The target is named with the source it is in, because nothing at the call site says which
+    /// source that is, and the fix is to move the method out of it.
+    /// </para>
+    /// </remarks>
+    private void ReportCallIntoATestSource(IrMethodSignature target, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.ProductionMethodCallsTestHelper,
+            $"'{target.Name}' is declared in '{target.Declaration.Document.Name}', a test source, so it "
+                + "is generated with the tests and not with this method.",
+            span,
+            "Declare it in a production source, or call it only from tests and from methods in test sources.");
+
+    /// <summary>
+    /// Refuses a name production behavior looked for in the production schema closure and did not
+    /// find, when a schema only test sources bring declares it (<c>PC0089</c>, spec 25.3.1).
+    /// </summary>
+    /// <param name="declared">
+    /// What the name resolves to in an index, null where nothing does. Asked of every schema's index
+    /// only when production behavior is being bound against a narrower one, since otherwise the
+    /// caller has already asked that index and found nothing.
+    /// </param>
+    /// <returns>Whether it was refused; false leaves the caller to report an unknown name.</returns>
+    /// <remarks>
+    /// <para>
+    /// The production build never loads that schema, so there the name is simply unknown. A test
+    /// build loads it for the tests, and without this the name would resolve there instead, making
+    /// production behavior valid only because test sources were added. Binding production behavior
+    /// against the production closure alone is what keeps a test build from accepting it, and from
+    /// finding a production name ambiguous because a test schema declares another of that name.
+    /// </para>
+    /// <para>
+    /// Its own code rather than the unknown-type diagnostic, because the name is not unknown: the
+    /// author can see the declaration, and a test builds against it. What the reader needs is which
+    /// schema it is in and why production behavior cannot reach it. The schema is named, and not the
+    /// source that imports it, because what is missing is a production source bringing it in, not
+    /// this source's import of it: any production source's import would do.
+    /// </para>
+    /// </remarks>
+    private bool ReportIfOnlyTestSchemasDeclare(
+        string name,
+        SourceSpan span,
+        Func<SchemaTypes, IEnumerable<IDescriptor?>> declared)
+    {
+        if (!_productionBehavior
+            || ProductionSchemas is null
+            || declared(_types).OfType<IDescriptor>().FirstOrDefault() is not { } type)
+        {
+            return false;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.ProductionNamesATestOnlyType,
+            $"'{name}' is declared in '{type.File.Name}', which no production source brings into the "
+                + "compilation, so only tests and test sources may name it.",
+            span,
+            $"Import '{type.File.Name}' from a production source, or use '{name}' only in tests and test sources.");
+        return true;
     }
 
     /// <summary>

@@ -16,11 +16,11 @@ namespace ProtoCross.LanguageServer.Workspace;
 /// <c>DiagnosticCodeTests</c>, so a code allocated twice fails the suite wherever it was written.
 /// </para>
 /// <para>
-/// Every one of these is a warning except the two that stop a document being compiled at all: a
-/// configuration file that was found and refused, and a protoc that was named, exists, and cannot be
-/// prepared to run. A setting that is merely ignored leaves the defaults in force, which is a
-/// situation the author can work in and needs to be told about; the other two leave no policy to
-/// compile under.
+/// Every one of these is a warning except the three that stop a document being compiled at all: a
+/// configuration file that was found and refused, a protoc that was named, exists, and cannot be
+/// prepared to run, and a project that was found and refused. A setting that is merely ignored
+/// leaves the defaults in force, which is a situation the author can work in and needs to be told
+/// about; the other three leave nothing to compile under.
 /// </para>
 /// </remarks>
 public static class HostDiagnosticCodes
@@ -68,4 +68,28 @@ public static class HostDiagnosticCodes
     /// </remarks>
     public static readonly DiagnosticDescriptor ProtocCouldNotBeUsed =
         new("PC2107", DiagnosticSeverity.Error, "protoc could not be used");
+
+    /// <summary>
+    /// Two projects in one directory that both include a document, which compiles with the one whose
+    /// name sorts first (spec 10.4.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectsShareADocument =
+        new("PC2108", DiagnosticSeverity.Warning, "projects share a document");
+
+    /// <summary>
+    /// A document's project that could not be read, so nothing compiles for the document (spec 10.4.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectRefused =
+        new("PC2109", DiagnosticSeverity.Error, "project refused");
+
+    /// <summary>A project named by a setting that names no file that exists (spec 10.4.1).</summary>
+    public static readonly DiagnosticDescriptor ProjectNotFound =
+        new("PC2110", DiagnosticSeverity.Warning, "project not found");
+
+    /// <summary>
+    /// A source of a document's project that could not be read, so the document was compiled without
+    /// it (spec 26.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ProjectSourceUnreadable =
+        new("PC2111", DiagnosticSeverity.Warning, "project source could not be read");
 }

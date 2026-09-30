@@ -57,15 +57,24 @@ that way. If one of your entries was skipped, the explanation names it.
 |---|---|---|
 | `protocross.includePaths` | `[]` | Directories searched for imported schemas, after the importing file's own directory. The same as the compiler's `-I`. Relative paths resolve against the workspace folder that states them. |
 | `protocross.protocPath` | `""` | The `protoc` to run, as a full path. The same as `PROTOCROSS_PROTOC`. Not used in a workspace you have not trusted. |
-| `protocross.configPath` | `""` | A `protocross.config.xml` to use instead of searching upward from each file. The same as the compiler's `--config`. |
+| `protocross.configPath` | `""` | A `protocross.config.xml` to use instead of searching upward from each file. The same as the compiler's `--config`. A file's project, when it has one, settles its policy instead. |
+| `protocross.project` | `""` | The `.pcproj` each file compiles with, instead of the nearest one above it that includes it. A file the named project does not include has no project. |
 | `protocross.logLevel` | `info` | How much the server logs: `error`, `warning`, `info` or `trace`. Changing it restarts the server. |
 | `protocross.server.enabled` | `true` | Run the language server. Off, only colouring is active and nothing needs .NET. |
 | `protocross.server.path` | `""` | A language server to run instead of the bundled one: `protocross-server.dll`, or an executable. For developing the server. User settings only. |
 | `protocross.dotnetPath` | `""` | The `dotnet` that runs the server, as a full path. User settings only. |
 
-Include paths, the `protoc` path and the config path can be set per folder in a multi-root workspace. A
-change takes effect on the next compilation, with no reload. Language policy, such as overflow
-behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor
+Include paths, the `protoc` path, the config path and the project can be set per folder in a multi-root
+workspace. A change takes effect on the next compilation, with no reload.
+
+A file inside a project (a `.pcproj`) takes its settings from the project first, as the compiler does when
+it builds that project: the project's `<ProtoPath>` directories are searched before
+`protocross.includePaths`, and the configuration file it settles on is used instead of
+`protocross.configPath`. A file's project is the nearest `.pcproj` at or above it whose patterns include
+it, unless `protocross.project` names one. The file is compiled with the rest of its project, so a call
+into another file of it resolves, and go-to-definition and find-references cross into the others; files
+you have open are compiled from what is in the editor, and the rest from disk. Problems are shown for the
+files you have open. Language policy, such as overflow behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor
 and your build agree about what the code means.
 
 ## Commands

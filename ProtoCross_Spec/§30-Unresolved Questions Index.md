@@ -5,6 +5,9 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~File extension.~~ Decided: `.pcross` ([5.1](./§5-Source%20Organization.md#51-files)).
 - ~~Direct import model.~~ Decided: `import proto "file.proto";` resolves `.proto` files through
   include paths and the source directory ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Descriptor-set input remains open.
+- ~~Compilation units of more than one file.~~ Decided: a compilation is one or more sources bound as
+  one program, each generated into files of its own, under one policy ([5.3](./§5-Source%20Organization.md#53-compilation-unit)).
+  A project names its sources, and which of them hold tests, in a `.pcproj` ([5.4](./§5-Source%20Organization.md#54-projects)).
 - ~~Package and namespace model for current source.~~ Decided: no independent ProtoCross package
   declaration; names come from protobuf descriptors ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)). Future embedded-in-proto design remains
   open.
@@ -69,17 +72,31 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).
 - `protoc` plugin and Buf integration strategy.
-- ~~ProtoCross unit test declaration syntax.~~ Decided: `test` declarations in `.pcross` files
-  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)). Separate `.pcrosstest` files remain open.
+- ~~ProtoCross unit test declaration syntax.~~ Decided: `test` declarations in any `.pcross` file
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
+  ~~Separate `.pcrosstest` files.~~ Decided: there are none; the sources a project names only in
+  `<Tests>` are its test sources
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
+- ~~Whether a test build should refuse a production source that names a type only a test source
+  imports.~~ Decided: yes; production behavior names only types in the production schema closure
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
 - Generated test output framework options and future `protoc` plugin flag names.
 - Stable IR format.
 - Third-party backend support.
 - ~~Generated API shape for implemented backends.~~ Decided: C# extension methods and C++ header-only
   free functions ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). Python remains open because no backend exists.
+- ~~Which namespace generated behavior is declared in, and who owns it.~~ Decided: a project's is
+  declared in a namespace named after the project, whatever message it extends, and behavior
+  compiled without a project beside each message it extends
+  ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy),
+  [5.4](./§5-Source%20Organization.md#54-projects)).
 - Diagnostic compatibility.
 - Language version declaration.
 - Generated API compatibility.
-- Recursion and resource limits.
+- ~~Recursion and resource limits.~~ Decided for the compiler: nesting is bounded at 128 levels,
+  and a chain counts one level per link
+  ([28](./§28-Security%20and%20Determinism.md#28-security-and-determinism)). Runtime limits on
+  generated methods, and whether recursion is allowed, remain open.
 - Partial semantic model policy after descriptor-load failures and unresolved imports. Current
   implementation does not bind without usable descriptors; whether to produce a lighter semantic
   model for unresolved imports remains open.

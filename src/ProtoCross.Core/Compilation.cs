@@ -1,4 +1,6 @@
+using System.Text;
 using Google.Protobuf.Reflection;
+using ProtoCross.Backend;
 using ProtoCross.Binding;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
@@ -17,7 +19,9 @@ namespace ProtoCross;
 /// </param>
 /// <param name="SyntaxTree">
 /// The syntax tree, present whenever the source was parsed at all, error-recovered and complete
-/// enough to walk. Null on the same three stops that leave <paramref name="Module"/> null.
+/// enough to walk. Null on the same three stops that leave <paramref name="Module"/> null. Of a
+/// compilation of several sources, this is the first tree of <see cref="CompilationResult.SyntaxTrees"/>;
+/// <see cref="CompilationResult.SyntaxTrees"/> holds every source's.
 /// </param>
 /// <param name="Descriptors">
 /// Every protobuf file backing this compilation, including transitively imported ones, in
@@ -129,6 +133,63 @@ public sealed record CompilationResult(
     public SchemaTypes Types { get; init; } = SchemaTypes.Empty;
 
     /// <summary>
+    /// The messages and enums production behavior may name, indexed as the binder resolved production
+    /// behavior against them: the production schema closure's in a compilation with test sources, and
+    /// <see cref="Types"/> otherwise (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <see cref="Types"/> when nothing set it, so a result built without it answers as a compilation
+    /// with no test source does, which is every one built before test sources existed.
+    /// </remarks>
+    public SchemaTypes ProductionTypes
+    {
+        get => _productionTypes ?? Types;
+        init => _productionTypes = value;
+    }
+
+    private readonly SchemaTypes? _productionTypes;
+
+    /// <summary>
+    /// Every source's syntax tree, with the source it came from, in the order the sources were
+    /// given, except that test sources come after production ones (see
+    /// <see cref="Compilation(IReadOnlyList{SourceDocument}, CompilationOptions)"/>). Empty when the
+    /// compilation stopped before it parsed anything.
+    /// </summary>
+    /// <remarks>
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives: the
+    /// constructor keeps the shape every existing caller builds and destructures it by, and
+    /// <see cref="SyntaxTree"/> keeps answering what it always has. A tree comes with its identity
+    /// because a caller holding a document has to find that document's tree, and a tree cannot say
+    /// which file it is.
+    /// </remarks>
+    public IReadOnlyList<SourceTree> SyntaxTrees { get; init; } = [];
+
+    /// <summary>
+    /// What each source's own directory held under the paths it imports that resolved somewhere else,
+    /// which is what <c>PC0087</c> was decided from. Empty when there were none, or when the
+    /// compilation stopped before its imports resolved.
+    /// </summary>
+    /// <remarks>
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. Carried
+    /// out so that a host holding this result can tell whether its warnings still describe the disk;
+    /// see <see cref="SchemaBesideSource"/>.
+    /// </remarks>
+    public IReadOnlyList<SchemaBesideSource> SchemasBesideSources { get; init; } = [];
+
+    /// <summary>
+    /// The namespace this compilation's behavior is declared in, as its options named it, or null when
+    /// its sources are not a project's and each receiver's behavior is declared beside its message
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. Nothing
+    /// in the compilation depends on it. It is carried out because this result is what the generators
+    /// are handed, and the project a compilation was of is the one thing about it that decides where
+    /// every generated name is declared.
+    /// </remarks>
+    public ProjectNamespace? ProjectNamespace { get; init; }
+
+    /// <summary>
     /// What protoc reported about the schemas, one entry per line it wrote, empty when it reported
     /// nothing or was never reached.
     /// </summary>
@@ -168,6 +229,36 @@ public sealed record CompilationOptions
     /// nothing -- or nowhere -- is found.
     /// </summary>
     public ProjectConfig? Config { get; init; }
+
+    /// <summary>
+    /// Whether the sources' tests are left out, as a production build leaves them (spec 25.3.1):
+    /// parsed, because they are part of the text, but neither bound nor generated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A build that ships the program has no use for its tests, and a test that no longer binds --
+    /// its target renamed, a fixture field gone from the schema -- must not stop the program
+    /// shipping. So the binder never sees one, and nothing a test says is reported.
+    /// </para>
+    /// <para>
+    /// A test that does not parse is still reported. Leaving a declaration out needs to know where
+    /// it ends, and one that does not parse cannot say: whatever recovery decided, the error may be
+    /// about the method written after it, and passing over it would ship a program that is missing
+    /// that method with nothing said.
+    /// </para>
+    /// </remarks>
+    public bool SkipTests { get; init; }
+
+    /// <summary>
+    /// The namespace the sources' behavior is declared in when they are a project's, named after the
+    /// project; null declares each receiver's beside its message (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// The compilation only carries it, to <see cref="CompilationResult.ProjectNamespace"/>: where
+    /// behavior is declared changes what every generated name is, and nothing about what the
+    /// program means.
+    /// </remarks>
+    public ProjectNamespace? ProjectNamespace { get; init; }
 }
 
 /// <summary>
@@ -183,21 +274,53 @@ public sealed record CompilationOptions
 /// </remarks>
 public sealed class Compilation
 {
+    private readonly IReadOnlyList<UnusableIncludePath> _unusableIncludePaths;
+
+    /// <summary>
+    /// The directories a production source's import is resolved against: <see cref="SearchPaths"/>
+    /// without the directories only test sources contribute (spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// A schema that only a test source's directory holds is one the production build, which leaves
+    /// test sources out, cannot find. Resolving a production import there as well would let adding a
+    /// test source make a production source valid that is not valid without it. With no test source
+    /// this is <see cref="SearchPaths"/> itself.
+    /// </remarks>
+    private readonly IReadOnlyList<string> _productionSearchPaths;
+
     /// <summary>Creates a compilation over one source document.</summary>
     public Compilation(SourceDocument source, CompilationOptions options)
         : this([source], options)
     {
     }
 
+    /// <summary>
+    /// Creates a compilation over several source documents, compiled together as one program.
+    /// </summary>
     /// <remarks>
-    /// Private for now. The object holds a set because a set is what it is going to be, and every
-    /// derived answer below already reads the whole set. What is missing is a binder that can bind a
-    /// second unit, and a public door onto a capability that is not written yet is worse than no
-    /// door: it promises something the compiler would then have to refuse at run time.
+    /// <para>
+    /// Every source is bound into one module, so a method in any of them may call a method declared
+    /// in any other and a test may target it, and every source compiles under one policy (spec 5.3).
+    /// Each is still generated into files of its own, named after it.
+    /// </para>
+    /// <para>
+    /// Every source needs an identity of its own: <see cref="SourceIdentity.FromPath"/> gives one for
+    /// free, and an unsaved buffer takes the name its caller passes to
+    /// <see cref="SourceIdentity.Unsaved"/>. Two sources whose generated files would share names are
+    /// refused when the compilation runs, as <c>PC2006</c>, rather than here, because that is a
+    /// problem with the input and not with the call.
+    /// </para>
+    /// <para>
+    /// Production sources come first, in the order given, and then test sources, in the order given
+    /// (spec 25.3.1). Order decides three things about a compilation: which source's directory answers
+    /// an import first, which of two declarations of one method is the duplicate, and the order the
+    /// generated files come out in. A test source placed first could otherwise change all three for
+    /// the production sources, and a test build is only worth running if what it generates for them
+    /// is what the production build does. With no test source the order is the one given.
+    /// </para>
     /// </remarks>
-    private readonly IReadOnlyList<UnusableIncludePath> _unusableIncludePaths;
-
-    private Compilation(IReadOnlyList<SourceDocument> sources, CompilationOptions options)
+    /// <exception cref="ArgumentException"><paramref name="sources"/> is empty.</exception>
+    public Compilation(IReadOnlyList<SourceDocument> sources, CompilationOptions options)
     {
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(options);
@@ -207,12 +330,18 @@ public sealed class Compilation
             throw new ArgumentException("A compilation needs at least one source.", nameof(sources));
         }
 
-        Sources = [.. sources];
+        Sources = [.. sources.OrderBy(source => source.Role is SourceRole.Test)];
         Options = options;
         SearchPaths = BuildSearchPaths(
             Sources.Select(source => source.Identity),
             options.IncludePaths,
             out _unusableIncludePaths);
+        _productionSearchPaths = HasTestSources
+            ? BuildSearchPaths(
+                Sources.Where(source => source.Role is SourceRole.Production).Select(source => source.Identity),
+                options.IncludePaths,
+                out _)
+            : SearchPaths;
     }
 
     /// <summary>An include path the caller named that the file system could not make sense of.</summary>
@@ -270,21 +399,11 @@ public sealed class Compilation
     /// </remarks>
     public IReadOnlyList<string> SearchPaths { get; }
 
-    /// <summary>
-    /// The directory whose <c>protocross.config.xml</c> settles policy: the first source that has a
-    /// directory at all, and null when none of them does.
-    /// </summary>
-    /// <remarks>
-    /// With one source this is that source's directory, which is what it has always been. With
-    /// several it is a placeholder for a decision multi-file compilation has to make properly --
-    /// whether policy should come from a project root instead. First-with-a-directory is picked here
-    /// because it is the only rule that also handles the mixed case an editor produces: one saved
-    /// file and one buffer that has never been written.
-    /// </remarks>
-    private string? ConfigDirectory
-        => Sources
-            .Select(source => source.Identity.Directory)
-            .FirstOrDefault(directory => directory is not null);
+    /// <summary>Whether any source is compiled only to test with (spec 25.3.1).</summary>
+    private bool HasTestSources => Sources.Any(source => source.Role is SourceRole.Test);
+
+    /// <summary>Whether any source belongs to a directory, which is where imports fall back to.</summary>
+    private bool AnySourceHasADirectory => Sources.Any(source => source.Identity.Directory is not null);
 
     /// <summary>Compiles the sources to typed IR.</summary>
     public CompilationResult Compile() => Compile(new DiagnosticBag(), CancellationToken.None);
@@ -386,6 +505,81 @@ public sealed class Compilation
             .Compile();
 
     /// <summary>
+    /// Compiles several ProtoCross files as one program, reading them from disk.
+    /// </summary>
+    /// <remarks>
+    /// The several-source form of <see cref="Compile(string, IReadOnlyList{string}, DescriptorLoader?, ProjectConfig?)"/>,
+    /// argument for argument, and settling policy before reading for the same reason. A list of one
+    /// compiles exactly as that path would.
+    /// </remarks>
+    /// <param name="sourcePaths">The .pcross files, compiled together.</param>
+    /// <param name="includePaths">
+    /// Directories searched for the .proto files named in <c>import proto</c> declarations. The
+    /// directory of each source is searched after these.
+    /// </param>
+    /// <param name="loader">Descriptor loader; defaults to a protoc-backed one.</param>
+    /// <param name="config">
+    /// The project's language policy (spec 10.4). When null, every source that has a directory must
+    /// find the same <c>protocross.config.xml</c> above it, or none; see
+    /// <see cref="ResolveSharedConfig"/>.
+    /// </param>
+    /// <exception cref="ArgumentException"><paramref name="sourcePaths"/> is empty.</exception>
+    public static CompilationResult Compile(
+        IReadOnlyList<string> sourcePaths,
+        IReadOnlyList<string> includePaths,
+        DescriptorLoader? loader = null,
+        ProjectConfig? config = null)
+    {
+        ArgumentNullException.ThrowIfNull(sourcePaths);
+
+        if (sourcePaths.Count == 0)
+        {
+            throw new ArgumentException("A compilation needs at least one source.", nameof(sourcePaths));
+        }
+
+        var identities = sourcePaths.Select(SourceIdentity.FromPath).ToList();
+        var diagnostics = new DiagnosticBag();
+
+        var settled = config ?? ResolveSharedConfig(identities, diagnostics);
+        if (settled is null)
+        {
+            return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, [], []);
+        }
+
+        return new Compilation(
+                [.. identities.Select(SourceDocument.ReadFrom)],
+                new CompilationOptions
+                {
+                    IncludePaths = includePaths,
+                    Loader = loader,
+                    Config = settled,
+                })
+            .Compile(diagnostics, CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Compiles several pieces of source text the caller already holds as one program.
+    /// </summary>
+    /// <remarks>
+    /// The several-source form of <see cref="Compile(SourceDocument, IReadOnlyList{string}, DescriptorLoader?, ProjectConfig?)"/>.
+    /// </remarks>
+    /// <exception cref="ArgumentException"><paramref name="sources"/> is empty.</exception>
+    public static CompilationResult Compile(
+        IReadOnlyList<SourceDocument> sources,
+        IReadOnlyList<string> includePaths,
+        DescriptorLoader? loader = null,
+        ProjectConfig? config = null)
+        => new Compilation(
+                sources,
+                new CompilationOptions
+                {
+                    IncludePaths = includePaths,
+                    Loader = loader,
+                    Config = config,
+                })
+            .Compile();
+
+    /// <summary>
     /// Settles the policy a compilation runs under: the nearest <c>protocross.config.xml</c> at or
     /// above <paramref name="startDirectory"/>, or <see cref="ProjectConfig.Default"/> when there is
     /// none -- or when there is no directory to search at all, which is what a buffer that has never
@@ -421,8 +615,78 @@ public sealed class Compilation
         }
 
         consulted = ProjectConfig.Discover(startDirectory);
-        return consulted is null ? ProjectConfig.Default : ProjectConfig.Load(consulted, diagnostics);
+        return LoadDiscovered(consulted, diagnostics);
     }
+
+    /// <summary>
+    /// Settles the one policy several sources compile under: the <c>protocross.config.xml</c> every
+    /// source with a directory finds above it, or <see cref="ProjectConfig.Default"/> when none of
+    /// them finds one.
+    /// </summary>
+    /// <returns>
+    /// Null when two sources find different files (<c>PC2005</c>), or when the one they share could
+    /// not be read; the reason is in <paramref name="diagnostics"/>. One compilation binds one
+    /// program, and every operation in it has to mean one thing (spec 10.4).
+    /// </returns>
+    /// <remarks>
+    /// <para>
+    /// The same file, and not merely the same settings: two files that happen to say the same thing
+    /// today are two places a project states its policy, and they can come apart tomorrow without
+    /// anyone compiling these sources together noticing. Files are compared by
+    /// <see cref="PathIdentity"/>, so one file reached by two spellings is one file.
+    /// </para>
+    /// <para>
+    /// A source with no directory -- a buffer never saved, with no folder named for it -- takes no
+    /// part, because it has nowhere to search from. It states no policy, which is not the same as
+    /// stating the default, so it adopts the one the others found. With one source this is
+    /// <see cref="ResolveConfig(string?, DiagnosticBag)"/> exactly.
+    /// </para>
+    /// <para>
+    /// Published for a caller that settles policy before compiling, as the command line does so that
+    /// it can apply its flags to what was found. Discovering per source outside this method would be a
+    /// second statement of the rule, and the first one to drift would compile sources that disagree
+    /// under whichever policy it happened to look at first.
+    /// </para>
+    /// </remarks>
+    public static ProjectConfig? ResolveSharedConfig(IReadOnlyList<SourceIdentity> sources, DiagnosticBag diagnostics)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(diagnostics);
+
+        var found = sources
+            .Where(source => source.Directory is not null)
+            .Select(source => (Source: source, File: ProjectConfig.Discover(source.Directory!)))
+            .ToList();
+
+        if (found.Count == 0)
+        {
+            return ProjectConfig.Default;
+        }
+
+        var (first, governing) = found[0];
+        foreach (var (other, file) in found.Skip(1))
+        {
+            if (!PathIdentity.AreSame(governing, file))
+            {
+                diagnostics.Report(
+                    DiagnosticCodes.SourcesDisagreeOnPolicy,
+                    $"'{other.Name}' is under {DescribeConfig(file)} and '{first.Name}' is under "
+                        + $"{DescribeConfig(governing)}. One compilation runs under one policy.",
+                    other.Start,
+                    "Compile them separately, or move them under one protocross.config.xml.");
+                return null;
+            }
+        }
+
+        return LoadDiscovered(governing, diagnostics);
+    }
+
+    private static string DescribeConfig(string? file)
+        => file is null ? "no protocross.config.xml" : $"'{file}'";
+
+    /// <summary>The policy a discovered file states, or the default when nothing was discovered.</summary>
+    private static ProjectConfig? LoadDiscovered(string? file, DiagnosticBag diagnostics)
+        => file is null ? ProjectConfig.Default : ProjectConfig.Load(file, diagnostics);
 
     /// <inheritdoc cref="SearchPaths"/>
     /// <remarks>
@@ -481,19 +745,28 @@ public sealed class Compilation
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var config = Options.Config ?? ResolveConfig(ConfigDirectory, diagnostics);
+        // Before policy, because it is a problem with what was passed rather than with what any
+        // source says, and the answer to it does not depend on the policy.
+        if (!EverySourceHasNamesOfItsOwn(diagnostics))
+        {
+            return new CompilationResult(null, null, [], diagnostics, Options.Config ?? ProjectConfig.Default, SearchPaths, [])
+            {
+                ProjectNamespace = Options.ProjectNamespace,
+            };
+        }
+
+        var config = Options.Config ?? ResolveSharedConfig([.. Sources.Select(source => source.Identity)], diagnostics);
         if (config is null)
         {
             // A project that states a policy and is then silently ignored is worse off than one that
             // states nothing, so a bad config file stops the compilation.
-            return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, SearchPaths, []);
+            return new CompilationResult(null, null, [], diagnostics, ProjectConfig.Default, SearchPaths, [])
+            {
+                ProjectNamespace = Options.ProjectNamespace,
+            };
         }
 
-        var source = Sources[0];
-        var file = source.Identity.Name;
-
-        var tokens = new Lexer(source.Text, file, diagnostics).Tokenize();
-        var unit = new Parser(tokens, file, diagnostics).ParseCompilationUnit();
+        var trees = Sources.Select(source => Parse(source, diagnostics)).ToList();
 
         // Parse errors used to stop here. They no longer do: the parser recovers, the binder does
         // not throw on what recovery leaves behind, and a buffer being typed into is broken most of
@@ -518,17 +791,26 @@ public sealed class Compilation
                         + "exist is searched and skipped. Correct the path or drop the entry.");
             }
 
-            return new CompilationResult(null, unit, [], diagnostics, config, SearchPaths, []);
+            return Stopped([]);
         }
 
-        if (unit.Imports.Count == 0)
+        // Each source says what it imports, and a source that imports nothing is told so. The
+        // compilation goes on while any source imports something, because every source binds
+        // against every import (spec 5.2), and stopping one file's author at another file's missing
+        // line would hide what is wrong with their own.
+        foreach (var tree in trees.Where(tree => tree.Unit.Imports.Count == 0))
         {
             diagnostics.Report(
                 DiagnosticCodes.NoProtoImports,
                 "A ProtoCross file must import at least one protobuf schema.",
-                unit.Span,
+                tree.Unit.Span,
                 "Add an 'import proto \"your.proto\";' declaration (spec 5.2).");
-            return new CompilationResult(null, unit, [], diagnostics, config, SearchPaths, []);
+        }
+
+        var declared = trees.SelectMany(tree => tree.Unit.Imports).ToList();
+        if (declared.Count == 0)
+        {
+            return Stopped([]);
         }
 
         // Resolved before the imports are checked, because the loader knows about include
@@ -542,18 +824,19 @@ public sealed class Compilation
         }
         catch (DescriptorLoadException ex)
         {
-            ReportSchemaFailure(diagnostics, ex, unit.Imports[0].Span);
-            return new CompilationResult(null, unit, [], diagnostics, config, SearchPaths, [])
-            {
-                SchemaFailure = SchemaLoadFailure.From(ex),
-            };
+            ReportSchemaFailure(diagnostics, ex, declared[0].Span);
+            return Stopped([]) with { SchemaFailure = SchemaLoadFailure.From(ex) };
         }
 
         Loader = loader;
 
         var resolvePaths = SchemaCatalog.RootsFor(SearchPaths, loader);
+        var productionResolvePaths = HasTestSources ? SchemaCatalog.RootsFor(_productionSearchPaths, loader) : resolvePaths;
 
-        var imports = unit.Imports.Select(import => Resolve(import, resolvePaths)).ToList();
+        var imports = trees
+            .SelectMany(tree => tree.Unit.Imports.Select(import =>
+                Resolve(import, tree.Role is SourceRole.Test ? resolvePaths : productionResolvePaths)))
+            .ToList();
 
         foreach (var import in imports)
         {
@@ -570,27 +853,25 @@ public sealed class Compilation
             }
         }
 
+        var besides = SchemasBesideSources(trees, imports);
+        ReportShadowedSchemas(besides, diagnostics);
+
         // The question is whether the schemas are all here, not whether anything at all has gone
         // wrong. Asking the bag instead would stop a buffer whose imports are perfectly good and
         // whose only problem is the half-typed line the editor is asking about.
         if (!imports.TrueForAll(import => import.IsResolved))
         {
-            return new CompilationResult(null, unit, [], diagnostics, config, SearchPaths, imports);
+            return Stopped(imports);
         }
-
-        // The path the author wrote, not the one it resolved to: protoc is given the same relative
-        // path and the same roots to find it under, so that what it reports matches what was asked
-        // for.
-        var protoFiles = imports.ConvertAll(import => import.Path);
 
         DescriptorBundle schema;
         try
         {
-            schema = loader.LoadBundle(protoFiles, SearchPaths, cancellationToken);
+            schema = loader.LoadBundle(SchemaFilesFor(imports), SearchPaths, cancellationToken);
         }
         catch (DescriptorLoadException ex)
         {
-            ReportSchemaFailure(diagnostics, ex, unit.Imports.Count > 0 ? unit.Imports[0].Span : unit.Span);
+            ReportSchemaFailure(diagnostics, ex, declared[0].Span);
 
             // The imports, not an empty list: every one of them resolved -- the gate above refuses
             // to reach protoc otherwise -- and what failed is protoc's reading of schemas this
@@ -602,25 +883,314 @@ public sealed class Compilation
             // most wants to be specific about -- the schema is right there in the workspace, and the
             // error names a line of it -- so flattening it into the PC0003 message and nothing else
             // would leave the client with a sentence to re-parse.
-            return new CompilationResult(null, unit, [], diagnostics, config, SearchPaths, imports)
-            {
-                SchemaFailure = SchemaLoadFailure.From(ex),
-            };
+            return Stopped(imports) with { SchemaFailure = SchemaLoadFailure.From(ex) };
         }
 
-        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config, source.Identity);
-        var module = binder.Bind(unit);
+        // Reported and then bound all the same, for the reason a failed import is: what is wrong is
+        // which file a schema came from, and the rest of each source still has its say.
+        var production = HasTestSources ? ProductionSchemaClosure.Of(schema, ProductionImports(trees, imports)) : null;
+        production?.ReportSchemasTheProductionBuildLoadsDifferently(productionResolvePaths, diagnostics);
+
+        var binder = new Binder(schema.Descriptors, diagnostics, new NumericPolicy(config), config)
+        {
+            SkipTests = Options.SkipTests,
+            ProductionSchemas = production?.Schemas,
+        };
+        var module = binder.Bind(trees);
 
         // Carried out whether or not anything went wrong, because a module built from a broken tree
         // is exactly what an editor came for and is no use to anyone else. Nothing can mistake it
         // for a finished compilation: Success wants an empty diagnostic bag as well as a module, so
         // every existing caller -- the CLI and every backend -- still sees the same false it always
         // did and never reaches this.
-        return new CompilationResult(module, unit, schema.Descriptors, diagnostics, config, SearchPaths, imports)
+        return new CompilationResult(module, trees[0].Unit, schema.Descriptors, diagnostics, config, SearchPaths, imports)
         {
             Schema = schema,
             Types = binder.Types,
+            ProductionTypes = binder.ProductionTypes,
+            SyntaxTrees = trees,
+            SchemasBesideSources = [.. besides.Select(beside => beside.Beside).Distinct()],
+            ProjectNamespace = Options.ProjectNamespace,
         };
+
+        // A compilation that parsed its sources and stopped before binding them.
+        CompilationResult Stopped(IReadOnlyList<ImportResolution> resolved)
+            => new(null, trees[0].Unit, [], diagnostics, config, SearchPaths, resolved)
+            {
+                SyntaxTrees = trees,
+                ProjectNamespace = Options.ProjectNamespace,
+            };
+    }
+
+    /// <summary>The imports production sources wrote, as each resolved.</summary>
+    private static List<ImportResolution> ProductionImports(IReadOnlyList<SourceTree> trees, IReadOnlyList<ImportResolution> imports)
+    {
+        var written = trees
+            .Where(tree => tree.Role is SourceRole.Production)
+            .SelectMany(tree => tree.Unit.Imports)
+            .ToHashSet<ImportDeclaration>(ReferenceEqualityComparer.Instance);
+
+        return [.. imports.Where(import => written.Contains(import.Declaration))];
+    }
+
+    private static SourceTree Parse(SourceDocument source, DiagnosticBag diagnostics)
+    {
+        var file = source.Identity.Name;
+        var tokens = new Lexer(source.Text, file, diagnostics).Tokenize();
+        return new SourceTree(source.Identity, new Parser(tokens, file, diagnostics).ParseCompilationUnit())
+        {
+            Role = source.Role,
+        };
+    }
+
+    /// <summary>
+    /// Refuses every source whose generated files would take the names another source's already
+    /// have (<c>PC2006</c>).
+    /// </summary>
+    /// <returns>Whether every source can be generated under names of its own.</returns>
+    /// <remarks>
+    /// Every source is generated into files named after it, and each backend derives more names
+    /// from that one: the file names, a C++ include guard, a C# test class, a CMake target. Each
+    /// derivation drops or folds something -- case, punctuation, a leading digit -- so two sources
+    /// can differ and still collide in one of them, which would surface as one file silently
+    /// overwriting the other or as a duplicate definition in the consumer's build.
+    /// <see cref="NameConventions.OutputKey"/> is coarser than all of them, so two sources with
+    /// different keys cannot collide in any. The same file given twice has one key as well.
+    /// <para>
+    /// Two other kinds of name share a directory with a source's own. A backend generates some files
+    /// under a fixed name whatever the sources are called, and a test source's files are generated
+    /// into the test output, beside every source's tests (spec 25.3.1). Both are compared by the same
+    /// key, so a source named after a runtime, or a test source named after another source's tests,
+    /// is refused here rather than overwriting that file when it is generated.
+    /// </para>
+    /// </remarks>
+    private bool EverySourceHasNamesOfItsOwn(DiagnosticBag diagnostics)
+    {
+        var claimed = new Dictionary<string, SourceIdentity>(StringComparer.Ordinal);
+        var fixedKeys = NameConventions.FixedNames.Select(NameConventions.OutputKey).ToHashSet(StringComparer.Ordinal);
+        var distinct = true;
+
+        foreach (var source in Sources.Select(source => source.Identity))
+        {
+            var key = OwnKey(source);
+            if (fixedKeys.Contains(key))
+            {
+                distinct = false;
+                ReportFixedName(source, diagnostics);
+            }
+            else if (!claimed.TryAdd(key, source))
+            {
+                distinct = false;
+                ReportSharedNames(source, claimed[key], diagnostics);
+            }
+        }
+
+        var tested = new Dictionary<string, SourceIdentity>(StringComparer.Ordinal);
+        foreach (var source in Sources.Select(source => source.Identity))
+        {
+            tested.TryAdd(TestsKey(source), source);
+        }
+
+        foreach (var helper in Sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Identity))
+        {
+            if (tested.TryGetValue(OwnKey(helper), out var owner))
+            {
+                distinct = false;
+                ReportNamedLikeTests(helper, owner, diagnostics);
+            }
+        }
+
+        return distinct;
+    }
+
+    /// <summary>What <paramref name="source"/>'s own generated names come to.</summary>
+    private static string OwnKey(SourceIdentity source)
+        => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(source.Name));
+
+    /// <summary>What the names of the tests generated from <paramref name="source"/> come to.</summary>
+    private static string TestsKey(SourceIdentity source)
+        => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(source.Name) + NameConventions.TestsSuffix);
+
+    private static void ReportSharedNames(SourceIdentity source, SourceIdentity first, DiagnosticBag diagnostics)
+    {
+        var again = IsSameSource(first, source);
+        diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            again
+                ? $"'{source.Name}' is given more than once."
+                : $"'{source.Name}' would be generated under the same names as '{first.Name}'.",
+            source.Start,
+            again
+                ? "Pass each source once."
+                : "Generated file names, include guards and test classes ignore case and "
+                    + "punctuation, so these two names are one name to them. Rename one source.");
+    }
+
+    private static void ReportFixedName(SourceIdentity source, DiagnosticBag diagnostics)
+        => diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            $"'{source.Name}' would be generated under the name of a file the compiler generates "
+                + "beside every source's.",
+            source.Start,
+            $"Rename the source. {string.Join(", ", NameConventions.FixedNames)} are taken, whatever "
+                + "their case and punctuation.");
+
+    private static void ReportNamedLikeTests(SourceIdentity helper, SourceIdentity owner, DiagnosticBag diagnostics)
+        => diagnostics.Report(
+            DiagnosticCodes.SourcesShareGeneratedNames,
+            $"'{helper.Name}' is a test source, so its files are generated beside the tests of "
+                + $"'{owner.Name}', and under the same names.",
+            helper.Start,
+            $"Rename one of them. The tests generated from a source are named after it, followed by "
+                + $"'{NameConventions.TestsSuffix}'.");
+
+    /// <summary>Whether two identities name one source, however a path to it is spelled.</summary>
+    private static bool IsSameSource(SourceIdentity first, SourceIdentity second)
+        => first.Path is not null && second.Path is not null
+            ? PathIdentity.AreSame(first.Path, second.Path)
+            : first == second;
+
+    /// <summary>
+    /// The schemas to hand protoc: each file the imports resolved to once, under the path its first
+    /// import wrote.
+    /// </summary>
+    /// <remarks>
+    /// Two sources importing one schema is the ordinary case once a compilation has several, and a
+    /// schema handed to protoc twice is loaded, and cached, as two requests for one answer. Resolved
+    /// files are compared by <see cref="PathIdentity"/>, so two spellings of one file are one file.
+    /// The path the author wrote is what protoc is given, not the one it resolved to, so that what
+    /// protoc reports matches what was asked for. A single source that imports one schema twice is
+    /// asked for once as well: protoc accepted the repeat and answered the same, so the only thing
+    /// that moves is the key a cached load is kept under.
+    /// </remarks>
+    private static List<string> SchemaFilesFor(IReadOnlyList<ImportResolution> imports)
+        => imports
+            .DistinctBy(import => PathIdentity.KeyFor(import.ResolvedPath!))
+            .Select(import => import.Path)
+            .ToList();
+
+    /// <summary>A resolved import, and what its source's own directory held under the path it names.</summary>
+    private sealed record ImportBeside(ImportResolution Import, SchemaBesideSource Beside);
+
+    /// <summary>
+    /// For every resolved import of a source that has a directory, what that directory holds under
+    /// the imported path, wherever that is not the schema the import resolved to.
+    /// </summary>
+    /// <remarks>
+    /// Described once and used twice: <see cref="ReportShadowedSchemas"/> decides <c>PC0087</c> from
+    /// it, and the result carries it out so that a host can tell when that decision has gone stale.
+    /// A file beside the source that is the one the import resolved to is left out, because the
+    /// descriptor closure already watches it.
+    /// </remarks>
+    private static List<ImportBeside> SchemasBesideSources(
+        IReadOnlyList<SourceTree> trees,
+        IReadOnlyList<ImportResolution> imports)
+    {
+        var directoryOf = new Dictionary<ImportDeclaration, string?>(ReferenceEqualityComparer.Instance);
+        foreach (var tree in trees)
+        {
+            foreach (var declaration in tree.Unit.Imports)
+            {
+                directoryOf.Add(declaration, tree.Document.Directory);
+            }
+        }
+
+        return imports
+            .Where(import => import.IsResolved && directoryOf[import.Declaration] is not null)
+            .Select(import => new ImportBeside(import, SchemaBesideSource.Describe(directoryOf[import.Declaration]!, import.Path)))
+            .Where(candidate => candidate.Beside.File.Path is not { } path
+                || !PathIdentity.AreSame(path, candidate.Import.ResolvedPath!))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Warns wherever an import resolved to one schema while its own source's directory holds a
+    /// different one under the same path (<c>PC0087</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every import is resolved against one ordered list (spec 5.2), so the first directory holding a
+    /// path answers for every source that imports it. A reader takes <c>import proto "shared.proto"</c>
+    /// to mean the file beside them, and when an include path or another source's directory holds a
+    /// different <c>shared.proto</c>, that is the one they get: whatever they name from their own copy
+    /// is then an unknown type, and nothing says why. The warning is what says why.
+    /// </para>
+    /// <para>
+    /// Resolution itself does not change. protoc knows a schema by its path under its root, so one
+    /// compilation cannot load two files called <c>shared.proto</c>, and the protobuf code generated
+    /// from both could not be linked into one program either. Copies with the same contents are not
+    /// reported, because nothing differs whichever of them is loaded.
+    /// </para>
+    /// </remarks>
+    private static void ReportShadowedSchemas(IReadOnlyList<ImportBeside> besides, DiagnosticBag diagnostics)
+    {
+        foreach (var (import, beside) in besides)
+        {
+            if (beside.File.Path is not { } shadowed || !DifferInContents(shadowed, import.ResolvedPath!))
+            {
+                continue;
+            }
+
+            diagnostics.Report(
+                DiagnosticCodes.SchemaBesideSourceIsShadowed,
+                $"'{import.Path}' resolved to '{import.ResolvedPath}', not to the different '{shadowed}' beside this source.",
+                import.Span,
+                $"Every source's imports are resolved against one list of directories, and the first '{import.Path}' "
+                    + "in it is the one every source gets (spec 5.2). Rename one of the two schemas, or remove the "
+                    + "one that is not meant.");
+        }
+    }
+
+    /// <summary>Whether two schemas are known to say different things.</summary>
+    /// <remarks>
+    /// <para>
+    /// Compared byte for byte, once each has had taken out the two differences a checkout or an
+    /// editor makes without anyone meaning to: a leading UTF-8 byte order mark, which protoc skips,
+    /// and CRLF line endings, which it reads as it reads LF. Nothing else is folded. A carriage return
+    /// before a line feed can only end a line, because a protobuf string may not hold a line feed;
+    /// every other separator Unicode has, <c>U+0085</c> and <c>U+2028</c> among them, can sit inside
+    /// a string default, where it is part of the value, and folding those made two schemas with
+    /// different defaults compare the same. Bytes rather than decoded text, so that two different
+    /// malformed sequences cannot both decode to one replacement character and compare the same.
+    /// </para>
+    /// <para>
+    /// A file that cannot be read is not known to differ, so it is not reported: the warning claims
+    /// the two differ, and protoc says what is wrong with a schema it cannot read.
+    /// </para>
+    /// </remarks>
+    private static bool DifferInContents(string first, string second)
+    {
+        try
+        {
+            return !AsProtocReads(File.ReadAllBytes(first)).SequenceEqual(AsProtocReads(File.ReadAllBytes(second)));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>A schema's bytes without a leading UTF-8 byte order mark, and with each CRLF made LF.</summary>
+    private static List<byte> AsProtocReads(byte[] bytes)
+    {
+        var text = bytes.AsSpan();
+        if (text.StartsWith(Encoding.UTF8.Preamble))
+        {
+            text = text[Encoding.UTF8.Preamble.Length..];
+        }
+
+        var kept = new List<byte>(text.Length);
+        for (var index = 0; index < text.Length; index++)
+        {
+            if (text[index] == (byte)'\r' && index + 1 < text.Length && text[index + 1] == (byte)'\n')
+            {
+                continue;
+            }
+
+            kept.Add(text[index]);
+        }
+
+        return kept;
     }
 
     /// <summary>
@@ -647,7 +1217,7 @@ public sealed class Compilation
     {
         var resolvePaths = import.SearchedPaths;
 
-        var searched = ConfigDirectory is null && resolvePaths.Count == 0
+        var searched = !AnySourceHasADirectory && resolvePaths.Count == 0
             ? "No include directories were given, and this source has no directory of its own to "
                 + "fall back on. Pass an include path, or save the file first."
             : "Searched: " + string.Join(", ", resolvePaths);

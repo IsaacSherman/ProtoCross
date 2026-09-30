@@ -114,6 +114,77 @@ public static class NameConventions
     }
 
     /// <summary>
+    /// What follows a source's name in the names of the tests generated from it:
+    /// <c>pricing.tests.g.cs</c>, <c>pricing.tests.cc</c>.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than in each backend, because a test source's own files are generated into the
+    /// test output beside every source's tests, and <c>PC2006</c> has to know what those are called
+    /// before any backend runs (spec 5.3).
+    /// </remarks>
+    public const string TestsSuffix = ".tests";
+
+    /// <summary>The name of the arithmetic runtime every C# source's behavior shares.</summary>
+    public const string CSharpRuntimeName = "ProtoCrossArithmetic";
+
+    /// <summary>The name of the support file C# tests that <c>expect fail</c> share.</summary>
+    public const string CSharpTestRuntimeName = "ProtoCrossTestSupport";
+
+    /// <summary>The name of the arithmetic runtime every C++ source's behavior shares.</summary>
+    public const string CppRuntimeName = "protocross_runtime";
+
+    /// <summary>
+    /// The names a backend generates a file under whatever the sources are called, which no source
+    /// may take (spec 5.3).
+    /// </summary>
+    /// <remarks>
+    /// Each is generated beside sources' own files -- the runtimes beside the behavior, and beside a
+    /// test source's behavior in the test output; the test support beside the tests -- so a source of
+    /// one of these names would be generated over it. They are compared by <see cref="OutputKey"/>
+    /// like every other generated name, and refused whichever backend is asked for, because which
+    /// backends run is decided after the compilation is.
+    /// </remarks>
+    public static IReadOnlyList<string> FixedNames { get; } = [CSharpRuntimeName, CSharpTestRuntimeName, CppRuntimeName];
+
+    /// <summary>
+    /// What a source's name comes to once everything any backend derives from it has folded it: its
+    /// letters and digits, upper-cased, with a <c>T</c> in front when the first is not a letter.
+    /// Two sources whose names give one key cannot be generated side by side.
+    /// </summary>
+    /// <param name="sourceStem">The source's file name without its extension.</param>
+    /// <remarks>
+    /// <para>
+    /// Every generated name is derived from the source's, and each derivation throws something away.
+    /// The file names keep case, which a file system may not. A C++ include guard upper-cases and
+    /// turns punctuation into underscores, so <c>a-b</c> and <c>a_b</c> meet there. A C# test class
+    /// drops punctuation and capitalizes what follows, so <c>a_b</c> and <c>aB</c> meet there, and puts
+    /// a <c>T</c> in front of a name that does not start with a letter, so <c>1a</c> and <c>t1a</c>
+    /// meet there too. A CMake target turns punctuation into underscores and keeps case.
+    /// </para>
+    /// <para>
+    /// This key throws away all of that at once, so it is coarser than each of them: two names any
+    /// of them fold together fold together here. It also folds some that none of them does, such as
+    /// <c>ab</c> and <c>a_b</c>, and that is the price of one rule instead of four that each have to
+    /// be remembered when a fifth derived name is added.
+    /// </para>
+    /// </remarks>
+    public static string OutputKey(string sourceStem)
+    {
+        ArgumentNullException.ThrowIfNull(sourceStem);
+
+        var key = new StringBuilder(sourceStem.Length + 1);
+        foreach (var c in sourceStem)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                key.Append(char.ToUpperInvariant(c));
+            }
+        }
+
+        return key.Length > 0 && char.IsLetter(key[0]) ? key.ToString() : "T" + key;
+    }
+
+    /// <summary>
     /// The C# namespace protoc declares a file's classes in: the file's <c>csharp_namespace</c> option
     /// when it sets one, and otherwise its protobuf package PascalCased, so <c>acme.v1beta1</c> is
     /// <c>Acme.V1Beta1</c>. Empty for the global namespace.
@@ -144,7 +215,26 @@ public static class NameConventions
     public static string GetCSharpNamespace(FileDescriptor file)
         => file.GetOptions() is { HasCsharpNamespace: true } options
             ? options.CsharpNamespace
-            : UnderscoresToPascalCase(file.Package, preservePeriod: true);
+            : CSharpNamespaceOfPackage(file.Package);
+
+    /// <summary>
+    /// The C# namespace a project's behavior is declared in: the one protoc declares for a file of
+    /// that package with no <c>csharp_namespace</c>, so <c>acme.billing</c> is <c>Acme.Billing</c>
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// protoc's rule rather than one of this compiler's own, so that a project named after the package
+    /// of its schemas declares its behavior in the namespace their messages are in.
+    /// </remarks>
+    public static string GetCSharpNamespace(ProjectNamespace project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return CSharpNamespaceOfPackage(project.Package);
+    }
+
+    /// <summary>What protoc's C# generator names the namespace of a package.</summary>
+    private static string CSharpNamespaceOfPackage(string package)
+        => UnderscoresToPascalCase(package, preservePeriod: true);
 
     /// <summary>
     /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>, and
@@ -155,8 +245,25 @@ public static class NameConventions
     /// component through <see cref="EscapeCppKeyword"/>. Only the keyword list applies: a package is
     /// not a class, so a component named <c>New</c> or <c>Swap</c> is left alone.
     /// </remarks>
-    public static string GetCppNamespace(FileDescriptor file)
-        => string.Join("::", file.Package.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeCppKeyword));
+    public static string GetCppNamespace(FileDescriptor file) => CppNamespaceOfPackage(file.Package);
+
+    /// <summary>
+    /// The C++ namespace a project's behavior is declared in: the one protoc uses for a file of that
+    /// package, so <c>acme.billing</c> is <c>acme::billing</c> and <c>acme.new</c> is <c>acme::new_</c>
+    /// (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// protoc's rule for the reason <see cref="GetCSharpNamespace(ProjectNamespace)"/> gives.
+    /// </remarks>
+    public static string GetCppNamespace(ProjectNamespace project)
+    {
+        ArgumentNullException.ThrowIfNull(project);
+        return CppNamespaceOfPackage(project.Package);
+    }
+
+    /// <summary>What protoc's C++ generator names the namespace of a package.</summary>
+    private static string CppNamespaceOfPackage(string package)
+        => string.Join("::", package.Split('.', StringSplitOptions.RemoveEmptyEntries).Select(EscapeCppKeyword));
 
     /// <summary>The generated protobuf C++ header for a .proto file: <c>foo.proto</c> to <c>foo.pb.h</c>.</summary>
     public static string GetCppProtoHeader(FileDescriptor file)

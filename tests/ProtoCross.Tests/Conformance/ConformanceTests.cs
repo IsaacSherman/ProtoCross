@@ -1,3 +1,4 @@
+using ProtoCross.Backend;
 using ProtoCross.Tests.Harness;
 using Xunit;
 
@@ -50,39 +51,111 @@ public class ConformanceVectorTests
             $"'{name}' declares no test blocks, so running it would assert nothing.");
     }
 
+    /// <summary>
+    /// Every vector is compiled into one C# assembly, so two vectors declaring a method of one name
+    /// on the same message would declare it twice there.
+    /// </summary>
+    /// <remarks>
+    /// Two vectors sharing a message is not itself a collision: each receiver's extension class is
+    /// <c>partial</c> (spec 24.1), so each vector's file declares a part of it. The corpus still gives
+    /// each vector a schema of its own, for the reason the conformance README gives. Methods are
+    /// compared by the name C# declares them under, because that is where they would collide:
+    /// <c>line_total</c> and <c>lineTotal</c> are two methods here and one there.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(Names))]
-    public void EveryVectorExtendsItsOwnMessage(string name)
+    public void NoTwoVectorsDeclareOneMethod(string name)
     {
-        // Every vector is compiled into one C# assembly, and the backend names its extension class
-        // after the receiver. Two vectors sharing a receiver would emit that class twice.
-        var others = Receivers.Value
+        var others = Methods.Value
             .Where(entry => !string.Equals(entry.Key, name, StringComparison.Ordinal))
             .SelectMany(entry => entry.Value)
             .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var receiver in Receivers.Value[name])
+        foreach (var method in Methods.Value[name])
         {
             Assert.False(
-                others.Contains(receiver),
-                $"'{name}' extends '{receiver}', which another vector also extends. Give each vector "
+                others.Contains(method),
+                $"'{name}' declares '{method}', which another vector also declares. Give each vector "
                 + "its own message, in its own schema.");
         }
     }
 
+    /// <summary>
+    /// No two sources anywhere in the corpus generate files of one name, whichever vectors they
+    /// belong to.
+    /// </summary>
+    /// <remarks>
+    /// Every vector is generated into one workspace per backend, and each source's files are named
+    /// after it (spec 5.3). Within one vector the compiler refuses two such sources (<c>PC2006</c>);
+    /// between two vectors nothing would, and one vector's files would overwrite another's, leaving
+    /// its tests missing with no word as to why. Sources are compared by the key <c>PC2006</c>
+    /// compares them by, because it is coarser than every name a backend derives from one.
+    /// </remarks>
+    [Fact]
+    public void NoTwoSourcesInTheCorpusGenerateFilesOfOneName()
+    {
+        var collisions = ConformanceVectors.All
+            .SelectMany(vector => vector.SourcePaths)
+            .GroupBy(path => NameConventions.OutputKey(Path.GetFileNameWithoutExtension(path)), StringComparer.Ordinal)
+            .Where(sources => sources.Count() > 1)
+            .Select(sources => string.Join(" and ", sources))
+            .ToList();
+
+        Assert.True(
+            collisions.Count == 0,
+            "these sources would generate files of one name; name each source of a vector after the vector: "
+            + string.Join("; ", collisions));
+    }
+
+    /// <summary>
+    /// A directory under <c>multi/</c> is one vector, written across several sources and compiled as
+    /// one program.
+    /// </summary>
+    /// <remarks>
+    /// Asserted because nothing else would notice it stop. Were the directory's sources taken for
+    /// vectors of their own, each would fail to compile alone and say so; were they left out, every
+    /// other test here would go on passing over a corpus that no longer calls anything across files.
+    /// </remarks>
+    [Fact]
+    public void TheCorpusHoldsAVectorWrittenAcrossSeveralSources()
+    {
+        Assert.Contains(ConformanceVectors.All, vector => vector.SourcePaths.Count > 1);
+    }
+
+    /// <summary>
+    /// A directory under <c>multi/</c> that holds a project is compiled as that project, and its
+    /// behavior is declared in the project's namespace (spec 24). There is at least one.
+    /// </summary>
+    /// <remarks>
+    /// Asserted for the reason the test above is. Compiled without its project, the vector would
+    /// still pass in both backends, beside its messages, and the corpus would stop running a
+    /// project's behavior with nothing saying so.
+    /// </remarks>
+    [Fact]
+    public void TheCorpusHoldsAVectorCompiledAsAProject()
+    {
+        var projects = ConformanceVectors.All.Where(vector => vector.ProjectNamespace is not null).ToList();
+
+        Assert.NotEmpty(projects);
+        Assert.All(projects, project => Assert.Equal(project.ProjectNamespace, ConformanceVectors.Compile(project).ProjectNamespace));
+    }
+
     public static TheoryData<string> Names => ConformanceVectors.Names;
 
-    /// <summary>The messages each vector extends, by vector name.</summary>
+    /// <summary>
+    /// The methods each vector declares, as <c>receiver.Method</c> with the method named as C# names
+    /// it, by vector name.
+    /// </summary>
     /// <remarks>
     /// Compiled once for the whole theory. Each case compiling every other vector made the theory
     /// quadratic in the corpus, which went unnoticed until the generated vectors made compiling one
     /// take a noticeable fraction of a second.
     /// </remarks>
-    private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> Receivers = new(() =>
+    private static readonly Lazy<IReadOnlyDictionary<string, IReadOnlyList<string>>> Methods = new(() =>
         ConformanceVectors.All.ToDictionary(
             vector => vector.Name,
             vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
-                .Select(method => method.Receiver.FullName)
+                .Select(method => $"{method.Receiver.FullName}.{NameConventions.ToPascalCase(method.Name)}")
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
             StringComparer.Ordinal));

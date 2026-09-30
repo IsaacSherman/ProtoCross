@@ -408,9 +408,8 @@ public class PartialBindingTests
 
     /// <summary>
     /// A callee that could never name a method keeps the call's arguments and nothing else. The
-    /// callee is where this stops: the parser's nesting budget bounds its own recursion and not the
-    /// chain its postfix loop builds, so descending one is how a buffer of unbalanced parentheses
-    /// stops a bind from finishing. <see cref="BinderResilienceTests"/> is what says so out loud.
+    /// callee is where this stops: it is not a receiver, and the node that stands for the call has
+    /// no other place for it (see <see cref="IrUncallableInvocation"/>).
     /// </summary>
     [Fact]
     public void ACalleeThatCouldNeverNameAMethodLeavesNoReceiverBehind()

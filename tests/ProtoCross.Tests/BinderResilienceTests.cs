@@ -1,9 +1,10 @@
-using Google.Protobuf.Reflection;
 using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
 using ProtoCross.Tests.Conformance;
+using System.Diagnostics;
+using ProtoCross.Tests.Harness;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -26,13 +27,11 @@ namespace ProtoCross.Tests;
 /// </para>
 /// </remarks>
 [Collection("Timing-sensitive regressions")]
-public class BinderResilienceTests
+public class BinderResilienceTests(ITestOutputHelper logger)
 {
     /// <summary>A hang guard for one bounded batch, not a throughput target for an entire file.</summary>
     private static readonly TimeSpan BindBudget = TimeSpan.FromSeconds(60);
     private const int DeletionBatchSize = 128;
-
-    private static readonly Lazy<IReadOnlyList<FileDescriptor>> Schemas = new(LoadSchemas);
 
     private static IrModule Bind(string text)
     {
@@ -40,19 +39,19 @@ public class BinderResilienceTests
         var tokens = new Lexer(text, "fuzz.pcross", diagnostics).Tokenize();
         var unit = new Parser(tokens, "fuzz.pcross", diagnostics).ParseCompilationUnit();
 
-        return new Binder(Schemas.Value, diagnostics).Bind(unit);
+        return new Binder(LoadedSchemas.ExampleAndConformance, diagnostics).Bind(unit);
     }
 
     /// <summary>Runs a sweep under a time limit, failing rather than hanging the test run.</summary>
     /// <remarks>
     /// The sweep is told to stop before the failure is reported, so a bind that is merely slow does
-    /// not go on grinding through the rest of the corpus, on a core the remaining tests want, long
+    /// not go on grinding through the rest of the corpus, on cores the remaining tests want, long
     /// after this one has already failed. A single bind that never returns at all is past the reach
     /// of anything here: the binder takes no cancellation token, and adding one to the compiler for
     /// a test to hold is what <c>#54</c> -- process supervision, cancellation, and timeouts -- is
     /// for. The failure is still reported, which is what this exists to do.
     /// </remarks>
-    private static async Task WithinBudget(string description, Action<CancellationToken> sweep)
+    private async Task WithinBudget(string description, Action<CancellationToken> sweep)
     {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         var token = stop.Token;
@@ -61,10 +60,13 @@ public class BinderResilienceTests
         try
         {
             await task.WaitAsync(BindBudget, TestContext.Current.CancellationToken);
+            logger.WriteLine($"{description} is within budget");
         }
         catch (TimeoutException) when (!task.IsFaulted)
         {
+            logger.WriteLine($"{description} exceeded budget");
             Assert.Fail($"Binding did not terminate within {BindBudget.TotalSeconds:0}s: {description}");
+
         }
         finally
         {
@@ -85,22 +87,12 @@ public class BinderResilienceTests
         var boundaries = new Lexer(source, path, new DiagnosticBag())
             .Tokenize()
             .Select(token => token.Span.End.Offset)
-            .Distinct();
+            .Distinct()
+            .ToList();
 
         await WithinBudget(
             $"token-boundary truncations of {Path.GetFileName(path)}",
-            stop =>
-            {
-                foreach (var boundary in boundaries)
-                {
-                    if (stop.IsCancellationRequested)
-                    {
-                        return;
-                    }
-
-                    Assert.NotNull(Bind(source[..boundary]));
-                }
-            });
+            stop => MutationSweep.For(0, boundaries.Count, stop, index => Assert.NotNull(Bind(source[..boundaries[index]]))));
     }
 
     /// <summary>
@@ -111,24 +103,21 @@ public class BinderResilienceTests
     [MemberData(nameof(ParserResilienceTests.Corpus), MemberType = typeof(ParserResilienceTests))]
     public async Task SingleCharacterDeletionBinds(string path)
     {
+        var sw = Stopwatch.StartNew();
         var source = File.ReadAllText(path);
 
         // Every deletion still runs. Batching keeps a larger corpus from exhausting a deadline
         // merely by making progress, while a stuck bind still fails within one batch's budget.
+        logger.WriteLine($"Read file: {path}");
         for (var start = 0; start < source.Length; start += DeletionBatchSize)
         {
             var first = start;
             var end = Math.Min(first + DeletionBatchSize, source.Length);
             await WithinBudget(
                 $"single-character deletions of {Path.GetFileName(path)}, offsets {first} through {end - 1}",
-                stop =>
-                {
-                    for (var index = first; index < end && !stop.IsCancellationRequested; index++)
-                    {
-                        Assert.NotNull(Bind(source.Remove(index, 1)));
-                    }
-                });
+                stop => MutationSweep.For(first, end, stop, index => Assert.NotNull(Bind(source.Remove(index, 1)))));
         }
+        logger.WriteLine($"Took {sw.Elapsed.TotalSeconds} seconds to finish");
     }
 
     /// <summary>
@@ -177,14 +166,4 @@ public class BinderResilienceTests
 
         await WithinBudget($"{Depth} levels of parentheses", _ => Assert.NotNull(Bind(source)));
     }
-
-    /// <remarks>
-    /// Every schema the corpus imports: the example's and each conformance vector's. Loaded together
-    /// in one <c>protoc</c> run, because the sweeps above bind tens of thousands of trees and must not
-    /// pay for a process each.
-    /// </remarks>
-    private static IReadOnlyList<FileDescriptor> LoadSchemas()
-        => DescriptorLoader.CreateDefault().Load(
-            ["invoice.proto", .. ConformanceVectors.SchemaFileNames],
-            [TestPaths.ExampleProtoDirectory, ConformanceVectors.ProtoDirectory]);
 }

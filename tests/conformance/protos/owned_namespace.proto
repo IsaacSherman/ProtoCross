@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+import "google/protobuf/timestamp.proto";
+
+// multi/owned_namespace -- a project's behavior, declared in the project's own namespace whatever
+// message it extends (spec 24): the well-known Timestamp, which the project does not own, and this
+// schema's own message of the same simple name.
+message OwnedNamespaceCase {
+  google.protobuf.Timestamp started = 1;
+  Timestamp local = 2;
+  int64 now_seconds = 3;
+}
+
+// Named after the well-known type on purpose, so that the project extends two messages of one simple
+// name with a method of one name.
+message Timestamp {
+  int64 seconds = 1;
+  int64 offset_seconds = 2;
+}

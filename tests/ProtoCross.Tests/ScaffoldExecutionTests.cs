@@ -25,7 +25,7 @@ namespace ProtoCross.Tests;
 /// consumer runs the compiler once, then their language's normal build command.
 /// </para>
 /// </remarks>
-public class ScaffoldExecutionTests
+public partial class ScaffoldExecutionTests
 {
     [Fact]
     public void TheEmittedCSharpProjectBuildsAndPassesItsTests()
@@ -54,24 +54,7 @@ public class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCMakeProjectBuildsAndPassesItsTests()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
-
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var (cmake, protobuf) = RequireCMakeToolchain();
 
         BuildAndRun(cmake, protobuf, ScaffoldLayout.Emit(new CppBackend(), "scaffold-cpp"));
     }
@@ -88,6 +71,27 @@ public class ScaffoldExecutionTests
     /// </remarks>
     [Fact]
     public void TheEmittedCMakeProjectBuildsASchemaThatImportsWellKnownTypes()
+    {
+        var (cmake, protobuf) = RequireCMakeToolchain();
+
+        var layout = ScaffoldLayout.Emit(
+            new CppBackend(),
+            "scaffold-cpp-wellknown",
+            Path.Combine(ConformanceVectors.VectorDirectory, "well_known.pcross"),
+            ConformanceVectors.ProtoDirectory);
+
+        Assert.DoesNotContain(
+            "google/protobuf/",
+            File.ReadAllText(Path.Combine(layout.TestDirectory, CppTestProject.FileName)));
+
+        BuildAndRun(cmake, protobuf, layout);
+    }
+
+    /// <summary>
+    /// The cmake and protobuf install a CMake scaffold is built with, skipping the test when either,
+    /// or a C++ compiler, is missing.
+    /// </summary>
+    private static (string CMake, ProtobufCppInstall Protobuf) RequireCMakeToolchain()
     {
         var cmake = Toolchain.LocateCMake();
         if (cmake is null)
@@ -108,17 +112,7 @@ public class ScaffoldExecutionTests
             Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
         }
 
-        var layout = ScaffoldLayout.Emit(
-            new CppBackend(),
-            "scaffold-cpp-wellknown",
-            Path.Combine(ConformanceVectors.VectorDirectory, "well_known.pcross"),
-            ConformanceVectors.ProtoDirectory);
-
-        Assert.DoesNotContain(
-            "google/protobuf/",
-            File.ReadAllText(Path.Combine(layout.TestDirectory, CppTestProject.FileName)));
-
-        BuildAndRun(cmake, protobuf, layout);
+        return (cmake, protobuf);
     }
 
     private static void BuildAndRun(string cmake, ProtobufCppInstall protobuf, ScaffoldLayout layout)
@@ -166,24 +160,7 @@ public class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCMakeProjectConfiguresWithNoSchemasOfItsOwn()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
-
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
-
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var (cmake, protobuf) = RequireCMakeToolchain();
 
         var directory = Path.Combine(
             Path.GetTempPath(), "protocross-scaffold-noschema", Guid.NewGuid().ToString("N"));
@@ -248,9 +225,17 @@ internal sealed record ScaffoldLayout(
         string label,
         string? sourcePath = null,
         string? protoDirectory = null)
+        => Emit(
+            backend,
+            label,
+            Compilation.Compile(sourcePath ?? TestPaths.SimpleScript, [protoDirectory ?? TestPaths.ExampleProtoDirectory]));
+
+    /// <summary>Writes what <paramref name="result"/> generates, divided between the two outputs as the CLI divides it.</summary>
+    public static ScaffoldLayout Emit(ITestProjectScaffold backend, string label, CompilationResult result)
     {
-        sourcePath ??= TestPaths.SimpleScript;
-        protoDirectory ??= TestPaths.ExampleProtoDirectory;
+        Assert.True(
+            result.Success,
+            "the source did not compile: " + string.Join("; ", result.Diagnostics.Select(d => d.ToString())));
 
         var root = Path.Combine(Path.GetTempPath(), "protocross-" + label, Guid.NewGuid().ToString("N"));
 
@@ -260,22 +245,15 @@ internal sealed record ScaffoldLayout(
         Directory.CreateDirectory(behaviorDirectory);
         Directory.CreateDirectory(testDirectory);
 
-        var result = Compilation.Compile(sourcePath, [protoDirectory]);
-        Assert.True(
-            result.Success,
-            "the source did not compile: " + string.Join("; ", result.Diagnostics.Select(d => d.ToString())));
-
         var diagnostics = new DiagnosticBag();
-        var options = new BackendOptions(Path.GetFileName(sourcePath));
 
-        Write(behaviorDirectory, backend.Emit(result.Module!, options, diagnostics));
+        Write(behaviorDirectory, SourceEmission.Emit(result, backend, diagnostics));
 
-        var testFiles = backend.EmitTests(result.Module!, options, diagnostics);
+        var testFiles = SourceEmission.EmitTests(result, backend, diagnostics);
         Write(testDirectory, testFiles);
 
         var scaffold = ScaffoldOptions.Create(
-            sourcePath,
-            [protoDirectory],
+            result.SearchPaths,
             result.Descriptors,
             behaviorDirectory,
             testDirectory,

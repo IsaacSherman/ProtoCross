@@ -9,7 +9,7 @@ namespace ProtoCross.Syntax;
 public sealed class Parser
 {
     /// <summary>
-    /// How deeply nested constructs may be before the parser gives up on them.
+    /// How deeply nested constructs may be before the parser gives up on them (spec 28).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -23,8 +23,18 @@ public sealed class Parser
     /// below where the stack runs out, with room to spare for the binder and the backends, which
     /// walk the same tree with larger frames.
     /// </para>
+    /// <para>
+    /// It bounds two things, because the parser's stack is not the only one at risk. Recursion
+    /// spends it level by level (<see cref="TryEnterNesting"/>), which protects the parser. The
+    /// height of every expression is held to it as well (<see cref="TryReachHeight"/>), which
+    /// protects everything that walks the tree afterwards: a chain such as <c>a.b.c</c> or
+    /// <c>1 + 2 + 3</c> is built by a loop, costs the parser no depth at all, and still comes out
+    /// one level taller per link. Before the heights were counted, a chain a thousand links long
+    /// parsed in milliseconds and then overflowed the binder's stack (#69). It is public because it
+    /// is a rule of the language rather than a detail of this parser.
+    /// </para>
     /// </remarks>
-    private const int MaxNestingDepth = 128;
+    public const int MaxNestingDepth = 128;
 
     private readonly IReadOnlyList<Token> _tokens;
     private readonly DiagnosticBag _diagnostics;
@@ -96,15 +106,20 @@ public sealed class Parser
             return true;
         }
 
-        _diagnostics.Report(
-            DiagnosticCodes.UnexpectedToken,
-            $"Expected {kind.Describe()} but found {Current.Kind.Describe()}.",
-            Current.Span);
+        ReportUnexpectedToken(kind.Describe());
 
         // A synthetic token so callers can continue building a tree.
         token = new Token(kind, string.Empty, Current.Span);
         return false;
     }
+
+    /// <summary>Reports that the current token is not what the grammar wanted here.</summary>
+    /// <param name="expected">What was wanted, as <see cref="TokenKindExtensions.Describe"/> spells a token.</param>
+    private void ReportUnexpectedToken(string expected)
+        => _diagnostics.Report(
+            DiagnosticCodes.UnexpectedToken,
+            $"Expected {expected} but found {Current.Kind.Describe()}.",
+            Current.Span);
 
     /// <summary>
     /// Parses an identifier into a <see cref="SyntaxName"/>, modelling its absence rather than
@@ -140,11 +155,6 @@ public sealed class Parser
     /// True when the caller may recurse, in which case it must call <see cref="ExitNesting"/>.
     /// False when it must not, in which case the diagnostic has already been reported.
     /// </returns>
-    /// <remarks>
-    /// Reported once per file. A construct deep enough to exhaust the budget produces one
-    /// diagnostic per enclosing level otherwise, and the hundredth copy tells the reader nothing
-    /// the first did not.
-    /// </remarks>
     private bool TryEnterNesting()
     {
         if (_nestingDepth < MaxNestingDepth)
@@ -153,22 +163,57 @@ public sealed class Parser
             return true;
         }
 
-        if (!_reportedNesting)
-        {
-            _reportedNesting = true;
-            _diagnostics.Report(
-                DiagnosticCodes.NestingIsTooDeep,
-                $"This construct nests more than {MaxNestingDepth} levels deep, which the compiler "
-                + "does not parse.",
-                Current.Span,
-                "This is nearly always a malformed or generated file. Reduce the nesting, or split "
-                + "the expression across intermediate variables.");
-        }
-
+        ReportNestingTooDeep(Current.Span);
         return false;
     }
 
     private void ExitNesting() => _nestingDepth--;
+
+    /// <summary>
+    /// Whether an expression may be built this many levels tall, or reports that it may not.
+    /// </summary>
+    /// <param name="height">
+    /// The height the new node would have: one more than the tallest expression it holds.
+    /// </param>
+    /// <param name="at">The token that made the node, which is where the reader has to look.</param>
+    /// <remarks>
+    /// Asked once a node's parts are in hand rather than before, because a call's height depends on
+    /// its arguments and a binary operator's on its right operand, and neither is known until it has
+    /// been parsed. What it guards is the tree the node would join, so being asked after its parts
+    /// have been parsed costs nothing: the recursion that parsed them had its own budget.
+    /// </remarks>
+    private bool TryReachHeight(int height, SourceSpan at)
+    {
+        if (height <= MaxNestingDepth)
+        {
+            return true;
+        }
+
+        ReportNestingTooDeep(at);
+        return false;
+    }
+
+    /// <remarks>
+    /// Reported once per file. A construct deep enough to exhaust the budget produces one
+    /// diagnostic per enclosing level otherwise, and the hundredth copy tells the reader nothing
+    /// the first did not.
+    /// </remarks>
+    private void ReportNestingTooDeep(SourceSpan at)
+    {
+        if (_reportedNesting)
+        {
+            return;
+        }
+
+        _reportedNesting = true;
+        _diagnostics.Report(
+            DiagnosticCodes.NestingIsTooDeep,
+            $"This construct nests more than {MaxNestingDepth} levels deep, which the compiler "
+            + "does not parse.",
+            at,
+            "This is nearly always a malformed or generated file. Reduce the nesting, or split "
+            + "the expression across intermediate variables.");
+    }
 
     public CompilationUnit ParseCompilationUnit()
     {
@@ -359,51 +404,18 @@ public sealed class Parser
     {
         var fields = new List<TestFieldInitializer>();
 
-        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !EndsAFixture(Current.Kind))
         {
             var before = _position;
-            var start = Current.Span;
-            var fieldName = ExpectName();
 
-            if (Match(TokenKind.Equals))
+            if (ParseTestFieldInitializer() is { } field)
             {
-                var value = ParseExpression();
-                var end = Expect(TokenKind.Semicolon).Span;
-                fields.Add(new TestScalarFieldInitializer(fieldName, value, Spanning(start, end)));
-            }
-            else if (!TryEnterNesting())
-            {
-                // Message fixtures nest, so they carry the same budget as blocks and expressions.
-                // Whether the closer was found does not change a fixture: it declares no name, so
-                // nothing's visibility ends at its brace.
-                var abandonedEnd = Current.Span;
-                if (Match(TokenKind.OpenBrace))
-                {
-                    TrySkipBalancedBlock(out abandonedEnd);
-                }
-
-                fields.Add(new TestMessageFieldInitializer(fieldName, [], Spanning(start, abandonedEnd)));
-            }
-            else
-            {
-                try
-                {
-                    Expect(TokenKind.OpenBrace);
-                    var nested = ParseTestFieldInitializers();
-                    var nestedEnd = Expect(TokenKind.CloseBrace).Span;
-                    fields.Add(
-                        new TestMessageFieldInitializer(fieldName, nested, Spanning(start, nestedEnd)));
-                }
-                finally
-                {
-                    ExitNesting();
-                }
+                fields.Add(field);
             }
 
-            // Guarantee forward progress, as ParseBlock does. Nothing above is obliged to consume a
-            // token: on a stray token every Expect fails without advancing, and the recursive call
-            // then re-enters on an unchanged position. That recursion has no base case, and the
-            // resulting StackOverflowException cannot be caught -- it takes the process with it.
+            // Guarantee forward progress, as ParseBlock does. Every path above consumes something
+            // on any token the loop admits, but the promise is kept here rather than argued there:
+            // a loop that can stand still once is a loop that can stand still forever.
             if (_position == before)
             {
                 Advance();
@@ -412,6 +424,135 @@ public sealed class Parser
 
         return fields;
     }
+
+    /// <summary>
+    /// Parses one field of a fixture: <c>name = value;</c>, or <c>name { ... }</c> for a nested
+    /// message. Null for a field too malformed to stand for anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A malformed field is reported once and stepped over to its end
+    /// (<see cref="SkipRestOfFixtureField"/>), so a stray token costs one diagnostic. It used to cost
+    /// hundreds, and the declarations after it besides (#127): a token that was neither <c>=</c>
+    /// nor a name sent the field down the nested-message path whether or not a <c>{</c> was there,
+    /// and the recursion re-entered on the same token until the nesting budget ran out. On the way
+    /// back, each of its 128 levels took a closing brace and whatever followed it, which swallowed
+    /// the test's expectation and then the declarations after the test.
+    /// </para>
+    /// <para>
+    /// A name followed by neither <c>=</c> nor <c>{</c> is dropped rather than kept. Kept, it would
+    /// have to be one kind of initializer or the other, and whichever it was, the binder would
+    /// report the field for not being that kind: a second diagnostic about a construct that already
+    /// has one. Completion does not miss it, because it answers from the message value around the
+    /// caret rather than from the field being typed.
+    /// </para>
+    /// </remarks>
+    private TestFieldInitializer? ParseTestFieldInitializer()
+    {
+        var start = Current.Span;
+        var fieldName = ExpectName();
+
+        if (fieldName.IsMissing)
+        {
+            SkipRestOfFixtureField();
+            return null;
+        }
+
+        if (Match(TokenKind.Equals))
+        {
+            var value = ParseExpression();
+
+            if (TryExpect(TokenKind.Semicolon, out var semicolon))
+            {
+                return new TestScalarFieldInitializer(fieldName, value, Spanning(start, semicolon.Span));
+            }
+
+            // A name after the value is most likely the next field, written after a forgotten
+            // semicolon, and skipping to the next semicolon would take that field with it.
+            if (Current.Kind != TokenKind.Identifier)
+            {
+                SkipRestOfFixtureField();
+            }
+
+            return new TestScalarFieldInitializer(fieldName, value, Spanning(start, Peek(-1).Span));
+        }
+
+        if (Current.Kind == TokenKind.OpenBrace)
+        {
+            return ParseTestMessageFieldInitializer(fieldName, start);
+        }
+
+        ReportUnexpectedToken($"{TokenKind.Equals.Describe()} or {TokenKind.OpenBrace.Describe()}");
+        SkipRestOfFixtureField();
+        return null;
+    }
+
+    private TestMessageFieldInitializer ParseTestMessageFieldInitializer(SyntaxName fieldName, SourceSpan start)
+    {
+        // Message fixtures nest, so they carry the same budget as blocks and expressions. Whether
+        // the closer was found does not change a fixture: it declares no name, so nothing's
+        // visibility ends at its brace.
+        if (!TryEnterNesting())
+        {
+            Expect(TokenKind.OpenBrace);
+            TrySkipBalancedBlock(out var abandonedEnd);
+            return new TestMessageFieldInitializer(fieldName, [], Spanning(start, abandonedEnd));
+        }
+
+        try
+        {
+            Expect(TokenKind.OpenBrace);
+            var nested = ParseTestFieldInitializers();
+            var nestedEnd = Expect(TokenKind.CloseBrace).Span;
+            return new TestMessageFieldInitializer(fieldName, nested, Spanning(start, nestedEnd));
+        }
+        finally
+        {
+            ExitNesting();
+        }
+    }
+
+    /// <summary>
+    /// Steps over the rest of a fixture field that did not parse, through the semicolon or the
+    /// braced block that ends it.
+    /// </summary>
+    /// <remarks>
+    /// A closing brace is left where it is, because it closes the fixture the field is in: a field
+    /// that swallowed it would take the fixture's end, and then the test's, with it. A brace that
+    /// opens a block is stepped over whole, since its own closer belongs to it rather than to the
+    /// fixture.
+    /// </remarks>
+    private void SkipRestOfFixtureField()
+    {
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !EndsAFixture(Current.Kind))
+        {
+            if (Match(TokenKind.Semicolon))
+            {
+                return;
+            }
+
+            if (Match(TokenKind.OpenBrace))
+            {
+                TrySkipBalancedBlock(out _);
+                return;
+            }
+
+            Advance();
+        }
+    }
+
+    /// <summary>
+    /// Whether a token cannot appear in a fixture but can follow one: the next member of the test,
+    /// or the next declaration.
+    /// </summary>
+    /// <remarks>
+    /// Meeting one means the fixture's closing brace is missing, and the fixture ends there rather
+    /// than reading on. Read as a field, <c>expect return 1;</c> would be skipped through its
+    /// semicolon, and the test would be reported as missing the expectation it has.
+    /// </remarks>
+    private static bool EndsAFixture(TokenKind kind) => kind is
+        TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect
+        or TokenKind.Test or TokenKind.Extend or TokenKind.Import;
 
     private TestArgumentDeclaration ParseTestArgument()
     {
@@ -759,10 +900,69 @@ public sealed class Parser
         Statement? elseBranch = null;
         if (Match(TokenKind.Else))
         {
-            elseBranch = Current.Kind == TokenKind.If ? ParseIfStatement() : ParseBlock();
+            elseBranch = Current.Kind == TokenKind.If ? ParseElseIf() : ParseBlock();
         }
 
         return new IfStatement(condition, then, elseBranch, Spanning(start, elseBranch?.Span ?? then.Span));
+    }
+
+    /// <summary>Parses the <c>if</c> that follows an <c>else</c>, one level below the one before.</summary>
+    /// <remarks>
+    /// Each <c>else if</c> is the else branch of the <c>if</c> before it, so a chain of them is as
+    /// deep as it is long, both here and in the binder that walks it; it spends the budget a level
+    /// per link, the way a nested block does. A chain too long for the budget is stepped over rather
+    /// than parsed, and an empty block stands in for the branches skipped, the way one stands in
+    /// for a block too deep to enter.
+    /// </remarks>
+    private Statement ParseElseIf()
+    {
+        if (!TryEnterNesting())
+        {
+            return SkipRestOfIfChain();
+        }
+
+        try
+        {
+            return ParseIfStatement();
+        }
+        finally
+        {
+            ExitNesting();
+        }
+    }
+
+    /// <summary>
+    /// Consumes the rest of an <c>if</c> chain, from its next <c>if</c> through its last branch.
+    /// </summary>
+    /// <remarks>
+    /// A condition never contains a brace or a semicolon (see <see cref="ParseIfStatement"/>), so
+    /// the first brace after an <c>if</c> opens its body, and a semicolon or a closing brace met
+    /// first means the chain is broken there. The skip stops at either without consuming it, so the
+    /// enclosing block still ends where it does.
+    /// </remarks>
+    private BlockStatement SkipRestOfIfChain()
+    {
+        var start = Current.Span;
+        bool closed;
+
+        do
+        {
+            while (Current.Kind is not (TokenKind.OpenBrace or TokenKind.CloseBrace or TokenKind.Semicolon or TokenKind.EndOfFile))
+            {
+                Advance();
+            }
+
+            if (!Match(TokenKind.OpenBrace))
+            {
+                closed = false;
+                break;
+            }
+
+            closed = TrySkipBalancedBlock(out _);
+        }
+        while (closed && Match(TokenKind.Else));
+
+        return new BlockStatement([], Spanning(start, Peek(-1).Span)) { IsClosed = closed };
     }
 
     private Statement ParseWhileStatement()
@@ -820,22 +1020,31 @@ public sealed class Parser
     {
         var operatorToken = Advance();
         var value = ParseExpression();
-        var onZero = ParseOnZeroClause(op, operatorToken);
+        var onZero = ParseOnZeroClause(op, operatorToken, out _);
         var end = Expect(TokenKind.Semicolon).Span;
 
         return new CompoundAssignmentStatement(target, op, value, Spanning(start, end), onZero);
     }
 
-    private Expression ParseExpression()
+    private Expression ParseExpression() => ParseExpression(out _);
+
+    /// <param name="height">
+    /// How many expressions tall the result is, counting itself: one for a name or a literal, and one
+    /// more for each operator, access, call or conversion wrapped around it. Parentheses make no
+    /// node, so they add nothing. Every expression parser reports this, because the parser that
+    /// wraps a node needs it to know whether it may (<see cref="TryReachHeight"/>).
+    /// </param>
+    private Expression ParseExpression(out int height)
     {
         if (!TryEnterNesting())
         {
+            height = 1;
             return AbandonExpression();
         }
 
         try
         {
-            return ParseBinaryExpression(0);
+            return ParseBinaryExpression(0, out height);
         }
         finally
         {
@@ -844,19 +1053,97 @@ public sealed class Parser
     }
 
     /// <summary>
-    /// Gives up on an expression that is nested too deeply, consuming a token so the enclosing loop
-    /// still makes progress.
+    /// Gives up on an expression that has grown taller than the budget, and on whatever of it is
+    /// still to come, standing one error in for all of it.
     /// </summary>
-    private Expression AbandonExpression()
+    /// <param name="start">Where the expression began.</param>
+    /// <remarks>
+    /// The part already built is dropped rather than kept, because what it would mean is not what
+    /// was written: the first hundred terms of a longer sum have a value the author never asked
+    /// for, and binding them would report whatever is wrong with that value instead. PC0081 says
+    /// the construct was not parsed, and an error expression is what the tree has for that. Skipping
+    /// the rest is what keeps the diagnostic single: every link left would otherwise be refused in
+    /// turn, and the text after the chain misread as the start of something else.
+    /// </remarks>
+    private ErrorExpression AbandonTallExpression(SourceSpan start)
     {
-        var span = Current.Span;
+        SkipRestOfExpression();
+        return new ErrorExpression(Spanning(start, Peek(-1).Span));
+    }
 
-        if (Current.Kind != TokenKind.EndOfFile)
+    /// <summary>Steps over what is left of an expression, stopping at whatever ends it.</summary>
+    /// <remarks>
+    /// <para>
+    /// No expression contains a brace or a semicolon (see <see cref="ParseIfStatement"/>), so either
+    /// ends it wherever it stands. A <c>)</c> or <c>,</c> that closes nothing opened here belongs to
+    /// what the expression is inside -- a parenthesized operand, or a call's arguments -- and ends it
+    /// too. None of these is consumed: each is for the enclosing construct to read.
+    /// </para>
+    /// <para>
+    /// A keyword that only begins a statement or a declaration ends it as well, because it cannot be
+    /// part of one. Without it, an expression missing its semicolon would take the next statement
+    /// with it, and whatever was wrong there would go unreported.
+    /// </para>
+    /// <para>
+    /// Message literals (#80) put braces inside an expression, and this skip has to learn them when
+    /// they arrive, as the condition of an <c>if</c> does.
+    /// </para>
+    /// </remarks>
+    private void SkipRestOfExpression()
+    {
+        var openParentheses = 0;
+
+        while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Semicolon or TokenKind.OpenBrace or TokenKind.CloseBrace)
+            && !BeginsAStatementOrDeclaration(Current.Kind))
         {
+            if (openParentheses == 0 && Current.Kind is (TokenKind.CloseParen or TokenKind.Comma))
+            {
+                return;
+            }
+
+            if (Current.Kind == TokenKind.OpenParen)
+            {
+                openParentheses++;
+            }
+            else if (Current.Kind == TokenKind.CloseParen)
+            {
+                openParentheses--;
+            }
+
             Advance();
         }
+    }
 
-        return new ErrorExpression(span);
+    /// <summary>
+    /// Gives up on an expression nested too deeply to descend into, stepping over the rest of it.
+    /// </summary>
+    /// <remarks>
+    /// It used to consume a single token, which kept the enclosing loop moving and left everything
+    /// after that token to be misread. The rest of a deep parenthesized expression came back as a
+    /// chain of calls thousands long, and a condition that ran out of budget took the body of its
+    /// <c>if</c> with it, as a string of unexpected tokens. Skipping to where the expression ends
+    /// keeps PC0081 the only diagnostic, as <see cref="AbandonTallExpression"/> does for a chain.
+    /// Nothing that ends an expression is consumed, so each enclosing construct still finds its own
+    /// terminator; the loops that could be left where they started have progress guards of their
+    /// own.
+    /// </remarks>
+    /// <summary>Whether a token can only start a statement or a declaration, never continue an expression.</summary>
+    private static bool BeginsAStatementOrDeclaration(TokenKind kind) => kind is
+        TokenKind.Var or TokenKind.Return or TokenKind.If or TokenKind.Else or TokenKind.While
+        or TokenKind.For or TokenKind.Break or TokenKind.Continue
+        or TokenKind.Import or TokenKind.Extend or TokenKind.Fn or TokenKind.Test
+        or TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect;
+
+    private ErrorExpression AbandonExpression()
+    {
+        var first = Current.Span;
+        var before = _position;
+
+        SkipRestOfExpression();
+
+        return _position == before
+            ? new ErrorExpression(InsertionPointAfterPreviousToken())
+            : new ErrorExpression(Spanning(first, Peek(-1).Span));
     }
 
     /// <summary>Binding power for infix operators; higher binds tighter (spec 9.2).</summary>
@@ -938,9 +1225,9 @@ public sealed class Parser
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Not a prefix operator."),
     };
 
-    private Expression ParseBinaryExpression(int minPrecedence)
+    private Expression ParseBinaryExpression(int minPrecedence, out int height)
     {
-        var left = ParseUnaryExpression();
+        var left = ParseUnaryExpression(out height);
 
         while (true)
         {
@@ -954,10 +1241,18 @@ public sealed class Parser
 
             // All binary operators are left-associative, so the right operand must bind strictly
             // tighter to be absorbed into this level.
-            var right = ParseBinaryExpression(precedence + 1);
+            var right = ParseBinaryExpression(precedence + 1, out var rightHeight);
             var op = ToBinaryOperator(operatorToken.Kind);
-            var onZero = ParseOnZeroClause(op, operatorToken);
+            var onZero = ParseOnZeroClause(op, operatorToken, out var fallbackHeight);
 
+            var wrapped = Math.Max(height, Math.Max(rightHeight, fallbackHeight)) + 1;
+            if (!TryReachHeight(wrapped, operatorToken.Span))
+            {
+                height = 1;
+                return AbandonTallExpression(left.Span);
+            }
+
+            height = wrapped;
             left = new BinaryExpression(
                 op,
                 left,
@@ -978,8 +1273,14 @@ public sealed class Parser
     /// <c>a / b on_zero 0 as int32</c> converts the fallback rather than the quotient; parenthesize
     /// the division to convert its result.
     /// </remarks>
-    private OnZeroClause? ParseOnZeroClause(BinaryOperatorKind op, Token operatorToken)
+    /// <param name="fallbackHeight">
+    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// <c>on_zero fail</c>.
+    /// </param>
+    private OnZeroClause? ParseOnZeroClause(BinaryOperatorKind op, Token operatorToken, out int fallbackHeight)
     {
+        fallbackHeight = 0;
+
         if (Current.Kind != TokenKind.OnZero)
         {
             return null;
@@ -1003,7 +1304,7 @@ public sealed class Parser
             return new OnZeroClause(null, Spanning(onZeroToken.Span, failToken.Span));
         }
 
-        var fallback = ParseUnaryExpression();
+        var fallback = ParseUnaryExpression(out fallbackHeight);
         return new OnZeroClause(fallback, Spanning(onZeroToken.Span, fallback.Span));
     }
 
@@ -1016,21 +1317,29 @@ public sealed class Parser
     /// converts the result. Chaining is allowed and left-associative, so a conversion through an
     /// intermediate width reads left to right.
     /// </remarks>
-    private Expression ParseUnaryExpression()
+    private Expression ParseUnaryExpression(out int height)
     {
-        var expression = ParsePrefixExpression();
+        var expression = ParsePrefixExpression(out height);
 
         while (Current.Kind == TokenKind.As)
         {
-            Advance();
+            var asToken = Advance();
             var target = ParseTypeReference();
+
+            if (!TryReachHeight(height + 1, asToken.Span))
+            {
+                height = 1;
+                return AbandonTallExpression(expression.Span);
+            }
+
+            height++;
             expression = new CastExpression(expression, target, Spanning(expression.Span, target.Span));
         }
 
         return expression;
     }
 
-    private Expression ParsePrefixExpression()
+    private Expression ParsePrefixExpression(out int height)
     {
         var token = Current;
 
@@ -1041,7 +1350,15 @@ public sealed class Parser
         if (token.Kind == TokenKind.Has)
         {
             Advance();
-            var target = ParsePostfixExpression();
+            var target = ParsePostfixExpression(out height);
+
+            if (!TryReachHeight(height + 1, token.Span))
+            {
+                height = 1;
+                return AbandonTallExpression(token.Span);
+            }
+
+            height++;
             return new HasExpression(target, Spanning(token.Span, target.Span));
         }
 
@@ -1053,69 +1370,94 @@ public sealed class Parser
             // needs its own budget rather than inheriting that one.
             if (!TryEnterNesting())
             {
+                height = 1;
                 return AbandonExpression();
             }
 
             Expression operand;
             try
             {
-                operand = ParsePrefixExpression();
+                operand = ParsePrefixExpression(out height);
             }
             finally
             {
                 ExitNesting();
             }
 
+            if (!TryReachHeight(height + 1, token.Span))
+            {
+                height = 1;
+                return AbandonTallExpression(token.Span);
+            }
+
+            height++;
             return new UnaryExpression(ToUnaryOperator(token.Kind), operand, Spanning(token.Span, operand.Span));
         }
 
-        return ParsePostfixExpression();
+        return ParsePostfixExpression(out height);
     }
 
-    private Expression ParsePostfixExpression()
+    private Expression ParsePostfixExpression(out int height)
     {
-        var expression = ParsePrimaryExpression();
+        var expression = ParsePrimaryExpression(out height);
 
-        while (true)
+        while (Current.Kind is TokenKind.Dot or TokenKind.OpenParen)
         {
-            if (Current.Kind == TokenKind.Dot)
+            var linkToken = Advance();
+            Expression link;
+            int linkHeight;
+
+            if (linkToken.Kind == TokenKind.Dot)
             {
-                Advance();
                 var name = ExpectName();
 
                 // The access ends where the name is, and a missing name is the empty range just
                 // after the dot. Taking the end from the token Expect happened to fail on instead
                 // stretched the access to wherever recovery landed -- for a dot at the end of a
                 // line, the brace on the next one.
-                expression = new MemberAccessExpression(expression, name, Spanning(expression.Span, name.Span));
-                continue;
+                link = new MemberAccessExpression(expression, name, Spanning(expression.Span, name.Span));
+                linkHeight = height + 1;
             }
-
-            if (Current.Kind == TokenKind.OpenParen)
+            else
             {
-                Advance();
                 var arguments = new List<Expression>();
+                var tallestArgument = 0;
                 if (Current.Kind != TokenKind.CloseParen)
                 {
                     do
                     {
-                        arguments.Add(ParseExpression());
+                        arguments.Add(ParseExpression(out var argumentHeight));
+                        tallestArgument = Math.Max(tallestArgument, argumentHeight);
                     }
                     while (Match(TokenKind.Comma));
                 }
 
                 var end = Expect(TokenKind.CloseParen).Span;
-                expression = new InvocationExpression(expression, arguments, Spanning(expression.Span, end));
-                continue;
+                link = new InvocationExpression(expression, arguments, Spanning(expression.Span, end));
+                linkHeight = Math.Max(height, tallestArgument) + 1;
             }
 
-            return expression;
+            if (!TryReachHeight(linkHeight, linkToken.Span))
+            {
+                height = 1;
+                return AbandonTallExpression(expression.Span);
+            }
+
+            expression = link;
+            height = linkHeight;
         }
+
+        return expression;
     }
 
-    private Expression ParsePrimaryExpression()
+    /// <param name="height">
+    /// One for everything this parses, except a parenthesized expression, which is as tall as what
+    /// it holds: parentheses make no node of their own.
+    /// </param>
+    private Expression ParsePrimaryExpression(out int height)
     {
         var token = Current;
+        height = 1;
 
         switch (token.Kind)
         {
@@ -1149,7 +1491,7 @@ public sealed class Parser
             case TokenKind.OpenParen:
             {
                 Advance();
-                var inner = ParseExpression();
+                var inner = ParseExpression(out height);
                 Expect(TokenKind.CloseParen);
                 return inner;
             }

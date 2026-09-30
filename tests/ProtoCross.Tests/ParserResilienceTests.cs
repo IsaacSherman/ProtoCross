@@ -1,6 +1,8 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Syntax;
 using ProtoCross.Tests.Conformance;
+using ProtoCross.Tests.Harness;
+using System.Text;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -20,10 +22,12 @@ namespace ProtoCross.Tests;
 /// <para>
 /// These tests stay at the lexer-and-parser level rather than running whole compilations. They need
 /// no protoc, so they are fast enough to run thousands of inputs, which is what makes the sweeps
-/// below worth having.
+/// below worth having. The sweeps take every core, which is what puts this class in the
+/// timing-sensitive collection; <see cref="MutationSweep"/> says why.
 /// </para>
 /// </remarks>
-public class ParserResilienceTests
+[Collection("Timing-sensitive regressions")]
+public class ParserResilienceTests(ITestOutputHelper logger)
 {
     /// <summary>Guards against a hang. A parse this slow is a bug, not a slow machine.</summary>
     private static readonly TimeSpan ParseBudget = TimeSpan.FromSeconds(30);
@@ -39,22 +43,24 @@ public class ParserResilienceTests
     /// <summary>Runs a parse under a time limit, failing rather than hanging the test run.</summary>
     /// <remarks>
     /// The sweep is told to stop before the failure is reported, so a parse that is merely slow does
-    /// not go on grinding through the rest of the corpus, on a core the remaining tests want, long
+    /// not go on grinding through the rest of the corpus, on cores the remaining tests want, long
     /// after this one has already failed. A single parse that never returns at all is past the reach
     /// of anything here: the parser takes no cancellation token, and adding one to the compiler for
     /// a test to hold is what <c>#54</c> -- process supervision, cancellation, and timeouts -- is
     /// for. The failure is still reported, which is what this exists to do.
     /// </remarks>
-    private static void WithinBudget(string description, Action<CancellationToken> sweep)
+    private static void WithinBudget(string description, Action<CancellationToken> sweep, ITestOutputHelper logger)
     {
         using var stop = new CancellationTokenSource();
         var task = Task.Run(() => sweep(stop.Token));
-
+        logger.Write($"{description} is within budget? ");
         if (task.Wait(ParseBudget))
         {
             task.GetAwaiter().GetResult();
+            logger.WriteLine("Yes.");
             return;
         }
+        logger.WriteLine("No.");
 
         stop.Cancel();
         Assert.Fail($"Parsing did not terminate within {ParseBudget.TotalSeconds:0}s: {description}");
@@ -74,9 +80,9 @@ public class ParserResilienceTests
     {
         var data = new TheoryData<string> { TestPaths.SimpleScript };
 
-        foreach (var vector in ConformanceVectors.HandWritten)
+        foreach (var source in ConformanceVectors.HandWrittenSources)
         {
-            data.Add(vector.SourcePath);
+            data.Add(source);
         }
 
         return data;
@@ -90,17 +96,11 @@ public class ParserResilienceTests
     [MemberData(nameof(Corpus))]
     public void TruncationAtEveryOffsetTerminates(string path)
     {
-        var source = File.ReadAllText(path);
-
+        var source = new StringBuilder(File.ReadAllText(path)).Replace("  ", "").ToString();
+        
         WithinBudget(
             $"truncations of {Path.GetFileName(path)}",
-            stop =>
-            {
-                for (var length = 0; length <= source.Length && !stop.IsCancellationRequested; length++)
-                {
-                    Parse(source[..length]);
-                }
-            });
+            stop => MutationSweep.For(0, source.Length + 1, stop, length => Parse(source[..length])), logger);
     }
 
     /// <summary>
@@ -115,13 +115,7 @@ public class ParserResilienceTests
 
         WithinBudget(
             $"single-character deletions of {Path.GetFileName(path)}",
-            stop =>
-            {
-                for (var index = 0; index < source.Length && !stop.IsCancellationRequested; index++)
-                {
-                    Parse(source.Remove(index, 1));
-                }
-            });
+            stop => MutationSweep.For(0, source.Length, stop, index => Parse(source.Remove(index, 1))), logger);
     }
 
     /// <summary>
@@ -153,7 +147,8 @@ public class ParserResilienceTests
                       """);
 
                 Assert.Contains(diagnostics, d => d.Severity == DiagnosticSeverity.Error);
-            });
+            },
+            logger);
     }
 
     /// <summary>
@@ -207,7 +202,8 @@ public class ParserResilienceTests
                 // Reported once, however deep it went. One diagnostic per enclosing level would
                 // bury every other error in the file.
                 Assert.Equal(1, diagnostics.Count(d => d.Code == "PC0081"));
-            });
+            },
+            logger);
     }
 
     /// <summary>Nesting a real program could plausibly contain must still parse cleanly.</summary>

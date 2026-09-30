@@ -52,8 +52,9 @@ public sealed class CSharpBackend : ITestProjectScaffold
         var writer = new SourceWriter();
         WriteHeader(writer, options);
 
+        var placement = new Placement(options.ProjectNamespace);
         var byNamespace = module.Methods
-            .GroupBy(m => NameConventions.GetCSharpNamespace(m.Receiver.File))
+            .GroupBy(m => placement.NamespaceOf(m.Receiver))
             .OrderBy(g => g.Key, StringComparer.Ordinal);
 
         foreach (var namespaceGroup in byNamespace)
@@ -61,12 +62,12 @@ public sealed class CSharpBackend : ITestProjectScaffold
             var hasNamespace = !string.IsNullOrEmpty(namespaceGroup.Key);
             IDisposable? namespaceScope = hasNamespace ? writer.Block($"namespace {namespaceGroup.Key}") : null;
 
-            var byReceiver = namespaceGroup
-                .GroupBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+            var byPart = namespaceGroup
+                .GroupBy(m => placement.PartOf(m.Receiver), StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 
             var firstClass = true;
-            foreach (var receiverGroup in byReceiver)
+            foreach (var part in byPart)
             {
                 if (!firstClass)
                 {
@@ -74,8 +75,11 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 }
 
                 firstClass = false;
-                var methods = receiverGroup.ToList();
-                EmitReceiverClass(writer, methods[0].Receiver, methods);
+
+                // Ordered by receiver and otherwise left in the order they were declared, so a
+                // project's one part lists each receiver's methods together.
+                var methods = part.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal).ToList();
+                EmitExtensionClass(writer, placement.ClassOf(methods[0].Receiver), methods, placement);
             }
 
             namespaceScope?.Dispose();
@@ -109,6 +113,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         var usedNames = new HashSet<string>(StringComparer.Ordinal);
         var methodNames = module.Tests.ToDictionary(test => test, test => UniqueTestMethodName(test, usedNames));
         var failTests = module.Tests.Where(t => t.Expectation is IrTestFailExpectation).ToList();
+        var placement = new Placement(options.ProjectNamespace);
 
         using (writer.Block("namespace ProtoCross.GeneratedTests"))
         {
@@ -124,17 +129,17 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 }
 
                 first = false;
-                EmitTest(writer, test, methodNames[test], sourceName);
+                EmitTest(writer, test, methodNames[test], sourceName, placement);
             }
 
             if (failTests.Count > 0)
             {
                 writer.WriteLine();
-                EmitFailTestDispatcher(writer, failTests, methodNames, sourceName);
+                EmitFailTestDispatcher(writer, failTests, methodNames, sourceName, placement);
             }
         }
 
-        var fileName = sourceName + ".tests.g.cs";
+        var fileName = sourceName + NameConventions.TestsSuffix + ".g.cs";
 
         // The support file is emitted only when something needs it, so a source with no 'expect
         // fail' test does not gain a file that starts child processes.
@@ -195,7 +200,8 @@ public sealed class CSharpBackend : ITestProjectScaffold
         writer.WriteLine();
     }
 
-    private static void EmitTest(SourceWriter writer, IrTest test, string methodName, string sourceName)
+    private static void EmitTest(
+        SourceWriter writer, IrTest test, string methodName, string sourceName, Placement placement)
     {
         // The display name is the backend-independent identity rather than the mangled method name,
         // so a conformance harness reading the test log sees the same string every backend reports.
@@ -213,9 +219,10 @@ public sealed class CSharpBackend : ITestProjectScaffold
             throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C# test expectation.");
         }
 
-        EmitReceiverCreation(writer, test.Receiver);
+        EmitReceiverCreation(writer, test.Receiver, placement);
         writer.WriteLine(
-            $"global::Xunit.Assert.Equal({Expression(returnExpectation.Value, "receiver")}, {Invocation(test)});");
+            "global::Xunit.Assert.Equal("
+            + $"{Expression(returnExpectation.Value, placement, "receiver")}, {Invocation(test, placement)});");
     }
 
     /// <summary>
@@ -243,7 +250,8 @@ public sealed class CSharpBackend : ITestProjectScaffold
         SourceWriter writer,
         IReadOnlyList<IrTest> failTests,
         IReadOnlyDictionary<IrTest, string> methodNames,
-        string sourceName)
+        string sourceName,
+        Placement placement)
     {
         writer.WriteLine("/// <summary>");
         writer.WriteLine("/// Runs the single 'expect fail' test this process was launched for, and returns");
@@ -279,12 +287,12 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 writer.WriteLine("{");
                 writer.Indent();
 
-                EmitReceiverCreation(writer, test.Receiver);
+                EmitReceiverCreation(writer, test.Receiver, placement);
 
                 // The call is expected not to return, so its result is deliberately unused.
                 writer.WriteLine(test.Target.ReturnType is VoidType
-                    ? $"{Invocation(test)};"
-                    : $"_ = {Invocation(test)};");
+                    ? $"{Invocation(test, placement)};"
+                    : $"_ = {Invocation(test, placement)};");
                 writer.WriteLine("break;");
 
                 writer.Unindent();
@@ -307,16 +315,16 @@ public sealed class CSharpBackend : ITestProjectScaffold
     }
 
     /// <summary>The call under test, against the local named <c>receiver</c>.</summary>
-    private static string Invocation(IrTest test)
+    private static string Invocation(IrTest test, Placement placement)
     {
         var arguments = new List<string> { "receiver" };
-        arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, "receiver")));
+        arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement, "receiver")));
 
-        return $"{QualifiedExtensionClassName(test.Target.Receiver)}."
-            + $"{NameConventions.ToPascalCase(test.Target.Name)}({string.Join(", ", arguments)})";
+        return $"{placement.QualifiedClassOf(test.Target.Receiver)}."
+            + $"{placement.MethodNameOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
-    private static void EmitReceiverCreation(SourceWriter writer, IrTestMessageValue receiver)
+    private static void EmitReceiverCreation(SourceWriter writer, IrTestMessageValue receiver, Placement placement)
     {
         var typeName = "global::" + NameConventions.GetCSharpTypeName(receiver.Descriptor);
         if (receiver.Fields.Count == 0)
@@ -328,12 +336,12 @@ public sealed class CSharpBackend : ITestProjectScaffold
         writer.WriteLine($"var receiver = new {typeName}");
         writer.WriteLine("{");
         writer.Indent();
-        EmitTestFieldInitializers(writer, receiver);
+        EmitTestFieldInitializers(writer, receiver, placement);
         writer.Unindent();
         writer.WriteLine("};");
     }
 
-    private static void EmitTestFieldInitializers(SourceWriter writer, IrTestMessageValue message)
+    private static void EmitTestFieldInitializers(SourceWriter writer, IrTestMessageValue message, Placement placement)
     {
         foreach (var group in message.Fields.GroupBy(v => v.Field.FieldNumber).OrderBy(g => g.Key))
         {
@@ -347,7 +355,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 writer.Indent();
                 foreach (var value in group)
                 {
-                    EmitTestCollectionElement(writer, value);
+                    EmitTestCollectionElement(writer, value, placement);
                 }
 
                 writer.Unindent();
@@ -359,44 +367,67 @@ public sealed class CSharpBackend : ITestProjectScaffold
             if (fieldValue.MessageValue is not null)
             {
                 writer.WriteLine($"{property} =");
-                EmitTestMessageValue(writer, fieldValue.MessageValue, "},");
+                EmitTestMessageValue(writer, fieldValue.MessageValue, "},", placement);
                 continue;
             }
 
-            writer.WriteLine($"{property} = {Expression(fieldValue.ScalarValue!, "receiver")},");
+            writer.WriteLine($"{property} = {Expression(fieldValue.ScalarValue!, placement, "receiver")},");
         }
     }
 
-    private static void EmitTestCollectionElement(SourceWriter writer, IrTestFieldValue value)
+    private static void EmitTestCollectionElement(SourceWriter writer, IrTestFieldValue value, Placement placement)
     {
         if (value.MessageValue is not null)
         {
-            EmitTestMessageValue(writer, value.MessageValue, "},");
+            EmitTestMessageValue(writer, value.MessageValue, "},", placement);
             return;
         }
 
-        writer.WriteLine($"{Expression(value.ScalarValue!, "receiver")},");
+        writer.WriteLine($"{Expression(value.ScalarValue!, placement, "receiver")},");
     }
 
-    private static void EmitTestMessageValue(SourceWriter writer, IrTestMessageValue value, string closer)
+    private static void EmitTestMessageValue(
+        SourceWriter writer, IrTestMessageValue value, string closer, Placement placement)
     {
         writer.WriteLine($"new global::{NameConventions.GetCSharpTypeName(value.Descriptor)}");
         writer.WriteLine("{");
         writer.Indent();
-        EmitTestFieldInitializers(writer, value);
+        EmitTestFieldInitializers(writer, value, placement);
         writer.Unindent();
         writer.WriteLine(closer);
     }
 
-    private static void EmitReceiverClass(
+    /// <summary>
+    /// Emits this source's part of the extension class named <paramref name="className"/>, holding
+    /// <paramref name="methods"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The class is <c>partial</c> because it is not one source's: beside the message it is one
+    /// receiver's, and in a project's namespace it is the project's. Each source is emitted to a file
+    /// of its own (#27), so two sources that extend one message each declare the class, and a
+    /// consumer compiles both into one assembly. A class per source was the alternative, and would
+    /// have put the file a method happens to be declared in into the name every caller spells, so
+    /// moving a method between files would break the callers of it.
+    /// </para>
+    /// <para>
+    /// Every part carries the summary, because no source can know whether another declares the
+    /// class too. The compiler accepts a summary on each part of a partial type without a warning,
+    /// under <c>GenerateDocumentationFile</c> and <c>TreatWarningsAsErrors</c> alike, and repeats it
+    /// in the documentation file. It names the messages this part extends, which beside the message
+    /// is the one the class is named after.
+    /// </para>
+    /// </remarks>
+    private static void EmitExtensionClass(
         SourceWriter writer,
-        MessageDescriptor receiver,
-        IReadOnlyList<IrMethod> methods)
+        string className,
+        IReadOnlyList<IrMethod> methods,
+        Placement placement)
     {
-        var className = ExtensionClassName(receiver);
+        var receivers = methods.Select(method => $"<c>{method.Receiver.FullName}</c>").Distinct(StringComparer.Ordinal);
 
-        writer.WriteLine($"/// <summary>ProtoCross behavior for <c>{receiver.FullName}</c>.</summary>");
-        using var classScope = writer.Block($"public static class {className}");
+        writer.WriteLine($"/// <summary>ProtoCross behavior for {string.Join(", ", receivers)}.</summary>");
+        using var classScope = writer.Block($"public static partial class {className}");
 
         var first = true;
         foreach (var method in methods)
@@ -407,14 +438,14 @@ public sealed class CSharpBackend : ITestProjectScaffold
             }
 
             first = false;
-            EmitMethod(writer, method);
+            EmitMethod(writer, method, placement);
         }
     }
 
-    private static void EmitMethod(SourceWriter writer, IrMethod method)
+    private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         var returnType = TypeName(method.ReturnType);
-        var methodName = NameConventions.ToPascalCase(method.Name);
+        var methodName = placement.MethodNameOf(method.Signature);
         var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
 
         var parameters = new List<string> { $"this {receiverType} {ReceiverName}" };
@@ -423,36 +454,36 @@ public sealed class CSharpBackend : ITestProjectScaffold
         using var methodScope = writer.Block(
             $"public static {returnType} {methodName}({string.Join(", ", parameters)})");
 
-        EmitStatements(writer, method.Body.Statements);
+        EmitStatements(writer, method.Body.Statements, placement);
     }
 
-    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements)
+    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements, Placement placement)
     {
         foreach (var statement in statements)
         {
-            EmitStatement(writer, statement);
+            EmitStatement(writer, statement, placement);
         }
     }
 
-    private static void EmitStatement(SourceWriter writer, IrStatement statement)
+    private static void EmitStatement(SourceWriter writer, IrStatement statement, Placement placement)
     {
         switch (statement)
         {
             case IrBlock block:
             {
                 using var scope = writer.Block(string.Empty);
-                EmitStatements(writer, block.Statements);
+                EmitStatements(writer, block.Statements, placement);
                 break;
             }
 
             case IrVariableDeclaration declaration:
                 writer.WriteLine(
                     $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = "
-                    + $"{Expression(declaration.Initializer)};");
+                    + $"{Expression(declaration.Initializer, placement)};");
                 break;
 
             case IrAssignment assignment:
-                writer.WriteLine($"{Expression(assignment.Target)} = {Expression(assignment.Value)};");
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {Expression(assignment.Value, placement)};");
                 break;
 
             case IrReturn { Value: null }:
@@ -460,25 +491,25 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 break;
 
             case IrReturn returnStatement:
-                writer.WriteLine($"return {Expression(returnStatement.Value!)};");
+                writer.WriteLine($"return {Expression(returnStatement.Value!, placement)};");
                 break;
 
             case IrForEach forEach:
             {
                 using var scope = writer.Block(
-                    $"foreach (var {Escape(forEach.Loop.Name)} in {Expression(forEach.Collection)})");
-                EmitStatements(writer, forEach.Body.Statements);
+                    $"foreach (var {Escape(forEach.Loop.Name)} in {Expression(forEach.Collection, placement)})");
+                EmitStatements(writer, forEach.Body.Statements, placement);
                 break;
             }
 
             case IrIf ifStatement:
-                EmitIf(writer, ifStatement);
+                EmitIf(writer, ifStatement, placement);
                 break;
 
             case IrWhile whileStatement:
             {
-                using var scope = writer.Block($"while ({Expression(whileStatement.Condition)})");
-                EmitStatements(writer, whileStatement.Body.Statements);
+                using var scope = writer.Block($"while ({Expression(whileStatement.Condition, placement)})");
+                EmitStatements(writer, whileStatement.Body.Statements, placement);
                 break;
             }
 
@@ -491,7 +522,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
                 break;
 
             case IrExpressionStatement expression:
-                writer.WriteLine($"{Expression(expression.Expression)};");
+                writer.WriteLine($"{Expression(expression.Expression, placement)};");
                 break;
 
             default:
@@ -503,15 +534,15 @@ public sealed class CSharpBackend : ITestProjectScaffold
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the
     /// source stays an 'else if' in the output instead of gaining a brace level per branch.
     /// </summary>
-    private static void EmitIf(SourceWriter writer, IrIf statement)
+    private static void EmitIf(SourceWriter writer, IrIf statement, Placement placement)
     {
         var keyword = "if";
 
         while (true)
         {
-            using (writer.Block($"{keyword} ({Expression(statement.Condition)})"))
+            using (writer.Block($"{keyword} ({Expression(statement.Condition, placement)})"))
             {
-                EmitStatements(writer, statement.Then.Statements);
+                EmitStatements(writer, statement.Then.Statements, placement);
             }
 
             // The binder only ever puts a block or a nested 'if' in the else branch.
@@ -525,25 +556,26 @@ public sealed class CSharpBackend : ITestProjectScaffold
             if (statement.Else is IrBlock elseBlock)
             {
                 using var scope = writer.Block("else");
-                EmitStatements(writer, elseBlock.Statements);
+                EmitStatements(writer, elseBlock.Statements, placement);
             }
 
             return;
         }
     }
 
-    private static string Expression(IrExpression expression, string receiverName = ReceiverName) => expression switch
+    private static string Expression(
+        IrExpression expression, Placement placement, string receiverName = ReceiverName) => expression switch
     {
         IrThis => receiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
-            IrFieldPresence presence => EmitPresence(presence, receiverName),
-        IrMethodCall call => EmitCall(call, receiverName),
-        IrBinary binary => EmitBinary(binary, receiverName),
-        IrIntegerDivision division => EmitIntegerDivision(division, receiverName),
-        IrUnary unary => EmitUnary(unary, receiverName),
-        IrConversion conversion => EmitConversion(conversion, receiverName),
+        IrFieldAccess field => $"{Expression(field.Receiver, placement, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
+            IrFieldPresence presence => EmitPresence(presence, placement, receiverName),
+        IrMethodCall call => EmitCall(call, placement, receiverName),
+        IrBinary binary => EmitBinary(binary, placement, receiverName),
+        IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
+        IrUnary unary => EmitUnary(unary, placement, receiverName),
+        IrConversion conversion => EmitConversion(conversion, placement, receiverName),
         IrEnumValue enumValue => "global::"
             + NameConventions.GetCSharpTypeName(enumValue.EnumType.Descriptor)
             + "." + NameConventions.GetCSharpValueName(enumValue.Value),
@@ -551,20 +583,13 @@ public sealed class CSharpBackend : ITestProjectScaffold
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 
-    private static string EmitCall(IrMethodCall call, string receiverName)
+    private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
     {
-        var arguments = new List<string> { Expression(call.Receiver, receiverName) };
-        arguments.AddRange(call.Arguments.Select(a => Expression(a, receiverName)));
+        var arguments = new List<string> { Expression(call.Receiver, placement, receiverName) };
+        arguments.AddRange(call.Arguments.Select(a => Expression(a, placement, receiverName)));
 
-        var methodName = NameConventions.ToPascalCase(call.Target.Name);
-        return $"{QualifiedExtensionClassName(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
-    }
-
-    private static string QualifiedExtensionClassName(MessageDescriptor receiver)
-    {
-        var ns = NameConventions.GetCSharpNamespace(receiver.File);
-        var className = ExtensionClassName(receiver);
-        return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
+        var methodName = placement.MethodNameOf(call.Target);
+        return $"{placement.QualifiedClassOf(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
     }
 
     private static string ExtensionClassName(MessageDescriptor receiver)
@@ -579,6 +604,75 @@ public sealed class CSharpBackend : ITestProjectScaffold
     }
 
     /// <summary>
+    /// Where one source's behavior declares each receiver's extension methods: the namespace, the
+    /// class, and which methods share a part of that class.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sources that are not a project's declare them beside the message, in the namespace protoc
+    /// declared it in and a class named after it, as ProtoCross always has. A project's are declared in
+    /// the project's namespace instead (spec 24), because that is the one namespace the project owns,
+    /// in the single class <see cref="ProjectClassName"/>, whatever message they extend.
+    /// </para>
+    /// <para>
+    /// One class rather than one per receiver, because the namespace is the project's rather than any
+    /// schema's: two messages of one name from two packages would otherwise need two classes of one
+    /// name in it. Every receiver's methods are overloads of one another there, told apart by the type
+    /// of <c>this</c>, as <c>System.Linq.Enumerable</c>'s are, and the binder already refuses two
+    /// methods of one name on one receiver.
+    /// </para>
+    /// </remarks>
+    private sealed record Placement(ProjectNamespace? Project)
+    {
+        /// <summary>The class every extension method a project declares is in.</summary>
+        public const string ProjectClassName = "ProtoCrossExtensions";
+
+        public string NamespaceOf(MessageDescriptor receiver)
+            => Project is { } project
+                ? NameConventions.GetCSharpNamespace(project)
+                : NameConventions.GetCSharpNamespace(receiver.File);
+
+        public string ClassOf(MessageDescriptor receiver)
+            => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
+
+        /// <summary>
+        /// The name a method is declared and called by: its name PascalCased, with an underscore
+        /// appended when that is the name of the class it is declared in.
+        /// </summary>
+        /// <remarks>
+        /// C# refuses a member named after its enclosing type (CS0542), and a method name is ordinary
+        /// ProtoCross however its target spells it: <c>proto_cross_extensions</c> is a method like any
+        /// other, and C++ declares it as it stands. The escape is protoc's own for a property named
+        /// after its message, <c>Probe_</c>, and it cannot meet another method's name, because a
+        /// PascalCased name never ends in an underscore. It applies wherever the class is: beside a
+        /// message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets the class too.
+        /// </remarks>
+        public string MethodNameOf(IrMethodSignature method)
+        {
+            var name = NameConventions.ToPascalCase(method.Name);
+            return name == ClassOf(method.Receiver) ? name + "_" : name;
+        }
+
+        /// <summary>
+        /// What decides which of one file's parts of a class a receiver's methods are written in: one
+        /// part for each receiver beside its message, and one for the whole of a project's.
+        /// </summary>
+        /// <remarks>
+        /// Not the class name alone. Beside their messages, <c>A_B</c> and <c>A.B</c> are two receivers
+        /// whose classes share a name, and each has always had a part of its own.
+        /// </remarks>
+        public string PartOf(MessageDescriptor receiver)
+            => Project is null ? receiver.FullName : ProjectClassName;
+
+        public string QualifiedClassOf(MessageDescriptor receiver)
+        {
+            var ns = NamespaceOf(receiver);
+            var className = ClassOf(receiver);
+            return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
+        }
+    }
+
+    /// <summary>
     /// Emits a presence test (spec 8.4).
     /// </summary>
     /// <remarks>
@@ -587,9 +681,9 @@ public sealed class CSharpBackend : ITestProjectScaffold
     /// one, and expresses it by being a nullable reference, so the two cases need different
     /// spellings. Both are what a C# author would write by hand.
     /// </remarks>
-    private static string EmitPresence(IrFieldPresence presence, string receiverName)
+    private static string EmitPresence(IrFieldPresence presence, Placement placement, string receiverName)
     {
-        var receiver = Expression(presence.Receiver, receiverName);
+        var receiver = Expression(presence.Receiver, placement, receiverName);
         var property = NameConventions.GetCSharpPropertyName(presence.Field);
 
         return presence.Field.FieldType is FieldType.Message or FieldType.Group
@@ -597,10 +691,10 @@ public sealed class CSharpBackend : ITestProjectScaffold
             : $"{receiver}.Has{property}";
     }
 
-    private static string EmitBinary(IrBinary binary, string receiverName)
+    private static string EmitBinary(IrBinary binary, Placement placement, string receiverName)
     {
-        var left = Expression(binary.Left, receiverName);
-        var right = Expression(binary.Right, receiverName);
+        var left = Expression(binary.Left, placement, receiverName);
+        var right = Expression(binary.Right, placement, receiverName);
         var op = OperatorText(binary.Operator);
 
         // Integer / and % arrive as IrIntegerDivision, so only + - * reach here.
@@ -648,10 +742,10 @@ public sealed class CSharpBackend : ITestProjectScaffold
             ? $"({emitted} & {mask})"
             : $"(int)({emitted} & {mask})";
 
-    private static string EmitIntegerDivision(IrIntegerDivision division, string receiverName)
+    private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement, string receiverName)
     {
-        var left = Expression(division.Left, receiverName);
-        var right = Expression(division.Right, receiverName);
+        var left = Expression(division.Left, placement, receiverName);
+        var right = Expression(division.Right, placement, receiverName);
         var stem = CSharpRuntime.Stem(division.Behavior)
             + (division.Operator == IrBinaryOperator.Modulo ? "Modulo" : "Divide");
 
@@ -662,15 +756,15 @@ public sealed class CSharpBackend : ITestProjectScaffold
             ZeroDivisorBehavior.Unreachable => $"{CSharpRuntime.TypeName}.{stem}({left}, {right})",
             ZeroDivisorBehavior.Fail => $"{CSharpRuntime.TypeName}.{stem}OrFail({left}, {right})",
             ZeroDivisorBehavior.Fallback =>
-                $"{CSharpRuntime.TypeName}.{stem}Or({left}, {right}, {Expression(division.OnZero!, receiverName)})",
+                $"{CSharpRuntime.TypeName}.{stem}Or({left}, {right}, {Expression(division.OnZero!, placement, receiverName)})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
     }
 
-    private static string EmitUnary(IrUnary unary, string receiverName)
+    private static string EmitUnary(IrUnary unary, Placement placement, string receiverName)
     {
-        var operand = Expression(unary.Operand, receiverName);
+        var operand = Expression(unary.Operand, placement, receiverName);
 
         if (unary.Operator == IrUnaryOperator.Negate)
         {
@@ -699,7 +793,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
     /// value is out of range -- and throws under a checked context -- so it goes through the
     /// runtime, where the saturating result is spelled out.
     /// </remarks>
-    private static string EmitConversion(IrConversion conversion, string receiverName)
+    private static string EmitConversion(IrConversion conversion, Placement placement, string receiverName)
     {
         if (conversion.Behavior != ConversionBehavior.WrapOrSaturate)
         {
@@ -710,7 +804,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         // Every Expression() result is self-delimiting -- an identifier, a member access, a call, a
         // non-negative literal, or something already wrapped in parentheses -- so a cast can be
         // prefixed without re-parenthesizing the operand.
-        var operand = Expression(conversion.Operand, receiverName);
+        var operand = Expression(conversion.Operand, placement, receiverName);
         var target = TypeName(conversion.TargetType);
 
         return conversion.Kind switch

@@ -616,12 +616,12 @@ public class ScopeQueryTests
 
         foreach (var source in swept)
         {
-            if (source.Result.Module is not { } module)
+            if (source.Module is not { } module)
             {
                 continue;
             }
 
-            var model = SemanticModel.For(source.Result);
+            var model = source.Model;
 
             foreach (var offset in EveryNodeStart(module))
             {
@@ -656,12 +656,12 @@ public class ScopeQueryTests
 
         foreach (var source in CompiledCorpus.All)
         {
-            if (source.Result.Module is not { } module)
+            if (source.Module is not { } module)
             {
                 continue;
             }
 
-            var model = SemanticModel.For(source.Result);
+            var model = source.Model;
 
             foreach (var (symbol, offset) in BareNamesIn(module))
             {
@@ -714,12 +714,12 @@ public class ScopeQueryTests
 
         foreach (var source in CompiledCorpus.All)
         {
-            if (source.Result.Module is not { } module)
+            if (source.Module is not { } module)
             {
                 continue;
             }
 
-            var model = SemanticModel.For(source.Result);
+            var model = source.Model;
 
             foreach (var entry in module.Scope)
             {
@@ -772,14 +772,14 @@ public class ScopeQueryTests
 
         foreach (var source in CompiledCorpus.All)
         {
-            if (source.Result.SyntaxTree is not { } tree
+            if (source.SyntaxTree is not { } tree
                 || !SyntaxWalk.DescendantsAndSelf(tree).OfType<BlockStatement>().Any(block => !block.IsClosed))
             {
                 continue;
             }
 
             Assert.True(
-                SemanticModel.For(source.Result).ScopeAt(source.Text.Length) is not null,
+                source.Model.ScopeAt(source.Text.Length) is not null,
                 $"{source.Name} stops inside a block nothing closed, so the offset it stops at is "
                 + "inside that block and must still answer");
 
