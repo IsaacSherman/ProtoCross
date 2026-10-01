@@ -59,6 +59,8 @@ public enum TokenKind
     CloseBrace,
     OpenParen,
     CloseParen,
+    OpenBracket,
+    CloseBracket,
     Semicolon,
     Comma,
     Colon,

@@ -303,7 +303,7 @@ test LiteralCase.negated_int32_minimum_wraps "negating int32 MIN wraps to MIN" {
 
 test LiteralCase.negative_literal_on_the_left "a negative literal on the left adopts int32" {
     receiver {
-        narrow = 0;
+        narrow: 0,
     }
 
     expect return true;
@@ -311,7 +311,7 @@ test LiteralCase.negative_literal_on_the_left "a negative literal on the left ad
 
 test LiteralCase.divided_by_a_negative_literal "division by a negative literal truncates" {
     receiver {
-        narrow = 7;
+        narrow: 7,
     }
 
     expect return -3;
@@ -409,7 +409,7 @@ test LiteralCase.float_not_a_number "a float NaN expectation is met by a NaN" {
 
 test LiteralCase.zero_over_zero "a NaN worked out at run time meets a NaN expectation" {
     receiver {
-        real = 0.0;
+        real: 0.0,
     }
 
     expect return __NAN;
@@ -417,7 +417,7 @@ test LiteralCase.zero_over_zero "a NaN worked out at run time meets a NaN expect
 
 test LiteralCase.finite_lies_between_the_infinities "a finite value lies between the infinities" {
     receiver {
-        real = 1e308;
+        real: 1e308,
     }
 
     expect return true;
@@ -425,7 +425,7 @@ test LiteralCase.finite_lies_between_the_infinities "a finite value lies between
 
 test LiteralCase.float_literal_on_the_left_adopts_float "a float literal on the left adopts float" {
     receiver {
-        single = 2.5;
+        single: 2.5,
     }
 
     expect return true;
@@ -433,7 +433,7 @@ test LiteralCase.float_literal_on_the_left_adopts_float "a float literal on the 
 
 test LiteralCase.negative_float_literal_on_the_left_adopts_float "a negative float literal on the left adopts float" {
     receiver {
-        single = -1.0;
+        single: -1.0,
     }
 
     expect return true;
@@ -441,7 +441,7 @@ test LiteralCase.negative_float_literal_on_the_left_adopts_float "a negative flo
 
 test LiteralCase.wide_unsigned_field "uint64 MAX as a fixture value" {
     receiver {
-        wide_unsigned = 0xFFFF_FFFF_FFFF_FFFF;
+        wide_unsigned: 0xFFFF_FFFF_FFFF_FFFF,
     }
 
     expect return 18446744073709551615;
@@ -449,7 +449,7 @@ test LiteralCase.wide_unsigned_field "uint64 MAX as a fixture value" {
 
 test LiteralCase.wide_field "int64 MIN as a fixture value" {
     receiver {
-        wide = -9223372036854775808;
+        wide: -9223372036854775808,
     }
 
     expect return -0x8000_0000_0000_0000;

@@ -343,7 +343,7 @@ public class MultiFileCompilationTests
         var module = Compile(("probe.pcross", Extend("fn f() -> int64 { return 1; }") + """
 
             test InvoiceItem.f "probe" {
-                receiver { quantity = 1; }
+                receiver { quantity: 1 }
                 expect return 1;
             }
             """)).EmittableModule!;

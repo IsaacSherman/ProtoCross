@@ -182,7 +182,7 @@ public class ParserResilienceTests(ITestOutputHelper logger)
                   import proto "invoice.proto";
 
                   test InvoiceItem.f "deep" {
-                      receiver { {{string.Concat(Enumerable.Repeat("a {", Depth))}}{{new string('}', Depth)}} }
+                      receiver { {{string.Concat(Enumerable.Repeat("a: new A {", Depth))}}{{new string('}', Depth)}} }
                       expect return 1;
                   }
                   """,

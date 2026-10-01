@@ -46,8 +46,8 @@ extend SaturatingCompoundCase {
 
 test SaturatingCompoundCase.i32_increased "an addition that fits is not clamped" {
     receiver {
-        i32 = 40;
-        amount = 2;
+        i32: 40,
+        amount: 2,
     }
 
     expect return 42;
@@ -55,8 +55,8 @@ test SaturatingCompoundCase.i32_increased "an addition that fits is not clamped"
 
 test SaturatingCompoundCase.i32_increased "int32 addition past MAX stores MAX" {
     receiver {
-        i32 = 2147483647;
-        amount = 1;
+        i32: 2147483647,
+        amount: 1,
     }
 
     expect return 2147483647;
@@ -64,8 +64,8 @@ test SaturatingCompoundCase.i32_increased "int32 addition past MAX stores MAX" {
 
 test SaturatingCompoundCase.i32_increased "int32 addition past MIN stores MIN" {
     receiver {
-        i32 = -2147483648;
-        amount = -1;
+        i32: -2147483648,
+        amount: -1,
     }
 
     expect return -2147483648;
@@ -73,7 +73,7 @@ test SaturatingCompoundCase.i32_increased "int32 addition past MIN stores MIN" {
 
 test SaturatingCompoundCase.u32_decreased "uint32 subtraction below zero stores zero" {
     receiver {
-        u32 = 0;
+        u32: 0,
     }
 
     expect return 0;
@@ -81,7 +81,7 @@ test SaturatingCompoundCase.u32_decreased "uint32 subtraction below zero stores 
 
 test SaturatingCompoundCase.i64_doubled "int64 multiplication past MIN stores MIN" {
     receiver {
-        i64 = -4611686018427387905;
+        i64: -4611686018427387905,
     }
 
     expect return -9223372036854775808;
@@ -89,8 +89,8 @@ test SaturatingCompoundCase.i64_doubled "int64 multiplication past MIN stores MI
 
 test SaturatingCompoundCase.i64_divided "int64 MIN divided by -1 stores MAX" {
     receiver {
-        i64 = -9223372036854775808;
-        divisor = -1;
+        i64: -9223372036854775808,
+        divisor: -1,
     }
 
     expect return 9223372036854775807;
@@ -98,7 +98,7 @@ test SaturatingCompoundCase.i64_divided "int64 MIN divided by -1 stores MAX" {
 
 test SaturatingCompoundCase.u64_increased "uint64 addition past MAX stores MAX" {
     receiver {
-        u64 = 9223372036854775808;
+        u64: 9223372036854775808,
     }
 
     expect return 18446744073709551615;
@@ -106,7 +106,7 @@ test SaturatingCompoundCase.u64_increased "uint64 addition past MAX stores MAX" 
 
 test SaturatingCompoundCase.i32_shifted_left "int32 MAX shifted left is not clamped" {
     receiver {
-        i32 = 2147483647;
+        i32: 2147483647,
     }
 
     expect return -2;

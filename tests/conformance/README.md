@@ -32,8 +32,8 @@ A vector is a ProtoCross source file whose `test` declarations (spec 25.3) are t
 ```protocross
 test DivisionCase.quotient "truncates a negative quotient toward zero" {
     receiver {
-        numerator = -7;
-        divisor = 2;
+        numerator: -7,
+        divisor: 2,
     }
 
     expect return -3;

@@ -61,11 +61,53 @@ Open Questions:
 
 ### 13.2 Message Construction
 
+**Decided: a message is built by a literal, `new T { field: value, … }`.**
+
+```protocross
+new Invoice {
+    number: 42,
+    customer: new Customer { name: "unknown" },
+    items: [
+        new InvoiceItem { quantity: 2, unit_price_cents: 300 },
+        new InvoiceItem { quantity: 4, unit_price_cents: 125 },
+    ],
+}
+```
+
+A literal and a test fixture ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)) are one idea, so they have one spelling: a fixture's
+`receiver { … }` body is a literal's list of fields.
+
+Normative Requirements:
+
+- A message literal is `new`, the message's type name, and its fields between braces. Each field is
+  `name: value`. Fields are separated by commas, and a comma after the last is allowed.
+- `new` is not reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). It begins a literal only when a type name follows it, so a field or a
+  local named `new` keeps its meaning: `new.this` and `has new` read a field.
+- The type is resolved as a type name is anywhere else ([8.1](./§8-Type%20System.md#81-type-sources)): by its full name, or by a simple name no other
+  message or enum shares.
+- A message field's value is a literal of the field's own type. The type is always written, and the
+  field never supplies it: `customer: new Customer { … }`, never `customer: { … }`. A literal of
+  another message is `PC0063`, and any other value is `PC0062`.
+- A repeated field's value is a list, `[first, second]`, holding every element in order. A comma after
+  the last element is allowed. A list is only ever a repeated field's value, lists do not nest, and a
+  repeated field given anything but a list is `PC0063`, as is a list given to a singular field.
+- Each field is written at most once, a repeated one included (`PC0061`): a repeated field's list is
+  the one place its contents are read.
+- A map field is refused (`PC0060`), as maps are everywhere else ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- A field that is left out is unset. There is no required field and no check that a message is
+  complete: protobuf has neither, and this compiler does not invent one.
+
+Current Status:
+
+- A literal appears only as the value of a fixture's field, or of a field of a literal inside one.
+  Writing one in a method body is the next step of #80, and until it lands [18](./§18-Mutability.md#18-mutability)'s "methods
+  cannot allocate new protobuf messages" still holds.
+
 Open Questions:
 
-- Should ProtoCross be able to create new message instances?
-- Should object initializer syntax exist?
-- Should construction be limited to backend helper APIs?
+- Whether a repeated field may also be given a whole repeated value, `items: items`, as well as a
+  list. It matters only where names are in scope, so it is settled when a literal can appear in a
+  method body.
 
 ### 13.3 Equality
 

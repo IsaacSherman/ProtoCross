@@ -108,6 +108,12 @@ void
 while
 ```
 
+Contextual keyword:
+
+- `new` is not reserved. It begins a message literal ([13.2](./§13-Messages.md#132-message-construction)) where an identifier follows it, and
+  is an identifier everywhere else, so a schema field named `new` can still be written. A reserved
+  word takes a name away from every schema that uses it.
+
 Open Question:
 
 - `case`, `enum`, `message`, and `switch` are reserved by the lexer but do not yet have source
@@ -134,7 +140,9 @@ Normative Requirements:
 - The published category set is the standard LSP token type set, in its standard order, and the
   standard modifier set with it. Every category is declared whether or not anything currently
   produces it.
-- A keyword ([6.4](#64-keywords)) is `keyword`, a string literal is `string`, an integer or floating-point literal is
+- A keyword ([6.4](#64-keywords)) is `keyword`, and so is `new` where it begins a message literal, which is where an
+  identifier follows it. Anywhere else `new` is an identifier and is classified as one.
+- A string literal is `string`, an integer or floating-point literal is
   `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
   ([6.2](#62-comments)) is `comment`.
 - `->`, `+`, `-`, `*`, `/`, `%`, `=`, `==`, `!=`, `!`, `<`, `<=`, `>`, `>=`, `&&`, `||`, `&`,

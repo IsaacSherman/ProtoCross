@@ -29,8 +29,8 @@ extend RemainderCase {
 
 test RemainderCase.remainder "the remainder of positive operands" {
     receiver {
-        dividend = 7.5;
-        divisor = 2.0;
+        dividend: 7.5,
+        divisor: 2.0,
     }
 
     expect return 1.5;
@@ -38,8 +38,8 @@ test RemainderCase.remainder "the remainder of positive operands" {
 
 test RemainderCase.remainder "the remainder takes the sign of a negative dividend" {
     receiver {
-        dividend = -7.5;
-        divisor = 2.0;
+        dividend: -7.5,
+        divisor: 2.0,
     }
 
     expect return -1.5;
@@ -47,8 +47,8 @@ test RemainderCase.remainder "the remainder takes the sign of a negative dividen
 
 test RemainderCase.remainder "the sign of the divisor does not reach the remainder" {
     receiver {
-        dividend = 7.5;
-        divisor = -2.0;
+        dividend: 7.5,
+        divisor: -2.0,
     }
 
     expect return 1.5;
@@ -58,8 +58,8 @@ test RemainderCase.remainder "the sign of the divisor does not reach the remaind
 // in floating point rounds the quotient and gets this wrong, so it pins an exact remainder.
 test RemainderCase.remainder "the remainder is exact for a dividend far larger than the divisor" {
     receiver {
-        dividend = 1e20;
-        divisor = 3.0;
+        dividend: 1e20,
+        divisor: 3.0,
     }
 
     expect return 1.0;
@@ -67,8 +67,8 @@ test RemainderCase.remainder "the remainder is exact for a dividend far larger t
 
 test RemainderCase.is_negative_zero "an exact negative multiple leaves a negative zero" {
     receiver {
-        dividend = -4.0;
-        divisor = 2.0;
+        dividend: -4.0,
+        divisor: 2.0,
     }
 
     expect return true;
@@ -76,8 +76,8 @@ test RemainderCase.is_negative_zero "an exact negative multiple leaves a negativ
 
 test RemainderCase.remainder "the remainder by zero is NaN" {
     receiver {
-        dividend = 7.5;
-        divisor = 0.0;
+        dividend: 7.5,
+        divisor: 0.0,
     }
 
     expect return __NAN;
@@ -85,8 +85,8 @@ test RemainderCase.remainder "the remainder by zero is NaN" {
 
 test RemainderCase.remainder "the remainder of an infinity is NaN" {
     receiver {
-        dividend = __INF;
-        divisor = 2.0;
+        dividend: __INF,
+        divisor: 2.0,
     }
 
     expect return __NAN;
@@ -94,8 +94,8 @@ test RemainderCase.remainder "the remainder of an infinity is NaN" {
 
 test RemainderCase.remainder "the remainder by an infinity is the dividend" {
     receiver {
-        dividend = -7.5;
-        divisor = __INF;
+        dividend: -7.5,
+        divisor: __INF,
     }
 
     expect return -7.5;
@@ -103,8 +103,8 @@ test RemainderCase.remainder "the remainder by an infinity is the dividend" {
 
 test RemainderCase.remainder "the sign of an infinite divisor does not matter" {
     receiver {
-        dividend = 7.5;
-        divisor = -__INF;
+        dividend: 7.5,
+        divisor: -__INF,
     }
 
     expect return 7.5;
@@ -112,8 +112,8 @@ test RemainderCase.remainder "the sign of an infinite divisor does not matter" {
 
 test RemainderCase.remainder "the remainder of a NaN is NaN" {
     receiver {
-        dividend = __NAN;
-        divisor = 2.0;
+        dividend: __NAN,
+        divisor: 2.0,
     }
 
     expect return __NAN;
@@ -121,8 +121,8 @@ test RemainderCase.remainder "the remainder of a NaN is NaN" {
 
 test RemainderCase.narrow_remainder "float remainder follows the same rules as double" {
     receiver {
-        narrow_dividend = -7.5;
-        narrow_divisor = 2.0;
+        narrow_dividend: -7.5,
+        narrow_divisor: 2.0,
     }
 
     expect return -1.5;

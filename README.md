@@ -369,15 +369,16 @@ ProtoCross source can include declarative test blocks. The example script includ
 ```protocross
 test Invoice.total_cents "sums line totals" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 300;
-        }
-
-        items {
-            quantity = 4;
-            unit_price_cents = 125;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 300,
+            },
+            new InvoiceItem {
+                quantity: 4,
+                unit_price_cents: 125,
+            },
+        ],
     }
 
     expect return 1100;
@@ -461,8 +462,8 @@ expects the process to terminate, described next.
 ```protocross
 test InvoiceItem.strict_ratio "a zero divisor stops the program" {
     receiver {
-        quantity = 0;
-        unit_price_cents = 100;
+        quantity: 0,
+        unit_price_cents: 100,
     }
 
     expect fail;

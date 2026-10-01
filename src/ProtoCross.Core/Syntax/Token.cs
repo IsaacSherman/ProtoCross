@@ -21,6 +21,8 @@ public static class TokenKindExtensions
         [TokenKind.CloseBrace] = "}",
         [TokenKind.OpenParen] = "(",
         [TokenKind.CloseParen] = ")",
+        [TokenKind.OpenBracket] = "[",
+        [TokenKind.CloseBracket] = "]",
         [TokenKind.Semicolon] = ";",
         [TokenKind.Comma] = ",",
         [TokenKind.Colon] = ":",

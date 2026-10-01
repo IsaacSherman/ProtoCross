@@ -51,8 +51,8 @@ extend CheckedCompoundCase {
 
 test CheckedCompoundCase.i32_increased "an addition that reaches MAX is stored" {
     receiver {
-        i32 = 2147483646;
-        amount = 1;
+        i32: 2147483646,
+        amount: 1,
     }
 
     expect return 2147483647;
@@ -60,8 +60,8 @@ test CheckedCompoundCase.i32_increased "an addition that reaches MAX is stored" 
 
 test CheckedCompoundCase.i64_divided "a zero divisor stores the fallback" {
     receiver {
-        i64 = -9223372036854775808;
-        divisor = 0;
+        i64: -9223372036854775808,
+        divisor: 0,
     }
 
     expect return 0;
@@ -71,8 +71,8 @@ test CheckedCompoundCase.i64_divided "a zero divisor stores the fallback" {
 
 test CheckedCompoundCase.i32_increased "int32 addition past MAX terminates" {
     receiver {
-        i32 = 2147483647;
-        amount = 1;
+        i32: 2147483647,
+        amount: 1,
     }
 
     expect fail;
@@ -80,8 +80,8 @@ test CheckedCompoundCase.i32_increased "int32 addition past MAX terminates" {
 
 test CheckedCompoundCase.i32_increased "int32 addition past MIN terminates" {
     receiver {
-        i32 = -2147483648;
-        amount = -1;
+        i32: -2147483648,
+        amount: -1,
     }
 
     expect fail;
@@ -89,7 +89,7 @@ test CheckedCompoundCase.i32_increased "int32 addition past MIN terminates" {
 
 test CheckedCompoundCase.u32_decreased "uint32 subtraction below zero terminates" {
     receiver {
-        u32 = 0;
+        u32: 0,
     }
 
     expect fail;
@@ -97,7 +97,7 @@ test CheckedCompoundCase.u32_decreased "uint32 subtraction below zero terminates
 
 test CheckedCompoundCase.i64_doubled "int64 multiplication past MAX terminates" {
     receiver {
-        i64 = 4611686018427387904;
+        i64: 4611686018427387904,
     }
 
     expect fail;
@@ -105,8 +105,8 @@ test CheckedCompoundCase.i64_doubled "int64 multiplication past MAX terminates" 
 
 test CheckedCompoundCase.i64_divided "int64 MIN divided by -1 terminates" {
     receiver {
-        i64 = -9223372036854775808;
-        divisor = -1;
+        i64: -9223372036854775808,
+        divisor: -1,
     }
 
     expect fail;
@@ -114,7 +114,7 @@ test CheckedCompoundCase.i64_divided "int64 MIN divided by -1 terminates" {
 
 test CheckedCompoundCase.u64_increased "uint64 addition past MAX terminates" {
     receiver {
-        u64 = 9223372036854775808;
+        u64: 9223372036854775808,
     }
 
     expect fail;
@@ -124,7 +124,7 @@ test CheckedCompoundCase.u64_increased "uint64 addition past MAX terminates" {
 
 test CheckedCompoundCase.i32_shifted_left "int32 MAX shifted left discards the top bit" {
     receiver {
-        i32 = 2147483647;
+        i32: 2147483647,
     }
 
     expect return -2;

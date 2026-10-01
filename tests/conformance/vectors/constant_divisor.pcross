@@ -80,57 +80,50 @@ extend ConstantDivisorCase {
 }
 
 test ConstantDivisorCase.constant_over_zero "a constant one over a constant zero is positive infinity" {
-    receiver {
-    }
+    receiver { }
 
     expect return __INF;
 }
 
 test ConstantDivisorCase.negated_constant_over_zero "a negated constant numerator carries its sign into the infinity" {
-    receiver {
-    }
+    receiver { }
 
     expect return -__INF;
 }
 
 test ConstantDivisorCase.constant_zero_over_zero "a constant zero over a constant zero is NaN" {
-    receiver {
-    }
+    receiver { }
 
     expect return __NAN;
 }
 
 test ConstantDivisorCase.over_integer_zero "an integer zero divisor adopts double and divides the same way" {
-    receiver {
-    }
+    receiver { }
 
     expect return __INF;
 }
 
 test ConstantDivisorCase.over_converted_zero "a converted zero divides the same way" {
-    receiver {
-    }
+    receiver { }
 
     expect return __INF;
 }
 
 test ConstantDivisorCase.over_negative_zero "a constant negative zero divisor yields negative infinity" {
-    receiver {
-    }
+    receiver { }
 
     expect return -__INF;
 }
 
 test ConstantDivisorCase.over_computed_zero "a divisor that is zero only once computed divides the same way" {
-    receiver {
-    }
+    receiver { }
 
     expect return __INF;
 }
 
 test ConstantDivisorCase.field_over_constant_zero "a field over a constant zero is positive infinity" {
     receiver {
-        numerator = 1.0;
+        numerator: 1.0,
     }
 
     expect return __INF;
@@ -138,37 +131,34 @@ test ConstantDivisorCase.field_over_constant_zero "a field over a constant zero 
 
 test ConstantDivisorCase.field_over_constant_zero "a zero field over a constant zero is NaN" {
     receiver {
-        numerator = 0.0;
+        numerator: 0.0,
     }
 
     expect return __NAN;
 }
 
 test ConstantDivisorCase.narrow_constant_over_zero "float constants divide the way double constants do" {
-    receiver {
-    }
+    receiver { }
 
     expect return __INF;
 }
 
 test ConstantDivisorCase.narrow_field_over_constant_zero "a zero float field over a constant zero is NaN" {
     receiver {
-        narrow_numerator = 0.0;
+        narrow_numerator: 0.0,
     }
 
     expect return __NAN;
 }
 
 test ConstantDivisorCase.constant_quotient "a constant quotient that is not an infinity keeps its value" {
-    receiver {
-    }
+    receiver { }
 
     expect return 0.25;
 }
 
 test ConstantDivisorCase.narrow_constant_quotient "a narrow constant quotient keeps its value" {
-    receiver {
-    }
+    receiver { }
 
     expect return 0.25;
 }

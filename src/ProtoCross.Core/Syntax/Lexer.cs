@@ -515,6 +515,8 @@ public sealed class Lexer
             case '}': Advance(); kind = TokenKind.CloseBrace; break;
             case '(': Advance(); kind = TokenKind.OpenParen; break;
             case ')': Advance(); kind = TokenKind.CloseParen; break;
+            case '[': Advance(); kind = TokenKind.OpenBracket; break;
+            case ']': Advance(); kind = TokenKind.CloseBracket; break;
             case ';': Advance(); kind = TokenKind.Semicolon; break;
             case ',': Advance(); kind = TokenKind.Comma; break;
             case ':': Advance(); kind = TokenKind.Colon; break;

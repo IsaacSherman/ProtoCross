@@ -25,7 +25,7 @@ extend OrdinaryNameCase {
 
 test OrdinaryNameCase.scaled "a parameter named virtual" {
     receiver {
-        factor = 3;
+        factor: 3,
     }
 
     arg virtual = 7;
@@ -35,7 +35,7 @@ test OrdinaryNameCase.scaled "a parameter named virtual" {
 
 test OrdinaryNameCase.virtual "a method and a local named virtual" {
     receiver {
-        factor = 3;
+        factor: 3,
     }
 
     expect return 4;
@@ -43,7 +43,7 @@ test OrdinaryNameCase.virtual "a method and a local named virtual" {
 
 test OrdinaryNameCase.calls_virtual "a call to a method named virtual" {
     receiver {
-        factor = 3;
+        factor: 3,
     }
 
     expect return 16;

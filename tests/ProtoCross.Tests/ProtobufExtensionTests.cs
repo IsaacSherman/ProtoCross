@@ -49,7 +49,7 @@ public class ProtobufExtensionTests
         "extend Host { fn f(h: Host) -> bool { return has h.scoped; } }", "PC0041")]
     [InlineData("a fixture of the declaring message",
         "extend Host { fn f() -> int64 { return held; } }\n"
-        + "test Host.f \"sets an extension\" { receiver { scoped = 1; } expect return 0; }", "PC0059")]
+        + "test Host.f \"sets an extension\" { receiver { scoped: 1 } expect return 0; }", "PC0059")]
     [InlineData("a bare name in the extended message",
         "extend Extendable { fn f() -> int64 { return scoped; } }", "PC0037")]
     [InlineData("a member of the extended message",

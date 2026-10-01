@@ -22,7 +22,7 @@ public class GeneratedNameTests
     private const string FailingTest =
         """
         test InvoiceItem.gross "zero terminates" {
-            receiver { quantity = 0; }
+            receiver { quantity: 0 }
             expect fail;
         }
         """;

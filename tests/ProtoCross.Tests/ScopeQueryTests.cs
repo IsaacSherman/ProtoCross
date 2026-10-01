@@ -71,7 +71,7 @@ public class ScopeQueryTests
 
         test Outer.scaled "multiplies the count" {
             receiver {
-                count = 7;
+                count: 7,
             }
 
             arg factor = 2;
@@ -307,7 +307,7 @@ public class ScopeQueryTests
     [Fact]
     public void NoBareNameResolvesInsideATestAndTheReceiverIsStillKnown()
     {
-        var scope = ScopeAt(Offset("count = 7;"));
+        var scope = ScopeAt(Offset("count: 7"));
 
         Assert.Empty(scope.Names);
         Assert.Equal("protocross.tests.Outer", scope.Receiver.DisplayName);
@@ -357,7 +357,7 @@ public class ScopeQueryTests
 
             test Outer.f "missing expectation" {
                 receiver {
-                    count = 7;
+                    count: 7,
                 }
             }
             """;

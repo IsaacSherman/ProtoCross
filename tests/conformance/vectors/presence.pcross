@@ -88,7 +88,7 @@ extend PresenceCase {
 
 test PresenceCase.start_seconds "a set message field reads through" {
     receiver {
-        starts_at { seconds = 1700000000; }
+        starts_at: new google.protobuf.Timestamp { seconds: 1700000000 },
     }
 
     expect return 1700000000;
@@ -96,7 +96,7 @@ test PresenceCase.start_seconds "a set message field reads through" {
 
 test PresenceCase.start_seconds "an unset message field takes the guard's other branch" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return -1;
@@ -104,7 +104,7 @@ test PresenceCase.start_seconds "an unset message field takes the guard's other 
 
 test PresenceCase.start_seconds_or_zero "an early-return guard proves presence for what follows" {
     receiver {
-        starts_at { seconds = 42; }
+        starts_at: new google.protobuf.Timestamp { seconds: 42 },
     }
 
     expect return 42;
@@ -112,7 +112,7 @@ test PresenceCase.start_seconds_or_zero "an early-return guard proves presence f
 
 test PresenceCase.start_seconds_or_zero "and returns from the guard when the field is unset" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return 0;
@@ -123,10 +123,10 @@ test PresenceCase.start_seconds_or_zero "and returns from the guard when the fie
 
 test PresenceCase.inner_stamp_seconds "both levels set" {
     receiver {
-        inner {
-            stamp { seconds = 900; }
-            weight = 5;
-        }
+        inner: new PresenceInner {
+            stamp: new google.protobuf.Timestamp { seconds: 900 },
+            weight: 5,
+        },
     }
 
     expect return 900;
@@ -134,9 +134,9 @@ test PresenceCase.inner_stamp_seconds "both levels set" {
 
 test PresenceCase.inner_stamp_seconds "the outer message set, the inner one not" {
     receiver {
-        inner {
-            weight = 5;
-        }
+        inner: new PresenceInner {
+            weight: 5,
+        },
     }
 
     expect return -1;
@@ -144,7 +144,7 @@ test PresenceCase.inner_stamp_seconds "the outer message set, the inner one not"
 
 test PresenceCase.inner_stamp_seconds "neither set" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return -1;
@@ -152,9 +152,9 @@ test PresenceCase.inner_stamp_seconds "neither set" {
 
 test PresenceCase.inner_weight "a scalar read through a guarded message field" {
     receiver {
-        inner {
-            weight = 12;
-        }
+        inner: new PresenceInner {
+            weight: 12,
+        },
     }
 
     expect return 12;
@@ -162,7 +162,7 @@ test PresenceCase.inner_weight "a scalar read through a guarded message field" {
 
 test PresenceCase.inner_weight "an unset message field is not a zero-filled one" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return -1;
@@ -170,7 +170,7 @@ test PresenceCase.inner_weight "an unset message field is not a zero-filled one"
 
 test PresenceCase.tuning_is_set "an optional scalar that was never set" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return false;
@@ -178,7 +178,7 @@ test PresenceCase.tuning_is_set "an optional scalar that was never set" {
 
 test PresenceCase.tuning_is_set "an optional scalar set to a non-zero value" {
     receiver {
-        tuning = 5;
+        tuning: 5,
     }
 
     expect return true;
@@ -189,7 +189,7 @@ test PresenceCase.tuning_is_set "an optional scalar set to a non-zero value" {
 // looking at the value.
 test PresenceCase.tuning_is_set "an optional scalar set to zero is still set" {
     receiver {
-        tuning = 0;
+        tuning: 0,
     }
 
     expect return true;
@@ -197,7 +197,7 @@ test PresenceCase.tuning_is_set "an optional scalar set to zero is still set" {
 
 test PresenceCase.tuning_value "an unset optional scalar reads as zero" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return 0;
@@ -205,7 +205,7 @@ test PresenceCase.tuning_value "an unset optional scalar reads as zero" {
 
 test PresenceCase.tuning_value "a set optional scalar reads as its value" {
     receiver {
-        tuning = -17;
+        tuning: -17,
     }
 
     expect return -17;
@@ -213,7 +213,7 @@ test PresenceCase.tuning_value "a set optional scalar reads as its value" {
 
 test PresenceCase.label_is_set "an unset optional string" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return false;
@@ -222,7 +222,7 @@ test PresenceCase.label_is_set "an unset optional string" {
 // The string counterpart of the zero case above: an empty string is a value, not an absence.
 test PresenceCase.label_is_set "an optional string set to empty is still set" {
     receiver {
-        label = "";
+        label: "",
     }
 
     expect return true;
@@ -230,7 +230,7 @@ test PresenceCase.label_is_set "an optional string set to empty is still set" {
 
 test PresenceCase.implicit_count_value "an unset implicit-presence scalar reads as zero" {
     receiver {
-        tuning = 1;
+        tuning: 1,
     }
 
     expect return 0;
@@ -238,7 +238,7 @@ test PresenceCase.implicit_count_value "an unset implicit-presence scalar reads 
 
 test PresenceCase.implicit_count_value "a set implicit-presence scalar reads as its value" {
     receiver {
-        implicit_count = 7;
+        implicit_count: 7,
     }
 
     expect return 7;
@@ -246,7 +246,7 @@ test PresenceCase.implicit_count_value "a set implicit-presence scalar reads as 
 
 test PresenceCase.reading_total "an unset repeated field iterates zero times" {
     receiver {
-        implicit_count = 1;
+        implicit_count: 1,
     }
 
     expect return 0;
@@ -254,9 +254,7 @@ test PresenceCase.reading_total "an unset repeated field iterates zero times" {
 
 test PresenceCase.reading_total "a populated repeated field sums" {
     receiver {
-        readings = 3;
-        readings = 4;
-        readings = 5;
+        readings: [3, 4, 5],
     }
 
     expect return 12;

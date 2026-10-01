@@ -39,7 +39,7 @@ extend KeywordPackageCase {
 
 test KeywordPackageCase.quadrupled "one method calls another in an escaped namespace" {
     receiver {
-        count = 3;
+        count: 3,
     }
 
     expect return 12;
@@ -47,7 +47,7 @@ test KeywordPackageCase.quadrupled "one method calls another in an escaped names
 
 test KeywordPackageCase.is_high "an enum value is qualified with the escaped namespace" {
     receiver {
-        level = PackageLevel.PACKAGE_LEVEL_HIGH;
+        level: PackageLevel.PACKAGE_LEVEL_HIGH,
     }
 
     expect return true;
@@ -55,7 +55,7 @@ test KeywordPackageCase.is_high "an enum value is qualified with the escaped nam
 
 test KeywordPackageCase.current_level "an enum value is returned through the escaped namespace" {
     receiver {
-        level = PackageLevel.PACKAGE_LEVEL_HIGH;
+        level: PackageLevel.PACKAGE_LEVEL_HIGH,
     }
 
     expect return PackageLevel.PACKAGE_LEVEL_HIGH;
@@ -63,7 +63,7 @@ test KeywordPackageCase.current_level "an enum value is returned through the esc
 
 test KeywordPackageCase.inner_value "reads a message named by the package's full name" {
     receiver {
-        inner { value = 9; }
+        inner: new KeywordPackageInner { value: 9 },
     }
 
     expect return 9;

@@ -51,8 +51,8 @@ extend OverflowCase {
 
 test OverflowCase.add_i32 "int32 addition wraps past MAX" {
     receiver {
-        i32_left = 2147483647;
-        i32_right = 1;
+        i32_left: 2147483647,
+        i32_right: 1,
     }
 
     expect return -2147483648;
@@ -60,8 +60,8 @@ test OverflowCase.add_i32 "int32 addition wraps past MAX" {
 
 test OverflowCase.sub_i32 "int32 subtraction wraps past MIN" {
     receiver {
-        i32_left = -2147483648;
-        i32_right = 1;
+        i32_left: -2147483648,
+        i32_right: 1,
     }
 
     expect return 2147483647;
@@ -69,8 +69,8 @@ test OverflowCase.sub_i32 "int32 subtraction wraps past MIN" {
 
 test OverflowCase.mul_i32 "int32 multiplication discards the high word" {
     receiver {
-        i32_left = 65536;
-        i32_right = 65536;
+        i32_left: 65536,
+        i32_right: 65536,
     }
 
     expect return 0;
@@ -78,8 +78,8 @@ test OverflowCase.mul_i32 "int32 multiplication discards the high word" {
 
 test OverflowCase.mul_i32 "int32 multiplication wraps to a negative result" {
     receiver {
-        i32_left = 2147483647;
-        i32_right = 2;
+        i32_left: 2147483647,
+        i32_right: 2,
     }
 
     expect return -2;
@@ -88,7 +88,7 @@ test OverflowCase.mul_i32 "int32 multiplication wraps to a negative result" {
 // Negating int32 MIN has no representable result, so under wrapping it is MIN again.
 test OverflowCase.negate_i32 "negating int32 MIN yields MIN" {
     receiver {
-        i32_left = -2147483648;
+        i32_left: -2147483648,
     }
 
     expect return -2147483648;
@@ -96,8 +96,8 @@ test OverflowCase.negate_i32 "negating int32 MIN yields MIN" {
 
 test OverflowCase.add_i64 "int64 addition wraps past MAX" {
     receiver {
-        i64_left = 9223372036854775807;
-        i64_right = 1;
+        i64_left: 9223372036854775807,
+        i64_right: 1,
     }
 
     expect return -9223372036854775808;
@@ -105,8 +105,8 @@ test OverflowCase.add_i64 "int64 addition wraps past MAX" {
 
 test OverflowCase.mul_i64 "int64 multiplication discards the high word" {
     receiver {
-        i64_left = 4294967296;
-        i64_right = 4294967296;
+        i64_left: 4294967296,
+        i64_right: 4294967296,
     }
 
     expect return 0;
@@ -114,7 +114,7 @@ test OverflowCase.mul_i64 "int64 multiplication discards the high word" {
 
 test OverflowCase.negate_i64 "negating int64 MIN yields MIN" {
     receiver {
-        i64_left = -9223372036854775808;
+        i64_left: -9223372036854775808,
     }
 
     expect return -9223372036854775808;
@@ -122,8 +122,8 @@ test OverflowCase.negate_i64 "negating int64 MIN yields MIN" {
 
 test OverflowCase.add_u32 "uint32 addition wraps to zero" {
     receiver {
-        u32_left = 4294967295;
-        u32_right = 1;
+        u32_left: 4294967295,
+        u32_right: 1,
     }
 
     expect return 0;
@@ -131,8 +131,8 @@ test OverflowCase.add_u32 "uint32 addition wraps to zero" {
 
 test OverflowCase.sub_u32 "uint32 subtraction wraps to MAX" {
     receiver {
-        u32_left = 0;
-        u32_right = 1;
+        u32_left: 0,
+        u32_right: 1,
     }
 
     expect return 4294967295;
@@ -140,8 +140,8 @@ test OverflowCase.sub_u32 "uint32 subtraction wraps to MAX" {
 
 test OverflowCase.sub_u64 "uint64 subtraction wraps to MAX" {
     receiver {
-        u64_left = 0;
-        u64_right = 1;
+        u64_left: 0,
+        u64_right: 1,
     }
 
     expect return 18446744073709551615;

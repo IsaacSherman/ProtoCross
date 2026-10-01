@@ -63,8 +63,8 @@ extend CastCase {
 
 test CastCase.mixed_product "an int32 widened to int64 multiplies without overflowing" {
     receiver {
-        i32 = 2147483647;
-        i64 = 2;
+        i32: 2147483647,
+        i64: 2,
     }
 
     expect return 4294967294;
@@ -72,7 +72,7 @@ test CastCase.mixed_product "an int32 widened to int64 multiplies without overfl
 
 test CastCase.narrowed "narrowing to int32 keeps the low 32 bits" {
     receiver {
-        i64 = 4294967297;
+        i64: 4294967297,
     }
 
     expect return 1;
@@ -80,7 +80,7 @@ test CastCase.narrowed "narrowing to int32 keeps the low 32 bits" {
 
 test CastCase.narrowed "narrowing to int32 wraps into the sign bit" {
     receiver {
-        i64 = 2147483648;
+        i64: 2147483648,
     }
 
     expect return -2147483648;
@@ -88,7 +88,7 @@ test CastCase.narrowed "narrowing to int32 wraps into the sign bit" {
 
 test CastCase.to_unsigned "a negative int32 reinterprets as uint32" {
     receiver {
-        i32 = -1;
+        i32: -1,
     }
 
     expect return 4294967295;
@@ -96,7 +96,7 @@ test CastCase.to_unsigned "a negative int32 reinterprets as uint32" {
 
 test CastCase.from_unsigned "uint32 MAX reinterprets as -1" {
     receiver {
-        u32 = 4294967295;
+        u32: 4294967295,
     }
 
     expect return -1;
@@ -104,7 +104,7 @@ test CastCase.from_unsigned "uint32 MAX reinterprets as -1" {
 
 test CastCase.wide_unsigned_as_signed "uint64 MAX reinterprets as -1" {
     receiver {
-        u64 = 18446744073709551615;
+        u64: 18446744073709551615,
     }
 
     expect return -1;
@@ -114,7 +114,7 @@ test CastCase.wide_unsigned_as_signed "uint64 MAX reinterprets as -1" {
 // representable values, so the result names the rounding rule: nearest, ties to even.
 test CastCase.widened_to_double "an int64 too large for a double rounds to nearest, ties to even" {
     receiver {
-        i64 = 9007199254740993;
+        i64: 9007199254740993,
     }
 
     expect return 9007199254740992.0;
@@ -122,7 +122,7 @@ test CastCase.widened_to_double "an int64 too large for a double rounds to neare
 
 test CastCase.widened_to_float "a float widens to double exactly" {
     receiver {
-        f = 0.5;
+        f: 0.5,
     }
 
     expect return 0.5;
@@ -130,7 +130,7 @@ test CastCase.widened_to_float "a float widens to double exactly" {
 
 test CastCase.truncated "a positive double truncates toward zero" {
     receiver {
-        d = 3.75;
+        d: 3.75,
     }
 
     expect return 3;
@@ -138,7 +138,7 @@ test CastCase.truncated "a positive double truncates toward zero" {
 
 test CastCase.truncated "a negative double truncates toward zero, not down" {
     receiver {
-        d = -3.75;
+        d: -3.75,
     }
 
     expect return -3;
@@ -146,7 +146,7 @@ test CastCase.truncated "a negative double truncates toward zero, not down" {
 
 test CastCase.saturated "a double above int32 MAX saturates rather than wrapping" {
     receiver {
-        d = 1e18;
+        d: 1e18,
     }
 
     expect return 2147483647;
@@ -154,7 +154,7 @@ test CastCase.saturated "a double above int32 MAX saturates rather than wrapping
 
 test CastCase.saturated "a double below int32 MIN saturates rather than wrapping" {
     receiver {
-        d = -1e18;
+        d: -1e18,
     }
 
     expect return -2147483648;
@@ -162,7 +162,7 @@ test CastCase.saturated "a double below int32 MIN saturates rather than wrapping
 
 test CastCase.nan_to_integer "NaN converts to zero" {
     receiver {
-        d = __NAN;
+        d: __NAN,
     }
 
     expect return 0;
@@ -170,7 +170,7 @@ test CastCase.nan_to_integer "NaN converts to zero" {
 
 test CastCase.narrowed_past_float "a double past float's range narrows to infinity" {
     receiver {
-        d = 1e40;
+        d: 1e40,
     }
 
     expect return __INF;

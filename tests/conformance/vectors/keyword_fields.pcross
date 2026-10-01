@@ -66,7 +66,7 @@ extend KeywordFieldCase {
 
 test KeywordFieldCase.class_value "reads a scalar field named class" {
     receiver {
-        class = 3;
+        class: 3,
     }
 
     expect return 3;
@@ -74,7 +74,7 @@ test KeywordFieldCase.class_value "reads a scalar field named class" {
 
 test KeywordFieldCase.new_this "reads through a message field named new to a field named this" {
     receiver {
-        new { this = 5; }
+        new: new KeywordFieldInner { this: 5 },
     }
 
     expect return 5;
@@ -82,7 +82,7 @@ test KeywordFieldCase.new_this "reads through a message field named new to a fie
 
 test KeywordFieldCase.new_this "an unset message field named new takes the guard's other branch" {
     receiver {
-        class = 1;
+        class: 1,
     }
 
     expect return -1;
@@ -90,9 +90,7 @@ test KeywordFieldCase.new_this "an unset message field named new takes the guard
 
 test KeywordFieldCase.delete_total "iterates a repeated scalar field named delete" {
     receiver {
-        delete = 2;
-        delete = 3;
-        delete = 4;
+        delete: [2, 3, 4],
     }
 
     expect return 9;
@@ -100,8 +98,10 @@ test KeywordFieldCase.delete_total "iterates a repeated scalar field named delet
 
 test KeywordFieldCase.template_total "iterates a repeated message field named template" {
     receiver {
-        template { this = 10; }
-        template { this = 20; }
+        template: [
+            new KeywordFieldInner { this: 10 },
+            new KeywordFieldInner { this: 20 },
+        ],
     }
 
     expect return 30;
@@ -109,7 +109,7 @@ test KeywordFieldCase.template_total "iterates a repeated message field named te
 
 test KeywordFieldCase.default_is_set "has default is true for an explicit zero" {
     receiver {
-        default = 0;
+        default: 0,
     }
 
     expect return true;
@@ -117,7 +117,7 @@ test KeywordFieldCase.default_is_set "has default is true for an explicit zero" 
 
 test KeywordFieldCase.default_is_set "has default is false when it was never set" {
     receiver {
-        class = 1;
+        class: 1,
     }
 
     expect return false;
@@ -125,7 +125,7 @@ test KeywordFieldCase.default_is_set "has default is false when it was never set
 
 test KeywordFieldCase.friend_value "a capitalized keyword is lowercased before it is escaped" {
     receiver {
-        Friend = 7;
+        Friend: 7,
     }
 
     expect return 7;
@@ -133,7 +133,7 @@ test KeywordFieldCase.friend_value "a capitalized keyword is lowercased before i
 
 test KeywordFieldCase.default_instance_value "a field named after a generated member is escaped too" {
     receiver {
-        default_instance = 11;
+        default_instance: 11,
     }
 
     expect return 11;
@@ -141,7 +141,7 @@ test KeywordFieldCase.default_instance_value "a field named after a generated me
 
 test KeywordFieldCase.assert_value "a field named assert is escaped though it is a macro" {
     receiver {
-        assert = 13;
+        assert: 13,
     }
 
     expect return 13;

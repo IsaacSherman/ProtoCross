@@ -26,7 +26,7 @@ namespace ProtoCross.Tests;
 /// observable at all.
 /// </para>
 /// </remarks>
-public class SchemaCompletionTests
+public partial class SchemaCompletionTests
 {
     private const string Source =
         """
@@ -881,7 +881,7 @@ public class SchemaCompletionTests
         + "\n"
         + "test Outer.scaled \"scales\" {\n"
         + "    receiver {\n"
-        + "        count = 2;\n"
+        + "        count: 2,\n"
         + "    }\n"
         + "    arg factor = 3;\n"
         + "    expect return 6;\n"
@@ -951,7 +951,7 @@ public class SchemaCompletionTests
     [Fact]
     public async Task ATestFixtureOffersTheFieldsOfTheMessageBeingBuilt()
     {
-        var offered = await OfferedAsync(Fixtured, "        count = 2;\n");
+        var offered = await OfferedAsync(Fixtured, "        count: 2,\n");
 
         Assert.Contains("label", Labels(offered));
         Assert.Contains("inner", Labels(offered));
@@ -962,7 +962,7 @@ public class SchemaCompletionTests
     [Fact]
     public async Task AFieldAlreadySetInAFixtureIsNotOfferedAgain()
     {
-        var offered = await OfferedAsync(Fixtured, "        count = 2;\n");
+        var offered = await OfferedAsync(Fixtured, "        count: 2,\n");
 
         Assert.DoesNotContain("count", Labels(offered));
     }
@@ -973,9 +973,9 @@ public class SchemaCompletionTests
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 { return count; }\n}\n"
-                + "\ntest Mapped.f \"counts\" {\n    receiver {\n        count = 1;\n    }\n"
+                + "\ntest Mapped.f \"counts\" {\n    receiver {\n        count: 1,\n    }\n"
                 + "    expect return 1;\n}\n",
-            "        count = 1;\n");
+            "        count: 1,\n");
 
         Assert.DoesNotContain("tags", Labels(offered));
     }
@@ -1133,7 +1133,7 @@ public class SchemaCompletionTests
         + "extend Outer {\n    fn scaled(factor: int64) -> int64 { return count * factor; }\n\n"
         + "    fn plain() -> int64 { return count; }\n}\n\n"
         + "test Outer.plain \"a target names a message and one of its methods\" {\n"
-        + "    receiver {\n        count = 2;\n    }\n    expect return 2;\n}\n";
+        + "    receiver {\n        count: 2,\n    }\n    expect return 2;\n}\n";
 
     [Fact]
     public async Task ATestTargetOffersTheMethodsOfTheReceiverItAlreadyNames()
@@ -1233,7 +1233,7 @@ public class SchemaCompletionTests
         var carets = new[]
         {
             After(text, "extend Out"),
-            After(text, "        count = 2;\n"),
+            After(text, "        count: 2,\n"),
             After(text, "arg fact"),
 
             // Inside the expectation, which is neither a fixture field nor an argument, and where
@@ -1425,8 +1425,8 @@ public class SchemaCompletionTests
     {
         var offered = await OfferedAsync(
             "extend Outer { fn f() -> int64 { return count; } }\n"
-                + "test Outer.f \"value\" { receiver { count = true; } expect return 1; }",
-            "count = tr");
+                + "test Outer.f \"value\" { receiver { count: true } expect return 1; }",
+            "count: tr");
 
         Assert.True(
             offered.All(item => item.Kind != CompletionItemKind.Field),

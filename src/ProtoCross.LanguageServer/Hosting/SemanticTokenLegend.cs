@@ -153,6 +153,18 @@ public static class SemanticTokenLegend
         };
     }
 
+    /// <summary>
+    /// Which category <paramref name="token"/> belongs to where it stands, with <paramref name="next"/>
+    /// after it, or null when it is not classified.
+    /// </summary>
+    /// <remarks>
+    /// A contextual keyword is a keyword only where it begins the construct it names, and an identifier
+    /// everywhere else (<see cref="ContextualKeywords"/>). A token's kind alone cannot say which, so
+    /// this asks the one rule the parser asks.
+    /// </remarks>
+    public static int? IndexOf(Token token, Token next)
+        => ContextualKeywords.BeginsAMessageLiteral(token, next) ? KeywordIndex : IndexOf(token.Kind);
+
     /// <summary>Which category a resolved name belongs to.</summary>
     /// <remarks>
     /// <para>

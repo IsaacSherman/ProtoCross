@@ -213,8 +213,8 @@ public partial class BackendTests
 
             test InvoiceItem.strict_ratio "a zero divisor stops the program" {
                 receiver {
-                    quantity = 0;
-                    unit_price_cents = 100;
+                    quantity: 0,
+                    unit_price_cents: 100,
                 }
 
                 expect fail;
