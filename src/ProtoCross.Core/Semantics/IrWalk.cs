@@ -137,12 +137,12 @@ public static class IrWalk
                 : [division.Left, division.Right],
             IrUnary unary => [unary.Operand],
             IrConversion conversion => [conversion.Operand],
+            IrMessageLiteral literal => [.. literal.Fields],
+            IrFieldInitializer field => [field.Value],
+            IrList list => [.. list.Elements],
 
             IrTest test => [test.Receiver, .. test.Arguments, test.Expectation],
             IrTestArgument argument => [argument.Value],
-            IrTestMessageValue message => [.. message.Fields],
-            IrTestFieldValue { ScalarValue: { } scalar } => [scalar],
-            IrTestFieldValue { MessageValue: { } message } => [message],
             IrTestReturnExpectation expectation => [expectation.Value],
 
             _ => [],

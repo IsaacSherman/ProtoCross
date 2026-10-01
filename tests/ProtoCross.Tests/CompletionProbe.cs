@@ -210,7 +210,7 @@ internal static class CompletionProbe
     public static IEnumerable<int> AtEveryNameAndStatementStart(string text)
     {
         var keywords = KeywordSpans(text);
-        var (qualified, receivers) = NamesIn(text);
+        var (qualified, receivers, literalEnds) = NamesIn(text);
 
         for (var offset = 0; offset < text.Length; offset++)
         {
@@ -221,9 +221,11 @@ internal static class CompletionProbe
                 // One character in, so the caret sits inside a name being typed rather than before it.
                 var caret = Math.Min(offset + 1, text.Length);
                 var after = EndOfWord(text, offset);
-                var reaches = ((after < text.Length && text[after] == '.')
-                        || receivers.Any(name => Covers(name, offset)))
-                    && !qualified.Any(name => Covers(name, offset));
+                // A dot inside a qualified name joins it rather than reaching into a value, so it says
+                // nothing. A receiver is asked of the tree instead, and may be a qualified name itself:
+                // the type a literal names.
+                var reaches = (after < text.Length && text[after] == '.' && !qualified.Any(name => Covers(name, offset)))
+                    || receivers.Any(name => Covers(name, offset));
 
                 if (!keywords.Contains(offset) && !reaches)
                 {
@@ -231,7 +233,9 @@ internal static class CompletionProbe
                 }
             }
 
-            if (previous is ';' or '{' or '}')
+            // A literal's closing brace ends an expression and not a statement, so what follows it is
+            // the rest of that expression, where no name can go: the caret after a call's ')'.
+            if (previous is ';' or '{' or '}' && !literalEnds.Contains(offset))
             {
                 yield return offset;
             }
@@ -252,11 +256,12 @@ internal static class CompletionProbe
     /// </param>
     /// <param name="Receivers">
     /// Where each member access's receiver ends, which is the name an item accepted there would
-    /// replace. A receiver that ends in no name -- a call, a literal -- contributes nothing, because
-    /// there is no single name in it to strand anything.
+    /// replace. A receiver that ends in no name -- a number, an operation -- contributes nothing,
+    /// because there is no single name in it to strand anything.
     /// </param>
+    /// <param name="LiteralEnds">Where each message literal ends, just past the brace that closes it.</param>
     private sealed record NameSpans(
-        IReadOnlyList<SourceSpan> Qualified, IReadOnlyList<SourceSpan> Receivers);
+        IReadOnlyList<SourceSpan> Qualified, IReadOnlyList<SourceSpan> Receivers, IReadOnlySet<int> LiteralEnds);
 
     /// <summary>Both span sets, from one parse of the text.</summary>
     /// <remarks>
@@ -274,6 +279,7 @@ internal static class CompletionProbe
 
         var qualified = new List<SourceSpan>();
         var receivers = new List<SourceSpan>();
+        var literalEnds = new HashSet<int>();
         var pending = new Stack<SyntaxNode>();
 
         pending.Push(unit);
@@ -299,6 +305,10 @@ internal static class CompletionProbe
                 case MemberAccessExpression access when EndOf(access.Receiver) is { } name:
                     receivers.Add(name);
                     break;
+
+                case MessageLiteralExpression literal:
+                    literalEnds.Add(literal.Span.End.Offset);
+                    break;
             }
 
             foreach (var child in SyntaxWalk.ChildrenOf(node))
@@ -307,7 +317,7 @@ internal static class CompletionProbe
             }
         }
 
-        return new NameSpans(qualified, receivers);
+        return new NameSpans(qualified, receivers, literalEnds);
     }
 
     /// <summary>Which name an expression's value comes from, or null when no single name decides it.</summary>
@@ -318,12 +328,14 @@ internal static class CompletionProbe
     /// go there is settled by the parentheses. This asks the sweep's question instead: would an item
     /// accepted here strand what follows? Swapping the method in <c>identity(other).count</c> moves
     /// the receiver's type exactly as swapping <c>other</c> would, so the answer is the same, and the
-    /// caret is left out for the same reason.
+    /// caret is left out for the same reason. A literal is followed to the type it names, for the same
+    /// reason again: <c>new Outer { ... }.count</c> reads a field of whatever type is written there.
     /// </remarks>
     private static SourceSpan? EndOf(Expression expression)
         => expression switch
         {
             InvocationExpression call => EndOf(call.Callee),
+            MessageLiteralExpression literal => literal.Type.Name.Span,
             MemberAccessExpression member => member.Name.Span,
             NameExpression bare => bare.Name.Span,
             _ => null,

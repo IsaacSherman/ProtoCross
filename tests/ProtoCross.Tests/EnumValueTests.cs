@@ -188,31 +188,6 @@ public class EnumValueTests
         Assert.Contains(result.Diagnostics, d => d.Code == "PC0063");
     }
 
-    /// <summary>A message field still demands a nested block rather than an expression.</summary>
-    [Fact]
-    public void StillRequiresANestedBlockForAMessageFixtureField()
-    {
-        var result = Compile(
-            FixturePrelude +
-            """
-            extend Outer {
-                fn f() -> int64 {
-                    return count;
-                }
-            }
-
-            test Outer.f "a message field cannot be set from an expression" {
-                receiver {
-                    inner: 1,
-                }
-
-                expect return 0;
-            }
-            """);
-
-        Assert.Contains(result.Diagnostics, d => d.Code == "PC0062");
-    }
-
     [Fact]
     public void AnExpectationCanBeANamedValue()
     {

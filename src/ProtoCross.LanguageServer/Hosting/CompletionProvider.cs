@@ -356,6 +356,11 @@ public sealed class CompletionProvider
             return typePosition;
         }
 
+        if (OnALiteralsNew(model, subject))
+        {
+            return [];
+        }
+
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
@@ -367,9 +372,14 @@ public sealed class CompletionProvider
                 ReceiverAt(model, subject), result, subject, presence, writingAReceiver, asked.Document);
         }
 
-        if (Fixture(model, result, subject, asked.Document) is { } names)
+        if (Arguments(model, subject, asked.Document) is { } arguments)
         {
-            return names;
+            return arguments;
+        }
+
+        if (LiteralFields(model, result, subject, asked.Document) is { } fields)
+        {
+            return fields;
         }
 
         return InScope(model, result, subject, presence, writingAReceiver, asked.Document);
@@ -825,125 +835,152 @@ public sealed class CompletionProvider
     }
 
     /// <summary>
-    /// The names a <c>test</c> declaration can write: a field of the message being built, or an
-    /// argument of the method under test. Null when the caret is in neither.
+    /// The argument names a <c>test</c> can write after <c>arg</c>: the parameters of the method under
+    /// test that it has not supplied yet. Null when the caret is not on one.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Both sets are known exactly, which is what makes this worth doing at all: the author is typing
-    /// names they did not write, from a schema and a signature that are both in front of the compiler.
+    /// Known exactly, which is what makes this worth doing at all: the author is typing names they did
+    /// not write, from a signature that is in front of the compiler.
     /// </para>
     /// <para>
     /// <b>Nothing is offered until the target resolves.</b> <c>BindTest</c> returns null when it
     /// cannot, so a half-written <c>test</c> header has no <c>IrTest</c> at all -- and there is
-    /// genuinely nothing to say until the compiler knows which message and which method the fixture
-    /// is for.
-    /// </para>
-    /// <para>
-    /// A field already given a value is dropped, because a field written twice is <c>PC0061</c>. That
-    /// includes a repeated one, which takes all of its values in one list. A map field is dropped as
-    /// everywhere else, this time because a map in a fixture is <c>PC0060</c> rather than
-    /// <c>PC0038</c> -- a different code for the same unsupported thing.
-    /// </para>
-    /// <para>
-    /// <b>Being inside a fixture is not the same as naming one of its fields</b>, and the values are
-    /// inside it too. A fixture field's value is an ordinary expression bound against an empty scope
-    /// with no implicit receiver, so a field name accepted at <c>count: tr|ue</c> writes
-    /// <c>count: count</c> and is <c>PC0037</c> -- a name that resolves nowhere, offered because the
-    /// enclosing message value was found and nothing asked whether the caret was in a name position
-    /// at all. An expression under the caret is what says it is not, and the value region then
-    /// answers the way every other expression in a test does.
+    /// genuinely nothing to say until the compiler knows which method the arguments are for.
     /// </para>
     /// </remarks>
-    private static IReadOnlyList<CompletionItem>? Fixture(
-        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+    private static IReadOnlyList<CompletionItem>? Arguments(
+        SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
-        if (model.IrAt(subject.Start) is not { } at || at.Enclosing<IrTest>() is not { } test)
+        if (!subject.PrecededByArg
+            || model.IrAt(subject.Start) is not { } at
+            || at.Enclosing<IrTest>() is not { } test
+            || at.Enclosing<IrExpression>() is not null)
         {
             return null;
         }
 
-        if (at.Enclosing<IrExpression>() is not null)
-        {
-            return null;
-        }
-
-        if (subject.PrecededByArg)
-        {
-            // The one being written does not count as written, whatever it currently reads. The
-            // caret is inside it, so it is the name the author is choosing -- and marking it spent
-            // removes it from the one list where they are deciding whether to keep it. #56 found the
-            // same thing about the import being edited, and it is the same mistake.
-            var written = test.Arguments
-                .Where(argument => !Covers(argument.Span, subject.Start))
-                .Select(argument => argument.Name)
-                .ToHashSet(StringComparer.Ordinal);
-
-            return
-            [
-                .. test.Target.Parameters
-                    .Where(parameter => !written.Contains(parameter.Name))
-                    .Select(parameter => Member(
-                        parameter.Name,
-                        CompletionItemKind.Variable,
-                        parameter.Type.DisplayName,
-                        null,
-                        "0",
-                        subject,
-                        document)),
-            ];
-        }
-
-        // What the caret is written inside: the fields of a fixture or of a literal, or a list's
-        // values. The innermost of the three, since a literal inside a list is a message again.
-        var container = model.SyntaxAt(subject.Start)?.Path
-            .LastOrDefault(node => node is ListExpression or MessageLiteralExpression or TestReceiverFixture);
-
-        // Among a list's values, where a message is built with 'new' and no field name belongs.
-        if (container is ListExpression)
-        {
-            return [];
-        }
-
-        // Which message the caret is naming a field of. A nested message value spans its literal,
-        // 'new' through the closing brace, so a caret anywhere inside those braces is in it, and a
-        // caret on the name of the field it is given is outside it and names a field of the message
-        // around it -- which is the innermost value holding the caret either way.
-        if (at.Enclosing<IrTestMessageValue>() is not { } level)
-        {
-            return null;
-        }
-
-        // What is spent is read from the fields as written, not from the values bound: a list's values
-        // span only themselves, so none of them covers the name the caret is on, and an empty list has
-        // no values at all. Either way the field is written, and the one under the caret is the one
-        // being chosen, whatever it currently reads.
-        IReadOnlyList<FieldInitializer> fieldsHere = container switch
-        {
-            MessageLiteralExpression literal => literal.Fields,
-            TestReceiverFixture fixture => fixture.Fields,
-            _ => [],
-        };
-
-        var already = fieldsHere
-            .Where(field => !field.Name.IsMissing && !Covers(field.Span, subject.Start))
-            .Select(field => field.Name.Text)
+        // The one being written does not count as written, whatever it currently reads. The caret is
+        // inside it, so it is the name the author is choosing -- and marking it spent removes it from
+        // the one list where they are deciding whether to keep it. #56 found the same thing about the
+        // import being edited, and it is the same mistake.
+        var written = test.Arguments
+            .Where(argument => !Covers(argument.Span, subject.Start))
+            .Select(argument => argument.Name)
             .ToHashSet(StringComparer.Ordinal);
 
         return
         [
-            .. MessageFields.InDeclarationOrder(level.Descriptor)
-                .Where(field => !field.IsMap && !already.Contains(field.Name))
-                .Select(field => Member(
-                    field.Name,
-                    CompletionItemKind.Field,
-                    TypeFactory.FromField(field).DisplayName,
-                    Documentation(result, field),
+            .. test.Target.Parameters
+                .Where(parameter => !written.Contains(parameter.Name))
+                .Select(parameter => Member(
+                    parameter.Name,
+                    CompletionItemKind.Variable,
+                    parameter.Type.DisplayName,
+                    null,
                     "0",
                     subject,
                     document)),
         ];
     }
+
+    /// <summary>
+    /// The fields a message literal can still be given, where the caret is naming one: in a literal's
+    /// braces, or a fixture's, between its fields or on one's name. Null anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The message's fields are known exactly, as a signature's parameters are. Which message is the
+    /// innermost literal around the caret, which is the binder's answer and not a guess from the text:
+    /// a fixture's message is its test target's, and a literal whose type did not resolve is bound
+    /// against the message expected where it stands.
+    /// </para>
+    /// <para>
+    /// A field already given a value is dropped, because a field written twice is <c>PC0061</c>. That
+    /// includes a repeated one, which takes all of its values in one list. A map field is dropped as
+    /// everywhere else, this time because a map in a literal is <c>PC0060</c> rather than
+    /// <c>PC0038</c> -- a different code for the same unsupported thing.
+    /// </para>
+    /// <para>
+    /// <b>Being inside a literal is not the same as naming one of its fields</b>, and the values are
+    /// inside it too. A field's value is an ordinary expression, so a field name accepted at
+    /// <c>count: tr|ue</c> writes <c>count: count</c>, a name that is no value there. Two things say the
+    /// caret is in a value: an expression innermost under it, which is any value written so far, and a
+    /// caret past the name of the field it is on, which is a value not written yet. Either way the
+    /// value answers as every other expression does, and among a list's elements that is the same.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem>? LiteralFields(
+        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+    {
+        if (model.IrAt(subject.Start) is not { Node: IrMessageLiteral or IrFieldInitializer } at
+            || at.Enclosing<IrMessageLiteral>() is not { } literal)
+        {
+            return null;
+        }
+
+        var syntax = model.SyntaxAt(subject.Start);
+
+        // The innermost of the three, because a literal is itself a field's value: in its braces the
+        // field around it is not the one the caret is on. On a field the caret names it only on its
+        // name, and in a literal only between its braces: before them it is on 'new' or the type, and
+        // after them it is after a value, where a position query still finds the literal because a
+        // caret that has just typed its brace is at its end.
+        var naming = syntax?.Path.LastOrDefault(node => node is FieldInitializer or MessageLiteralExpression or TestReceiverFixture) switch
+        {
+            FieldInitializer field => subject.Start <= field.Name.Span.End.Offset,
+            MessageLiteralExpression written => subject.Start > written.Type.Span.End.Offset
+                && BeforeItsClosingBrace(written.Span, subject.Start, document.Text),
+            TestReceiverFixture fixture => BeforeItsClosingBrace(fixture.Span, subject.Start, document.Text),
+            _ => false,
+        };
+
+        if (!naming)
+        {
+            return null;
+        }
+
+        // What is spent is read from the fields as written, not from the values bound: an empty list
+        // has no values at all, and a field the binder refused has none either. Either way the field is
+        // written, and the one under the caret is the one being chosen, whatever it currently reads.
+        IReadOnlyList<FieldInitializer> fieldsHere = syntax?.Path
+            .LastOrDefault(node => node is MessageLiteralExpression or TestReceiverFixture) switch
+        {
+            MessageLiteralExpression written => written.Fields,
+            TestReceiverFixture fixture => fixture.Fields,
+            _ => [],
+        };
+
+        var already = fieldsHere
+            .Where(written => !written.Name.IsMissing && !Covers(written.Span, subject.Start))
+            .Select(written => written.Name.Text)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return
+        [
+            .. MessageFields.InDeclarationOrder(literal.MessageType.Descriptor)
+                .Where(candidate => !candidate.IsMap && !already.Contains(candidate.Name))
+                .Select(candidate => Member(
+                    candidate.Name,
+                    CompletionItemKind.Field,
+                    TypeFactory.FromField(candidate).DisplayName,
+                    Documentation(result, candidate),
+                    "0",
+                    subject,
+                    document)),
+        ];
+    }
+
+    /// <summary>
+    /// Whether <paramref name="offset"/> is inside a braced construct spanning <paramref name="span"/>,
+    /// rather than after the brace that closes it.
+    /// </summary>
+    /// <remarks>
+    /// One that nothing closed ends where the buffer or the next statement does, and a caret there is
+    /// still inside it: the author is typing its fields.
+    /// </remarks>
+    private static bool BeforeItsClosingBrace(SourceSpan span, int offset, string text)
+        => offset < span.End.Offset || span.Length == 0 || text[span.End.Offset - 1] != '}';
 
     /// <summary>Both ends inclusive, so a caret that has just finished typing a name is still in it.</summary>
     private static bool Covers(SourceSpan span, int offset)
@@ -982,12 +1019,12 @@ public sealed class CompletionProvider
         var reference = at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start);
 
         // A literal's type not yet begun leaves no node at all: 'new' with nothing after it is a name
-        // to the parser (SchemaSubject.PrecededByNew). Only inside a fixture for now, where a value
-        // names nothing and 'new' followed by a word can only be a literal. In a method body it can
-        // still be a field named 'new' with 'and' being typed after it.
+        // to the parser (SchemaSubject.PrecededByNew). It begins a literal wherever 'new' names no
+        // value. Where it does -- a field or a local named 'new' -- the word after it may be 'and'
+        // being typed, and a list of messages would be the wrong answer to that.
         var beginningALiteral = reference is null
             && subject.PrecededByNew
-            && at.Enclosing<TestReceiverFixture>() is not null;
+            && !NamesAValue(model, subject, ContextualKeywords.New);
 
         if (reference is null && !beginningALiteral)
         {
@@ -1025,6 +1062,28 @@ public sealed class CompletionProvider
                 .SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
     }
+
+    /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
+    /// <remarks>
+    /// A keyword there, contextual or not, and the one place a word is that no name can replace: the
+    /// type after it would be stranded, <c>count Outer { ... }</c>. The innermost literal around the
+    /// caret is the one asked, because that is the one whose <c>new</c> a caret at its start is on, and
+    /// inside its braces the fields are offered instead (<see cref="LiteralFields"/>). The literal is
+    /// innermost there too, which is how its fields came to be offered over its own <c>new</c> until
+    /// this was asked first.
+    /// </remarks>
+    private static bool OnALiteralsNew(SemanticModel model, SchemaSubject subject)
+        => model.SyntaxAt(subject.Start)?.Enclosing<MessageLiteralExpression>() is { } literal
+            && literal.Span.Start.Offset == subject.Start;
+
+    /// <summary>Whether <paramref name="name"/> written as a bare word where the caret is would be a value.</summary>
+    /// <remarks>
+    /// Asked of the scope query, which knows the locals, the parameters and the receiver's fields the
+    /// binder would resolve a bare name against. Nowhere a value is not, in a test or outside any
+    /// method, no name is one.
+    /// </remarks>
+    private static bool NamesAValue(SemanticModel model, SchemaSubject subject, string name)
+        => model.ScopeAt(subject.Start)?.Names.Any(visible => visible.Name == name) == true;
 
     /// <summary>What a type accepted in the slot <paramref name="reference"/> stands for replaces.</summary>
     /// <remarks>
@@ -1397,10 +1456,18 @@ public sealed class CompletionProvider
             return constant.EnumType;
         }
 
-        var receiver = at.Enclosing<IrMissingMemberAccess>()?.Receiver
-            ?? at.Enclosing<IrFieldAccess>()?.Receiver
-            ?? at.Enclosing<IrFieldPresence>()?.Receiver
-            ?? at.Enclosing<IrMethodCall>()?.Receiver;
+        // The innermost of the four, since they nest: in 'new T { flag: has x.flag }.y' the presence
+        // test is inside the access of 'y', and taking the nearest access first would offer T's fields
+        // after 'x.'.
+        var receiver = at.Path
+            .LastOrDefault(node => node is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall) switch
+            {
+                IrMissingMemberAccess awaiting => awaiting.Receiver,
+                IrFieldAccess access => access.Receiver,
+                IrFieldPresence presence => presence.Receiver,
+                IrMethodCall call => call.Receiver,
+                _ => null,
+            };
 
         return receiver switch
         {

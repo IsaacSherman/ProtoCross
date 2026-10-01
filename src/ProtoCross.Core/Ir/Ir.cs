@@ -354,7 +354,29 @@ public sealed record IrContinue(SourceSpan Span) : IrStatement(Span);
 
 public sealed record IrExpressionStatement(IrExpression Expression, SourceSpan Span) : IrStatement(Span);
 
-public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span);
+public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
+{
+    /// <summary>
+    /// Whether storing this value -- as a field of a message literal -- has to store a copy of it
+    /// rather than the value itself (spec 13.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The annotation #80 promised a backend, asked of the value rather than recorded beside it,
+    /// for the reason <see cref="IrBinary.OverflowingType"/> is: it follows from the IR, and a second
+    /// copy of the rule in each backend is two to keep in step. Storing a message gives the store a
+    /// message of its own. C++ copies on assignment whatever it is told, and a C# message is a
+    /// reference, so without a copy two fields would share one message and a change through either
+    /// would show through both.
+    /// </para>
+    /// <para>
+    /// Only a literal is exempt, because a literal is built where it is stored and nothing else can
+    /// hold it. A method's result is not: the method may have returned a field of its receiver, which
+    /// is still the receiver's. #13 stores into locals by the same rule.
+    /// </para>
+    /// </remarks>
+    public bool IsCopiedWhenStored => Type is MessageType && this is not IrMessageLiteral;
+}
 
 /// <summary>The implicit receiver of the enclosing method.</summary>
 public sealed record IrThis(MessageType MessageType, SourceSpan Span) : IrExpression(MessageType, Span);
@@ -603,6 +625,54 @@ public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Spa
     : IrExpression(LiteralType, Span);
 
 /// <summary>
+/// A message built in place, <c>new Invoice { number: 5, items: [ ... ] }</c> (spec 13.2), and a
+/// test's receiver fixture, which is the same thing with its type taken from the test's target.
+/// </summary>
+/// <param name="Fields">
+/// The fields written, in the order they were written, which is the order their values are evaluated
+/// in (spec 9.3). A field left out is unset, and is not here.
+/// </param>
+/// <remarks>
+/// <para>
+/// <b>One shape for a literal and a fixture</b>, because they are one spelling of one idea and the
+/// binder builds both. A fixture was an <c>IrTestMessageValue</c> until #80 made a literal an
+/// expression, and two node kinds for one construct would have been two things for every consumer
+/// -- the walk, a position query, a hover, both backends -- to handle alike.
+/// </para>
+/// <para>
+/// A fixture's span is its <c>receiver { ... }</c> block, and a literal's runs from <c>new</c> to its
+/// closing brace.
+/// </para>
+/// </remarks>
+public sealed record IrMessageLiteral(
+    MessageType MessageType,
+    IReadOnlyList<IrFieldInitializer> Fields,
+    SourceSpan Span) : IrExpression(MessageType, Span);
+
+/// <summary>One field of a message literal, <c>name: value</c>.</summary>
+/// <param name="Value">
+/// For a repeated field, an <see cref="IrList"/> holding every element. For any other field, a value
+/// of the field's type.
+/// </param>
+/// <remarks>
+/// It spans the whole field, name through value, so a position on the name is on the field and finds
+/// the descriptor here, and a position in the value finds the value inside it.
+/// </remarks>
+public sealed record IrFieldInitializer(FieldDescriptor Field, IrExpression Value, SourceSpan Span) : IrNode(Span);
+
+/// <summary>The elements a repeated field is given, <c>[first, second]</c>, in order (spec 13.2).</summary>
+/// <remarks>
+/// <para>
+/// An expression, so that a field's value is one slot whatever the field is, but a value nowhere
+/// except as a repeated field's: the language has no list values, and the binder builds one only
+/// where a repeated field is given one. Its type is the field's, which is what lets a value of that
+/// type stand in the same slot once a field may be given a whole repeated value (spec 30).
+/// </para>
+/// </remarks>
+public sealed record IrList(RepeatedType ListType, IReadOnlyList<IrExpression> Elements, SourceSpan Span)
+    : IrExpression(ListType, Span);
+
+/// <summary>
 /// A member access whose member name has not been written yet -- <c>line.</c> with the caret sitting
 /// after the dot.
 /// </summary>
@@ -670,10 +740,14 @@ public sealed record IrUncallableInvocation(
     IReadOnlyList<IrExpression> Arguments,
     SourceSpan Span) : IrExpression(ErrorType.Instance, Span);
 
+/// <param name="Receiver">
+/// The message the method is called on, which a fixture writes the way a literal does (spec 25.3)
+/// and the binder builds as one.
+/// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
     string Name,
-    IrTestMessageValue Receiver,
+    IrMessageLiteral Receiver,
     IReadOnlyList<IrTestArgument> Arguments,
     IrTestExpectation Expectation,
     SourceSpan Span) : IrNode(Span)
@@ -707,17 +781,6 @@ public sealed record IrTest(
 }
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);
-
-public sealed record IrTestMessageValue(
-    MessageDescriptor Descriptor,
-    IReadOnlyList<IrTestFieldValue> Fields,
-    SourceSpan Span) : IrNode(Span);
-
-public sealed record IrTestFieldValue(
-    FieldDescriptor Field,
-    IrExpression? ScalarValue,
-    IrTestMessageValue? MessageValue,
-    SourceSpan Span) : IrNode(Span);
 
 public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
 

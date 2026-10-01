@@ -54,8 +54,12 @@ This section should be maintained as the authoritative list of open decisions.
 - String indexing and comparison semantics.
 - ~~How protobuf enum values are referenced.~~ Decided: `EnumType.VALUE_NAME` ([12](./§12-Enums.md#12-enums)).
 - Enum unknown-value behavior, and whether an enum converts to or from an integer.
-- Message construction support. ~~Its syntax~~ Decided: a literal, `new T { field: value, … }`, which is
-  how a fixture's fields are written ([13.2](./§13-Messages.md#132-message-construction)). Building a message in a method body is still open.
+- ~~Message construction support.~~ Decided: a literal, `new T { field: value, … }`, which is an
+  expression wherever one may be written and is how a fixture's fields are written too; its values
+  evaluate in the order written, and storing a message that is not a literal stores a copy
+  ([13.2](./§13-Messages.md#132-message-construction), [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). ~~Whether a repeated field may be given a whole repeated value,
+  `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
+  ([13.2](./§13-Messages.md#132-message-construction)).
 - Message equality semantics.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: no repeated mutation;
   only locals can be assigned ([14](./§14-Repeated%20Fields%20and%20Collections.md#14-repeated-fields-and-collections), [18](./§18-Mutability.md#18-mutability)). Future mutation syntax remains open.

@@ -14,7 +14,7 @@ namespace ProtoCross.Tests;
 /// <see cref="LanguageServerTests"/>'s, and a test that went through all of them to read a string
 /// would be slower and would fail for reasons that are not about hover.
 /// </remarks>
-public class HoverTests
+public partial class HoverTests
 {
     private const string Source =
         """

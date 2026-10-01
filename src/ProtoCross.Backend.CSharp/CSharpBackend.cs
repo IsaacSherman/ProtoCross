@@ -49,6 +49,11 @@ public sealed class CSharpBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
+        if (Refused(UngeneratedLiterals.InMethods(module), diagnostics))
+        {
+            return [];
+        }
+
         var writer = new SourceWriter();
         WriteHeader(writer, options);
 
@@ -98,7 +103,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        if (module.Tests.Count == 0)
+        if (module.Tests.Count == 0 || Refused(UngeneratedLiterals.InTests(module), diagnostics))
         {
             return [];
         }
@@ -156,6 +161,10 @@ public sealed class CSharpBackend : ITestProjectScaffold
         ScaffoldOptions options,
         DiagnosticBag diagnostics)
         => [new GeneratedFile(CSharpTestProject.FileName, CSharpTestProject.Build(options))];
+
+    /// <inheritdoc cref="UngeneratedLiterals.Refused"/>
+    private static bool Refused(IReadOnlyList<IrMessageLiteral> literals, DiagnosticBag diagnostics)
+        => UngeneratedLiterals.Refused(literals, DiagnosticCodes.CSharpLiteralNotGenerated, "C#", "once #80 is finished", diagnostics);
 
     private static void WriteHeader(SourceWriter writer, BackendOptions options)
     {
@@ -324,10 +333,10 @@ public sealed class CSharpBackend : ITestProjectScaffold
             + $"{placement.MethodNameOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
-    private static void EmitReceiverCreation(SourceWriter writer, IrTestMessageValue receiver, Placement placement)
+    private static void EmitReceiverCreation(SourceWriter writer, IrMessageLiteral receiver, Placement placement)
     {
-        var typeName = "global::" + NameConventions.GetCSharpTypeName(receiver.Descriptor);
-        if (receiver.Fields.Count == 0)
+        var typeName = "global::" + NameConventions.GetCSharpTypeName(receiver.MessageType.Descriptor);
+        if (!receiver.Fields.Any(SetsAnything))
         {
             writer.WriteLine($"var receiver = new {typeName}();");
             return;
@@ -341,55 +350,80 @@ public sealed class CSharpBackend : ITestProjectScaffold
         writer.WriteLine("};");
     }
 
-    private static void EmitTestFieldInitializers(SourceWriter writer, IrTestMessageValue message, Placement placement)
+    /// <remarks>
+    /// <para>
+    /// In field-number order, which is how fixtures have always been written, and not the order the
+    /// author wrote them in, which is the order a literal evaluates its values in (spec 9.3). Nothing
+    /// a fixture's value can do is observable, so the two cannot be told apart here, and keeping the
+    /// order keeps every generated test what it was. The writer that also writes literals in methods
+    /// (#80) writes them in the order written.
+    /// </para>
+    /// <para>
+    /// A field given an empty list sets nothing, so it is not written at all, as it never was.
+    /// </para>
+    /// </remarks>
+    private static void EmitTestFieldInitializers(SourceWriter writer, IrMessageLiteral message, Placement placement)
     {
-        foreach (var group in message.Fields.GroupBy(v => v.Field.FieldNumber).OrderBy(g => g.Key))
+        foreach (var field in message.Fields.Where(SetsAnything).OrderBy(field => field.Field.FieldNumber))
         {
-            var field = group.First().Field;
-            var property = NameConventions.GetCSharpPropertyName(field);
+            var property = NameConventions.GetCSharpPropertyName(field.Field);
 
-            if (field.IsRepeated)
+            switch (field.Value)
             {
-                writer.WriteLine($"{property} =");
-                writer.WriteLine("{");
-                writer.Indent();
-                foreach (var value in group)
-                {
-                    EmitTestCollectionElement(writer, value, placement);
-                }
+                case IrList list:
+                    writer.WriteLine($"{property} =");
+                    writer.WriteLine("{");
+                    writer.Indent();
+                    foreach (var element in list.Elements)
+                    {
+                        EmitTestCollectionElement(writer, element, placement);
+                    }
 
-                writer.Unindent();
-                writer.WriteLine("},");
-                continue;
+                    writer.Unindent();
+                    writer.WriteLine("},");
+                    break;
+
+                case IrMessageLiteral nested:
+                    writer.WriteLine($"{property} =");
+                    EmitTestMessageValue(writer, nested, "},", placement);
+                    break;
+
+                default:
+                    writer.WriteLine($"{property} = {StoredValue(field.Value, placement)},");
+                    break;
             }
-
-            var fieldValue = group.Single();
-            if (fieldValue.MessageValue is not null)
-            {
-                writer.WriteLine($"{property} =");
-                EmitTestMessageValue(writer, fieldValue.MessageValue, "},", placement);
-                continue;
-            }
-
-            writer.WriteLine($"{property} = {Expression(fieldValue.ScalarValue!, placement, "receiver")},");
         }
     }
 
-    private static void EmitTestCollectionElement(SourceWriter writer, IrTestFieldValue value, Placement placement)
+    /// <summary>Whether a field of a fixture sets anything, which one given no elements does not.</summary>
+    private static bool SetsAnything(IrFieldInitializer field) => field.Value is not IrList { Elements.Count: 0 };
+
+    private static void EmitTestCollectionElement(SourceWriter writer, IrExpression element, Placement placement)
     {
-        if (value.MessageValue is not null)
+        if (element is IrMessageLiteral nested)
         {
-            EmitTestMessageValue(writer, value.MessageValue, "},", placement);
+            EmitTestMessageValue(writer, nested, "},", placement);
             return;
         }
 
-        writer.WriteLine($"{Expression(value.ScalarValue!, placement, "receiver")},");
+        writer.WriteLine($"{StoredValue(element, placement)},");
+    }
+
+    /// <summary>A value stored in a fixture's field, copied where storing it has to copy (spec 13.2).</summary>
+    /// <remarks>
+    /// A message stored as it is would be shared with wherever it came from, because a C# message is
+    /// a reference. See <see cref="IrExpression.IsCopiedWhenStored"/>.
+    /// </remarks>
+    private static string StoredValue(IrExpression value, Placement placement)
+    {
+        var written = Expression(value, placement, "receiver");
+        return value.IsCopiedWhenStored ? $"{written}.Clone()" : written;
     }
 
     private static void EmitTestMessageValue(
-        SourceWriter writer, IrTestMessageValue value, string closer, Placement placement)
+        SourceWriter writer, IrMessageLiteral value, string closer, Placement placement)
     {
-        writer.WriteLine($"new global::{NameConventions.GetCSharpTypeName(value.Descriptor)}");
+        writer.WriteLine($"new global::{NameConventions.GetCSharpTypeName(value.MessageType.Descriptor)}");
         writer.WriteLine("{");
         writer.Indent();
         EmitTestFieldInitializers(writer, value, placement);

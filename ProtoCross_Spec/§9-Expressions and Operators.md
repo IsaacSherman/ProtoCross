@@ -11,13 +11,13 @@ The language currently includes:
 - Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
+- Message literals, `new T { field: value, … }` ([13.2](./§13-Messages.md#132-message-construction)).
 - Parenthesized expressions.
 
 Not implemented:
 
 - Top-level function calls.
 - Indexing.
-- Message literals in ordinary method bodies.
 - Bytes literals.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Each can be written today with a
   comparison, and how an intrinsic is named and found belongs with the open question of top-level
@@ -136,6 +136,9 @@ Normative Requirement:
 Current defined subset:
 
 - Method call arguments evaluate left to right.
+- A message literal's values evaluate in the order their fields are written, left to right, as a
+  call's arguments do, and a list's elements in order. The order of the schema's field numbers plays
+  no part ([13.2](./§13-Messages.md#132-message-construction)).
 - Boolean `and` and `or` short-circuit left to right.
 - Assignment evaluates the right-hand side before storing the result.
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a

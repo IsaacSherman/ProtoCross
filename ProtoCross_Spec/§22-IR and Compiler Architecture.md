@@ -86,6 +86,12 @@ The IR preserves:
 - Presence checks. `IrFieldPresence` carries the field descriptor rather than a lowered boolean,
   because the two targets spell the test in unrelated ways.
 - Field access semantics.
+- **A message literal, and a test's fixture, as one node.** A literal holds the fields written, in the
+  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
+  value is a list node holding its elements. A fixture is the same node, built for the message its
+  test's target extends, so no consumer handles a fixture and a literal differently.
+- **Whether storing a value copies it.** A message that is not a literal is copied wherever it is
+  stored ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that each backend asks rather than deciding what to copy.
 - Local assignment intent. A compound assignment is not a node of its own: `x += y` is the
   assignment of `x + y` to `x`, whose operation reads the target at the target's own span. It is
   the one place two nodes share a span without one standing inside the other, and a position query

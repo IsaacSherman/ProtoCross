@@ -53,6 +53,11 @@ public sealed class CppBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
+        if (Refused(UngeneratedLiterals.InMethods(module), diagnostics))
+        {
+            return [];
+        }
+
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
         var placement = new Placement(options.ProjectNamespace);
@@ -203,7 +208,7 @@ public sealed class CppBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        if (module.Tests.Count == 0)
+        if (module.Tests.Count == 0 || Refused(UngeneratedLiterals.InTests(module), diagnostics))
         {
             return [];
         }
@@ -245,6 +250,10 @@ public sealed class CppBackend : ITestProjectScaffold
         ScaffoldOptions options,
         DiagnosticBag diagnostics)
         => [new GeneratedFile(CppTestProject.FileName, CppTestProject.Build(options))];
+
+    /// <inheritdoc cref="UngeneratedLiterals.Refused"/>
+    private static bool Refused(IReadOnlyList<IrMessageLiteral> literals, DiagnosticBag diagnostics)
+        => UngeneratedLiterals.Refused(literals, DiagnosticCodes.CppLiteralNotGenerated, "C++", "once #81 lands", diagnostics);
 
     /// <summary>
     /// The headers declaring the methods this source's tests target, sorted, each once: this source's
@@ -568,30 +577,55 @@ public sealed class CppBackend : ITestProjectScaffold
         return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
+    /// <remarks>
+    /// In field-number order, for the reason the C# backend gives for its fixtures: a fixture's values
+    /// cannot be told apart by the order they are evaluated in, and keeping the order keeps every
+    /// generated test what it was. #81, which writes literals everywhere else, writes them in the
+    /// order written (spec 9.3).
+    /// </remarks>
     private static void EmitCppFixtureFields(
         SourceWriter writer,
         string target,
         bool targetIsPointer,
-        IrTestMessageValue message,
+        IrMessageLiteral message,
         NameAllocator names,
         Placement placement)
     {
         var access = targetIsPointer ? "->" : ".";
-        foreach (var value in message.Fields.OrderBy(v => v.Field.FieldNumber))
+        foreach (var initializer in message.Fields.OrderBy(initializer => initializer.Field.FieldNumber))
         {
-            var field = value.Field;
+            var field = initializer.Field;
             var accessor = NameConventions.GetCppFieldName(field);
-            if (value.MessageValue is not null)
-            {
-                var local = names.Next(field.Name);
-                var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
-                writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
-                EmitCppFixtureFields(writer, local, true, value.MessageValue, names, placement);
-                continue;
-            }
+            IReadOnlyList<IrExpression> values = initializer.Value is IrList list ? list.Elements : [initializer.Value];
 
-            var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
-            writer.WriteLine($"{target}{access}{setter}({Expression(value.ScalarValue!, placement)});");
+            foreach (var value in values)
+            {
+                var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
+
+                switch (value)
+                {
+                    case IrMessageLiteral nested:
+                    {
+                        var local = names.Next(field.Name);
+                        writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
+                        EmitCppFixtureFields(writer, local, true, nested, names, placement);
+                        break;
+                    }
+
+                    // A message has no setter: it is stored by assigning to the one the field holds,
+                    // which copies it, as storing a message has to (spec 13.2).
+                    case { Type: MessageType }:
+                        writer.WriteLine($"*{target}{access}{mutator}() = {Expression(value, placement)};");
+                        break;
+
+                    default:
+                    {
+                        var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
+                        writer.WriteLine($"{target}{access}{setter}({Expression(value, placement)});");
+                        break;
+                    }
+                }
+            }
         }
     }
 
