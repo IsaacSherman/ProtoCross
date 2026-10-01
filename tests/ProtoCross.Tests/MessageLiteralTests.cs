@@ -1,6 +1,8 @@
+using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 using Xunit;
 
@@ -274,5 +276,50 @@ public class MessageLiteralTests
             + "}\n")));
 
         Assert.Equal(DiagnosticCodes.MessageReturnCannotBeExpected.Code, refused.Code);
+        Assert.True(
+            refused.Help?.Contains("expect a scalar", StringComparison.Ordinal) == true,
+            $"the help must say what can be tested instead, but says: {refused.Help}");
+    }
+
+    // ------- a tree the parser does not build
+
+    /// <summary>
+    /// A list as an element of another is refused with a diagnostic and never reaches an expression
+    /// binder, which knows no lists. The parser cannot write one, so the tree is built by hand, the
+    /// way a tool handing the binder a tree of its own would.
+    /// </summary>
+    [Fact]
+    public void AListGivenAsAListsElementIsRefusedRatherThanThrown()
+    {
+        var diagnostics = new DiagnosticBag();
+        var text = "import proto \"invoice.proto\";\n\nextend Invoice {\n    fn f() -> int64 {\n"
+            + "        var made: Invoice = new Invoice { items: [new InvoiceItem { }] };\n        return 0;\n    }\n}\n";
+        var unit = new Parser(new Lexer(text, "nested.pcross", diagnostics).Tokenize(), "nested.pcross", diagnostics)
+            .ParseCompilationUnit();
+
+        var method = unit.Extends[0].Methods[0];
+        var declaration = (VariableDeclarationStatement)method.Body.Statements[0];
+        var literal = (MessageLiteralExpression)declaration.Initializer;
+        var list = (ListExpression)literal.Fields[0].Value;
+        var rewritten = declaration with
+        {
+            Initializer = literal with { Fields = [literal.Fields[0] with { Value = list with { Elements = [list] } }] },
+        };
+        var tree = unit with
+        {
+            Extends =
+            [
+                unit.Extends[0] with
+                {
+                    Methods = [method with { Body = method.Body with { Statements = [rewritten, .. method.Body.Statements.Skip(1)] } }],
+                },
+            ],
+        };
+
+        new Binder(LoadedSchemas.ExampleAndConformance, diagnostics).Bind(tree);
+
+        Assert.Contains(
+            diagnostics,
+            d => d.Code == DiagnosticCodes.LiteralFieldTypeMismatch.Code && d.Message.Contains("not lists", StringComparison.Ordinal));
     }
 }

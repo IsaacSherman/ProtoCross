@@ -94,6 +94,25 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
+    /// The members offered after a dot are those of the innermost receiver around the caret. A literal
+    /// puts a call inside a read of something else: in <c>new Inner { deep: other.level() }.deep</c> the
+    /// call's receiver is <c>other</c>, and taking the nearest field read first answered with the
+    /// literal, an <c>Inner</c>, whose methods are none.
+    /// </summary>
+    [Fact]
+    public async Task InALiteralThatIsReadFromACallsOwnReceiverIsAsked()
+    {
+        var offered = await OfferedAsync(
+            "extend Outer {\n    fn level() -> Deep { return Deep.DEEP_NONE; }\n"
+            + "    fn f(other: Outer) -> Deep { return new Inner { deep: other.level() }.deep; }\n}\n",
+            "other.lev");
+
+        Assert.True(
+            Labels(offered).Contains("level"),
+            $"the methods of the call's receiver, Outer, must be offered, but these were: {string.Join(", ", Labels(offered))}");
+    }
+
+    /// <summary>
     /// After <c>new</c> in a method, where nothing named <c>new</c> is in scope, the word being typed
     /// can only be the type of a literal, so only messages are offered.
     /// </summary>

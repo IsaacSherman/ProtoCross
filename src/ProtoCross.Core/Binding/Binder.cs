@@ -961,7 +961,7 @@ public sealed partial class Binder
                         $"'{signature.Name}' returns message '{signature.ReturnType.DisplayName}', and what makes two "
                         + "messages equal is not decided yet.",
                         returns.Span,
-                        "Test a method that returns the scalar you want to check, or use 'expect fail;' (spec 13.3).");
+                        "Until spec 13.3 decides, expect a scalar instead: test a method that returns the field you want to check.");
                 }
 
                 var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);

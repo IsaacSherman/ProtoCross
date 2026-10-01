@@ -13,7 +13,7 @@ public partial class BackendTests
     // generated, and generates nothing at all for the source it is in.
 
     private static string LiteralSource(string methods, string tests = "")
-        => "import proto \"invoice.proto\";\n\nextend InvoiceItem {\n" + methods + "\n}\n\n" + tests;
+        => ExtendInvoiceItem(methods) + "\n\n" + tests;
 
     /// <summary>The code each backend refuses a literal with, which is its own range's (spec 26).</summary>
     private static string RefusalCode(string backendName) => backendName switch

@@ -261,9 +261,16 @@ public sealed partial class Binder
     /// singular, or one element of its list.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A literal given to a field that is not a message is <c>PC0064</c>, which says what is wrong with
     /// it more plainly than a type mismatch would, and is not reported as one as well. It is still
     /// bound, for the names written inside it.
+    /// </para>
+    /// <para>
+    /// A list as one element of another is refused here and never handed to an expression binder,
+    /// which knows no lists. The parser does not build one, because a list's elements are
+    /// expressions, but a tree built any other way may, and binding it must not throw.
+    /// </para>
     /// </remarks>
     private IrExpression BindStoredValue(
         FieldDescriptor descriptorField,
@@ -272,6 +279,16 @@ public sealed partial class Binder
         MethodContext context)
     {
         var expectedType = TypeFactory.FromFieldValue(descriptorField);
+
+        if (value is ListExpression nested)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.LiteralFieldTypeMismatch,
+                $"Field '{descriptorField.Name}' holds '{expectedType.DisplayName}' values, not lists.",
+                nested.Span);
+            BindDiscarded(nested, scope, context);
+            return new IrLiteral(null, ErrorType.Instance, nested.Span);
+        }
 
         if (value is MessageLiteralExpression && expectedType is not MessageType)
         {

@@ -137,6 +137,27 @@ public class LiteralExpressionParsingTests
     }
 
     /// <summary>
+    /// A semicolon before another field or before the closing brace stands between fields, so it is the
+    /// separator fixtures used before #80, typed out of habit, and not the end of the statement. Read as
+    /// the end, it left the literal's own brace to close the method.
+    /// </summary>
+    [Theory]
+    [InlineData("new Outer { count: 1; }", 1)]
+    [InlineData("new Outer { count: 1; label: \"x\" }", 2)]
+    public void ASemicolonBetweenALiteralsFieldsIsTheOldSeparator(string literal, int fields)
+    {
+        var (unit, diagnostics) = Parse(Method($"var made: Outer = {literal};\n        return made.count;"));
+
+        var only = Assert.Single(diagnostics);
+        Assert.True(
+            only.Help?.Contains("commas", StringComparison.Ordinal) == true,
+            $"the help must say fields are separated by commas, but says: {only.Help}");
+        var declaration = Assert.IsType<VariableDeclarationStatement>(Body(unit)[0]);
+        Assert.Equal(fields, Assert.IsType<MessageLiteralExpression>(declaration.Initializer).Fields.Count);
+        Assert.Equal(["f", "g"], unit.Extends[0].Methods.Select(method => method.Name.Text));
+    }
+
+    /// <summary>
     /// A keyword that begins a statement cannot be a field, so a literal whose brace was never typed
     /// ends there instead of taking the statement, and the method its own closing brace.
     /// </summary>

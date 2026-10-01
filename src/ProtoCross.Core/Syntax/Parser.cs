@@ -48,9 +48,10 @@ public sealed class Parser
     /// The one place a <c>;</c> between fields means something other than the end of a statement.
     /// Fixtures separated their fields with semicolons before #80, so in a fixture one is a habit,
     /// and is reported as one with the fields after it still read. A literal anywhere else is inside
-    /// a statement, where a semicolon is what ends it: <c>var x = new T { a: 1;</c> has left its
-    /// brace off, and reading on would take the statements after it for fields. Reported as the
-    /// missing brace and left for the statement, it costs one diagnostic rather than three.
+    /// a statement, where a semicolon is what ends it unless a field or the closing brace follows it:
+    /// <c>var x = new T { a: 1;</c> has left its brace off, and reading on would take the statements
+    /// after it for fields. Reported as the missing brace and left for the statement, it costs one
+    /// diagnostic rather than three.
     /// </remarks>
     private bool _inFixture;
 
@@ -439,7 +440,7 @@ public sealed class Parser
         var fields = new List<FieldInitializer>();
         tallest = 0;
 
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             var before = _position;
 
@@ -495,7 +496,7 @@ public sealed class Parser
         {
             ReportUnexpectedToken(
                 TokenKind.Colon.Describe(),
-                $"Write a field as '{name.Text}: value,', and a message as '{name.Text}: new T {{ ... }},' (spec 25.3).");
+                $"Write a field as '{name.Text}: value,', and a message as '{name.Text}: new T {{ ... }},' (spec 13.2).");
             SkipRestOfField();
             return null;
         }
@@ -518,16 +519,17 @@ public sealed class Parser
     /// </remarks>
     private void ParseFieldSeparator()
     {
-        if (Match(TokenKind.Comma) || EndsAFieldList(Current.Kind))
+        if (Match(TokenKind.Comma) || EndsAFieldList())
         {
             return;
         }
 
         // A semicolon is the separator fixtures had before #80, so it is the one that gets typed out
-        // of habit, and the one worth saying so about. Anywhere else one ends the fields, above.
+        // of habit, and the one worth saying so about. Outside a fixture one that does not stand
+        // between fields has ended them, above.
         ReportUnexpectedToken(
             TokenKind.Comma.Describe(),
-            Current.Kind == TokenKind.Semicolon ? "Fields are separated by commas (spec 25.3)." : null);
+            Current.Kind == TokenKind.Semicolon ? "Fields are separated by commas (spec 13.2)." : null);
 
         if (!StartsAField())
         {
@@ -591,7 +593,7 @@ public sealed class Parser
 
         // The next field is where this one ended, if its braces were never typed: stepping over it
         // looking for one would take a field the author did write.
-        while (!EndsAFieldList(Current.Kind)
+        while (!EndsAFieldList()
             && !StartsAField()
             && Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma or TokenKind.Semicolon
                 or TokenKind.CloseBracket))
@@ -625,7 +627,7 @@ public sealed class Parser
         var tallest = 0;
 
         while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon)
-            && !EndsAFieldList(Current.Kind)
+            && !EndsAFieldList()
             && !StartsAField())
         {
             var before = _position;
@@ -633,7 +635,7 @@ public sealed class Parser
             elements.Add(ParseExpression(out var elementHeight));
             tallest = Math.Max(tallest, elementHeight);
 
-            if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList(Current.Kind))
+            if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList())
             {
                 afterAMissingComma = false;
             }
@@ -685,7 +687,7 @@ public sealed class Parser
     /// </remarks>
     private void SkipRestOfField()
     {
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             if (Match(TokenKind.Comma) || Match(TokenKind.Semicolon))
             {
@@ -714,7 +716,7 @@ public sealed class Parser
     private void SkipRestOfElement()
     {
         while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon)
-            && !EndsAFieldList(Current.Kind)
+            && !EndsAFieldList()
             && !StartsAField())
         {
             if (Match(TokenKind.Comma))
@@ -740,7 +742,7 @@ public sealed class Parser
     /// </remarks>
     private void SkipRestOfList()
     {
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             if (Match(TokenKind.CloseBracket))
             {
@@ -768,14 +770,23 @@ public sealed class Parser
     /// a field and the method's own brace for the literal's.
     /// </para>
     /// <para>
-    /// A semicolon ends them too, except in a fixture (<see cref="_inFixture"/>). It is left where it
-    /// is for the statement it ends, and the brace is reported missing in front of it.
+    /// A semicolon ends them too, except in a fixture (<see cref="_inFixture"/>) and except where one
+    /// stands between fields: before another field or before the closing brace it can only be the
+    /// separator fixtures used before #80, typed out of habit, whatever the literal is inside. Ending
+    /// the fields there would leave <c>{ a: 1; }</c> with a brace of its own that closes the block
+    /// around the statement. Anywhere else it is left where it is for the statement it ends, and the
+    /// brace is reported missing in front of it.
     /// </para>
     /// </remarks>
-    private bool EndsAFieldList(TokenKind kind)
-        => kind is TokenKind.CloseBrace or TokenKind.EndOfFile
-            || (kind == TokenKind.Semicolon && !_inFixture)
-            || BeginsAStatementOrDeclaration(kind);
+    private bool EndsAFieldList()
+        => Current.Kind is TokenKind.CloseBrace or TokenKind.EndOfFile
+            || (Current.Kind == TokenKind.Semicolon && !_inFixture && !SeparatesFields())
+            || BeginsAStatementOrDeclaration(Current.Kind);
+
+    /// <summary>Whether the semicolon that is the current token stands between fields: a field or the closing brace follows it.</summary>
+    private bool SeparatesFields()
+        => Peek(1).Kind == TokenKind.CloseBrace
+            || (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon);
 
     private TestArgumentDeclaration ParseTestArgument()
     {
