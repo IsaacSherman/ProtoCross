@@ -1001,7 +1001,10 @@ public sealed class CompletionProvider
         var building = beginningALiteral
             || (at.Enclosing<MessageLiteralExpression>() is { } literal && ReferenceEquals(literal.Type, reference));
 
-        var written = TypeEdit(subject, reference, document);
+        if (TypeEdit(subject, reference, document) is not { } written)
+        {
+            return [];
+        }
 
         subject = written.Subject;
 
@@ -1039,11 +1042,20 @@ public sealed class CompletionProvider
     /// beside it. Only on one line, because a range may not span two.
     /// </para>
     /// <para>
+    /// <b>Only across blank space, and otherwise nothing at all</b>, because a declaration's slot
+    /// begins at its name and so takes in the colon. At <c>given |: int64</c> the caret is in the slot
+    /// with the colon still ahead of it: a range through the name deletes the colon along with the type,
+    /// and an empty one at the caret writes the type beside the colon -- <c>given int64: int64</c> --
+    /// which is what the qualifier reading comes to for a scalar, a keyword with no segments to read. No
+    /// range both contains that caret and keeps what lies between it and the name, so null says no type
+    /// can be written from there.
+    /// </para>
+    /// <para>
     /// With no name written at all there is nothing to replace, and the word under the caret is the
     /// range.
     /// </para>
     /// </remarks>
-    private static QualifiedName TypeEdit(SchemaSubject subject, TypeReference? reference, OpenDocument document)
+    private static QualifiedName? TypeEdit(SchemaSubject subject, TypeReference? reference, OpenDocument document)
     {
         if (reference is null)
         {
@@ -1052,17 +1064,24 @@ public sealed class CompletionProvider
 
         var name = reference.Name.Span;
 
-        if (subject.Offset < name.Start.Offset
-            && !document.Text.AsSpan(subject.Offset, name.End.Offset - subject.Offset).Contains('\n'))
+        if (subject.Offset >= name.Start.Offset)
         {
-            return new QualifiedName(
-                subject with { Start = subject.Offset, End = name.End.Offset },
-                string.Empty,
-                string.Empty);
+            return Replacing(subject, name, document);
         }
 
-        return Replacing(subject, name, document);
+        return OnlyBlankSpaceAhead(subject.Offset, name, document.Text)
+            ? new QualifiedName(subject with { Start = subject.Offset, End = name.End.Offset }, string.Empty, string.Empty)
+            : null;
     }
+
+    /// <summary>
+    /// Whether only whitespace stands between <paramref name="caret"/> and the start of
+    /// <paramref name="name"/>, with both on one line, so a range from one through the other deletes
+    /// nothing but the name and is one LSP can express.
+    /// </summary>
+    private static bool OnlyBlankSpaceAhead(int caret, SourceSpan name, string text)
+        => text.AsSpan(caret, name.Start.Offset - caret).IsWhiteSpace()
+            && !text.AsSpan(caret, name.End.Offset - caret).Contains('\n');
 
     /// <summary>
     /// The type slot of a declaration the caret is standing in, or null when it is standing anywhere
