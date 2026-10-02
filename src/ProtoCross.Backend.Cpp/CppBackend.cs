@@ -600,31 +600,17 @@ public sealed class CppBackend : ITestProjectScaffold
 
             foreach (var value in values)
             {
-                var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
-
-                switch (value)
+                if (value is IrMessageLiteral nested)
                 {
-                    case IrMessageLiteral nested:
-                    {
-                        var local = names.Next(field.Name);
-                        writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
-                        EmitCppFixtureFields(writer, local, true, nested, names, placement);
-                        break;
-                    }
-
-                    // A message has no setter: it is stored by assigning to the one the field holds,
-                    // which copies it, as storing a message has to (spec 13.2).
-                    case { Type: MessageType }:
-                        writer.WriteLine($"*{target}{access}{mutator}() = {Expression(value, placement)};");
-                        break;
-
-                    default:
-                    {
-                        var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
-                        writer.WriteLine($"{target}{access}{setter}({Expression(value, placement)});");
-                        break;
-                    }
+                    var local = names.Next(field.Name);
+                    var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
+                    writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
+                    EmitCppFixtureFields(writer, local, true, nested, names, placement);
+                    continue;
                 }
+
+                var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
+                writer.WriteLine($"{target}{access}{setter}({Expression(value, placement)});");
             }
         }
     }

@@ -389,7 +389,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
                     break;
 
                 default:
-                    writer.WriteLine($"{property} = {StoredValue(field.Value, placement)},");
+                    writer.WriteLine($"{property} = {Expression(field.Value, placement, "receiver")},");
                     break;
             }
         }
@@ -406,18 +406,7 @@ public sealed class CSharpBackend : ITestProjectScaffold
             return;
         }
 
-        writer.WriteLine($"{StoredValue(element, placement)},");
-    }
-
-    /// <summary>A value stored in a fixture's field, copied where storing it has to copy (spec 13.2).</summary>
-    /// <remarks>
-    /// A message stored as it is would be shared with wherever it came from, because a C# message is
-    /// a reference. See <see cref="IrExpression.IsCopiedWhenStored"/>.
-    /// </remarks>
-    private static string StoredValue(IrExpression value, Placement placement)
-    {
-        var written = Expression(value, placement, "receiver");
-        return value.IsCopiedWhenStored ? $"{written}.Clone()" : written;
+        writer.WriteLine($"{Expression(element, placement, "receiver")},");
     }
 
     private static void EmitTestMessageValue(

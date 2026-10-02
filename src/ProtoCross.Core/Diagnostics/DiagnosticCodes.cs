@@ -472,6 +472,15 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor MessageReturnCannotBeExpected =
         new("PC0092", DiagnosticSeverity.Error, "a returned message cannot be expected yet");
 
+    // ------------------------------------------------------- author-written unit tests, continued
+
+    /// <summary>
+    /// A method called by its bare name in a test, which has no implicit receiver to call it on
+    /// (spec 25.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallWithoutAReceiver =
+        new("PC0093", DiagnosticSeverity.Error, "method called with no receiver");
+
     // ------------------------------------------------------- the C# backend
 
     /// <summary>

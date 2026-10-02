@@ -342,7 +342,7 @@ public sealed partial class Binder
     /// <remarks>
     /// Every expression inside a <c>test</c> binds against one of these -- a fixture value, an
     /// argument, an expectation -- which together with
-    /// <see cref="MethodContext.AllowImplicitReceiverFields"/> being false there is why a bare name
+    /// <see cref="MethodContext.HasImplicitReceiver"/> being false there is why a bare name
     /// in a test resolves to nothing at all. It reaches nowhere because nothing may be declared in
     /// it: it can contribute nothing to <see cref="IrModule.Scope"/> and hide nothing from a query.
     /// </remarks>
@@ -760,7 +760,7 @@ public sealed partial class Binder
         var context = new MethodContext(
             signature.Receiver,
             signature.ReturnType,
-            AllowImplicitReceiverFields: false);
+            HasImplicitReceiver: false);
         var receiver = BindTestReceiver(test.Receiver, signature.Receiver, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
@@ -1739,7 +1739,7 @@ public sealed partial class Binder
             return new IrParameterReference(parameter, name.Span);
         }
 
-        if (context.AllowImplicitReceiverFields)
+        if (context.HasImplicitReceiver)
         {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
             var field = MessageFields.Named(context.Receiver, name.Name.Text);
@@ -2006,7 +2006,7 @@ public sealed partial class Binder
     private static bool IsValueName(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is not null
         || scope.LookupParameter(name) is not null
-        || (context.AllowImplicitReceiverFields && MessageFields.Named(context.Receiver, name) is not null);
+        || (context.HasImplicitReceiver && MessageFields.Named(context.Receiver, name) is not null);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -2076,7 +2076,7 @@ public sealed partial class Binder
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
     /// <remarks>
     /// <para>
-    /// Six paths below decide there is no method here. Every one of them still keeps the arguments,
+    /// Seven paths below decide there is no method here. Every one of them still keeps the arguments,
     /// in an <see cref="IrUncallableInvocation"/>, because the arguments are source the author wrote
     /// and a call that does not resolve is the ordinary state of one being typed. Collapsing to an
     /// error-typed literal spanning the whole call -- which is what every path used to do -- leaves
@@ -2084,8 +2084,8 @@ public sealed partial class Binder
     /// signature help ask about.
     /// </para>
     /// <para>
-    /// Arguments are bound once and only once. The two paths that reach a failure with them already
-    /// bound hand over the list they built; the four that fail before binding anything go through
+    /// Arguments are bound once and only once. The one path that reaches a failure with them already
+    /// bound hands over the list it built; the six that fail before binding anything go through
     /// <c>Uncallable</c>, which binds with no expected type -- there is no signature to expect
     /// anything from. Binding twice would report every mistake inside an argument twice.
     /// </para>
@@ -2134,6 +2134,19 @@ public sealed partial class Binder
                 receiverDescriptor = messageType.Descriptor;
                 break;
             }
+
+            // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
+            // field name there names no field. Bound against the method's receiver it would read the
+            // message the fixture is still building, which neither backend can generate: C# reads the
+            // fixture's local inside its own initializer, and C++ names a receiver that is not there.
+            case NameExpression name when !context.HasImplicitReceiver:
+                _diagnostics.Report(
+                    DiagnosticCodes.CallWithoutAReceiver,
+                    $"'{name.Name}' is called with no receiver, and a test has none of its own.",
+                    invocation.Span,
+                    $"A test calls the method it targets, on the receiver its fixture builds. Write the value "
+                    + $"itself, or test '{name.Name}' in a test of its own (spec 25.3).");
+                return Uncallable(null);
 
             case NameExpression name:
                 receiver = new IrThis(new MessageType(context.Receiver), name.Span);
@@ -2219,7 +2232,7 @@ public sealed partial class Binder
 
         return new IrMethodCall(receiver, signature, arguments, invocation.Span);
 
-        // For the four paths that give up before any argument has been looked at. There is no
+        // For the six paths that give up before any argument has been looked at. There is no
         // signature to take an expected type from -- that is what they gave up on -- so each
         // argument is bound for whatever it is on its own.
         IrUncallableInvocation Uncallable(IrExpression? boundReceiver)
@@ -2334,7 +2347,7 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return BindMemberAccess(member, scope, context);
 
-            case NameExpression bare when context.AllowImplicitReceiverFields
+            case NameExpression bare when context.HasImplicitReceiver
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
                 receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
@@ -2942,6 +2955,11 @@ public sealed partial class Binder
     /// How many enclosing loops the statement being bound sits inside. Zero means 'break' and
     /// 'continue' have nothing to bind to.
     /// </param>
+    /// <param name="HasImplicitReceiver">
+    /// Whether a bare name may reach <paramref name="Receiver"/>: a field read as <c>count</c>, a
+    /// method called as <c>helper()</c>. A method body has one. A test does not (spec 25.3): the
+    /// receiver it names is the message its fixture builds, which nothing in the test is inside.
+    /// </param>
     /// <remarks>
     /// Carries no parameter list, deliberately. <see cref="Scope"/> is what answers a name, and it
     /// holds a filtered view of what a signature declares: a parameter nobody has named is not in
@@ -2952,7 +2970,7 @@ public sealed partial class Binder
     private sealed record MethodContext(
         MessageDescriptor Receiver,
         PlType ReturnType,
-        bool AllowImplicitReceiverFields = true,
+        bool HasImplicitReceiver = true,
         int LoopDepth = 0)
     {
         /// <summary>

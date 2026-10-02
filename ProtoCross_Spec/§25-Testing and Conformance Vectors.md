@@ -98,8 +98,10 @@ The body of the `receiver` block is a message literal's list of fields ([13.2](.
 separated by commas, with a comma after the last allowed. The message is the one the test's target
 extends, which is why the block does not say `new T` itself. A message field takes a message of its
 type, which in a fixture is a literal, `customer: new Customer { … }`, and a repeated field takes a
-list of every element, `items: [ … ]`. Each field is written once. A value names nothing in scope: a fixture has no
-locals, no parameters, and no implicit receiver. The compiler binds field names and value types
+list of every element, `items: [ … ]`. Each field is written once. A value names nothing in scope: a test has no
+locals, no parameters, and no implicit receiver, in its fixture, its arguments and its expectation
+alike. So a bare field name is `PC0037`, and a method called by its bare name, `kept()`, is `PC0093`:
+there is nothing to call it on but the message the fixture is still building. The compiler binds field names and value types
 against protobuf descriptors, then a backend lowers the fixture to target-language message
 construction code. A future test syntax may also accept protobuf text format, but fixture semantics
 must still come from protobuf descriptors.

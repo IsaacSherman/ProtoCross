@@ -281,6 +281,25 @@ public class MessageLiteralTests
             $"the help must say what can be tested instead, but says: {refused.Help}");
     }
 
+    /// <summary>
+    /// A test has no implicit receiver (spec 25.3), so a method called by its bare name is called on
+    /// nothing. Bound against the method's receiver it read the message the fixture was still
+    /// building, and neither backend could generate that. The rule is the test's rather than the
+    /// fixture's, so an argument and an expectation keep it too.
+    /// </summary>
+    [Theory]
+    [InlineData("receiver { count: counted() }\n    arg by = 1;\n    expect return 0;")]
+    [InlineData("receiver { }\n    arg by = counted();\n    expect return 0;")]
+    [InlineData("receiver { }\n    arg by = 1;\n    expect return counted();")]
+    public void ABareCallInATestIsCalledOnNoReceiver(string members)
+    {
+        var refused = TheOnly(Compile(Source(
+            "    fn counted() -> int64 { return count; }\n    fn f(by: int64) -> int64 { return count + by; }",
+            "test Outer.f \"a bare call\" {\n    " + members + "\n}\n")));
+
+        Assert.Equal(DiagnosticCodes.CallWithoutAReceiver.Code, refused.Code);
+    }
+
     // ------- a tree the parser does not build
 
     /// <summary>
