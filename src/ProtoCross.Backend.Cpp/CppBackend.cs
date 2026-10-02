@@ -578,10 +578,11 @@ public sealed class CppBackend : ITestProjectScaffold
     }
 
     /// <remarks>
-    /// In field-number order, for the reason the C# backend gives for its fixtures: a fixture's values
-    /// cannot be told apart by the order they are evaluated in, and keeping the order keeps every
-    /// generated test what it was. #81, which writes literals everywhere else, writes them in the
-    /// order written (spec 9.3).
+    /// In field-number order, which is how fixtures have always been written, rather than the order the
+    /// author wrote them in, which is the order a literal evaluates its values in (spec 9.3). A
+    /// fixture's values cannot be told apart by the order they are evaluated in, and keeping the order
+    /// keeps every generated test what it was. #81 writes literals everywhere else, in the order
+    /// written, and moves fixtures to that order with them, as #80 did for C#.
     /// </remarks>
     private static void EmitCppFixtureFields(
         SourceWriter writer,

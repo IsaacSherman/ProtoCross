@@ -117,11 +117,13 @@ Normative Requirements:
 
 Current Status:
 
-- Both backends generate a literal in a test's receiver fixture, as they always have. Neither
-  generates one anywhere else yet: the C# backend refuses one with `PC1002` until #80 is finished,
-  and the C++ backend with `PC1102` until #81. Each refusal generates nothing for the source it is
-  in. The compiler accepts the literal, so an editor answers about it, and no conformance vector
-  holds one until both backends run it ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
+- The C# backend generates a literal wherever one is written, a test's receiver fixture included,
+  as an object initializer whose fields are in the order they were written. A message it stores
+  that is not a literal is copied with protoc's `Clone`.
+- The C++ backend generates a literal in a test's receiver fixture, as it always has, and refuses
+  one anywhere else with `PC1102` until #81, generating nothing for the source it is in. The
+  compiler accepts the literal, so an editor answers about it, and no conformance vector holds one
+  until both backends run it ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
 
 ### 13.3 Equality
 

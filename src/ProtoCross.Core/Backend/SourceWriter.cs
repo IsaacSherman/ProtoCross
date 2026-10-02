@@ -21,30 +21,35 @@ public sealed class SourceWriter
 
     public void Unindent() => _indent = Math.Max(0, _indent - 1);
 
+    /// <summary>
+    /// Writes <paramref name="text"/> at the current indentation. A line break in it starts a new
+    /// line, indented as the first one was.
+    /// </summary>
+    /// <remarks>
+    /// So a construct that spans lines can be written as text and then placed inside another. A C#
+    /// message literal is an expression, and an expression is written into the line of the statement
+    /// that holds it, at whatever depth that statement is. Each of the literal's lines is indented
+    /// from that depth, exactly as if the statement's writer had written them one at a time, and
+    /// whatever writes the literal never needs to know where it will land.
+    /// </remarks>
     public void Write(string text)
     {
-        if (_atLineStart && text.Length > 0)
+        var lines = text.Split(NewLine);
+        for (var index = 0; index < lines.Length; index++)
         {
-            for (var i = 0; i < _indent; i++)
+            if (index > 0)
             {
-                _builder.Append(_indentUnit);
+                EndLine();
             }
 
-            _atLineStart = false;
+            WriteWithinLine(lines[index]);
         }
-
-        _builder.Append(text);
     }
 
     public void WriteLine(string text = "")
     {
-        if (text.Length > 0)
-        {
-            Write(text);
-        }
-
-        _builder.Append(NewLine);
-        _atLineStart = true;
+        Write(text);
+        EndLine();
     }
 
     /// <summary>Opens a brace-delimited block and indents until disposed.</summary>
@@ -62,6 +67,27 @@ public sealed class SourceWriter
     }
 
     public override string ToString() => _builder.ToString();
+
+    private void WriteWithinLine(string text)
+    {
+        if (_atLineStart && text.Length > 0)
+        {
+            for (var i = 0; i < _indent; i++)
+            {
+                _builder.Append(_indentUnit);
+            }
+
+            _atLineStart = false;
+        }
+
+        _builder.Append(text);
+    }
+
+    private void EndLine()
+    {
+        _builder.Append(NewLine);
+        _atLineStart = true;
+    }
 
     private sealed class BlockScope : IDisposable
     {
