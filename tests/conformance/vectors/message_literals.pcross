@@ -164,6 +164,11 @@ test ConstructedOrder.featured_quantity "a nested literal is read back through a
     expect return 15;
 }
 
+test ConstructedOrder.featured_quantity "a literal read inside a fixture's value" {
+    receiver { number: new ConstructedLine { quantity: 2 }.quantity }
+    expect return 6;
+}
+
 test ConstructedOrder.empty_featured_is_present "a nested literal that sets nothing gives its field presence" {
     receiver { }
     expect return true;
