@@ -188,17 +188,14 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// A literal's fields are written in the order its author wrote them, which is the order they are
-    /// evaluated in (spec 9.3), in a method and in a fixture alike. Field-number order would put
-    /// <c>quantity</c> first.
+    /// A literal in a method writes its fields in the order its author wrote them, which is the order
+    /// they are evaluated in (spec 9.3). Field-number order would put <c>quantity</c> first. A
+    /// fixture's order, in both backends, is BackendTests.FixtureOrder.cs.
     /// </summary>
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ALiteralsFieldsAreWrittenInTheOrderTheAuthorWroteThem(bool tests)
+    [Fact]
+    public void ALiteralInAMethodWritesItsFieldsInTheOrderTheAuthorWroteThem()
     {
-        var generated = CSharpOf(
-            """
+        var generated = CSharpOf("""
             import proto "invoice.proto";
 
             extend InvoiceItem {
@@ -206,13 +203,7 @@ public partial class BackendTests
                     return new InvoiceItem { unit_price_cents: unit_price_cents, quantity: quantity }.quantity;
                 }
             }
-
-            test InvoiceItem.rebuilt_quantity "a fixture written out of field order" {
-                receiver { unit_price_cents: 2, quantity: 1 }
-                expect return 1;
-            }
-            """,
-            tests);
+            """);
 
         var price = generated.IndexOf("UnitPriceCents =", StringComparison.Ordinal);
         var quantity = generated.IndexOf("Quantity =", StringComparison.Ordinal);

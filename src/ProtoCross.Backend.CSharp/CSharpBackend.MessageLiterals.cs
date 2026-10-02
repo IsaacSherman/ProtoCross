@@ -21,8 +21,9 @@ public sealed partial class CSharpBackend
     /// Fields are written in the order the author wrote them, which is the order a literal evaluates
     /// its values in (spec 9.3). C# runs an object initializer's assignments, and a collection
     /// initializer's additions, in the order they are written. Fixtures were written in field-number
-    /// order until this writer became theirs too. No fixture value could tell the two orders apart,
-    /// so that change moved generated tests without changing what any of them does.
+    /// order until this writer became theirs too. The order can be observed even in a fixture: the
+    /// compiler treats each member of a oneof as a field of its own, so a literal may set two members
+    /// of one oneof, and the message keeps whichever is set last.
     /// </para>
     /// <para>
     /// A literal that sets nothing is <c>new T()</c>, as a fixture that set nothing always was. A field

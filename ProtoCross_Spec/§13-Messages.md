@@ -105,7 +105,10 @@ Normative Requirements:
 - A map field is refused (`PC0060`), as maps are everywhere else ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - A field that is left out is unset. There is no required field and no check that a message is
   complete: protobuf has neither, and this compiler does not invent one.
-- The values are evaluated in the order their fields are written ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
+- The values are evaluated in the order their fields are written ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), and each field is set in that order.
+  The order can be seen: each member of a oneof is a field of its own here ([8.4](./§8-Type%20System.md#84-nullability-and-presence) leaves oneofs
+  open), so a literal may give two members of one oneof a value, and the message keeps the one
+  written last, as protobuf keeps whichever member was set last.
 - **Storing a message stores a copy.** A field given a message that is not a literal holds a message
   of its own rather than one shared with wherever the value came from, so nothing done through
   either can show through the other. A literal is exempt because it is built where it is stored and
@@ -118,8 +121,8 @@ Normative Requirements:
 Current Status:
 
 - The C# backend generates a literal wherever one is written, a test's receiver fixture included,
-  as an object initializer whose fields are in the order they were written. A message it stores
-  that is not a literal is copied with protoc's `Clone`.
+  as an object initializer. A message it stores that is not a literal is copied with protoc's
+  `Clone`.
 - The C++ backend generates a literal in a test's receiver fixture, as it always has, and refuses
   one anywhere else with `PC1102` until #81, generating nothing for the source it is in. The
   compiler accepts the literal, so an editor answers about it, and no conformance vector holds one
