@@ -10,14 +10,15 @@ internal static partial class CompiledCorpus
     /// <remarks>
     /// <para>
     /// The conformance vectors are what the sweeps are meant to sweep, and they cannot hold this yet: a
-    /// vector is compiled and run by both backends, and neither generates a literal outside a fixture
-    /// until #80 and #81 are finished. So the sweeps would meet a literal only in fixtures, where no
-    /// name is in scope and a literal is never read from, and every question an editor asks about one
-    /// in a method would go unasked. This entry asks them until a vector can.
+    /// vector is compiled and run by both backends, and the C++ backend does not generate a literal
+    /// outside a fixture until #81. So the sweeps would meet a literal only in fixtures, where no name
+    /// is in scope and a literal is never read from, and every question an editor asks about one in a
+    /// method would go unasked. This entry asks them until a vector can.
     /// </para>
     /// <para>
     /// It compiles, so a sweep that applies an edit and recompiles has a clean starting point. Its
-    /// values are worked out, so that when the backends catch up it can become a vector as it stands.
+    /// values are worked out, so that when C++ catches up it can become a vector as it stands, and
+    /// until then the C# smoke tests build it and run its tests.
     /// </para>
     /// </remarks>
     public const string LiteralsText =
@@ -57,6 +58,11 @@ internal static partial class CompiledCorpus
         test Outer.counted "a literal read from, and one passed" {
             receiver { count: 2 }
             expect return 5;
+        }
+
+        test Outer.labelled "a literal in a condition" {
+            receiver { label: "x" }
+            expect return true;
         }
 
         test Outer.deep_of "a message argument" {

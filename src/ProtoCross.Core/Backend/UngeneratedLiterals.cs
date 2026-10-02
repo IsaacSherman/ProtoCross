@@ -11,10 +11,10 @@ namespace ProtoCross.Backend;
 /// <remarks>
 /// <para>
 /// A literal became an expression in #80's second step, and each backend learns to emit one in a
-/// step of its own: C# in #80's third, C++ in #81. Until then a backend that met one would have
-/// nothing to write, and spec 23 asks it to refuse what it does not support rather than emit
-/// something that differs. A fixture is the exception, because both have always generated fixtures,
-/// and its fields are the same nodes a literal's are.
+/// step of its own: C# learned in #80's third, and C++ learns in #81. Until then the C++ backend has
+/// nothing to write for one, and spec 23 asks it to refuse what it does not support rather than emit
+/// something that differs. A fixture is the exception, because both backends have always generated
+/// fixtures, and its fields are the same nodes a literal's are.
 /// </para>
 /// <para>
 /// So the fixture's own nesting is passed over -- its fields, the lists it gives, the literals it
@@ -23,9 +23,10 @@ namespace ProtoCross.Backend;
 /// each is returned, because one diagnostic says what is wrong with the whole of it.
 /// </para>
 /// <para>
-/// One search for both backends, because they refuse the same thing, and it goes when the second of
-/// them no longer needs it. Methods and tests are asked separately because a backend generates them
-/// separately, from one module: asking both of each would report a method's literal twice.
+/// It lives here rather than in the C++ backend because both backends refused the same thing until
+/// C# could generate it, and it goes when #81 lands. Methods and tests are asked separately because
+/// a backend generates them separately, from one module: asking both of each would report a
+/// method's literal twice.
 /// </para>
 /// </remarks>
 public static class UngeneratedLiterals

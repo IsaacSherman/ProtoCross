@@ -25,8 +25,8 @@ namespace ProtoCross.Diagnostics;
 public static class DiagnosticCodes
 {
     /// <summary>
-    /// Codes that were raised by a released compiler and no longer exist, and which must never be
-    /// allocated to anything else.
+    /// Codes that a compiler once raised and that no longer exist, which must never be allocated to
+    /// anything else.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -41,9 +41,15 @@ public static class DiagnosticCodes
     /// takes any value of its type since #80 made a literal an expression, and a value of another
     /// type is PC0063, as it is for every other field.
     /// </para>
+    /// <para>
+    /// PC1002 was the C# backend's refusal of a message literal outside a test's fixture, from #80's
+    /// second step until its third taught the backend to generate one. It never reached a release,
+    /// but the decision log records it, and a code a reader can look up must not come to mean
+    /// something else.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1101" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -480,15 +486,6 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor CallWithoutAReceiver =
         new("PC0093", DiagnosticSeverity.Error, "method called with no receiver");
-
-    // ------------------------------------------------------- the C# backend
-
-    /// <summary>
-    /// A message literal outside a test's fixture, which the C# backend does not generate until #80
-    /// is finished (spec 13.2).
-    /// </summary>
-    public static readonly DiagnosticDescriptor CSharpLiteralNotGenerated =
-        new("PC1002", DiagnosticSeverity.Error, "message literal not generated in C# yet");
 
     // ------------------------------------------------------- the C++ backend
 

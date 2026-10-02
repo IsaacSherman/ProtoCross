@@ -578,10 +578,12 @@ public sealed class CppBackend : ITestProjectScaffold
     }
 
     /// <remarks>
-    /// In field-number order, for the reason the C# backend gives for its fixtures: a fixture's values
-    /// cannot be told apart by the order they are evaluated in, and keeping the order keeps every
-    /// generated test what it was. #81, which writes literals everywhere else, writes them in the
-    /// order written (spec 9.3).
+    /// In the order the author wrote the fields, which is the order a literal evaluates its values in
+    /// (spec 9.3) and the order the C# backend writes them in. Fixtures were set in field-number order
+    /// until C# began writing every literal in the order written. The order can be observed: the
+    /// compiler treats each member of a oneof as a field of its own, so a fixture may set two members
+    /// of one oneof, and the message keeps whichever was set last. Had C++ kept field-number order,
+    /// the two backends could keep different members.
     /// </remarks>
     private static void EmitCppFixtureFields(
         SourceWriter writer,
@@ -592,7 +594,7 @@ public sealed class CppBackend : ITestProjectScaffold
         Placement placement)
     {
         var access = targetIsPointer ? "->" : ".";
-        foreach (var initializer in message.Fields.OrderBy(initializer => initializer.Field.FieldNumber))
+        foreach (var initializer in message.Fields)
         {
             var field = initializer.Field;
             var accessor = NameConventions.GetCppFieldName(field);

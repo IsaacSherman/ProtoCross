@@ -1,4 +1,5 @@
 using ProtoCross.Backend;
+using ProtoCross.Backend.Cpp;
 using ProtoCross.Diagnostics;
 using Xunit;
 
@@ -6,37 +7,28 @@ namespace ProtoCross.Tests;
 
 public partial class BackendTests
 {
-    // ------- message literals neither backend generates yet (spec 13.2)
+    // ------- message literals the C++ backend does not generate yet (spec 13.2)
     //
     // A literal is an expression since #80's second step, and each backend learns to generate one in
-    // a step of its own. Until then each refuses one anywhere but a fixture, which both have always
-    // generated, and generates nothing at all for the source it is in.
+    // a step of its own: C# in #80's third, C++ in #81. Until then C++ refuses one anywhere but a
+    // fixture, which both backends have always generated, and generates nothing at all for the
+    // source it is in. What C# generates in its place is in BackendTests.CSharpLiterals.cs.
 
     private static string LiteralSource(string methods, string tests = "")
         => ExtendInvoiceItem(methods) + "\n\n" + tests;
 
-    /// <summary>The code each backend refuses a literal with, which is its own range's (spec 26).</summary>
-    private static string RefusalCode(string backendName) => backendName switch
-    {
-        "csharp" => DiagnosticCodes.CSharpLiteralNotGenerated.Code,
-        "cpp" => DiagnosticCodes.CppLiteralNotGenerated.Code,
-        _ => throw new ArgumentOutOfRangeException(nameof(backendName), backendName, "Unknown backend."),
-    };
-
-    [Theory]
-    [InlineData("csharp")]
-    [InlineData("cpp")]
-    public void ALiteralInAMethodIsRefusedAndNothingIsGenerated(string backendName)
+    [Fact]
+    public void ALiteralInAMethodIsRefusedAndNothingIsGenerated()
     {
         var text = LiteralSource("    fn copy() -> InvoiceItem { return new InvoiceItem { quantity: quantity }; }");
         var result = CompileSources(("literal.pcross", text));
         var diagnostics = new DiagnosticBag();
 
-        var files = SourceEmission.Emit(result, BackendNamed(backendName), diagnostics);
+        var files = SourceEmission.Emit(result, new CppBackend(), diagnostics);
 
         Assert.Empty(files);
         var refused = Assert.Single(diagnostics);
-        Assert.Equal(RefusalCode(backendName), refused.Code);
+        Assert.Equal(DiagnosticCodes.CppLiteralNotGenerated.Code, refused.Code);
         Assert.Equal(text.IndexOf("new InvoiceItem", StringComparison.Ordinal), refused.Span.Start.Offset);
     }
 
@@ -44,10 +36,8 @@ public partial class BackendTests
     /// A literal holding others is refused once, for the whole of it: the inner ones are not wrong
     /// apart from it.
     /// </summary>
-    [Theory]
-    [InlineData("csharp")]
-    [InlineData("cpp")]
-    public void ALiteralHoldingOthersIsRefusedOnce(string backendName)
+    [Fact]
+    public void ALiteralHoldingOthersIsRefusedOnce()
     {
         var result = CompileSources((
             "nested.pcross",
@@ -55,7 +45,7 @@ public partial class BackendTests
             + "    fn rebuilt() -> Invoice { return new Invoice { items: [new InvoiceItem { }, new InvoiceItem { }] }; }\n}\n"));
         var diagnostics = new DiagnosticBag();
 
-        SourceEmission.Emit(result, BackendNamed(backendName), diagnostics);
+        SourceEmission.Emit(result, new CppBackend(), diagnostics);
 
         Assert.Single(diagnostics);
     }
@@ -64,10 +54,8 @@ public partial class BackendTests
     /// A test's argument is generated with the tests, so that is where it is refused, and the
     /// behavior beside it is generated as it would be without it.
     /// </summary>
-    [Theory]
-    [InlineData("csharp")]
-    [InlineData("cpp")]
-    public void ALiteralAsATestsArgumentIsRefusedWithTheTests(string backendName)
+    [Fact]
+    public void ALiteralAsATestsArgumentIsRefusedWithTheTests()
     {
         var result = CompileSources((
             "argument.pcross",
@@ -78,14 +66,14 @@ public partial class BackendTests
                 + "    arg other = new InvoiceItem { quantity: 3 };\n"
                 + "    expect return 6;\n"
                 + "}\n")));
-        var backend = BackendNamed(backendName);
+        var backend = new CppBackend();
         var behaviorDiagnostics = new DiagnosticBag();
         var testDiagnostics = new DiagnosticBag();
 
         Assert.NotEmpty(SourceEmission.Emit(result, backend, behaviorDiagnostics));
         Assert.Empty(behaviorDiagnostics);
         Assert.Empty(SourceEmission.EmitTests(result, backend, testDiagnostics));
-        Assert.Equal(RefusalCode(backendName), Assert.Single(testDiagnostics).Code);
+        Assert.Equal(DiagnosticCodes.CppLiteralNotGenerated.Code, Assert.Single(testDiagnostics).Code);
     }
 
     /// <summary>
@@ -113,12 +101,10 @@ public partial class BackendTests
 
     /// <summary>
     /// A literal inside an expression a fixture is given is not the fixture's: it is an expression's,
-    /// and generating it would need the expression writer neither backend has for one yet.
+    /// and generating it would need the expression writer the C++ backend does not have for one yet.
     /// </summary>
-    [Theory]
-    [InlineData("csharp")]
-    [InlineData("cpp")]
-    public void ALiteralInsideAFixturesValueIsRefused(string backendName)
+    [Fact]
+    public void ALiteralInsideAFixturesValueIsRefused()
     {
         var text = LiteralSource(
             "    fn f() -> int64 { return quantity; }",
@@ -129,10 +115,10 @@ public partial class BackendTests
         var result = CompileSources(("value.pcross", text));
         var diagnostics = new DiagnosticBag();
 
-        SourceEmission.EmitTests(result, BackendNamed(backendName), diagnostics);
+        SourceEmission.EmitTests(result, new CppBackend(), diagnostics);
 
         var refused = Assert.Single(diagnostics);
-        Assert.Equal(RefusalCode(backendName), refused.Code);
+        Assert.Equal(DiagnosticCodes.CppLiteralNotGenerated.Code, refused.Code);
         Assert.Equal(text.IndexOf("new InvoiceItem", StringComparison.Ordinal), refused.Span.Start.Offset);
     }
 }
