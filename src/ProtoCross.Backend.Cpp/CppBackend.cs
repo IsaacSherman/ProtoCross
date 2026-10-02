@@ -220,7 +220,16 @@ public sealed partial class CppBackend : ITestProjectScaffold
         var hasFloatingPointExpectations = module.Tests.Any(ExpectsFloatingPoint);
         var placement = new Placement(options.ProjectNamespace);
 
-        WriteTestHeader(writer, options, HeadersTestedBy(module, baseName), hasFailTests, hasFloatingPointExpectations);
+        // The schemas a test names beyond its target's are the ones a literal in it brings: no behavior
+        // header has a reason to include those. They come first, as a header's own schemas do.
+        var schemaHeaders = ProtoHeadersOf(
+            SchemasNamedBeyond(module.Tests.Select(test => test.Target.Receiver.File), module.Tests));
+        WriteTestHeader(
+            writer,
+            options,
+            [.. schemaHeaders, .. HeadersTestedBy(module, baseName)],
+            hasFailTests,
+            hasFloatingPointExpectations);
 
         foreach (var test in module.Tests)
         {
@@ -247,23 +256,38 @@ public sealed partial class CppBackend : ITestProjectScaffold
         => [new GeneratedFile(CppTestProject.FileName, CppTestProject.Build(options))];
 
     /// <summary>
-    /// The headers declaring the methods this source's tests target, sorted, each once: this source's
-    /// own, and another source's wherever a test targets a method declared there.
+    /// The headers declaring the methods this source's tests call, sorted, each once: this source's
+    /// own, and another source's wherever a test calls a method declared there.
     /// </summary>
     /// <param name="baseName">What this source's own header is named after.</param>
     /// <remarks>
+    /// <para>
     /// A test may target a method in any source of the compilation (spec 5.3), and the driver calls it,
     /// so the driver includes whichever header declares it. A test whose target is in its own source
     /// includes the header named for this source, as every driver always has.
+    /// </para>
+    /// <para>
+    /// The target is not the only method a test calls. A fixture, an argument or an expectation may
+    /// call a method on a literal, <c>new Line { … }.cents()</c>, and that method may be declared in
+    /// any source too, so it is asked the same question.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<string> HeadersTestedBy(IrModule module, string baseName)
         => module.Tests
-            .Select(test => test.Document is null || test.Target.Declaration.Document == test.Document
-                ? baseName + HeaderExtension
-                : HeaderFor(test.Target.Declaration.Document))
+            .SelectMany(test => MethodsCalledBy(test).Select(method => HeaderDeclaring(method, test, baseName)))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>The methods a test's driver calls: its target, and any its fixture, arguments and expectation call.</summary>
+    private static IEnumerable<IrMethodSignature> MethodsCalledBy(IrTest test)
+        => IrWalk.DescendantsAndSelf(test).OfType<IrMethodCall>().Select(call => call.Target).Prepend(test.Target);
+
+    /// <summary>The header declaring <paramref name="method"/>, as the driver for <paramref name="test"/> names it.</summary>
+    private static string HeaderDeclaring(IrMethodSignature method, IrTest test, string baseName)
+        => test.Document is null || method.Declaration.Document == test.Document
+            ? baseName + HeaderExtension
+            : HeaderFor(method.Declaration.Document);
 
     private static void WriteTestHeader(
         SourceWriter writer,
@@ -600,12 +624,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine("#include <string>");
         writer.WriteLine();
 
-        var protoHeaders = module.Methods
-            .Select(m => NameConventions.GetCppProtoHeader(m.Receiver.File))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(header => header, StringComparer.Ordinal);
-
-        foreach (var header in protoHeaders)
+        var receivers = module.Methods.Select(method => method.Receiver.File).ToList();
+        foreach (var header in ProtoHeadersOf(receivers.Concat(SchemasNamedBeyond(receivers, module.Methods))))
         {
             writer.WriteLine($"#include \"{header}\"");
         }

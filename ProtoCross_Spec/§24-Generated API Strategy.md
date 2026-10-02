@@ -128,8 +128,15 @@ do includes each such source's header after its own declarations and before its 
 sources may therefore call each other, and whichever of their headers a translation unit includes
 first, the other's definitions find the functions they call already declared, while the include
 guard stops the inclusion going round again. A header that calls no other source includes none, and
-is laid out as it always was. A generated test driver includes the header of each source its tests
-target.
+is laid out as it always was. A generated test driver includes the header of each source whose
+methods its tests call. That is the method a test targets, and any method its fixture, arguments or
+expectation call on a literal.
+
+A header includes the protobuf header of each schema its methods' receivers are declared in. Each of
+those includes the header of every schema its own schema imports. Any other schema a header names a
+type from also gets its header included: through a literal, a parameter, a return value, a local or
+an enum value. So does any such schema a test driver names beyond its targets' schemas. A schema
+that is already declared by those includes is not included a second time.
 
 Const-correctness follows from the read-only method model: every receiver is `const T&` and every
 message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be
