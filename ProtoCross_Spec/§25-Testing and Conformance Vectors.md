@@ -56,6 +56,9 @@ Normative Requirements:
   exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
   exception no test could say that a result is not a number; and which NaN it is cannot matter,
   because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
+- An `expect return` on a method that returns a message is `PC0092`, whatever is expected, until
+  [13.3](./§13-Messages.md#133-equality) says what makes two messages equal. Comparing them before then would settle it by
+  accident, and a C++ message has no `==` to compare with.
 - Test declarations are never emitted into production behavior output. The compiler generates
   target-language test source files into a user-selected test output directory, and only when test
   generation is explicitly requested.
@@ -93,15 +96,20 @@ test Invoice.total_cents "sums line totals" {
 
 The body of the `receiver` block is a message literal's list of fields ([13.2](./§13-Messages.md#132-message-construction)): `field: value`,
 separated by commas, with a comma after the last allowed. The message is the one the test's target
-extends, which is why the block does not say `new T` itself. A message field takes a literal of its
-type, `customer: new Customer { … }`, and a repeated field takes a list of every element,
-`items: [ … ]`. Each field is written once. A value names nothing in scope: a fixture has no
-locals, no parameters, and no implicit receiver. The compiler binds field names and value types
+extends, which is why the block does not say `new T` itself. A message field takes a message of its
+type, which in a fixture is a literal, `customer: new Customer { … }`, and a repeated field takes a
+list of every element, `items: [ … ]`. Each field is written once. A value names nothing in scope: a test has no
+locals, no parameters, and no implicit receiver, in its fixture, its arguments and its expectation
+alike. So a bare field name is `PC0037`, and a method called by its bare name, `kept()`, is `PC0093`:
+there is nothing to call it on but the message the fixture is still building. The compiler binds field names and value types
 against protobuf descriptors, then a backend lowers the fixture to target-language message
 construction code. A future test syntax may also accept protobuf text format, but fixture semantics
 must still come from protobuf descriptors.
 
-For methods with parameters, the test declaration should name each argument:
+For methods with parameters, the test declaration should name each argument. An argument is any
+expression of the parameter's type, so a message argument is a literal,
+`arg item = new InvoiceItem { quantity: 2 };`, which neither backend generates until it generates a
+literal anywhere but a fixture ([13.2](./§13-Messages.md#132-message-construction)):
 
 ```protocross
 test InvoiceItem.discounted_total "applies discount" {

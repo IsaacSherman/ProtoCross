@@ -358,17 +358,27 @@ internal static class HoverCard
 
     /// <summary>The field descriptor the IR node under this name carries.</summary>
     /// <remarks>
+    /// <para>
     /// The three shapes a field name can be written in and be resolved: read through a receiver or
-    /// bare, tested by <c>has</c>, and set in a test fixture. Asked at the start of the name the
-    /// binder recorded rather than at the caret, so that a caret on a dot or in the whitespace of a
-    /// member access cannot reach a different field than the one this card is about.
+    /// bare, tested by <c>has</c>, and set in a message literal or a fixture. Asked at the start of the
+    /// name the binder recorded rather than at the caret, so that a caret on a dot or in the whitespace
+    /// of a member access cannot reach a different field than the one this card is about.
+    /// </para>
+    /// <para>
+    /// The innermost of the three, because they nest now that a literal is an expression: in
+    /// <c>new T { inner: x }.count</c> the name <c>inner</c> is inside the access of <c>count</c>, and
+    /// asking for the nearest access first would describe the wrong field.
+    /// </para>
     /// </remarks>
     private static FieldDescriptor? FieldAt(SemanticModel model, DeclaredSymbol symbol)
-        => model.IrAt(symbol.Span.Start.Offset) is not { } at
-            ? null
-            : at.Enclosing<IrFieldAccess>()?.Field
-                ?? at.Enclosing<IrFieldPresence>()?.Field
-                ?? at.Enclosing<IrTestFieldValue>()?.Field;
+        => model.IrAt(symbol.Span.Start.Offset)?.Path
+            .LastOrDefault(node => node is IrFieldAccess or IrFieldPresence or IrFieldInitializer) switch
+            {
+                IrFieldAccess access => access.Field,
+                IrFieldPresence presence => presence.Field,
+                IrFieldInitializer initializer => initializer.Field,
+                _ => null,
+            };
 
     /// <inheritdoc cref="FieldAt"/>
     private static EnumValueDescriptor? EnumValueAt(SemanticModel model, DeclaredSymbol symbol)

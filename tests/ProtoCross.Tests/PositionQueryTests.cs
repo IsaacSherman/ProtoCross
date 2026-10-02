@@ -514,8 +514,8 @@ public class PositionQueryTests
         var target = source.IndexOf("InvoiceItem.f", StringComparison.Ordinal);
         var brace = source.IndexOf("{", source.IndexOf("\"neither half\"", StringComparison.Ordinal), StringComparison.Ordinal);
 
-        Assert.Null(model.IrAt(target)?.Node as IrTestMessageValue);
-        Assert.NotNull(model.IrAt(brace + 1)?.Node as IrTestMessageValue);
+        Assert.Null(model.IrAt(target)?.Node as IrMessageLiteral);
+        Assert.NotNull(model.IrAt(brace + 1)?.Node as IrMessageLiteral);
     }
 
     // ------- every position at once

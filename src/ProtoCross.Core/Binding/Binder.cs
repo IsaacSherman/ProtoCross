@@ -342,7 +342,7 @@ public sealed partial class Binder
     /// <remarks>
     /// Every expression inside a <c>test</c> binds against one of these -- a fixture value, an
     /// argument, an expectation -- which together with
-    /// <see cref="MethodContext.AllowImplicitReceiverFields"/> being false there is why a bare name
+    /// <see cref="MethodContext.HasImplicitReceiver"/> being false there is why a bare name
     /// in a test resolves to nothing at all. It reaches nowhere because nothing may be declared in
     /// it: it can contribute nothing to <see cref="IrModule.Scope"/> and hide nothing from a query.
     /// </remarks>
@@ -760,7 +760,7 @@ public sealed partial class Binder
         var context = new MethodContext(
             signature.Receiver,
             signature.ReturnType,
-            AllowImplicitReceiverFields: false);
+            HasImplicitReceiver: false);
         var receiver = BindTestReceiver(test.Receiver, signature.Receiver, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
@@ -820,258 +820,6 @@ public sealed partial class Binder
             span,
             "Tests can only target methods declared in an extend block.");
         return null;
-    }
-
-    private IrTestMessageValue BindTestReceiver(
-        TestReceiverFixture receiver,
-        MessageDescriptor descriptor,
-        MethodContext context)
-        => BindTestMessageValue(receiver.Fields, descriptor, receiver.Span, context);
-
-    /// <summary>
-    /// Binds the fields of a fixture, or of a message literal inside one, against the message
-    /// <paramref name="descriptor"/> describes.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// Each field is written once. A repeated field takes all of its values in one list, so writing
-    /// it twice is <c>PC0061</c> exactly as it is for a singular field, and there is one place to
-    /// read what a field was given.
-    /// </para>
-    /// <para>
-    /// A list and a message literal can only be a field's value, and both are handled here rather
-    /// than passed on as expressions: no expression binder in this compiler knows either one.
-    /// </para>
-    /// </remarks>
-    private IrTestMessageValue BindTestMessageValue(
-        IReadOnlyList<FieldInitializer> fields,
-        MessageDescriptor descriptor,
-        SourceSpan span,
-        MethodContext context)
-    {
-        var values = new List<IrTestFieldValue>();
-        var written = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var field in fields)
-        {
-            if (field.Name.IsMissing)
-            {
-                continue;
-            }
-
-            var descriptorField = MessageFields.Named(descriptor, field.Name.Text);
-            if (descriptorField is null)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.UnknownFixtureField,
-                    $"'{descriptor.FullName}' has no field named '{field.Name}'.",
-                    field.Span);
-                continue;
-            }
-
-            // Recorded before the refusals below rather than beside each arm that builds a value.
-            // The name resolved -- that is what the checks that follow are checks *on* -- and a
-            // fixture field the compiler goes on to reject is still a use of that field, which is
-            // exactly the one someone renaming it must be shown.
-            Use(SymbolId.ForField(descriptorField), field.Name.Span);
-
-            if (descriptorField.IsMap)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.MapsAreNotSupportedInFixtures,
-                    $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
-                    field.Span);
-                continue;
-            }
-
-            if (!written.Add(descriptorField.Name))
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.DuplicateFixtureField,
-                    $"Field '{descriptorField.Name}' is set more than once.",
-                    field.Span,
-                    descriptorField.IsRepeated
-                        ? $"A repeated field takes all of its values in one list: '{descriptorField.Name}: [first, second]'."
-                        : "Set each field once.");
-                continue;
-            }
-
-            values.AddRange(BindFieldValues(descriptorField, field, context));
-        }
-
-        return new IrTestMessageValue(descriptor, values, span);
-    }
-
-    /// <summary>
-    /// What one field of a fixture holds: one value for a singular field, and one per element of the
-    /// list a repeated field is given.
-    /// </summary>
-    private IEnumerable<IrTestFieldValue> BindFieldValues(
-        FieldDescriptor descriptorField,
-        FieldInitializer field,
-        MethodContext context)
-    {
-        if (descriptorField.IsRepeated != field.Value is ListExpression)
-        {
-            ReportListMismatch(descriptorField, field);
-            return [];
-        }
-
-        // A singular value spans its whole field, name included, as it always has: a caret on the
-        // name is on the value that name is given. An element of a list spans only itself, so a
-        // caret inside the second element can only mean that one.
-        IReadOnlyList<(Expression Value, SourceSpan Span)> values = field.Value is ListExpression list
-            ? [.. list.Elements.Select(element => (element, element.Span))]
-            : [(field.Value, field.Span)];
-
-        return values
-            .Select(value => BindFieldValue(descriptorField, value.Value, value.Span, context))
-            .OfType<IrTestFieldValue>()
-            .ToList();
-    }
-
-    /// <summary>Reports a list given to a singular field, or anything but a list given to a repeated one.</summary>
-    private void ReportListMismatch(FieldDescriptor descriptorField, FieldInitializer field)
-    {
-        var elementType = TypeFactory.FromFieldValue(descriptorField).DisplayName;
-
-        if (descriptorField.IsRepeated)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.FixtureFieldTypeMismatch,
-                $"Field '{descriptorField.Name}' is repeated and takes a list of '{elementType}' values.",
-                field.Span,
-                $"Write '{descriptorField.Name}: [value, ...]', with one value in the list if there is one.");
-            return;
-        }
-
-        _diagnostics.Report(
-            DiagnosticCodes.FixtureFieldTypeMismatch,
-            $"Field '{descriptorField.Name}' holds one '{elementType}', not a list.",
-            field.Span);
-    }
-
-    /// <summary>
-    /// Binds one value of <paramref name="descriptorField"/>: the field's value if it is singular, or
-    /// one element of its list. Null for a value refused with a diagnostic.
-    /// </summary>
-    private IrTestFieldValue? BindFieldValue(
-        FieldDescriptor descriptorField,
-        Expression value,
-        SourceSpan span,
-        MethodContext context)
-    {
-        var expectedType = TypeFactory.FromFieldValue(descriptorField);
-
-        if (expectedType is MessageType messageType)
-        {
-            if (value is not MessageLiteralExpression literal)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.FixtureFieldRequiresANestedValue,
-                    $"Field '{descriptorField.Name}' is message '{expectedType.DisplayName}' and cannot be set from an expression.",
-                    value.Span,
-                    $"Write '{descriptorField.Name}: new {WritableName(messageType.Descriptor)} {{ ... }}' to build the nested message.");
-                return null;
-            }
-
-            var built = BindNestedLiteral(literal, messageType, descriptorField, context);
-            return new IrTestFieldValue(descriptorField, null, built, span);
-        }
-
-        // Enums are not excluded here: an enum field is set from a named constant, which is an
-        // ordinary expression. PC0063 below catches one of the wrong enum type.
-        if (value is MessageLiteralExpression)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.FixtureFieldIsNotAMessage,
-                $"Field '{descriptorField.Name}' has type '{expectedType.DisplayName}' and cannot contain nested fields.",
-                value.Span);
-            return null;
-        }
-
-        if (value is ListExpression)
-        {
-            ReportListInList(descriptorField, value);
-            return null;
-        }
-
-        var bound = BindExpression(value, NoNames(), context, expectedType);
-        if (bound.Type is not ErrorType && !TypesMatch(expectedType, bound.Type))
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.FixtureFieldTypeMismatch,
-                $"Field '{descriptorField.Name}' expects '{expectedType.DisplayName}' but got '{bound.Type.DisplayName}'.",
-                value.Span);
-        }
-
-        return new IrTestFieldValue(descriptorField, bound, null, span);
-    }
-
-    /// <summary>The shortest name that resolves to <paramref name="message"/> where a type is written.</summary>
-    /// <remarks>
-    /// For help that tells the author what to type. A simple name another message or enum shares is
-    /// <c>PC0074</c> the moment it is written, so help that offered it would be a second mistake.
-    /// </remarks>
-    private string WritableName(MessageDescriptor message)
-        => Visible.IsAmbiguousAsATypeName(message.Name) ? message.FullName : message.Name;
-
-    /// <summary>A list written as an element of a list, which no protobuf field can hold.</summary>
-    /// <remarks>
-    /// The parser does not build one, because a list's elements are not field values. It is refused
-    /// here all the same, so that no expression binder is ever handed a list.
-    /// </remarks>
-    private void ReportListInList(FieldDescriptor descriptorField, Expression value)
-        => _diagnostics.Report(
-            DiagnosticCodes.FixtureFieldTypeMismatch,
-            $"Field '{descriptorField.Name}' holds '{TypeFactory.FromFieldValue(descriptorField).DisplayName}' values, not lists.",
-            value.Span);
-
-    /// <summary>
-    /// Binds <c>new T { ... }</c> given to a field of message type <paramref name="fieldType"/>.
-    /// </summary>
-    /// <remarks>
-    /// <para>
-    /// The literal names its type, and the type it names has to be the field's. A literal of another
-    /// message is <c>PC0063</c>, and its fields are still bound against the message it names, so the
-    /// fields written inside it are checked and resolved as the author meant them rather than
-    /// reported a second time against a type nobody wrote there.
-    /// </para>
-    /// <para>
-    /// A type that does not resolve has been reported where it is written, and the fields are bound
-    /// against the field's type instead, which is the type the literal has to become.
-    /// </para>
-    /// </remarks>
-    private IrTestMessageValue BindNestedLiteral(
-        MessageLiteralExpression literal,
-        MessageType fieldType,
-        FieldDescriptor descriptorField,
-        MethodContext context)
-    {
-        var written = ResolveTypeReference(literal.Type);
-
-        if (written is MessageType named)
-        {
-            if (!string.Equals(named.Descriptor.FullName, fieldType.Descriptor.FullName, StringComparison.Ordinal))
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.FixtureFieldTypeMismatch,
-                    $"Field '{descriptorField.Name}' expects '{fieldType.DisplayName}' but got '{named.DisplayName}'.",
-                    literal.Type.Span);
-            }
-
-            return BindTestMessageValue(literal.Fields, named.Descriptor, literal.Span, context);
-        }
-
-        if (written is not ErrorType)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.FixtureFieldTypeMismatch,
-                $"Field '{descriptorField.Name}' expects '{fieldType.DisplayName}' but got '{written.DisplayName}', which is not a message.",
-                literal.Type.Span);
-        }
-
-        return BindTestMessageValue(literal.Fields, fieldType.Descriptor, literal.Span, context);
     }
 
     private IReadOnlyList<IrTestArgument> BindTestArguments(
@@ -1202,8 +950,23 @@ public sealed partial class Binder
                         returns.Span);
                 }
 
+                // Refused whatever the value is, because what is missing is not a value but a meaning
+                // for '=='. The value is still bound, for the names in it, and not checked against the
+                // return type: a second diagnostic would be about a comparison that cannot be made.
+                var comparesMessages = signature.ReturnType is MessageType;
+                if (comparesMessages)
+                {
+                    _diagnostics.Report(
+                        DiagnosticCodes.MessageReturnCannotBeExpected,
+                        $"'{signature.Name}' returns message '{signature.ReturnType.DisplayName}', and what makes two "
+                        + "messages equal is not decided yet.",
+                        returns.Span,
+                        "Until spec 13.3 decides, expect a scalar instead: test a method that returns the field you want to check.");
+                }
+
                 var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);
                 if (signature.ReturnType is not VoidType
+                    && !comparesMessages
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
@@ -1403,9 +1166,10 @@ public sealed partial class Binder
         // repeated field is reached by iteration rather than by name.
         IrFieldAccess field when IsSingularMessage(field.Field) => PresencePath(field.Receiver, field.Field),
 
-        // A method result is present by construction -- every message value in the language comes
-        // from a root or a guarded read -- but it has no name, so nothing reached through it can be
-        // guarded. BindFieldAccess turns that into a diagnostic with a way out.
+        // A method result and a literal are present by construction -- every message value in the
+        // language comes from a root, a guarded read or a literal -- but neither has a name, so
+        // nothing reached through one can be guarded. BindFieldAccess turns that into a diagnostic
+        // with a way out.
         _ => null,
     };
 
@@ -1898,6 +1662,7 @@ public sealed partial class Binder
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
             CastExpression cast => BindCast(cast, scope, context),
+            MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
         };
@@ -1974,7 +1739,7 @@ public sealed partial class Binder
             return new IrParameterReference(parameter, name.Span);
         }
 
-        if (context.AllowImplicitReceiverFields)
+        if (context.HasImplicitReceiver)
         {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
             var field = MessageFields.Named(context.Receiver, name.Name.Text);
@@ -2241,7 +2006,7 @@ public sealed partial class Binder
     private static bool IsValueName(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is not null
         || scope.LookupParameter(name) is not null
-        || (context.AllowImplicitReceiverFields && MessageFields.Named(context.Receiver, name) is not null);
+        || (context.HasImplicitReceiver && MessageFields.Named(context.Receiver, name) is not null);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -2311,7 +2076,7 @@ public sealed partial class Binder
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
     /// <remarks>
     /// <para>
-    /// Six paths below decide there is no method here. Every one of them still keeps the arguments,
+    /// Seven paths below decide there is no method here. Every one of them still keeps the arguments,
     /// in an <see cref="IrUncallableInvocation"/>, because the arguments are source the author wrote
     /// and a call that does not resolve is the ordinary state of one being typed. Collapsing to an
     /// error-typed literal spanning the whole call -- which is what every path used to do -- leaves
@@ -2319,8 +2084,8 @@ public sealed partial class Binder
     /// signature help ask about.
     /// </para>
     /// <para>
-    /// Arguments are bound once and only once. The two paths that reach a failure with them already
-    /// bound hand over the list they built; the four that fail before binding anything go through
+    /// Arguments are bound once and only once. The one path that reaches a failure with them already
+    /// bound hands over the list it built; the six that fail before binding anything go through
     /// <c>Uncallable</c>, which binds with no expected type -- there is no signature to expect
     /// anything from. Binding twice would report every mistake inside an argument twice.
     /// </para>
@@ -2369,6 +2134,19 @@ public sealed partial class Binder
                 receiverDescriptor = messageType.Descriptor;
                 break;
             }
+
+            // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
+            // field name there names no field. Bound against the method's receiver it would read the
+            // message the fixture is still building, which neither backend can generate: C# reads the
+            // fixture's local inside its own initializer, and C++ names a receiver that is not there.
+            case NameExpression name when !context.HasImplicitReceiver:
+                _diagnostics.Report(
+                    DiagnosticCodes.CallWithoutAReceiver,
+                    $"'{name.Name}' is called with no receiver, and a test has none of its own.",
+                    invocation.Span,
+                    $"A test calls the method it targets, on the receiver its fixture builds. Write the value "
+                    + $"itself, or test '{name.Name}' in a test of its own (spec 25.3).");
+                return Uncallable(null);
 
             case NameExpression name:
                 receiver = new IrThis(new MessageType(context.Receiver), name.Span);
@@ -2454,7 +2232,7 @@ public sealed partial class Binder
 
         return new IrMethodCall(receiver, signature, arguments, invocation.Span);
 
-        // For the four paths that give up before any argument has been looked at. There is no
+        // For the six paths that give up before any argument has been looked at. There is no
         // signature to take an expected type from -- that is what they gave up on -- so each
         // argument is bound for whatever it is on its own.
         IrUncallableInvocation Uncallable(IrExpression? boundReceiver)
@@ -2569,7 +2347,7 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return BindMemberAccess(member, scope, context);
 
-            case NameExpression bare when context.AllowImplicitReceiverFields
+            case NameExpression bare when context.HasImplicitReceiver
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
                 receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
@@ -3177,6 +2955,11 @@ public sealed partial class Binder
     /// How many enclosing loops the statement being bound sits inside. Zero means 'break' and
     /// 'continue' have nothing to bind to.
     /// </param>
+    /// <param name="HasImplicitReceiver">
+    /// Whether a bare name may reach <paramref name="Receiver"/>: a field read as <c>count</c>, a
+    /// method called as <c>helper()</c>. A method body has one. A test does not (spec 25.3): the
+    /// receiver it names is the message its fixture builds, which nothing in the test is inside.
+    /// </param>
     /// <remarks>
     /// Carries no parameter list, deliberately. <see cref="Scope"/> is what answers a name, and it
     /// holds a filtered view of what a signature declares: a parameter nobody has named is not in
@@ -3187,7 +2970,7 @@ public sealed partial class Binder
     private sealed record MethodContext(
         MessageDescriptor Receiver,
         PlType ReturnType,
-        bool AllowImplicitReceiverFields = true,
+        bool HasImplicitReceiver = true,
         int LoopDepth = 0)
     {
         /// <summary>

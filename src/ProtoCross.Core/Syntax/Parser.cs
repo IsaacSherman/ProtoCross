@@ -43,6 +43,18 @@ public sealed class Parser
     private int _nestingDepth;
     private bool _reportedNesting;
 
+    /// <summary>Whether the fields being read are a fixture's, or a literal's inside one.</summary>
+    /// <remarks>
+    /// The one place a <c>;</c> between fields means something other than the end of a statement.
+    /// Fixtures separated their fields with semicolons before #80, so in a fixture one is a habit,
+    /// and is reported as one with the fields after it still read. A literal anywhere else is inside
+    /// a statement, where a semicolon is what ends it unless a field or the closing brace follows it:
+    /// <c>var x = new T { a: 1;</c> has left its brace off, and reading on would take the statements
+    /// after it for fields. Reported as the missing brace and left for the statement, it costs one
+    /// diagnostic rather than three.
+    /// </remarks>
+    private bool _inFixture;
+
     public Parser(IReadOnlyList<Token> tokens, string file, DiagnosticBag diagnostics)
     {
         _tokens = tokens;
@@ -397,7 +409,11 @@ public sealed class Parser
     {
         var start = Expect(TokenKind.Receiver).Span;
         Expect(TokenKind.OpenBrace);
-        var fields = ParseFieldInitializers();
+
+        _inFixture = true;
+        var fields = ParseFieldInitializers(out _);
+        _inFixture = false;
+
         var end = Expect(TokenKind.CloseBrace).Span;
         return new TestReceiverFixture(fields, Spanning(start, end));
     }
@@ -418,17 +434,20 @@ public sealed class Parser
     /// from costing more than one again.
     /// </para>
     /// </remarks>
-    private IReadOnlyList<FieldInitializer> ParseFieldInitializers()
+    /// <param name="tallest">How tall the tallest value is, or zero when there are none.</param>
+    private IReadOnlyList<FieldInitializer> ParseFieldInitializers(out int tallest)
     {
         var fields = new List<FieldInitializer>();
+        tallest = 0;
 
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             var before = _position;
 
-            if (ParseFieldInitializer() is { } field)
+            if (ParseFieldInitializer(out var height) is { } field)
             {
                 fields.Add(field);
+                tallest = Math.Max(tallest, height);
                 ParseFieldSeparator();
             }
 
@@ -461,10 +480,11 @@ public sealed class Parser
     /// the spelling that replaced it.
     /// </para>
     /// </remarks>
-    private FieldInitializer? ParseFieldInitializer()
+    private FieldInitializer? ParseFieldInitializer(out int height)
     {
         var start = Current.Span;
         var name = ExpectName();
+        height = 0;
 
         if (name.IsMissing)
         {
@@ -476,7 +496,7 @@ public sealed class Parser
         {
             ReportUnexpectedToken(
                 TokenKind.Colon.Describe(),
-                $"Write a field as '{name.Text}: value,', and a message as '{name.Text}: new T {{ ... }},' (spec 25.3).");
+                $"Write a field as '{name.Text}: value,', and a message as '{name.Text}: new T {{ ... }},' (spec 13.2).");
             SkipRestOfField();
             return null;
         }
@@ -487,7 +507,7 @@ public sealed class Parser
             return null;
         }
 
-        var value = ParseFieldValue();
+        var value = ParseFieldValue(out height);
         return new FieldInitializer(name, value, Spanning(start, value.Span));
     }
 
@@ -499,16 +519,17 @@ public sealed class Parser
     /// </remarks>
     private void ParseFieldSeparator()
     {
-        if (Match(TokenKind.Comma) || EndsAFieldList(Current.Kind))
+        if (Match(TokenKind.Comma) || EndsAFieldList())
         {
             return;
         }
 
         // A semicolon is the separator fixtures had before #80, so it is the one that gets typed out
-        // of habit, and the one worth saying so about.
+        // of habit, and the one worth saying so about. Outside a fixture one that does not stand
+        // between fields has ended them, above.
         ReportUnexpectedToken(
             TokenKind.Comma.Describe(),
-            Current.Kind == TokenKind.Semicolon ? "Fields are separated by commas (spec 25.3)." : null);
+            Current.Kind == TokenKind.Semicolon ? "Fields are separated by commas (spec 13.2)." : null);
 
         if (!StartsAField())
         {
@@ -516,56 +537,45 @@ public sealed class Parser
         }
     }
 
-    /// <summary>A field's value: a message literal, a list, or any other expression.</summary>
-    private Expression ParseFieldValue()
-        => StartsAMessageLiteral() ? ParseMessageLiteral()
-            : Current.Kind == TokenKind.OpenBracket ? ParseListValue()
-            : ParseExpression();
+    /// <summary>A field's value: a list, or any expression, a message literal among them.</summary>
+    private Expression ParseFieldValue(out int height)
+        => Current.Kind == TokenKind.OpenBracket ? ParseListValue(out height) : ParseExpression(out height);
 
     /// <summary>
     /// Parses <c>new T { name: value, ... }</c>, with the <c>new</c> as the current token.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Literals nest, so they carry the budget blocks and expressions do. One that would exceed it
-    /// keeps its type and loses its fields, which the nesting diagnostic has already accounted for.
+    /// It is as tall as its tallest value and one more (<see cref="TryReachHeight"/>), because it holds
+    /// them as a call holds its arguments. It takes no nesting budget of its own: literals nest only
+    /// through their values, and each value is an expression that takes one.
     /// </para>
     /// <para>
     /// A stray token between the type and the brace is reported once and stepped over to the brace,
     /// so the fields after it are still read.
     /// </para>
     /// </remarks>
-    private MessageLiteralExpression ParseMessageLiteral()
+    private Expression ParseMessageLiteral(out int height)
     {
         var start = Advance().Span;
         var type = ParseTypeReference();
+        height = 1;
 
-        if (!TryEnterNesting())
+        if (!ReachLiteralBody())
         {
-            var abandonedEnd = type.Span;
-            if (Match(TokenKind.OpenBrace))
-            {
-                TrySkipBalancedBlock(out abandonedEnd);
-            }
-
-            return new MessageLiteralExpression(type, [], Spanning(start, abandonedEnd));
+            return new MessageLiteralExpression(type, [], Spanning(start, type.Span));
         }
 
-        try
-        {
-            if (!ReachLiteralBody())
-            {
-                return new MessageLiteralExpression(type, [], Spanning(start, type.Span));
-            }
+        var fields = ParseFieldInitializers(out var tallest);
+        var end = Expect(TokenKind.CloseBrace).Span;
 
-            var fields = ParseFieldInitializers();
-            var end = Expect(TokenKind.CloseBrace).Span;
-            return new MessageLiteralExpression(type, fields, Spanning(start, end));
-        }
-        finally
+        if (!TryReachHeight(tallest + 1, start))
         {
-            ExitNesting();
+            return AbandonTallExpression(start);
         }
+
+        height = tallest + 1;
+        return new MessageLiteralExpression(type, fields, Spanning(start, end));
     }
 
     /// <summary>
@@ -583,7 +593,7 @@ public sealed class Parser
 
         // The next field is where this one ended, if its braces were never typed: stepping over it
         // looking for one would take a field the author did write.
-        while (!EndsAFieldList(Current.Kind)
+        while (!EndsAFieldList()
             && !StartsAField()
             && Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma or TokenKind.Semicolon
                 or TokenKind.CloseBracket))
@@ -609,21 +619,23 @@ public sealed class Parser
     /// learned again).
     /// </para>
     /// </remarks>
-    private ListExpression ParseListValue()
+    private Expression ParseListValue(out int height)
     {
         var start = Advance().Span;
         var elements = new List<Expression>();
         var afterAMissingComma = false;
+        var tallest = 0;
 
         while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon)
-            && !EndsAFieldList(Current.Kind)
+            && !EndsAFieldList()
             && !StartsAField())
         {
             var before = _position;
 
-            elements.Add(StartsAMessageLiteral() ? ParseMessageLiteral() : ParseExpression());
+            elements.Add(ParseExpression(out var elementHeight));
+            tallest = Math.Max(tallest, elementHeight);
 
-            if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList(Current.Kind))
+            if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList())
             {
                 afterAMissingComma = false;
             }
@@ -645,6 +657,14 @@ public sealed class Parser
         }
 
         var end = Expect(TokenKind.CloseBracket).Span;
+
+        if (!TryReachHeight(tallest + 1, start))
+        {
+            height = 1;
+            return AbandonTallExpression(start);
+        }
+
+        height = tallest + 1;
         return new ListExpression(elements, Spanning(start, end));
     }
 
@@ -661,12 +681,13 @@ public sealed class Parser
     /// A closing brace is left where it is, because it closes the fields this one is among: a field
     /// that swallowed it would take the end of its literal or fixture, and then the test's, with it.
     /// A brace or a bracket that opens a group is stepped over whole, since its closer belongs to it.
-    /// A semicolon ends a field the way a comma does. None can appear inside one, and the spelling
-    /// before #80 ended every field with one.
+    /// In a fixture a semicolon ends a field the way a comma does. None can appear inside one, and the
+    /// spelling before #80 ended every field with one. Anywhere else it ends the fields altogether,
+    /// and is left for the statement (<see cref="EndsAFieldList"/>).
     /// </remarks>
     private void SkipRestOfField()
     {
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             if (Match(TokenKind.Comma) || Match(TokenKind.Semicolon))
             {
@@ -695,7 +716,7 @@ public sealed class Parser
     private void SkipRestOfElement()
     {
         while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon)
-            && !EndsAFieldList(Current.Kind)
+            && !EndsAFieldList()
             && !StartsAField())
         {
             if (Match(TokenKind.Comma))
@@ -721,7 +742,7 @@ public sealed class Parser
     /// </remarks>
     private void SkipRestOfList()
     {
-        while (!EndsAFieldList(Current.Kind))
+        while (!EndsAFieldList())
         {
             if (Match(TokenKind.CloseBracket))
             {
@@ -740,21 +761,32 @@ public sealed class Parser
     }
 
     /// <summary>Whether a token ends a list of fields: the brace that closes it, or anything that cannot be inside it.</summary>
-    private static bool EndsAFieldList(TokenKind kind)
-        => kind is TokenKind.CloseBrace or TokenKind.EndOfFile || EndsAFixture(kind);
-
-    /// <summary>
-    /// Whether a token cannot appear in a fixture but can follow one: the next member of the test,
-    /// or the next declaration.
-    /// </summary>
     /// <remarks>
-    /// Meeting one means the fixture's closing brace is missing, and the fixture ends there rather
-    /// than reading on. Read as a field, <c>expect return 1;</c> would be skipped through its
-    /// semicolon, and the test would be reported as missing the expectation it has.
+    /// <para>
+    /// A keyword that begins a statement or a declaration cannot be inside one, so meeting one means
+    /// the closing brace is missing and the fields end there rather than reading on. Read as a field,
+    /// <c>expect return 1;</c> would be skipped through its semicolon and the test reported as missing
+    /// the expectation it has, and <c>return total;</c> after a literal in a method would be taken for
+    /// a field and the method's own brace for the literal's.
+    /// </para>
+    /// <para>
+    /// A semicolon ends them too, except in a fixture (<see cref="_inFixture"/>) and except where one
+    /// stands between fields: before another field or before the closing brace it can only be the
+    /// separator fixtures used before #80, typed out of habit, whatever the literal is inside. Ending
+    /// the fields there would leave <c>{ a: 1; }</c> with a brace of its own that closes the block
+    /// around the statement. Anywhere else it is left where it is for the statement it ends, and the
+    /// brace is reported missing in front of it.
+    /// </para>
     /// </remarks>
-    private static bool EndsAFixture(TokenKind kind) => kind is
-        TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect
-        or TokenKind.Test or TokenKind.Extend or TokenKind.Import;
+    private bool EndsAFieldList()
+        => Current.Kind is TokenKind.CloseBrace or TokenKind.EndOfFile
+            || (Current.Kind == TokenKind.Semicolon && !_inFixture && !SeparatesFields())
+            || BeginsAStatementOrDeclaration(Current.Kind);
+
+    /// <summary>Whether the semicolon that is the current token stands between fields: a field or the closing brace follows it.</summary>
+    private bool SeparatesFields()
+        => Peek(1).Kind == TokenKind.CloseBrace
+            || (Peek(1).Kind == TokenKind.Identifier && Peek(2).Kind == TokenKind.Colon);
 
     private TestArgumentDeclaration ParseTestArgument()
     {
@@ -1086,10 +1118,12 @@ public sealed class Parser
     /// <summary>Parses <c>if &lt;condition&gt; { ... }</c> with an optional else branch (spec 15.1).</summary>
     /// <remarks>
     /// The condition is unparenthesized, so the '{' that opens the body is what ends it. That is
-    /// unambiguous only because no ProtoCross expression can contain a brace; if message
-    /// construction literals (spec 13.2) are ever added, the condition will have to be parsed at a
-    /// restricted precedence to keep <c>if m { }</c> from reading as a construction. An 'else'
-    /// binds to the nearest unmatched 'if', which recursive descent gives for free.
+    /// unambiguous because the only brace an expression can contain is a message literal's (spec
+    /// 13.2), and a literal begins with <c>new</c> and a type name, which nothing else does: in
+    /// <c>if m { }</c> the brace can only be the body's, and in <c>if new T { }.ok { }</c> the first is
+    /// the literal's. That is what the leading word is for, and why the condition needs no restricted
+    /// precedence. An 'else' binds to the nearest unmatched 'if', which recursive descent gives for
+    /// free.
     /// </remarks>
     private Statement ParseIfStatement()
     {
@@ -1137,10 +1171,11 @@ public sealed class Parser
     /// Consumes the rest of an <c>if</c> chain, from its next <c>if</c> through its last branch.
     /// </summary>
     /// <remarks>
-    /// A condition never contains a brace or a semicolon (see <see cref="ParseIfStatement"/>), so
-    /// the first brace after an <c>if</c> opens its body, and a semicolon or a closing brace met
-    /// first means the chain is broken there. The skip stops at either without consuming it, so the
-    /// enclosing block still ends where it does.
+    /// A condition never contains a semicolon, and no brace but a message literal's (see
+    /// <see cref="ParseIfStatement"/>), so once the literals are stepped over the first brace after an
+    /// <c>if</c> opens its body, and a semicolon or a closing brace met first means the chain is
+    /// broken there. The skip stops at either without consuming it, so the enclosing block still ends
+    /// where it does.
     /// </remarks>
     private BlockStatement SkipRestOfIfChain()
     {
@@ -1151,6 +1186,12 @@ public sealed class Parser
         {
             while (Current.Kind is not (TokenKind.OpenBrace or TokenKind.CloseBrace or TokenKind.Semicolon or TokenKind.EndOfFile))
             {
+                if (StartsAMessageLiteral())
+                {
+                    SkipMessageLiteral();
+                    continue;
+                }
+
                 Advance();
             }
 
@@ -1276,19 +1317,17 @@ public sealed class Parser
     /// <summary>Steps over what is left of an expression, stopping at whatever ends it.</summary>
     /// <remarks>
     /// <para>
-    /// No expression contains a brace or a semicolon (see <see cref="ParseIfStatement"/>), so either
-    /// ends it wherever it stands. A <c>)</c> or <c>,</c> that closes nothing opened here belongs to
-    /// what the expression is inside -- a parenthesized operand, or a call's arguments -- and ends it
-    /// too. None of these is consumed: each is for the enclosing construct to read.
+    /// No expression contains a semicolon, and the only brace one contains is a message literal's
+    /// (see <see cref="ParseIfStatement"/>), so a literal is stepped over whole and any other brace or
+    /// semicolon ends the expression wherever it stands. A <c>)</c> or <c>,</c> that closes nothing
+    /// opened here belongs to what the expression is inside -- a parenthesized operand, or a call's
+    /// arguments -- and ends it too. None of these is consumed: each is for the enclosing construct
+    /// to read.
     /// </para>
     /// <para>
     /// A keyword that only begins a statement or a declaration ends it as well, because it cannot be
     /// part of one. Without it, an expression missing its semicolon would take the next statement
     /// with it, and whatever was wrong there would go unreported.
-    /// </para>
-    /// <para>
-    /// Message literals (#80) put braces inside an expression, and this skip has to learn them when
-    /// they arrive, as the condition of an <c>if</c> does.
     /// </para>
     /// </remarks>
     private void SkipRestOfExpression()
@@ -1303,6 +1342,12 @@ public sealed class Parser
                 return;
             }
 
+            if (StartsAMessageLiteral())
+            {
+                SkipMessageLiteral();
+                continue;
+            }
+
             if (Current.Kind == TokenKind.OpenParen)
             {
                 openParentheses++;
@@ -1313,6 +1358,29 @@ public sealed class Parser
             }
 
             Advance();
+        }
+    }
+
+    /// <summary>
+    /// Steps over a message literal, with its <c>new</c> as the current token: the type, and the
+    /// fields through the brace that closes them when there is one.
+    /// </summary>
+    /// <remarks>
+    /// For the skips that stop at a brace, which the brace of a literal must not stop: it belongs to
+    /// the literal, and the brace they are looking for comes after it.
+    /// </remarks>
+    private void SkipMessageLiteral()
+    {
+        Advance();
+
+        while (Current.Kind is TokenKind.Identifier or TokenKind.Dot)
+        {
+            Advance();
+        }
+
+        if (Match(TokenKind.OpenBrace))
+        {
+            TrySkipBalancedBlock(out _);
         }
     }
 
@@ -1660,6 +1728,12 @@ public sealed class Parser
     {
         var token = Current;
         height = 1;
+
+        // Before the identifier case, because 'new' is one until a type name follows it.
+        if (StartsAMessageLiteral())
+        {
+            return ParseMessageLiteral(out height);
+        }
 
         switch (token.Kind)
         {

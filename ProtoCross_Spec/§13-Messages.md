@@ -41,10 +41,12 @@ Normative Requirements:
   - A loop's body, and a `while` loop's condition, run again after the body may have assigned a
     local, so they see no fact about a local the body assigns. What a `while` condition itself
     proves still holds inside the body, because it is proved afresh on every pass.
-- A message field reached through a value that has no name -- a method result -- cannot be guarded,
-  and is `PC0078`. Binding the intermediate to a local first gives it the name a guard needs.
+- A message field reached through a value that has no name -- a method result, or a message literal
+  ([13.2](#132-message-construction)) -- cannot be guarded, and is `PC0078`. Binding the intermediate to a local first gives it
+  the name a guard needs.
 - The receiver, parameters, locals, and `for` bindings are present by construction and are never
-  guarded. Every message value in the language comes from one of those or from a guarded read.
+  guarded. Every message value in the language comes from one of those, from a guarded read, or
+  from a literal, which is a message whatever its fields hold.
 - Reading a **scalar** field never requires a guard. An unset proto3 scalar reads as the type's
   zero, an unset proto2 scalar as its declared default, and both targets have always agreed.
 - Reading a **repeated** field never requires a guard. An unset one is empty.
@@ -61,7 +63,7 @@ Open Questions:
 
 ### 13.2 Message Construction
 
-**Decided: a message is built by a literal, `new T { field: value, … }`.**
+**Decided: a message is built by a literal, `new T { field: value, … }`, which is an expression.**
 
 ```protocross
 new Invoice {
@@ -81,33 +83,45 @@ Normative Requirements:
 
 - A message literal is `new`, the message's type name, and its fields between braces. Each field is
   `name: value`. Fields are separated by commas, and a comma after the last is allowed.
+- A literal is an expression, and may be written wherever one may: a local's initializer, a returned
+  value, a call's argument or a test's, a field's value, or something read from,
+  `new Invoice { … }.number`.
 - `new` is not reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). It begins a literal only when a type name follows it, so a field or a
   local named `new` keeps its meaning: `new.this` and `has new` read a field.
 - The type is resolved as a type name is anywhere else ([8.1](./§8-Type%20System.md#81-type-sources)): by its full name, or by a simple name no other
-  message or enum shares.
-- A message field's value is a literal of the field's own type. The type is always written, and the
-  field never supplies it: `customer: new Customer { … }`, never `customer: { … }`. A literal of
-  another message is `PC0063`, and any other value is `PC0062`.
+  message or enum shares. A type that is not a message is `PC0091`.
+- A field's value is any value of the field's type. For a message field that is a literal of the
+  field's own type, or any other message of that type: a parameter, a local, a field read, a call's
+  result. A nested literal always writes its type, and the field never supplies it:
+  `customer: new Customer { … }`, never `customer: { … }`. A value of another type is `PC0063`, a
+  literal of another message included, and a literal given to a field that is not a message is
+  `PC0064`.
 - A repeated field's value is a list, `[first, second]`, holding every element in order. A comma after
-  the last element is allowed. A list is only ever a repeated field's value, lists do not nest, and a
-  repeated field given anything but a list is `PC0063`, as is a list given to a singular field.
+  the last element is allowed. A list is only ever a repeated field's value, and lists do not nest.
+  A repeated field given anything but a list is `PC0063`, a whole repeated value such as
+  `items: other.items` included, and so is a list given to a singular field.
 - Each field is written at most once, a repeated one included (`PC0061`): a repeated field's list is
   the one place its contents are read.
 - A map field is refused (`PC0060`), as maps are everywhere else ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - A field that is left out is unset. There is no required field and no check that a message is
   complete: protobuf has neither, and this compiler does not invent one.
+- The values are evaluated in the order their fields are written ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
+- **Storing a message stores a copy.** A field given a message that is not a literal holds a message
+  of its own rather than one shared with wherever the value came from, so nothing done through
+  either can show through the other. A literal is exempt because it is built where it is stored and
+  nothing else can hold it. A method's result is not: it may be a field of the method's receiver,
+  which is still the receiver's.
+- **A literal establishes no presence** ([13.1](#131-field-access)). What a message field is given is not something a
+  guard has tested, so a message field read straight off a literal is `PC0078`, and a local holding
+  a literal is guarded like any other local.
 
 Current Status:
 
-- A literal appears only as the value of a fixture's field, or of a field of a literal inside one.
-  Writing one in a method body is the next step of #80, and until it lands [18](./§18-Mutability.md#18-mutability)'s "methods
-  cannot allocate new protobuf messages" still holds.
-
-Open Questions:
-
-- Whether a repeated field may also be given a whole repeated value, `items: items`, as well as a
-  list. It matters only where names are in scope, so it is settled when a literal can appear in a
-  method body.
+- Both backends generate a literal in a test's receiver fixture, as they always have. Neither
+  generates one anywhere else yet: the C# backend refuses one with `PC1002` until #80 is finished,
+  and the C++ backend with `PC1102` until #81. Each refusal generates nothing for the source it is
+  in. The compiler accepts the literal, so an editor answers about it, and no conformance vector
+  holds one until both backends run it ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
 
 ### 13.3 Equality
 

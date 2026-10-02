@@ -26,8 +26,12 @@ public class FixtureLiteralTests
     private static void AssertOk(CompilationResult result)
         => Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
 
-    private static IrTestMessageValue Receiver(CompilationResult result)
+    private static IrMessageLiteral Receiver(CompilationResult result)
         => Assert.Single(result.Module!.Tests).Receiver;
+
+    /// <summary>The elements of the list the fixture's only field was given.</summary>
+    private static IReadOnlyList<IrExpression> OnlyList(CompilationResult result)
+        => Assert.IsType<IrList>(Assert.Single(Receiver(result).Fields).Value).Elements;
 
     /// <summary>The one diagnostic a compilation reports, which is all each refusal here expects.</summary>
     private static Diagnostic TheOnly(CompilationResult result)
@@ -44,7 +48,9 @@ public class FixtureLiteralTests
 
         var inner = Assert.Single(Receiver(result).Fields);
         Assert.Equal("inner", inner.Field.Name);
-        Assert.Equal("protocross.tests.Outer.Inner", inner.MessageValue?.Descriptor.FullName);
+        Assert.Equal(
+            "protocross.tests.Outer.Inner",
+            Assert.IsType<IrMessageLiteral>(inner.Value).MessageType.Descriptor.FullName);
     }
 
     /// <summary>
@@ -60,7 +66,7 @@ public class FixtureLiteralTests
 
         Assert.Equal(
             ["NESTED_SOME", "NESTED_NONE", "NESTED_SOME"],
-            Receiver(result).Fields.Select(value => ((IrEnumValue)value.ScalarValue!).Value.Name));
+            OnlyList(result).Select(value => ((IrEnumValue)value).Value.Name));
     }
 
     /// <summary>
@@ -72,7 +78,7 @@ public class FixtureLiteralTests
     {
         var text = Source("        nested_values: [Nested.NESTED_SOME, Nested.NESTED_NONE],");
 
-        var values = Receiver(Compile(text)).Fields;
+        var values = OnlyList(Compile(text));
 
         Assert.Equal(
             [text.IndexOf("Nested.NESTED_SOME", StringComparison.Ordinal), text.IndexOf("Nested.NESTED_NONE", StringComparison.Ordinal)],
@@ -87,7 +93,7 @@ public class FixtureLiteralTests
         var result = Compile(Source("        nested_values: [],"));
 
         AssertOk(result);
-        Assert.Empty(Receiver(result).Fields);
+        Assert.Empty(OnlyList(result));
     }
 
     // ------- what a fixture refuses
@@ -103,7 +109,7 @@ public class FixtureLiteralTests
 
         var mismatch = TheOnly(Compile(text));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldTypeMismatch.Code, mismatch.Code);
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, mismatch.Code);
         Assert.Equal(text.IndexOf("Outer { count", StringComparison.Ordinal), mismatch.Span.Start.Offset);
     }
 
@@ -119,12 +125,16 @@ public class FixtureLiteralTests
         Assert.Contains("Nope", only.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A message field takes any value of its type, so a value of another type is the mismatch it is
+    /// for any field, with help that writes the literal that would build one.
+    /// </summary>
     [Fact]
-    public void AMessageFieldGivenAnExpressionSaysHowToBuildOne()
+    public void AMessageFieldGivenAScalarIsAMismatchWhoseHelpBuildsOne()
     {
         var refused = TheOnly(Compile(Source("        inner: 1,")));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldRequiresANestedValue.Code, refused.Code);
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
         Assert.True(
             refused.Help?.Contains("inner: new Inner {", StringComparison.Ordinal) == true,
             $"the help must show the literal to write, but says: {refused.Help}");
@@ -181,7 +191,7 @@ public class FixtureLiteralTests
 
         var refused = TheOnly(Compilation.Compile(source, [directory]));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldRequiresANestedValue.Code, refused.Code);
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
         Assert.True(
             refused.Help?.Contains("at: new ambiguity.Point {", StringComparison.Ordinal) == true,
             $"the help must spell the type in full where its simple name is ambiguous, but says: {refused.Help}");
@@ -192,7 +202,7 @@ public class FixtureLiteralTests
     {
         var refused = TheOnly(Compile(Source("        count: new Inner { },")));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldIsNotAMessage.Code, refused.Code);
+        Assert.Equal(DiagnosticCodes.LiteralForANonMessageField.Code, refused.Code);
     }
 
     [Fact]
@@ -200,7 +210,7 @@ public class FixtureLiteralTests
     {
         var refused = TheOnly(Compile(Source("        nested_values: Nested.NESTED_SOME,")));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldTypeMismatch.Code, refused.Code);
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
         Assert.True(
             refused.Help?.Contains("nested_values: [", StringComparison.Ordinal) == true,
             $"the help must show the list to write, but says: {refused.Help}");
@@ -211,7 +221,7 @@ public class FixtureLiteralTests
     {
         var refused = TheOnly(Compile(Source("        count: [1],")));
 
-        Assert.Equal(DiagnosticCodes.FixtureFieldTypeMismatch.Code, refused.Code);
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
     }
 
     /// <summary>
@@ -225,7 +235,7 @@ public class FixtureLiteralTests
 
         var duplicate = TheOnly(Compile(text));
 
-        Assert.Equal(DiagnosticCodes.DuplicateFixtureField.Code, duplicate.Code);
+        Assert.Equal(DiagnosticCodes.DuplicateLiteralField.Code, duplicate.Code);
         Assert.Equal(text.LastIndexOf("nested_values", StringComparison.Ordinal), duplicate.Span.Start.Offset);
         Assert.True(
             duplicate.Help?.Contains("one list", StringComparison.Ordinal) == true,

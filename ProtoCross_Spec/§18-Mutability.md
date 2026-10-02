@@ -11,7 +11,9 @@ Normative Requirements:
   ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - Methods may not assign receiver fields, nested message fields, repeated fields, parameters, or
   loop bindings. An assignment target that is not a local is `PC0034`.
-- Methods cannot allocate new protobuf messages in ordinary method bodies.
+- Methods may build a new message with a literal ([13.2](./§13-Messages.md#132-message-construction)), and hold it in a local, pass it, or
+  return it. Its fields are set once, by the literal: a field of a message a literal built may no
+  more be assigned than any other field.
 
 Open Questions:
 
