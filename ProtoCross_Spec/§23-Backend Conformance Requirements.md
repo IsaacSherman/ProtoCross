@@ -42,7 +42,7 @@ time rather than emitting something whose semantics differ.
 | Editions | Yes | Yes | — | Same mechanism; presence is a resolved feature ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)). |
 | Oneof | No | No | — | Blocked on the open question in 8.4. |
 | ProtoCross `test` declarations | Yes | Yes | — | Both backends emit generated tests. |
-| Message literals | Yes | No | — | C# writes an object initializer, its fields in the order written, and `Clone`s a stored message that is not a literal. C++ generates a test's fixture and refuses a literal anywhere else, `PC1102`, until #81 ([13.2](./§13-Messages.md#132-message-construction)). |
+| Message literals | Yes | Yes | — | C# writes an object initializer and `Clone`s a stored message that is not a literal; C++ writes a lambda called where the literal is written, and assigning a message copies it. Both set fields in the order written ([13.2](./§13-Messages.md#132-message-construction), [24.2](./§24-Generated%20API%20Strategy.md#242-c)). |
 | Test project scaffolding | Yes | Yes | — | C# `.csproj`; C++ `CMakeLists.txt`. |
 | Partial semantic model after parse errors | Yes | Yes | — | Front-end feature; emitters use only `EmittableModule`. |
 | Declaration sites and symbol IDs | Yes | Yes | — | Front-end/IR feature for editor tooling and stable references. |

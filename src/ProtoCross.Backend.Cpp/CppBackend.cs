@@ -26,7 +26,7 @@ namespace ProtoCross.Backend.Cpp;
 /// case is what keeps generating a single source from moving.
 /// </para>
 /// </remarks>
-public sealed class CppBackend : ITestProjectScaffold
+public sealed partial class CppBackend : ITestProjectScaffold
 {
     private const string ReceiverName = "self";
     private const string RuntimeNamespace = "::protocross_runtime";
@@ -53,11 +53,6 @@ public sealed class CppBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        if (Refused(UngeneratedLiterals.InMethods(module), diagnostics))
-        {
-            return [];
-        }
-
         var baseName = Path.GetFileNameWithoutExtension(options.SourceFileName);
         var writer = new SourceWriter("  ");
         var placement = new Placement(options.ProjectNamespace);
@@ -208,7 +203,7 @@ public sealed class CppBackend : ITestProjectScaffold
         BackendOptions options,
         DiagnosticBag diagnostics)
     {
-        if (module.Tests.Count == 0 || Refused(UngeneratedLiterals.InTests(module), diagnostics))
+        if (module.Tests.Count == 0)
         {
             return [];
         }
@@ -225,7 +220,16 @@ public sealed class CppBackend : ITestProjectScaffold
         var hasFloatingPointExpectations = module.Tests.Any(ExpectsFloatingPoint);
         var placement = new Placement(options.ProjectNamespace);
 
-        WriteTestHeader(writer, options, HeadersTestedBy(module, baseName), hasFailTests, hasFloatingPointExpectations);
+        // The schemas a test names beyond its target's are the ones a literal in it brings: no behavior
+        // header has a reason to include those. They come first, as a header's own schemas do.
+        var schemaHeaders = ProtoHeadersOf(
+            SchemasNamedBeyond(module.Tests.Select(test => test.Target.Receiver.File), module.Tests));
+        WriteTestHeader(
+            writer,
+            options,
+            [.. schemaHeaders, .. HeadersTestedBy(module, baseName)],
+            hasFailTests,
+            hasFloatingPointExpectations);
 
         foreach (var test in module.Tests)
         {
@@ -251,28 +255,39 @@ public sealed class CppBackend : ITestProjectScaffold
         DiagnosticBag diagnostics)
         => [new GeneratedFile(CppTestProject.FileName, CppTestProject.Build(options))];
 
-    /// <inheritdoc cref="UngeneratedLiterals.Refused"/>
-    private static bool Refused(IReadOnlyList<IrMessageLiteral> literals, DiagnosticBag diagnostics)
-        => UngeneratedLiterals.Refused(literals, DiagnosticCodes.CppLiteralNotGenerated, "C++", "once #81 lands", diagnostics);
-
     /// <summary>
-    /// The headers declaring the methods this source's tests target, sorted, each once: this source's
-    /// own, and another source's wherever a test targets a method declared there.
+    /// The headers declaring the methods this source's tests call, sorted, each once: this source's
+    /// own, and another source's wherever a test calls a method declared there.
     /// </summary>
     /// <param name="baseName">What this source's own header is named after.</param>
     /// <remarks>
+    /// <para>
     /// A test may target a method in any source of the compilation (spec 5.3), and the driver calls it,
     /// so the driver includes whichever header declares it. A test whose target is in its own source
     /// includes the header named for this source, as every driver always has.
+    /// </para>
+    /// <para>
+    /// The target is not the only method a test calls. A fixture, an argument or an expectation may
+    /// call a method on a literal, <c>new Line { … }.cents()</c>, and that method may be declared in
+    /// any source too, so it is asked the same question.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<string> HeadersTestedBy(IrModule module, string baseName)
         => module.Tests
-            .Select(test => test.Document is null || test.Target.Declaration.Document == test.Document
-                ? baseName + HeaderExtension
-                : HeaderFor(test.Target.Declaration.Document))
+            .SelectMany(test => MethodsCalledBy(test).Select(method => HeaderDeclaring(method, test, baseName)))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>The methods a test's driver calls: its target, and any its fixture, arguments and expectation call.</summary>
+    private static IEnumerable<IrMethodSignature> MethodsCalledBy(IrTest test)
+        => IrWalk.DescendantsAndSelf(test).OfType<IrMethodCall>().Select(call => call.Target).Prepend(test.Target);
+
+    /// <summary>The header declaring <paramref name="method"/>, as the driver for <paramref name="test"/> names it.</summary>
+    private static string HeaderDeclaring(IrMethodSignature method, IrTest test, string baseName)
+        => test.Document is null || method.Declaration.Document == test.Document
+            ? baseName + HeaderExtension
+            : HeaderFor(method.Declaration.Document);
 
     private static void WriteTestHeader(
         SourceWriter writer,
@@ -563,58 +578,16 @@ public sealed class CppBackend : ITestProjectScaffold
             : $"static_cast<void>({CppInvocation(test, placement)});");
     }
 
+    /// <summary>Declares the local named <c>receiver</c> that a test calls its method on.</summary>
     private static void EmitCppReceiver(SourceWriter writer, IrTest test, Placement placement)
-    {
-        writer.WriteLine($"{QualifiedTypeName(test.Target.Receiver)} receiver;");
-        EmitCppFixtureFields(writer, "receiver", false, test.Receiver, new NameAllocator(), placement);
-    }
+        => EmitConstruction(writer, test.Receiver, TestReceiverName, NamesFor(test.Receiver, TestReceiverName), placement);
 
     private static string CppInvocation(IrTest test, Placement placement)
     {
-        var arguments = new List<string> { "receiver" };
+        var arguments = new List<string> { TestReceiverName };
         arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement)));
 
         return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
-    }
-
-    /// <remarks>
-    /// In the order the author wrote the fields, which is the order a literal evaluates its values in
-    /// (spec 9.3) and the order the C# backend writes them in. Fixtures were set in field-number order
-    /// until C# began writing every literal in the order written. The order can be observed: the
-    /// compiler treats each member of a oneof as a field of its own, so a fixture may set two members
-    /// of one oneof, and the message keeps whichever was set last. Had C++ kept field-number order,
-    /// the two backends could keep different members.
-    /// </remarks>
-    private static void EmitCppFixtureFields(
-        SourceWriter writer,
-        string target,
-        bool targetIsPointer,
-        IrMessageLiteral message,
-        NameAllocator names,
-        Placement placement)
-    {
-        var access = targetIsPointer ? "->" : ".";
-        foreach (var initializer in message.Fields)
-        {
-            var field = initializer.Field;
-            var accessor = NameConventions.GetCppFieldName(field);
-            IReadOnlyList<IrExpression> values = initializer.Value is IrList list ? list.Elements : [initializer.Value];
-
-            foreach (var value in values)
-            {
-                if (value is IrMessageLiteral nested)
-                {
-                    var local = names.Next(field.Name);
-                    var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
-                    writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
-                    EmitCppFixtureFields(writer, local, true, nested, names, placement);
-                    continue;
-                }
-
-                var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
-                writer.WriteLine($"{target}{access}{setter}({Expression(value, placement)});");
-            }
-        }
     }
 
     private static void WriteHeader(SourceWriter writer, BackendOptions options, string guard, IrModule module)
@@ -651,12 +624,8 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine("#include <string>");
         writer.WriteLine();
 
-        var protoHeaders = module.Methods
-            .Select(m => NameConventions.GetCppProtoHeader(m.Receiver.File))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(header => header, StringComparer.Ordinal);
-
-        foreach (var header in protoHeaders)
+        var receivers = module.Methods.Select(method => method.Receiver.File).ToList();
+        foreach (var header in ProtoHeadersOf(receivers.Concat(SchemasNamedBeyond(receivers, module.Methods))))
         {
             writer.WriteLine($"#include \"{header}\"");
         }
@@ -785,12 +754,8 @@ public sealed class CppBackend : ITestProjectScaffold
                 break;
 
             case IrForEach forEach:
-            {
-                using var scope = writer.Block(
-                    $"for (const auto& {Escape(forEach.Loop.Name)} : {Expression(forEach.Collection, placement)})");
-                EmitStatements(writer, forEach.Body.Statements, placement);
+                EmitForEach(writer, forEach, placement);
                 break;
-            }
 
             case IrIf ifStatement:
                 EmitIf(writer, ifStatement, placement);
@@ -819,6 +784,78 @@ public sealed class CppBackend : ITestProjectScaffold
                 throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement.");
         }
     }
+
+    /// <summary>Emits a <c>for</c> loop over a repeated value, as a range-based <c>for</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// A repeated field read off a temporary message, either a literal or a call's result, is a
+    /// reference into a message that C++20 destroys before the loop's first iteration. A range-based
+    /// <c>for</c> keeps alive the temporary it is handed, but an accessor's result is a reference
+    /// rather than one. Iterating it is undefined behavior: the loop may read the elements, read
+    /// garbage or crash. So that message is kept in a local first, under a name nothing in the loop
+    /// reads or declares, and the field is read off the local.
+    /// </para>
+    /// <para>
+    /// The local is declared in a block of its own around the loop, rather than in the loop's C++20
+    /// init-statement. Either one ends its life with the loop, but MSVC refuses a lambda in a
+    /// range-based <c>for</c>'s init-statement (C2059), and a literal is a lambda.
+    /// </para>
+    /// <para>
+    /// Every other collection is iterated as written, as it always has been. A field of the receiver,
+    /// a local or a parameter outlives the loop, and a call that returns the repeated value itself
+    /// returns a temporary that the <c>for</c> keeps alive.
+    /// </para>
+    /// </remarks>
+    private static void EmitForEach(SourceWriter writer, IrForEach forEach, Placement placement)
+    {
+        var element = $"const auto& {Escape(forEach.Loop.Name)}";
+        if (TemporaryOwnerOf(forEach.Collection) is not { } owner)
+        {
+            EmitLoop(writer, $"for ({element} : {Expression(forEach.Collection, placement)})", forEach.Body, placement);
+            return;
+        }
+
+        var kept = NamesFor(forEach).Next("owner");
+        writer.WriteLine("{");
+        writer.Indent();
+        writer.WriteLine($"const auto {kept} = {Expression(owner, placement)};");
+        EmitLoop(writer, $"for ({element} : {ReadOff(forEach.Collection, owner, kept)})", forEach.Body, placement);
+        writer.Unindent();
+        writer.WriteLine("}");
+    }
+
+    /// <summary>Emits a loop's header and, braced beneath it, its body.</summary>
+    private static void EmitLoop(SourceWriter writer, string header, IrBlock body, Placement placement)
+    {
+        using var scope = writer.Block(header);
+        EmitStatements(writer, body.Statements, placement);
+    }
+
+    /// <summary>
+    /// The temporary message a chain of field reads begins at, when it begins at one: a literal, or a
+    /// call's result.
+    /// </summary>
+    private static IrExpression? TemporaryOwnerOf(IrExpression collection)
+    {
+        var root = collection;
+        while (root is IrFieldAccess field)
+        {
+            root = field.Receiver;
+        }
+
+        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall ? root : null;
+    }
+
+    /// <summary>
+    /// The chain of field reads <paramref name="read"/>, begun at the local <paramref name="ownerName"/>
+    /// instead of at <paramref name="owner"/>.
+    /// </summary>
+    private static string ReadOff(IrExpression read, IrExpression owner, string ownerName) => read switch
+    {
+        _ when ReferenceEquals(read, owner) => ownerName,
+        IrFieldAccess field => FieldRead(ReadOff(field.Receiver, owner, ownerName), field.Field),
+        _ => throw new ArgumentOutOfRangeException(nameof(read), read, "Not a chain of field reads from its owner."),
+    };
 
     /// <summary>
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the
@@ -858,7 +895,7 @@ public sealed class CppBackend : ITestProjectScaffold
         IrThis => ReceiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, placement)}.{NameConventions.GetCppFieldName(field.Field)}()",
+        IrFieldAccess field => FieldRead(Expression(field.Receiver, placement), field.Field),
 
         // Uniform in C++, unlike C#: protoc emits has_x() for every field with presence,
         // message-typed or not.
@@ -871,8 +908,13 @@ public sealed class CppBackend : ITestProjectScaffold
         IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
+        IrMessageLiteral literal => MessageLiteral(literal, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
+
+    /// <summary>A field read off the message <paramref name="receiver"/> names, through protoc's getter.</summary>
+    private static string FieldRead(string receiver, FieldDescriptor field)
+        => $"{receiver}.{NameConventions.GetCppFieldName(field)}()";
 
     private static string EmitCall(IrMethodCall call, Placement placement)
     {
@@ -1395,18 +1437,5 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         return builder.ToString();
-    }
-
-    private sealed class NameAllocator
-    {
-        private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
-
-        public string Next(string stem)
-        {
-            var escaped = Escape(stem);
-            _counts.TryGetValue(escaped, out var count);
-            _counts[escaped] = count + 1;
-            return count == 0 ? escaped : escaped + count.ToString(CultureInfo.InvariantCulture);
-        }
     }
 }

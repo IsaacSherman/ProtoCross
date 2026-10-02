@@ -18,15 +18,9 @@ public partial class BackendTests
     /// named <see cref="Owned"/>.
     /// </summary>
     /// <remarks>
-    /// <para>
     /// The corpus rather than a sample, because a name the placement missed is one written by a
     /// construct nobody thought of: a call inside a loop condition, a test targeting a method another
     /// source declares, an enum-typed parameter.
-    /// </para>
-    /// <para>
-    /// Less what a backend refuses to generate: a literal outside a fixture, until both backends
-    /// generate one (spec 13.2). A refused compilation generates nothing, so it has no names to place.
-    /// </para>
     /// </remarks>
     private static IReadOnlyList<CompilationResult> CorpusAsProjects { get; } =
     [
@@ -34,13 +28,9 @@ public partial class BackendTests
             .Select(source => source.Result)
             .Distinct(ReferenceEqualityComparer.Instance)
             .Cast<CompilationResult>()
-            .Where(result => result.Success && Generates(result.EmittableModule!))
+            .Where(result => result.Success)
             .Select(result => result with { ProjectNamespace = Owned }),
     ];
-
-    /// <summary>Whether a backend generates anything from <paramref name="module"/>, which it does unless it refuses a literal.</summary>
-    private static bool Generates(Ir.IrModule module)
-        => UngeneratedLiterals.InMethods(module).Count == 0 && UngeneratedLiterals.InTests(module).Count == 0;
 
     /// <summary>The files one compilation generates, behavior and tests, leaving out the fixed-name support files.</summary>
     private static IReadOnlyList<GeneratedFile> GeneratedFrom(CompilationResult result, ITestBackend backend)

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// message_literals.pcross -- message literals in expression position (spec 13.2).
+//
+// An order of lines, so a literal has a nested message, a repeated message and a repeated scalar
+// to set, and the receiver has values for a literal's fields to be computed from.
+message ConstructedOrder {
+  int64 number = 1;
+  repeated ConstructedLine lines = 2;
+  ConstructedLine featured = 3;
+  repeated int64 tags = 4;
+  int64 divisor = 5;
+}
+
+message ConstructedLine {
+  string label = 1;
+  int64 quantity = 2;
+  int64 price_cents = 3;
+}
