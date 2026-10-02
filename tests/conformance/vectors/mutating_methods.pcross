@@ -235,6 +235,23 @@ extend Ledger {
     mut fn adopt_latest() -> int64 {
         return adopt(latest());
     }
+
+    // A loop over a field of a call's result traverses a copy of the result. In C# the result is the
+    // receiver's own field, and the loop inside changes it, which the outer loop would otherwise see.
+    mut fn touched_while_traversing_a_call() -> int64 {
+        var total: int64 = 0;
+        for split in latest().splits {
+            if has last {
+                for mine in last.splits {
+                    mine.touch();
+                }
+            }
+
+            total += split.touches;
+        }
+
+        return total;
+    }
 }
 
 test Ledger.deposit "a scalar field assigned and read back" {
@@ -336,6 +353,11 @@ test Ledger.local_entries_are_copies "a local repeated value holds copies of the
 test Ledger.adopt_latest "a call's result passed to a mutating method is a copy" {
     receiver { last: new LedgerEntry { cents: 8 } }
     expect return 8;
+}
+
+test Ledger.touched_while_traversing_a_call "a loop over a call's result traverses a copy" {
+    receiver { last: new LedgerEntry { splits: [new LedgerEntry { }, new LedgerEntry { }] } }
+    expect return 0;
 }
 
 test LedgerEntry.lift "a field given a message from inside itself" {

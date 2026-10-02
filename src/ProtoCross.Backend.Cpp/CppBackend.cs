@@ -835,7 +835,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         }
 
         var element = $"const auto& {Escape(forEach.Loop.Name)}";
-        if (TemporaryOwnerOf(forEach.Collection) is not { } owner)
+        if (IrMutation.TemporaryOwnerOf(forEach.Collection) is not { } owner)
         {
             EmitLoop(writer, $"for ({element} : {Expression(forEach.Collection, placement)})", forEach.Body, placement);
             return;
@@ -855,21 +855,6 @@ public sealed partial class CppBackend : ITestProjectScaffold
     {
         using var scope = writer.Block(header);
         EmitStatements(writer, body.Statements, placement);
-    }
-
-    /// <summary>
-    /// The temporary message a chain of field reads begins at, when it begins at one: a literal, or a
-    /// call's result.
-    /// </summary>
-    private static IrExpression? TemporaryOwnerOf(IrExpression collection)
-    {
-        var root = collection;
-        while (root is IrFieldAccess field)
-        {
-            root = field.Receiver;
-        }
-
-        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall ? root : null;
     }
 
     /// <summary>

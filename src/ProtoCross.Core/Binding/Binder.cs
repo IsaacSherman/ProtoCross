@@ -1155,16 +1155,21 @@ public sealed partial class Binder
     /// names are unique within a method, because shadowing is rejected at declaration.
     /// </remarks>
     private static string? PresencePath(IrExpression receiver, FieldDescriptor field)
-        => PresenceRoot(receiver) is { } root ? $"{root}{PresencePathSeparator}{field.Name}" : null;
+        => PresenceRoot(receiver) is { } root ? Through(root, field) : null;
 
     private const char PresencePathSeparator = '.';
 
+    /// <summary><paramref name="key"/> extended by <paramref name="field"/>, the one way any key here grows.</summary>
+    /// <remarks>
+    /// Shared by the presence key and the storage key (<see cref="StorageOf"/>), because the loop rule
+    /// and the overlap check compare one with prefixes of another, and two spellings of the join would
+    /// compare strings that never match.
+    /// </remarks>
+    private static string Through(string key, FieldDescriptor field) => $"{key}{PresencePathSeparator}{field.Name}";
+
     private static string? PresenceRoot(IrExpression expression) => expression switch
     {
-        IrThis => "this",
         IrLocalReference { Local: var binding } when IsLoopBinding(binding) => LoopPresenceRoot(binding.Name),
-        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
-        IrParameterReference parameter => $"param:{parameter.Parameter.Name}",
 
         // Only a singular message field extends a path; a scalar cannot be read through, and a
         // repeated field is reached by iteration rather than by name.
@@ -1174,13 +1179,31 @@ public sealed partial class Binder
         // language comes from a root, a guarded read or a literal -- but neither has a name, so
         // nothing reached through one can be guarded. BindFieldAccess turns that into a diagnostic
         // with a way out.
+        _ => NamedRoot(expression),
+    };
+
+    /// <summary>
+    /// The key of the receiver, a local or a parameter, which every key reached from one begins with;
+    /// null for anything else. A loop binding is keyed apart, differently by each key that has one.
+    /// </summary>
+    private static string? NamedRoot(IrExpression expression) => expression switch
+    {
+        IrThis => ReceiverPresenceRoot,
+        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
+        IrParameterReference parameter => ParameterPresenceRoot(parameter.Parameter.Name),
         _ => null,
     };
 
     private static bool IsSingularMessage(FieldDescriptor field)
         => !field.IsRepeated && !field.IsMap && field.FieldType is FieldType.Message or FieldType.Group;
 
+    private const string ReceiverPresenceRoot = "this";
+
     private static string LocalPresenceRoot(string name) => $"local:{name}";
+
+    private static string ParameterPresenceRoot(string name) => $"{ParameterPresenceRootPrefix}{name}";
+
+    private const string ParameterPresenceRootPrefix = "param:";
 
     /// <remarks>
     /// Apart from a local's, because a change through a binding has to end what was shown about every
@@ -1741,30 +1764,23 @@ public sealed partial class Binder
 
     private IrExpression BindName(NameExpression name, Scope scope, MethodContext context)
     {
-        if (scope.LookupLocal(name.Name.Text) is { } local)
+        switch (Resolve(name.Name.Text, scope, context))
         {
-            Use(local.Id, name.Name.Span);
-            return new IrLocalReference(local, name.Span);
-        }
+            case { Local: { } local }:
+                Use(local.Id, name.Name.Span);
+                return new IrLocalReference(local, name.Span);
 
-        if (scope.LookupParameter(name.Name.Text) is { } parameter)
-        {
-            Use(parameter.Id, name.Name.Span);
-            return new IrParameterReference(parameter, name.Span);
-        }
+            case { Parameter: { } parameter }:
+                Use(parameter.Id, name.Name.Span);
+                return new IrParameterReference(parameter, name.Span);
 
-        if (context.HasImplicitReceiver)
-        {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            var field = MessageFields.Named(context.Receiver, name.Name.Text);
-            if (field is not null)
-            {
+            case { Field: { } field }:
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
                 // receiver is a fact about the text and not about what was named.
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return BindFieldAccess(
                     new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
-            }
         }
 
         _diagnostics.Report(
@@ -2019,11 +2035,27 @@ public sealed partial class Binder
         return string.Join('.', parts);
     }
 
-    /// <summary>Whether an identifier names a value in scope, using the same order as BindName.</summary>
+    /// <summary>Whether an identifier names a value in scope.</summary>
     private static bool IsValueName(string name, Scope scope, MethodContext context)
-        => scope.LookupLocal(name) is not null
-        || scope.LookupParameter(name) is not null
-        || (context.HasImplicitReceiver && MessageFields.Named(context.Receiver, name) is not null);
+        => Resolve(name, scope, context) is not { Local: null, Parameter: null, Field: null };
+
+    /// <summary>
+    /// What a bare name means where it is written: a local, then a parameter, then a field of the
+    /// implicit receiver, the first of those that has the name. None of them when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// One home for the order, because everything that reads a bare name has to agree on it: binding
+    /// a read, binding a write, deciding whether a dotted name is an enum, and tracing what a change
+    /// reaches before a loop body is bound. A second copy of the order is a write the binder resolves
+    /// to one place and the presence analysis to another.
+    /// </remarks>
+    private static BareName Resolve(string name, Scope scope, MethodContext context)
+        => scope.LookupLocal(name) is { } local ? new BareName(local, null, null)
+            : scope.LookupParameter(name) is { } parameter ? new BareName(null, parameter, null)
+            : new BareName(null, null, context.HasImplicitReceiver ? MessageFields.Named(context.Receiver, name) : null);
+
+    /// <summary>What <see cref="Resolve"/> found a bare name to mean: at most one of the three.</summary>
+    private readonly record struct BareName(IrLocal? Local, IrParameter? Parameter, FieldDescriptor? Field);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it

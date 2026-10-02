@@ -44,7 +44,7 @@ Normative Requirement:
   membership, order or identity** (`PC0096`). That refuses anything that could, whether or not it
   would:
   - assigning the field, the message holding it, or anything further out, which replaces it;
-  - assigning another member of a `oneof` holding it, which unsets it;
+  - assigning, or writing through, another member of a `oneof` holding it, which unsets it;
   - calling a `mut fn` on the message holding it, or on anything further out, which may change it.
 
   What the called method does is not asked, because the answer would change whenever its body did,

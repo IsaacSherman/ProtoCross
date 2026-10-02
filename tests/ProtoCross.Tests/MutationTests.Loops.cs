@@ -53,6 +53,7 @@ public partial class MutationTests
     [InlineData("mut fn f() { if has last { for split in last.splits { last = new LedgerEntry { }; } } }", "last = new")]
     [InlineData("mut fn f() { if has last { for split in last.splits { last.touch(); } } }", "last.touch()")]
     [InlineData("mut fn f() { if has pending { for split in pending.splits { settled_cents = 1; } } }", "settled_cents = 1")]
+    [InlineData("mut fn f() { if has disputed { for split in disputed.splits { pending.cents = 1; } } }", "pending.cents = 1")]
     [InlineData("mut fn f() { for entry in entries { for split in entry.splits { entry.touch(); } } }", "entry.touch()")]
     [InlineData("fn f() { var mine: LedgerEntry = new LedgerEntry { }; for split in mine.splits { mine = new LedgerEntry { }; } }", "mine = new LedgerEntry { }; }")]
     [InlineData("fn f() { var mine: LedgerEntry = new LedgerEntry { }; for split in mine.splits { mine.touch(); } }", "mine.touch()")]

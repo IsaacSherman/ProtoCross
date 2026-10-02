@@ -102,7 +102,9 @@ A message stored in a field is `Clone`d unless it is a literal, as it is in a li
 message: in any other, nothing can change through the local or through what it was copied from, so a
 copy and a share cannot be told apart, and every method written before mutation is generated as it
 was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
-because the call may have returned part of the very receiver being changed.
+because the call may have returned part of the very receiver being changed. For the same reason, in
+a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
+result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
 
 Questions:
 

@@ -77,6 +77,28 @@ public partial class MutationTests
             "pending.cents");
     }
 
+    /// <summary>
+    /// Writing through a <c>oneof</c> member sets it, which unsets the other members as surely as
+    /// assigning it would.
+    /// </summary>
+    [Fact]
+    public void WritingThroughAOneofMemberEndsWhatAGuardProvedAboutAnother()
+    {
+        AssertTheReadAfterTheChangeIsRefused(
+            """
+            mut fn f() -> int64 {
+                if has disputed {
+                    var before: int64 = disputed.cents;
+                    pending.cents = 1;
+                    return disputed.cents;
+                }
+
+                return 0;
+            }
+            """,
+            "disputed.cents");
+    }
+
     /// <summary>A mutating method may assign anything inside its receiver, so the call ends everything shown there.</summary>
     [Fact]
     public void AMutatingCallEndsWhatAGuardProvedInsideItsReceiver()
@@ -103,26 +125,28 @@ public partial class MutationTests
     [Fact]
     public void AChangeInALoopBodyEndsTheGuardForEveryPass()
     {
-        var refused = TheOnly(
-            Compile(
-                """
-                mut fn f(entry: LedgerEntry) -> int64 {
-                    var total: int64 = 0;
-                    if has last {
-                        if has last.parent {
-                            for amount in amounts {
-                                total += last.parent.cents;
-                                last = entry;
-                            }
+        const string methods =
+            """
+            mut fn f(entry: LedgerEntry) -> int64 {
+                var total: int64 = 0;
+                if has last {
+                    if has last.parent {
+                        for amount in amounts {
+                            total += last.parent.cents;
+                            last = entry;
                         }
                     }
-
-                    return total;
                 }
-                """),
-            "PC0078");
 
-        Assert.NotNull(refused);
+                return total;
+            }
+            """;
+
+        AssertStartsAt(
+            TheOnly(Compile(methods), "PC0078"),
+            methods,
+            "last.parent.cents",
+            "the read before the assignment is refused, because every pass after the first makes it after one");
     }
 
     /// <summary>

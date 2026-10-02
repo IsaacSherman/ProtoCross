@@ -52,6 +52,24 @@ public static class IrMutation
         return place;
     }
 
+    /// <summary>
+    /// The temporary message a chain of field reads begins at, when it begins at one: a literal, or a
+    /// call's result.
+    /// </summary>
+    /// <remarks>
+    /// A loop over a field of one has to keep the message for as long as it runs, and keeps a message
+    /// of its own. C++ keeps it in a local, since an accessor's reference into a temporary outlives
+    /// the temporary. C# keeps a copy in a method that changes a message, since a call's result may be
+    /// part of the receiver the loop changes (spec 24).
+    /// </remarks>
+    public static IrExpression? TemporaryOwnerOf(IrExpression collection)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+
+        var root = RootOf(collection);
+        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall ? root : null;
+    }
+
     /// <summary>Whether <paramref name="expression"/> names a place, rather than a value nothing holds.</summary>
     /// <remarks>
     /// A call's result and a literal hold their value only for as long as the expression that made

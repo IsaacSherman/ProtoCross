@@ -48,7 +48,8 @@ Normative Requirements:
     also reads its target, and that read is guarded like any other.
   - A message assigned is stored as a copy, unless it is a literal
     ([13.2](./§13-Messages.md#132-message-construction)).
-  - Assigning one member of a `oneof` unsets the others, as setting one does in protobuf.
+  - Assigning one member of a `oneof`, or writing through one, unsets the others, as setting one
+    does in protobuf.
   - An assignment reaches its target first, setting any unset message on the way, and then
     evaluates its value ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
 - **Mutating calls.** A `mut fn` may be called only on a message the calling method may change

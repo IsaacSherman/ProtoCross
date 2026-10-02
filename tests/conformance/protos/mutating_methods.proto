@@ -19,6 +19,7 @@ message Ledger {
   oneof settlement {
     LedgerEntry pending = 6;
     int64 settled_cents = 7;
+    LedgerEntry disputed = 10;
   }
 
   LedgerAudit audit = 8;

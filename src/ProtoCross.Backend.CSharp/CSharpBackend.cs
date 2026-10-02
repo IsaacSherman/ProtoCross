@@ -417,7 +417,33 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
             => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Expression(value, Placement);
+
+        /// <summary>
+        /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
+        /// changes a message, a field of a copy of the call's result it is read from.
+        /// </summary>
+        /// <remarks>
+        /// A call's result is a reference in C#, and may be part of the receiver the loop's body
+        /// changes, where C++ keeps the result in a local of its own (spec 24.2). A loop over it would
+        /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. A
+        /// literal is held by nothing else, and is traversed as it is.
+        /// </remarks>
+        public string Collection(IrForEach loop)
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is IrMethodCall owner
+                ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
+                : Expression(loop.Collection, Placement);
     }
+
+    /// <summary>
+    /// The chain of field reads <paramref name="read"/>, begun at <paramref name="ownerText"/> instead
+    /// of at <paramref name="owner"/>.
+    /// </summary>
+    private static string ReadOff(IrExpression read, IrExpression owner, string ownerText) => read switch
+    {
+        _ when ReferenceEquals(read, owner) => ownerText,
+        IrFieldAccess field => $"{ReadOff(field.Receiver, owner, ownerText)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
+        _ => throw new ArgumentOutOfRangeException(nameof(read), read, "Not a chain of field reads from its owner."),
+    };
 
     private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements, Body body)
     {
@@ -468,7 +494,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             case IrForEach forEach:
             {
                 using var scope = writer.Block(
-                    $"foreach (var {Escape(forEach.Loop.Name)} in {Expression(forEach.Collection, placement)})");
+                    $"foreach (var {Escape(forEach.Loop.Name)} in {body.Collection(forEach)})");
                 EmitStatements(writer, forEach.Body.Statements, body);
                 break;
             }

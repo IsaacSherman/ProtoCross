@@ -144,6 +144,30 @@ public partial class BackendTests
     }
 
     /// <summary>
+    /// A loop over a field of a call's result keeps a copy of the result in a method that changes a
+    /// message, as C++ keeps it in a local, and traverses the result as it is everywhere else.
+    /// </summary>
+    [Fact]
+    public void CSharpTraversesACopyOfACallsResultOnlyInAMethodThatChangesAMessage()
+    {
+        var generated = MutatingCSharp(
+            """
+            fn latest() -> LedgerEntry { return new LedgerEntry { }; }
+            fn reads() -> int64 { var total: int64 = 0; for kept in latest().splits { total += kept.cents; } return total; }
+            mut fn changes() { for copied in latest().splits { balance += copied.cents; } }
+            """);
+
+        Assert.Contains(
+            "foreach (var kept in global::Protocross.Conformance.LedgerProtoCrossExtensions.Latest(self).Splits)",
+            generated,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "foreach (var copied in global::Protocross.Conformance.LedgerProtoCrossExtensions.Latest(self).Clone().Splits)",
+            generated,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A call's result may be a field of the very receiver a mutating method changes, which in C# is
     /// the same object, so C# passes a copy. A parameter is no part of the receiver and is passed as
     /// it is.

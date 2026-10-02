@@ -121,8 +121,9 @@ is one the next change breaks silently.
   range lies within the range of the node that holds it. So a caret's innermost node can be found by
   descending, and no node claims text belonging to something it is not part of. Two nodes may share
   one range without either standing inside the other -- one pair does, the target of a compound
-  assignment and the read of it -- which is a question for the position rules in 22.3 and not for
-  this one.
+  assignment and the read of it, and for a field each link of the chain each is reached through --
+  which is a question for the position rules in 22.3 and not for this one. Neither holds a node of
+  the other: no node is in two places.
 - **Every expression has a type, and an error type is the trace of an error.** A bind that failed
   produces a node of the error type rather than a guess or a hole, so a consumer never meets a typed
   node that is quietly wrong. Nothing else produces one: a compilation that reported no error holds

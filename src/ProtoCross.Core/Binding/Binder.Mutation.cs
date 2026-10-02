@@ -51,17 +51,12 @@ public sealed partial class Binder
     /// </remarks>
     private string? StorageOf(IrExpression place) => place switch
     {
-        IrThis => "this",
         IrLocalReference { Local: var binding } when IsLoopBinding(binding)
             => _elementsOf.TryGetValue(binding.Id, out var collection) && StorageOf(collection) is { } field
                 ? field + ElementStep
                 : null,
-        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
-        IrParameterReference parameter => $"param:{parameter.Parameter.Name}",
-        IrFieldAccess field => StorageOf(field.Receiver) is { } receiver
-            ? $"{receiver}{PresencePathSeparator}{field.Field.Name}"
-            : null,
-        _ => null,
+        IrFieldAccess field => StorageOf(field.Receiver) is { } receiver ? Through(receiver, field.Field) : null,
+        _ => NamedRoot(place),
     };
 
     private const string ElementStep = "[]";
@@ -161,10 +156,7 @@ public sealed partial class Binder
     private static bool WritesAField(Expression target, Scope scope, MethodContext context) => target switch
     {
         MemberAccessExpression member => !member.Name.IsMissing,
-        NameExpression name => scope.LookupLocal(name.Name.Text) is null
-            && scope.LookupParameter(name.Name.Text) is null
-            && context.HasImplicitReceiver
-            && MessageFields.Named(context.Receiver, name.Name.Text) is not null,
+        NameExpression name => Resolve(name.Name.Text, scope, context) is { Field: not null },
         _ => false,
     };
 
@@ -208,11 +200,18 @@ public sealed partial class Binder
 
     /// <summary>Binds <c>place op= value;</c> where the place is a field, as <c>place = place op value</c>.</summary>
     /// <remarks>
+    /// <para>
     /// The long form reads the field, so it is bound as a read, guard and all: <c>customer.visits += 1</c>
     /// reads <c>customer</c>, and needs <c>has customer</c> as any read of it does. The field it reads
     /// is the field it writes, so the place is taken from the operation rather than bound a second time,
-    /// which would record every name in it twice. It is a node of its own at the read's span, as a
-    /// local's target is (spec 22.2), so the tree holds no node in two places.
+    /// which would record every name in it twice and report every mistake in it twice.
+    /// </para>
+    /// <para>
+    /// The target is a copy of the read, node for node, as a local's target is a reference of its own
+    /// at the read's span (spec 22.2). Sharing the read's nodes would put one node in two places, and a
+    /// walk of the tree would reach it twice. A read that begins at something other than a place has no
+    /// target to copy: a change to it is refused, and nothing is assigned.
+    /// </para>
     /// </remarks>
     private IrStatement BindCompoundFieldAssignment(
         CompoundAssignmentStatement statement,
@@ -229,15 +228,25 @@ public sealed partial class Binder
             _ => null,
         };
 
+        // The long form did not bind to an operation on the field, and has said why.
         if (read is not IrFieldAccess field)
         {
-            // The long form did not bind to an operation on the field, and has said why.
             return new IrExpressionStatement(operation, statement.Span);
         }
 
         CheckFieldWrite(field, statement.Span, context);
-        return new IrFieldAssignment(field with { }, operation, statement.Span);
+
+        return IrMutation.IsPlace(field)
+            ? new IrFieldAssignment((IrFieldAccess)CopyOf(field), operation, statement.Span)
+            : new IrExpressionStatement(operation, statement.Span);
     }
+
+    /// <summary><paramref name="place"/> built again from new nodes, so it shares none with the original.</summary>
+    private static IrExpression CopyOf(IrExpression place) => place switch
+    {
+        IrFieldAccess field => field with { Receiver = CopyOf(field.Receiver) },
+        _ => place with { },
+    };
 
     /// <summary>
     /// Everything that can make a field unwritable here: being a repeated field, being reached
@@ -264,23 +273,30 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The field an assignment writes, and every other member of its <c>oneof</c>, which the
-    /// assignment unsets.
+    /// The field an assignment writes, and every field the assignment unsets: each other member of the
+    /// <c>oneof</c> of that field, or of any message it writes through.
     /// </summary>
+    /// <remarks>
+    /// Writing through a message sets it when it is unset, and setting a member of a <c>oneof</c> unsets
+    /// the others, so <c>pending.cents = 1;</c> unsets <c>pending</c>'s siblings as surely as assigning
+    /// <c>pending</c> would.
+    /// </remarks>
     private static IEnumerable<IrExpression> FieldsReplacedBy(IrFieldAccess field)
     {
         yield return field;
 
-        if (field.Field.RealContainingOneof is not { } oneof)
+        for (IrExpression link = field; link is IrFieldAccess access; link = access.Receiver)
         {
-            yield break;
-        }
-
-        foreach (var sibling in oneof.Fields.Where(sibling => sibling != field.Field))
-        {
-            yield return new IrFieldAccess(field.Receiver, sibling, TypeFactory.FromField(sibling), field.Span);
+            foreach (var sibling in OneofSiblingsOf(access.Field))
+            {
+                yield return new IrFieldAccess(access.Receiver, sibling, TypeFactory.FromField(sibling), access.Span);
+            }
         }
     }
+
+    /// <summary>The other members of the <c>oneof</c> <paramref name="field"/> is in, which setting it unsets.</summary>
+    private static IEnumerable<FieldDescriptor> OneofSiblingsOf(FieldDescriptor field)
+        => field.RealContainingOneof?.Fields.Where(sibling => sibling != field) ?? [];
 
     /// <summary>
     /// Binds the target of an assignment that writes a field: the same names a read resolves, without
@@ -303,12 +319,9 @@ public sealed partial class Binder
     {
         switch (expression)
         {
-            case NameExpression name when WritesAField(name, scope, context):
-            {
-                var field = MessageFields.Named(context.Receiver, name.Name.Text)!;
+            case NameExpression name when Resolve(name.Name.Text, scope, context) is { Field: { } field }:
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return PlaceField(new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span);
-            }
 
             case MemberAccessExpression { Name.IsMissing: false } member:
             {
@@ -595,7 +608,7 @@ public sealed partial class Binder
 
     private IEnumerable<EndedFacts> FactsEndedByAssigning(Expression target, Scope scope, MethodContext context)
     {
-        if (target is NameExpression name && scope.LookupLocal(name.Name.Text) is { } local)
+        if (target is NameExpression name && Resolve(name.Name.Text, scope, context) is { Local: { } local })
         {
             // A loop binding cannot be assigned (PC0034), so assigning one ends nothing.
             return IsLoopBinding(local) ? [] : [EndedFacts.Below(LocalPresenceRoot(local.Name), string.Empty)];
@@ -608,18 +621,18 @@ public sealed partial class Binder
 
         // Only a parameter is traced to its root alone, since a local was settled above, and nothing
         // may change a parameter.
-        if (trace.IsReadOnly || trace.Field is not { } field)
+        if (trace.IsReadOnly || trace.Links.Count == 0)
         {
             return [];
         }
 
-        var parent = trace.Path[..trace.Path.LastIndexOf(PresencePathSeparator)];
-        var siblings = field.RealContainingOneof?.Fields.Where(sibling => sibling != field) ?? [];
-
+        // The field assigned holds a new message, and each link written through is set, which unsets
+        // the other members of its oneof as surely as assigning the field does (FieldsReplacedBy).
         return
         [
             EndedFacts.Below(trace.Root, trace.Path),
-            .. siblings.Select(sibling => EndedFacts.AtOrBelow(trace.Root, $"{parent}{PresencePathSeparator}{sibling.Name}")),
+            .. trace.Links.SelectMany((link, depth) => OneofSiblingsOf(link).Select(sibling =>
+                EndedFacts.AtOrBelow(trace.Root, $"{trace.PathTo(depth)}{PresencePathSeparator}{sibling.Name}"))),
         ];
     }
 
@@ -628,7 +641,7 @@ public sealed partial class Binder
         switch (invocation.Callee)
         {
             case NameExpression name when context.HasImplicitReceiver:
-                return IsMutating(context.Receiver, name.Name.Text) ? [EndedFacts.Below("this", string.Empty)] : [];
+                return IsMutating(context.Receiver, name.Name.Text) ? [EndedFacts.Below(ReceiverPresenceRoot, string.Empty)] : [];
 
             case MemberAccessExpression { Name.IsMissing: false } member:
             {
@@ -657,30 +670,27 @@ public sealed partial class Binder
     /// or null when it names none that this can trace.
     /// </summary>
     /// <remarks>
-    /// The same names, in the same order, that <see cref="BindName"/> resolves: a local, then a
-    /// parameter, then a field of the receiver.
+    /// A bare name is resolved by <see cref="Resolve"/>, as the binder resolves it, so this traces the
+    /// place the statement will be bound to.
     /// </remarks>
     private PlaceTrace? TracePlace(Expression expression, Scope scope, MethodContext context)
     {
         switch (expression)
         {
-            case NameExpression name when scope.LookupLocal(name.Name.Text) is { } local:
-                return new PlaceTrace(
-                    IsLoopBinding(local) ? LoopPresenceRoot(local.Name) : LocalPresenceRoot(local.Name),
-                    string.Empty,
-                    (local.Type as MessageType)?.Descriptor,
-                    null);
-
-            case NameExpression name when scope.LookupParameter(name.Name.Text) is { } parameter:
-                return new PlaceTrace(
-                    $"param:{parameter.Name}",
-                    string.Empty,
-                    (parameter.Type as MessageType)?.Descriptor,
-                    null);
-
-            case NameExpression name when context.HasImplicitReceiver
-                    && MessageFields.Named(context.Receiver, name.Name.Text) is { } field:
-                return new PlaceTrace("this", string.Empty, context.Receiver, null).Through(field);
+            case NameExpression name:
+                return Resolve(name.Name.Text, scope, context) switch
+                {
+                    { Local: { } local } => new PlaceTrace(
+                        IsLoopBinding(local) ? LoopPresenceRoot(local.Name) : LocalPresenceRoot(local.Name),
+                        [],
+                        (local.Type as MessageType)?.Descriptor),
+                    { Parameter: { } parameter } => new PlaceTrace(
+                        ParameterPresenceRoot(parameter.Name),
+                        [],
+                        (parameter.Type as MessageType)?.Descriptor),
+                    { Field: { } field } => new PlaceTrace(ReceiverPresenceRoot, [], context.Receiver).Through(field),
+                    _ => null,
+                };
 
             case MemberAccessExpression { Name.IsMissing: false } member
                     when TracePlace(member.Receiver, scope, context) is { Message: { } message } trace
@@ -693,19 +703,21 @@ public sealed partial class Binder
     }
 
     /// <summary>A place traced from the syntax: its presence root, the fields after it, and what it holds.</summary>
-    /// <param name="Path">The fields after the root, each after a separator: <c>.customer.card</c>.</param>
+    /// <param name="Links">The fields after the root, outermost first.</param>
     /// <param name="Message">The message the place holds, when it holds one a field can be read from.</param>
-    /// <param name="Field">The last field of the path, or null for the root alone.</param>
-    private sealed record PlaceTrace(string Root, string Path, MessageDescriptor? Message, FieldDescriptor? Field)
+    private sealed record PlaceTrace(string Root, IReadOnlyList<FieldDescriptor> Links, MessageDescriptor? Message)
     {
-        public bool IsReadOnly => Root.StartsWith("param:", StringComparison.Ordinal);
+        public bool IsReadOnly => Root.StartsWith(ParameterPresenceRootPrefix, StringComparison.Ordinal);
+
+        /// <summary>The fields after the root, each after a separator, as a presence key writes them: <c>.customer.card</c>.</summary>
+        public string Path => PathTo(Links.Count);
+
+        /// <summary>The path through the first <paramref name="count"/> links.</summary>
+        public string PathTo(int count)
+            => string.Concat(Links.Take(count).Select(link => $"{PresencePathSeparator}{link.Name}"));
 
         public PlaceTrace Through(FieldDescriptor field)
-            => new(
-                Root,
-                $"{Path}{PresencePathSeparator}{field.Name}",
-                IsSingularMessage(field) ? field.MessageType : null,
-                field);
+            => new(Root, [.. Links, field], IsSingularMessage(field) ? field.MessageType : null);
     }
 
     /// <summary>The facts one change ends.</summary>

@@ -34,8 +34,9 @@ Normative Requirements:
   - Assigning a local ends every fact reached through it, however deep: `c = b;` ends what was shown
     about `c.inner` and about `c.inner.stamp` alike.
   - Assigning a field ends every fact reached through it, since the message there is a new one, and
-    every fact about another member of its `oneof`, which it unsets. What was shown about the field
-    itself still holds: the assignment sets it.
+    every fact about another member of its `oneof`, which it unsets. Each message it writes through
+    is set too, so the same goes for the other members of that message's `oneof`. What was shown
+    about the field itself still holds: the assignment sets it.
   - Calling a `mut fn` ends every fact reached through the message it is called on, since it may
     assign anything inside it.
   - A change through the name a `for` binds ends the same facts about every such name, since two
