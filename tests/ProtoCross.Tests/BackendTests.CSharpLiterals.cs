@@ -166,25 +166,34 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// A message field holds a copy of a message that is not a literal, and a literal as it is
-    /// (spec 13.2).
+    /// A message field holds a copy of a message that is not a literal, the receiver's own field
+    /// included, and a literal as it is (spec 13.2).
     /// </summary>
-    [Fact]
-    public void AMessageFieldHoldsACopyOfAnyMessageButALiteral()
+    /// <remarks>
+    /// The field read is the case the copy is most needed for: without it, the new message and the
+    /// receiver would hold one <c>Inner</c> between them.
+    /// </remarks>
+    [Theory]
+    [InlineData("given", "OtherInner = given.Clone(),")]
+    [InlineData("inner", "OtherInner = self.Inner.Clone(),")]
+    [InlineData("new Inner { }", "OtherInner = new global::ProtoCross.Tests.Outer.Types.Inner(),")]
+    public void AMessageFieldHoldsACopyOfAnyMessageButALiteral(string value, string written)
     {
-        var generated = CSharpOf("""
+        var generated = CSharpOf($$"""
             import proto "fixtures.proto";
 
             extend Outer {
                 fn wrapped(given: Inner) -> Outer {
-                    return new Outer { inner: given, other_inner: new Inner { } };
+                    if has inner {
+                        return new Outer { other_inner: {{value}} };
+                    }
+
+                    return new Outer { };
                 }
             }
             """);
 
-        var lines = TrimmedLines(generated).ToList();
-        Assert.Contains("Inner = given.Clone(),", lines);
-        Assert.Contains("OtherInner = new global::ProtoCross.Tests.Outer.Types.Inner(),", lines);
+        Assert.Contains(written, TrimmedLines(generated));
     }
 
     /// <summary>

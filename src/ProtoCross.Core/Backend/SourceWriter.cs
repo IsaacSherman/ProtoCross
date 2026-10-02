@@ -34,16 +34,19 @@ public sealed class SourceWriter
     /// </remarks>
     public void Write(string text)
     {
-        var lines = text.Split(NewLine);
-        for (var index = 0; index < lines.Length; index++)
+        // Found one break at a time rather than split, because nearly all text is one line, and
+        // that line is then written without being copied.
+        var start = 0;
+        for (var lineBreak = text.IndexOf(NewLine, StringComparison.Ordinal);
+             lineBreak >= 0;
+             lineBreak = text.IndexOf(NewLine, start, StringComparison.Ordinal))
         {
-            if (index > 0)
-            {
-                EndLine();
-            }
-
-            WriteWithinLine(lines[index]);
+            WriteWithinLine(text[start..lineBreak]);
+            EndLine();
+            start = lineBreak + NewLine.Length;
         }
+
+        WriteWithinLine(text[start..]);
     }
 
     public void WriteLine(string text = "")
