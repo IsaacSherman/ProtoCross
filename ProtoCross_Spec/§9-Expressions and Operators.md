@@ -139,6 +139,9 @@ Current defined subset:
 - A message literal's values evaluate in the order their fields are written, left to right, as a
   call's arguments do, and a list's elements in order. The order of the schema's field numbers plays
   no part ([13.2](./§13-Messages.md#132-message-construction)).
+- A message literal is evaluated where it is written, as any other operand is. Nothing in it runs
+  before what is written to its left, and a literal in the right operand of `and` or `or` is built
+  only if that operand is evaluated.
 - Boolean `and` and `or` short-circuit left to right.
 - Assignment evaluates the right-hand side before storing the result.
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a

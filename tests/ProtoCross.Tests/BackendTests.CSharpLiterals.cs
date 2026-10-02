@@ -11,7 +11,8 @@ public partial class BackendTests
     //
     // C# writes every literal with one writer, a fixture's included: an object initializer spanning
     // lines, its fields in the order they were written, and a copy of each message it stores that is
-    // not itself a literal. That the result builds and runs is CSharpCompileSmokeTests.Literals.cs.
+    // not itself a literal. That the result builds, runs and agrees with C++ is the message_literals
+    // conformance vector.
 
     /// <summary>
     /// The C# generated for <paramref name="source"/>: its tests when <paramref name="tests"/> is set,
@@ -38,20 +39,21 @@ public partial class BackendTests
 
     /// <summary>
     /// The statement in <paramref name="generated"/> whose first line reads <paramref name="firstLine"/>,
-    /// through the line that closes it at the same depth, with that depth taken off every line.
+    /// through the line <paramref name="lastLine"/> that closes it at the same depth, with that depth
+    /// taken off every line.
     /// </summary>
     /// <remarks>
     /// A line that is not as deep as the statement keeps all of its indentation, so a literal that
     /// leaked out to the left fails the comparison it is handed to, and says where.
     /// </remarks>
-    private static IReadOnlyList<string> StatementAt(string generated, string firstLine)
+    private static IReadOnlyList<string> StatementAt(string generated, string firstLine, string lastLine = "};")
     {
         var lines = generated.Split('\n');
         var first = Array.FindIndex(lines, line => line.TrimStart() == firstLine);
         Assert.True(first >= 0, $"no generated line reads '{firstLine}'");
 
         var depth = lines[first][..^firstLine.Length];
-        var last = Array.FindIndex(lines, first, line => line == depth + "};");
+        var last = Array.FindIndex(lines, first, line => line == depth + lastLine);
         Assert.True(last >= 0, $"'{firstLine}' is never closed at the depth it opened at");
 
         return [.. lines[first..(last + 1)].Select(line => line.StartsWith(depth, StringComparison.Ordinal) ? line[depth.Length..] : line)];

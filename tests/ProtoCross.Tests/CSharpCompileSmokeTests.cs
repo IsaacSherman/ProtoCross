@@ -98,19 +98,11 @@ public partial class CSharpCompileSmokeTests
     /// A project holding <paramref name="files"/> and protoc's C# output for the example schema.
     /// </summary>
     private static CSharpTestWorkspace CreateWorkspace(string label, string protoc, IEnumerable<GeneratedFile> files)
-        => CreateWorkspace(label, protoc, files, TestPaths.ExampleProtoDirectory, "invoice.proto");
-
-    /// <summary>
-    /// A project holding <paramref name="files"/> and protoc's C# output for
-    /// <paramref name="protoFile"/>, found in <paramref name="protoDirectory"/>.
-    /// </summary>
-    private static CSharpTestWorkspace CreateWorkspace(
-        string label, string protoc, IEnumerable<GeneratedFile> files, string protoDirectory, string protoFile)
     {
         var workspace = CSharpTestWorkspace.Create(label);
         workspace.Write(files);
 
-        var protocResult = workspace.GenerateProtobuf(protoc, protoDirectory, protoFile);
+        var protocResult = workspace.GenerateProtobuf(protoc, TestPaths.ExampleProtoDirectory, "invoice.proto");
         Assert.True(
             protocResult.ExitCode == 0,
             $"protoc C# generation failed.{Environment.NewLine}{protocResult.Output}");

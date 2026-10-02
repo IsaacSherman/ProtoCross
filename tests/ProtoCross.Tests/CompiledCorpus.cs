@@ -80,7 +80,7 @@ internal sealed record CorpusSource(string Name, string Text, CompilationResult 
 /// to their size: with them in, the sweeps that run every time took ten times as long.
 /// </para>
 /// </remarks>
-internal static partial class CompiledCorpus
+internal static class CompiledCorpus
 {
     /// <summary>
     /// A file with several distinct mistakes in it: a member name never written, a parameter list
@@ -294,8 +294,7 @@ internal static partial class CompiledCorpus
 
     /// <summary>
     /// The example, the broken buffer, the unfinished one, the qualified names, the program written
-    /// across two files, the literals no vector can hold yet, and every conformance vector someone
-    /// wrote.
+    /// across two files, and every conformance vector someone wrote.
     /// </summary>
     public static IReadOnlyList<CorpusSource> All { get; } =
     [
@@ -304,7 +303,6 @@ internal static partial class CompiledCorpus
         Unclosed,
         Qualified,
         .. CrossFile,
-        Literals,
         .. ConformanceVectors.HandWritten.SelectMany(vector => Each(vector.SourcePaths, ConformanceVectors.Compile(vector))),
     ];
 

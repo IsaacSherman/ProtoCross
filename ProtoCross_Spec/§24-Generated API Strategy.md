@@ -137,7 +137,7 @@ revisited along with the free-function shape.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
 C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,
-and the presence test and the setters a test fixture uses are `has_name()`, `set_name()`,
+and the presence test and the setters a message literal uses are `has_name()`, `set_name()`,
 `mutable_name()` and `add_name()`. That name is the field's name lowercased, with an underscore
 appended when the result is on protoc's list of C++ keywords and macros (`class`, `new`, `assert`) or
 names a nullary member every generated message declares (`descriptor`, `default_instance`,
@@ -174,6 +174,37 @@ underscore the prefixed name would not have needed. This is the same shape as `s
 
 These are protoc's `Namespace`, `ClassName` and `EnumValueName`, reproduced for the same reason as
 `FieldName`, and they are the same in 31.1 and 33.4.
+
+**A message literal is a lambda, called where it is written.** protobuf's C++ API has no
+initializer syntax: a message is built by declaring one and calling its setters. So
+`new Order { number: 1, featured: given }` is written as
+
+```cpp
+[&] {
+  ::acme::Order message;
+  message.set_number(1LL);
+  *message.mutable_featured() = given;
+  return message;
+}()
+```
+
+The lambda is an expression, so the literal is evaluated exactly where it is written
+([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), and it returns the message by
+value.
+- A nested literal is built in place, through the pointer that `mutable_x()` or `add_x()`
+  returns. One that sets nothing only asks for that pointer, which gives the field its presence.
+- A message that is not a literal is assigned through the same pointer, and assignment copies it
+  ([13.2](./§13-Messages.md#132-message-construction)).
+- The lambda captures by reference, so the names it declares are chosen to differ from every name
+  its literal reads.
+- A literal that sets nothing is `T()`.
+- A test's receiver fixture is written by the same writer, into the local `receiver`.
+
+**A loop over a field of a temporary message keeps that message alive.** In
+`for line in with_lines().lines`, the accessor returns a reference into a message that C++20
+destroys before the loop's first iteration. So the message is held in a local declared in a block
+around the loop, and the field is read from that local. A loop over anything else is written as it
+always was.
 
 Implementation Note:
 

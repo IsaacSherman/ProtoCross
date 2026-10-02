@@ -120,13 +120,14 @@ Normative Requirements:
 
 Current Status:
 
-- The C# backend generates a literal wherever one is written, a test's receiver fixture included,
-  as an object initializer. A message it stores that is not a literal is copied with protoc's
+- Both backends generate a literal wherever one is written, a test's receiver fixture included, and
+  the `message_literals` conformance vector runs one in each place in both
+  ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
+- C# writes an object initializer, and copies a stored message that is not a literal with protoc's
   `Clone`.
-- The C++ backend generates a literal in a test's receiver fixture, as it always has, and refuses
-  one anywhere else with `PC1102` until #81, generating nothing for the source it is in. The
-  compiler accepts the literal, so an editor answers about it, and no conformance vector holds one
-  until both backends run it ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
+- C++ writes a lambda that declares the message, sets its fields and returns it, called where the
+  literal is written ([24.2](./§24-Generated%20API%20Strategy.md#242-c)). Assigning a message there
+  copies it.
 
 ### 13.3 Equality
 

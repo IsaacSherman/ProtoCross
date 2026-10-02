@@ -42,14 +42,14 @@ public static class DiagnosticCodes
     /// type is PC0063, as it is for every other field.
     /// </para>
     /// <para>
-    /// PC1002 was the C# backend's refusal of a message literal outside a test's fixture, from #80's
-    /// second step until its third taught the backend to generate one. It never reached a release,
-    /// but the decision log records it, and a code a reader can look up must not come to mean
-    /// something else.
+    /// PC1002 and PC1102 were the C# and C++ backends' refusals of a message literal outside a test's
+    /// fixture, from #80's second step until each backend learned to generate one: C# in #80's third
+    /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
+    /// a reader can look up must not come to mean something else.
     /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -486,15 +486,6 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor CallWithoutAReceiver =
         new("PC0093", DiagnosticSeverity.Error, "method called with no receiver");
-
-    // ------------------------------------------------------- the C++ backend
-
-    /// <summary>
-    /// A message literal outside a test's fixture, which the C++ backend does not generate until #81
-    /// (spec 13.2).
-    /// </summary>
-    public static readonly DiagnosticDescriptor CppLiteralNotGenerated =
-        new("PC1102", DiagnosticSeverity.Error, "message literal not generated in C++ yet");
 
     // ------------------------------------------------------- the configuration file
 
