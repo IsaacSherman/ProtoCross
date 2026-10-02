@@ -474,15 +474,17 @@ public class ReferenceIndexTests
 
     /// <summary>
     /// Also from review. What PC0034 refuses is the assignment, not the name on its left, and every
-    /// other resolved-but-refused case in this issue records the name anyway.
+    /// other resolved-but-refused case in this issue records the name anyway. A field of a receiver
+    /// that may not change is refused by PC0094 instead, and the same holds of it.
     /// </summary>
     [Theory]
-    [InlineData("quantity = 1;", "quantity", SymbolKind.Field)]
-    [InlineData("by = 1;", "by", SymbolKind.Parameter)]
+    [InlineData("quantity = 1;", "quantity", SymbolKind.Field, "PC0094")]
+    [InlineData("by = 1;", "by", SymbolKind.Parameter, "PC0034")]
     public void ATargetThatMayNotBeAssignedIsStillAWriteOfWhatItNames(
         string statement,
         string written,
-        SymbolKind kind)
+        SymbolKind kind,
+        string refusal)
     {
         var source =
             "import proto \"invoice.proto\";\n"
@@ -493,7 +495,7 @@ public class ReferenceIndexTests
         var result = Compile(source, TestPaths.ExampleProtoDirectory);
         var model = SemanticModel.For(result);
 
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0034");
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == refusal);
 
         var reference = At(model, source, statement, written);
 
@@ -530,7 +532,7 @@ public class ReferenceIndexTests
         var result = Compile(source, TestPaths.ExampleProtoDirectory);
         var model = SemanticModel.For(result);
 
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0034");
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0094");
 
         Assert.Equal(ReferenceKind.Read, At(model, source, "line.quantity = 2", "line").Kind);
         Assert.Equal(ReferenceKind.Write, At(model, source, "line.quantity = 2", "quantity").Kind);

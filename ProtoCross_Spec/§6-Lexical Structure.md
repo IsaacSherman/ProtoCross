@@ -108,11 +108,13 @@ void
 while
 ```
 
-Contextual keyword:
+Contextual keywords:
 
 - `new` is not reserved. It begins a message literal ([13.2](./§13-Messages.md#132-message-construction)) where an identifier follows it, and
   is an identifier everywhere else, so a schema field named `new` can still be written. A reserved
   word takes a name away from every schema that uses it.
+- `mut` is not reserved. It marks a method that may change its receiver ([18](./§18-Mutability.md#18-mutability)) where `fn`
+  follows it, and is an identifier everywhere else, for the same reason.
 
 Open Question:
 
@@ -141,7 +143,8 @@ Normative Requirements:
   standard modifier set with it. Every category is declared whether or not anything currently
   produces it.
 - A keyword ([6.4](#64-keywords)) is `keyword`, and so is `new` where it begins a message literal, which is where an
-  identifier follows it. Anywhere else `new` is an identifier and is classified as one.
+  identifier follows it, and `mut` where it marks a method, which is where `fn` follows it. Anywhere
+  else each is an identifier and is classified as one.
 - A string literal is `string`, an integer or floating-point literal is
   `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
   ([6.2](#62-comments)) is `comment`.
@@ -160,9 +163,10 @@ Normative Requirements:
   second lookup of the same name, so what is coloured is what the program means -- a value in scope
   winning over an enum type spelled the same way ([12](./§12-Enums.md#12-enums)) colours as the
   value.
-- **A name that may not be assigned says so.** A parameter, the name a `for` binds, a message field
-  and an enum constant carry `readonly`, because [18](./§18-Mutability.md#18-mutability) makes a
-  local the only thing a method may assign. Where a name is introduced carries `declaration`, and the
+- **A name that may not be assigned says so.** A parameter, the name a `for` binds and an enum
+  constant carry `readonly`, because [18](./§18-Mutability.md#18-mutability) never lets a method assign one. A message
+  field does not: a `mut fn` may assign its receiver's, and any method a field of a message it holds in
+  a local. Where a name is introduced carries `declaration`, and the
   target of an assignment carries `modification` -- including an assignment the language refuses,
   since what is being described is what the author wrote.
 - **Refinement adds and never subtracts.** An identifier that resolved to nothing, a file that did

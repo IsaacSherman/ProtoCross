@@ -89,13 +89,26 @@ declared in. Method names and extension classes are not converted this way: thei
 agree with itself. The namespace rule is protoc's `GetFileNamespace`, and it is the same in protoc
 31.1 and 33.4.
 
-This choice may need revisiting if mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, since extension methods cannot access
-anything the public surface does not already expose.
+**A change is made through the public surface protoc already declares, so mutation needs nothing
+else** ([18](./§18-Mutability.md#18-mutability)). A `mut fn` is an extension method like any other, and its receiver
+is the message itself, since a C# message is a reference. A field is assigned through its property:
+`self.Total = 5`. A message field written through is set first where it is unset,
+`(self.Customer ??= new Customer()).Name = x`, which is what a C++ mutable accessor does: protoc gives
+an unset message field as null, and setting a member of a `oneof` this way switches the case. The
+target is reached before the value is evaluated, as C# evaluates any assignment.
+
+A message stored in a field is `Clone`d unless it is a literal, as it is in a literal's field
+([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that changes a
+message: in any other, nothing can change through the local or through what it was copied from, so a
+copy and a share cannot be told apart, and every method written before mutation is generated as it
+was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
+because the call may have returned part of the very receiver being changed.
 
 Questions:
 
 - Are generated protobuf C# classes safe to extend directly?
-- Should mutable methods require partial class integration?
+- ~~Should mutable methods require partial class integration?~~ Decided: no. Everything a change
+  needs is public ([18](./§18-Mutability.md#18-mutability)).
 
 ### 24.2 C++
 
@@ -107,13 +120,13 @@ Potential strategies:
 - Wrapper/adaptor classes.
 
 **Decided for the current implementation: header-only free functions**, taking the receiver as
-`const T&`, in the project's namespace, or in the message's own protobuf namespace for sources
-compiled without a project. A consumer calls `acme::billing::line_total_cents(order)`. This
-subclasses nothing, needs no protoc insertion points, and behaves the same whether the protobuf
-codegen is regenerated or vendored. All declarations are emitted before any definition so methods
-may call one another in any order. Every call a generated function or test makes to another is
-qualified with the callee's namespace, so argument-dependent lookup cannot find another library's
-function of the same name.
+`const T&`, or as `T&` for a `mut fn`, in the project's namespace, or in the message's own protobuf
+namespace for sources compiled without a project. A consumer calls
+`acme::billing::line_total_cents(order)`. This subclasses nothing, needs no protoc insertion points,
+and behaves the same whether the protobuf codegen is regenerated or vendored. All declarations are
+emitted before any definition so methods may call one another in any order. Every call a generated
+function or test makes to another is qualified with the callee's namespace, so argument-dependent
+lookup cannot find another library's function of the same name.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is
@@ -138,9 +151,20 @@ type from also gets its header included: through a literal, a parameter, a retur
 an enum value. So does any such schema a test driver names beyond its targets' schemas. A schema
 that is already declared by those includes is not included a second time.
 
-Const-correctness follows from the read-only method model: every receiver is `const T&` and every
-message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be
-revisited along with the free-function shape.
+**A `mut fn` takes its receiver as `T&`; every other receiver, and every parameter, stays `const`**
+([18](./§18-Mutability.md#18-mutability)). A method that changes nothing keeps the signature it always had, so a caller holding a
+const message can call it. The free-function shape needs nothing else: a mutating method is handed
+the message to change, as `self`, as a local, or through the mutable accessors,
+`touch(*self.mutable_last())`.
+
+A change goes through protoc's accessors. A scalar, a string or an enum is set with `set_x()`. A field
+written through is reached with `mutable_x()`, which sets it when it is unset and switches a `oneof`'s
+case. A message field is assigned as `mutable_x()->operator=(T(value))`: the value is copied first,
+because it may be part of the field it replaces, which protobuf's copy assignment clears before it
+reads; and the operator is called by name, because C++17 evaluates the value of `=` before its target,
+while a call evaluates what it is called on first, as C# and spec 9.3 do. A literal is assigned as
+the temporary its lambda returns. A loop whose body changes the element it is given binds it as
+`auto&`, over the field's mutable accessor; every other loop binds `const auto&` as it always has.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
 C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,

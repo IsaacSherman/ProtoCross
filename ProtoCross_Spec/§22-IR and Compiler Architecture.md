@@ -90,9 +90,19 @@ The IR preserves:
   order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
   value is a list node holding its elements. A fixture is the same node, built for the message its
   test's target extends, so no consumer handles a fixture and a literal differently.
-- **Whether storing a value copies it.** A message that is not a literal is copied wherever it is
-  stored ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that each backend asks rather than deciding what to copy.
-- Local assignment intent. A compound assignment is not a node of its own: `x += y` is the
+- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
+  copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
+  each backend asks rather than deciding what to copy.
+- **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
+  ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
+  where it matters: what the receiver is passed as, and whether an argument is passed as a copy.
+- **What changes.** An assignment is to a local or to a field, and the two are nodes of their own.
+  The target of an assignment to a field is a chain of places rather than reads: the receiver, a
+  local, a parameter or a loop binding at its root, and a field at each link after it, none of which
+  needed a guard. Which place a statement or a call changes, whether a loop changes the elements it
+  is given, and whether anything in a method changes a message are asked of the IR rather than
+  recorded beside it, so every backend has one answer to each.
+- Assignment intent. A compound assignment is not a node of its own: `x += y` is the
   assignment of `x + y` to `x`, whose operation reads the target at the target's own span. It is
   the one place two nodes share a span without one standing inside the other, and a position query
   there answers with the target, which comes first. Which form was written is the syntax tree's to

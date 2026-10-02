@@ -1,6 +1,7 @@
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Symbols;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 
 namespace ProtoCross.Ir;
@@ -179,8 +180,22 @@ public sealed record IrMethodSignature(
     /// <summary>What identifies this method, and every call that resolves to it.</summary>
     public SymbolId Id => Declaration.Id;
 
+    /// <summary>Whether the method is declared <c>mut fn</c>, and so may change its receiver (spec 18).</summary>
+    /// <remarks>
+    /// <para>
+    /// On the signature rather than the method, because a call reaches the signature and not the
+    /// method, and the call is where it matters: what a mutating method may be called on, where the
+    /// call may stand, and what C++ passes as its receiver are all decided at the call.
+    /// </para>
+    /// <para>
+    /// Init-only with a default of false, so every existing construction of a signature stays valid
+    /// and describes a method that changes nothing, which every method was before #13.
+    /// </para>
+    /// </remarks>
+    public bool IsMutating { get; init; }
+
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
-    /// int64</c>.</summary>
+    /// int64</c>, or <c>mut fn …</c> for one that may change its receiver.</summary>
     /// <remarks>
     /// <para>
     /// Rendered here rather than by each surface that shows a method, for the reason
@@ -234,7 +249,7 @@ public sealed record IrMethodSignature(
         }
     }
 
-    private string Opening => $"fn {Name}(";
+    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}(" : $"fn {Name}(";
 
     private const string Separator = ", ";
 
@@ -327,6 +342,28 @@ public sealed record IrVariableDeclaration(IrLocal Local, IrExpression Initializ
 public sealed record IrAssignment(IrLocalReference Target, IrExpression Value, SourceSpan Span)
     : IrStatement(Span);
 
+/// <summary>An assignment to a field of a message the method may change: <c>total = 5;</c> (spec 18).</summary>
+/// <param name="Target">
+/// The field written, reached through the message it belongs to. Every link of the chain is a place
+/// rather than a read: the receiver of a <c>mut fn</c>, a local or a loop binding at its root, and a
+/// singular message field at each link after it. A link that is unset when the assignment runs is
+/// set by it, as protobuf's mutable accessors set it, so no link needs a guard (spec 13.1).
+/// </param>
+/// <remarks>
+/// <para>
+/// A node of its own rather than <see cref="IrAssignment"/> with a wider target, because the two are
+/// emitted nothing alike. A local is a variable in both targets. A field is a setter in C++, and in
+/// C# a property on a message that the assignment may first have to create, and a backend that
+/// switched on the shape of one node's target would be choosing between two statements anyway.
+/// </para>
+/// <para>
+/// The value is stored as a field of a literal stores one (<see cref="IrExpression.IsCopiedWhenStored"/>):
+/// a message that is not a literal is copied, so the field holds a message of its own.
+/// </para>
+/// </remarks>
+public sealed record IrFieldAssignment(IrFieldAccess Target, IrExpression Value, SourceSpan Span)
+    : IrStatement(Span);
+
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
 
 /// <summary>Iteration over a repeated field, in protobuf field order (spec 14).</summary>
@@ -357,8 +394,8 @@ public sealed record IrExpressionStatement(IrExpression Expression, SourceSpan S
 public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
 {
     /// <summary>
-    /// Whether storing this value -- as a field of a message literal -- has to store a copy of it
-    /// rather than the value itself (spec 13.2).
+    /// Whether storing this value -- as a field, or in a local -- has to store a copy of it rather
+    /// than the value itself (spec 13.2).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -372,10 +409,16 @@ public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
     /// <para>
     /// Only a literal is exempt, because a literal is built where it is stored and nothing else can
     /// hold it. A method's result is not: the method may have returned a field of its receiver, which
-    /// is still the receiver's. #13 stores into locals by the same rule.
+    /// is still the receiver's.
+    /// </para>
+    /// <para>
+    /// A repeated value is copied too. No field is ever given one, since a literal takes only a list
+    /// (spec 13.2), but a local can hold one (#13), and a C# <c>RepeatedField</c> is a reference whose
+    /// elements are the messages the field holds: a change made to an element through the local would
+    /// otherwise be a change to the field. C++ copies it, elements and all, as it copies a message.
     /// </para>
     /// </remarks>
-    public bool IsCopiedWhenStored => Type is MessageType && this is not IrMessageLiteral;
+    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType && this is not IrMessageLiteral;
 }
 
 /// <summary>The implicit receiver of the enclosing method.</summary>

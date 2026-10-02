@@ -1,0 +1,344 @@
+// Conformance vectors for methods that change messages (spec 18): a 'mut fn' assigning its
+// receiver's fields and calling other mutating methods, and any method changing the messages it
+// holds in locals.
+//
+// C# changes a message through its properties and C++ through protoc's setters and mutable
+// accessors, and the two runtimes disagree about more than spelling. C# holds a message by
+// reference, so a local, an argument or a call's result can be the very message something else
+// holds, where C++ has a copy. An unset message field is null in C#, where C++ hands out a default
+// instance and creates the field on a mutable access. These vectors pin that the two agree anyway:
+// on copies, on writing through a message that is not there yet, on oneof members unsetting each
+// other, on a loop changing the elements it is given, and on the order an assignment reaches its
+// target and its value in.
+
+import proto "mutating_methods.proto";
+
+extend LedgerEntry {
+    mut fn touch() {
+        touches += 1;
+    }
+
+    mut fn charge(more: int64) -> int64 {
+        cents += more;
+        return cents;
+    }
+
+    // A field given a message that was inside it. C++ copies the value out before the field is
+    // replaced, since replacing it destroys what the value was read from.
+    mut fn lift() -> int64 {
+        if has parent {
+            if has parent.parent {
+                parent = parent.parent;
+                return parent.cents;
+            }
+        }
+
+        return -1;
+    }
+}
+
+extend Ledger {
+    // A scalar, a string and an enum, assigned and read back.
+    mut fn deposit(cents: int64) -> int64 {
+        balance += cents;
+        owner = "kept";
+        status = LedgerStatus.LEDGER_STATUS_OPEN;
+        return balance;
+    }
+
+    mut fn opened_by_deposit() -> bool {
+        deposit(1);
+        return status == LedgerStatus.LEDGER_STATUS_OPEN and owner == "kept";
+    }
+
+    // A mutating call as a statement, as a local's initializer and as a returned value.
+    mut fn deposit_three_times(cents: int64) -> int64 {
+        deposit(cents);
+        var second: int64 = deposit(cents);
+        balance = second * 10;
+        return deposit(cents);
+    }
+
+    // Writing through a message field that is unset sets it, and then the field is there to read.
+    mut fn checks_written_through() -> int64 {
+        audit.checks = 3;
+        if has audit {
+            return audit.checks;
+        }
+
+        return -1;
+    }
+
+    mut fn written_two_deep() -> int64 {
+        audit.flagged.cents = 9;
+        if has audit {
+            if has audit.flagged {
+                return audit.flagged.cents;
+            }
+        }
+
+        return -1;
+    }
+
+    fn audit_count() -> int64 {
+        if has audit {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // An assignment reaches its target before it evaluates its value, so a value that asks whether
+    // a link of the target is set sees the link the assignment has just set. C++ evaluates the
+    // value of '=' first, so a message is assigned through a call that reaches the target first.
+    mut fn audit_seen_by_its_own_message() -> int64 {
+        audit.flagged = new LedgerEntry { cents: audit_count() };
+        if has audit {
+            if has audit.flagged {
+                return audit.flagged.cents;
+            }
+        }
+
+        return -1;
+    }
+
+    mut fn audit_seen_by_its_own_scalar() -> int64 {
+        audit.checks = audit_count();
+        if has audit {
+            return audit.checks;
+        }
+
+        return -1;
+    }
+
+    // A field given a message holds a copy of it, so changing the field leaves the parameter alone.
+    mut fn last_is_a_copy(entry: LedgerEntry) -> int64 {
+        last = entry;
+        last.cents = 100;
+        return entry.cents;
+    }
+
+    // Setting one member of a oneof unsets the other, whichever way it is set.
+    mut fn settle(cents: int64) -> bool {
+        settled_cents = cents;
+        return has pending;
+    }
+
+    mut fn reopen() -> bool {
+        pending.cents = 1;
+        return has settled_cents;
+    }
+
+    // A mutating method called on a guarded field of the receiver.
+    mut fn charge_last(cents: int64) -> int64 {
+        if has last {
+            return last.charge(cents);
+        }
+
+        return -1;
+    }
+
+    // A local holds a message of its own, so changing it leaves the receiver alone, whether the
+    // method is a 'mut fn' or not.
+    fn local_is_a_copy() -> int64 {
+        if not has last {
+            return -1;
+        }
+
+        var copy: LedgerEntry = last;
+        copy.cents = 50;
+        copy.touch();
+        return last.cents * 10 + copy.touches;
+    }
+
+    fn reassigned_local_is_a_copy(other: LedgerEntry) -> int64 {
+        var mine: LedgerEntry = new LedgerEntry { cents: 1 };
+        mine = other;
+        mine.cents += 10;
+        mine.charge(5);
+        return other.cents + mine.cents;
+    }
+
+    // A loop changes the elements it is given, directly and through a mutating method.
+    mut fn touch_all() -> int64 {
+        for entry in entries {
+            entry.touch();
+            entry.cents += 1;
+        }
+
+        var total: int64 = 0;
+        for entry in entries {
+            total += entry.cents * 10 + entry.touches;
+        }
+
+        return total;
+    }
+
+    // Inside a loop over a field, anything that does not hold the field may change.
+    mut fn bank_amounts() -> int64 {
+        for amount in amounts {
+            balance += amount;
+            audit.checks = audit_count();
+        }
+
+        return balance;
+    }
+
+    // A loop changes each entry through a loop over its splits inside it.
+    mut fn touch_every_split() -> int64 {
+        for entry in entries {
+            for split in entry.splits {
+                split.touch();
+            }
+        }
+
+        var total: int64 = 0;
+        for entry in entries {
+            for split in entry.splits {
+                total += split.touches;
+            }
+        }
+
+        return total;
+    }
+
+    // A local repeated value is a copy, elements and all.
+    fn local_entries_are_copies() -> int64 {
+        var mine = entries;
+        for entry in mine {
+            entry.cents = 100;
+        }
+
+        var total: int64 = 0;
+        for entry in entries {
+            total += entry.cents;
+        }
+
+        return total;
+    }
+
+    fn latest() -> LedgerEntry {
+        if has last {
+            return last;
+        }
+
+        return new LedgerEntry { };
+    }
+
+    mut fn adopt(entry: LedgerEntry) -> int64 {
+        last.cents = 0;
+        return entry.cents;
+    }
+
+    // A call's result passed to a mutating method is a copy. In C# the result is the receiver's own
+    // field, which the method zeroes, and without the copy its parameter would change with it.
+    mut fn adopt_latest() -> int64 {
+        return adopt(latest());
+    }
+}
+
+test Ledger.deposit "a scalar field assigned and read back" {
+    receiver { balance: 5 }
+    arg cents = 7;
+    expect return 12;
+}
+
+test Ledger.opened_by_deposit "a string and an enum assigned" {
+    receiver { }
+    expect return true;
+}
+
+test Ledger.deposit_three_times "a mutating call as a statement, an initializer and a return value" {
+    receiver { balance: 1 }
+    arg cents = 2;
+    expect return 52;
+}
+
+test Ledger.checks_written_through "writing through an unset message sets it" {
+    receiver { }
+    expect return 3;
+}
+
+test Ledger.written_two_deep "writing through two unset messages sets both" {
+    receiver { }
+    expect return 9;
+}
+
+test Ledger.audit_seen_by_its_own_message "a message assignment reaches its target before its value" {
+    receiver { }
+    expect return 1;
+}
+
+test Ledger.audit_seen_by_its_own_scalar "a scalar assignment reaches its target before its value" {
+    receiver { }
+    expect return 1;
+}
+
+test Ledger.last_is_a_copy "a field given a message holds a copy" {
+    receiver { }
+    arg entry = new LedgerEntry { cents: 4 };
+    expect return 4;
+}
+
+test Ledger.settle "setting a oneof member unsets the other" {
+    receiver { pending: new LedgerEntry { cents: 1 } }
+    arg cents = 5;
+    expect return false;
+}
+
+test Ledger.reopen "writing through a oneof member unsets the other" {
+    receiver { settled_cents: 5 }
+    expect return false;
+}
+
+test Ledger.charge_last "a mutating method called on a field of the receiver" {
+    receiver { last: new LedgerEntry { cents: 10 } }
+    arg cents = 5;
+    expect return 15;
+}
+
+test Ledger.local_is_a_copy "a local holds a copy of its own" {
+    receiver { last: new LedgerEntry { cents: 3 } }
+    expect return 31;
+}
+
+test Ledger.reassigned_local_is_a_copy "a local assigned a parameter holds a copy" {
+    receiver { }
+    arg other = new LedgerEntry { cents: 2 };
+    expect return 19;
+}
+
+test Ledger.touch_all "a loop changes the elements it is given" {
+    receiver { entries: [new LedgerEntry { cents: 1 }, new LedgerEntry { cents: 2 }] }
+    expect return 52;
+}
+
+test Ledger.bank_amounts "a loop changes what does not hold the field it traverses" {
+    receiver { balance: 1, amounts: [2, 3] }
+    expect return 6;
+}
+
+test Ledger.touch_every_split "a loop changes its elements through a loop inside it" {
+    receiver {
+        entries: [
+            new LedgerEntry { splits: [new LedgerEntry { }, new LedgerEntry { }] },
+            new LedgerEntry { splits: [new LedgerEntry { }] },
+        ],
+    }
+    expect return 3;
+}
+
+test Ledger.local_entries_are_copies "a local repeated value holds copies of the elements" {
+    receiver { entries: [new LedgerEntry { cents: 1 }, new LedgerEntry { cents: 2 }] }
+    expect return 3;
+}
+
+test Ledger.adopt_latest "a call's result passed to a mutating method is a copy" {
+    receiver { last: new LedgerEntry { cents: 8 } }
+    expect return 8;
+}
+
+test LedgerEntry.lift "a field given a message from inside itself" {
+    receiver { parent: new LedgerEntry { cents: 1, parent: new LedgerEntry { cents: 2 } } }
+    expect return 2;
+}

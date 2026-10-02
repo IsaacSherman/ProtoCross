@@ -6,15 +6,16 @@ using Xunit;
 namespace ProtoCross.Tests;
 
 /// <summary>
-/// <c>new</c> begins a message literal where a type name follows it, and is a name everywhere else,
-/// to the parser and to the editor's colouring alike (spec 6.4, 6.5, 13.2).
+/// <c>new</c> begins a message literal where a type name follows it, <c>mut</c> marks a method where
+/// <c>fn</c> follows it, and each is a name everywhere else, to the parser and to the editor's
+/// colouring alike (spec 6.4, 6.5, 13.2, 18).
 /// </summary>
 /// <remarks>
 /// The corpus reads a schema field named <c>new</c>, so a reserved <c>new</c> would take a name away
 /// from a schema. The rule has one home, <see cref="ContextualKeywords"/>, and these hold the two
 /// places that ask it to the same answer on the same text.
 /// </remarks>
-public class ContextualKeywordTests
+public partial class ContextualKeywordTests
 {
     /// <summary>A fixture that uses <c>new</c> both ways: as a field's name, and to begin its value.</summary>
     private const string BothWays =

@@ -27,20 +27,30 @@ Normative Requirements:
   - in the `else` of `if not has f { ... } else { ... }`;
   - after `if not has f { return ...; }`, or any guard whose branch cannot complete normally;
   - in the right operand of `and` when the left proved it, and after `or` on the false side.
-- A fact is about the message a guard tested. ProtoCross cannot assign to a field ([18](./§18-Mutability.md#18-mutability)), so nothing
-  shown to be set can become unset, but a local can be assigned another message, and what was shown
-  about the one it held says nothing about the next:
-  - A fact about the receiver or a parameter holds for the remainder of the method. Neither can be
-    assigned, so a guard before a loop holds inside it.
-  - A fact reached through a local holds until the local is assigned. Assigning it ends every fact
-    reached through it, however deep: `c = b;` ends what was shown about `c.inner` and about
-    `c.inner.stamp` alike.
-  - A statement that assigns a local anywhere inside it, in any branch or loop body, ends those
-    facts for everything after the statement. That includes a branch that cannot complete normally,
+- A fact is about the message a guard tested. Nothing in the language unsets a field except an
+  assignment to another member of its `oneof` ([18](./§18-Mutability.md#18-mutability)), but a change can replace the
+  message a fact is about, and what was shown about the old one says nothing about the new one. A fact
+  holds until a change that could make it false:
+  - Assigning a local ends every fact reached through it, however deep: `c = b;` ends what was shown
+    about `c.inner` and about `c.inner.stamp` alike.
+  - Assigning a field ends every fact reached through it, since the message there is a new one, and
+    every fact about another member of its `oneof`, which it unsets. What was shown about the field
+    itself still holds: the assignment sets it.
+  - Calling a `mut fn` ends every fact reached through the message it is called on, since it may
+    assign anything inside it.
+  - A change through the name a `for` binds ends the same facts about every such name, since two
+    of them may be one element.
+  - Nothing may change a parameter, so a fact about one holds for the remainder of the method, and
+    so does a fact about the receiver of a method that is not `mut`.
+  - A statement that makes a change anywhere inside it, in any branch or loop body, ends those facts
+    for everything after the statement. That includes a branch that cannot complete normally,
     which costs a guard written again, never a read let through.
-  - A loop's body, and a `while` loop's condition, run again after the body may have assigned a
-    local, so they see no fact about a local the body assigns. What a `while` condition itself
-    proves still holds inside the body, because it is proved afresh on every pass.
+  - A loop's body, and a `while` loop's condition, run again after the body may have made a change,
+    so they see no fact the body could end. What a `while` condition itself proves still holds
+    inside the body, because it is proved afresh on every pass.
+- A field written through needs no guard: `customer.name = "x";` sets `customer` when it is unset
+  ([18](./§18-Mutability.md#18-mutability)). An assignment establishes no fact, though, so reading `customer` after it
+  still needs one.
 - A message field reached through a value that has no name -- a method result, or a message literal
   ([13.2](#132-message-construction)) -- cannot be guarded, and is `PC0078`. Binding the intermediate to a local first gives it
   the name a guard needs.
@@ -109,11 +119,12 @@ Normative Requirements:
   The order can be seen: each member of a oneof is a field of its own here ([8.4](./§8-Type%20System.md#84-nullability-and-presence) leaves oneofs
   open), so a literal may give two members of one oneof a value, and the message keeps the one
   written last, as protobuf keeps whichever member was set last.
-- **Storing a message stores a copy.** A field given a message that is not a literal holds a message
-  of its own rather than one shared with wherever the value came from, so nothing done through
-  either can show through the other. A literal is exempt because it is built where it is stored and
-  nothing else can hold it. A method's result is not: it may be a field of the method's receiver,
-  which is still the receiver's.
+- **Storing a message stores a copy.** A field or a local given a message that is not a literal holds
+  a message of its own rather than one shared with wherever the value came from, so nothing done
+  through either can show through the other ([18](./§18-Mutability.md#18-mutability)). A local given a repeated value
+  holds copies of its elements in the same way. A literal is exempt because it is built where it is
+  stored and nothing else can hold it. A method's result is not: it may be a field of the method's
+  receiver, which is still the receiver's.
 - **A literal establishes no presence** ([13.1](#131-field-access)). What a message field is given is not something a
   guard has tested, so a message field read straight off a literal is `PC0078`, and a local holding
   a literal is guarded like any other local.
@@ -124,7 +135,8 @@ Current Status:
   the `message_literals` conformance vector runs one in each place in both
   ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
 - C# writes an object initializer, and copies a stored message that is not a literal with protoc's
-  `Clone`.
+  `Clone`. Into a local it copies only in a method that changes a message, since nowhere else can a
+  copy and a share be told apart ([24.1](./§24-Generated%20API%20Strategy.md#241-c)).
 - C++ writes a lambda that declares the message, sets its fields and returns it, called where the
   literal is written ([24.2](./§24-Generated%20API%20Strategy.md#242-c)). Assigning a message there
   copies it.

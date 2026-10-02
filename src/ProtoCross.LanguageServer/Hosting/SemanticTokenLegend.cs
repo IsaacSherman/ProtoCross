@@ -163,7 +163,7 @@ public static class SemanticTokenLegend
     /// this asks the one rule the parser asks.
     /// </remarks>
     public static int? IndexOf(Token token, Token next)
-        => ContextualKeywords.BeginsAMessageLiteral(token, next) ? KeywordIndex : IndexOf(token.Kind);
+        => ContextualKeywords.IsAKeywordHere(token, next) ? KeywordIndex : IndexOf(token.Kind);
 
     /// <summary>Which category a resolved name belongs to.</summary>
     /// <remarks>
@@ -207,13 +207,15 @@ public static class SemanticTokenLegend
     /// <c>declaration</c> and <c>modification</c> describe.
     /// </para>
     /// <para>
-    /// <c>readonly</c> is a fact about the language, not a decoration: spec 18 makes a local the only
-    /// thing a method may assign, so a parameter, a loop binding, a field and an enum constant all
-    /// genuinely are read-only. A method and a type are left out of it -- neither is a place a value
-    /// could be stored, and a bit that is true of everything conveys nothing.
+    /// <c>readonly</c> is a fact about the language, not a decoration: spec 18 never lets a method
+    /// assign a parameter, a loop binding or an enum constant, so each genuinely is read-only. A field
+    /// is not. A <c>mut fn</c> may assign its receiver's, and any method a field of a message it holds
+    /// in a local, so marking every field read-only would be false wherever that happens. A method and
+    /// a type are left out of it -- neither is a place a value could be stored, and a bit that is true
+    /// of everything conveys nothing.
     /// </para>
     /// <para>
-    /// An assignment the language refuses is still marked. <c>line.quantity = 2</c> is
+    /// An assignment the language refuses is still marked. <c>by = 2</c> on a parameter is
     /// <c>PC0034</c>, and the binder still records the write, because what the author wrote is what
     /// an editor is describing.
     /// </para>
@@ -231,8 +233,7 @@ public static class SemanticTokenLegend
     }
 
     private static bool CannotBeAssigned(SymbolKind kind)
-        => kind is SymbolKind.Parameter or SymbolKind.LoopBinding
-            or SymbolKind.Field or SymbolKind.EnumValue;
+        => kind is SymbolKind.Parameter or SymbolKind.LoopBinding or SymbolKind.EnumValue;
 
     private static int BitOf(string modifier)
     {

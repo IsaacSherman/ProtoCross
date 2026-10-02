@@ -61,14 +61,18 @@ This section should be maintained as the authoritative list of open decisions.
   `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
   ([13.2](./§13-Messages.md#132-message-construction)).
 - Message equality semantics.
-- ~~Repeated field mutation rules for current implementation.~~ Decided: no repeated mutation;
-  only locals can be assigned ([14](./§14-Repeated%20Fields%20and%20Collections.md#14-repeated-fields-and-collections), [18](./§18-Mutability.md#18-mutability)). Future mutation syntax remains open.
+- ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
+  the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; and
+  nothing inside a `for` may change the field it traverses
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [18](./§18-Mutability.md#18-mutability)). Appending is decided and not implemented yet.
 - Map support and map iteration order.
 - Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
   and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
 - Switch support.
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
-- Receiver mutation and possible const/mut method split.
+- ~~Receiver mutation and possible const/mut method split.~~ Decided: a method declared `mut fn` may
+  change its receiver, every other method is read-only, and nothing may change a parameter
+  ([18](./§18-Mutability.md#18-mutability), [16.1](./§16-Methods.md#161-method-attachment)).
 - ~~Virtual method inclusion in version 1.~~ Decided: no virtual methods; `virtual` is an ordinary
   identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to

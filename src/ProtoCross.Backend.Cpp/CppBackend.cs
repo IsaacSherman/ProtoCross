@@ -700,9 +700,15 @@ public sealed partial class CppBackend : ITestProjectScaffold
             => MakeIncludeGuard(Project is { } project ? $"{project.Package}.{headerName}" : headerName);
     }
 
+    /// <remarks>
+    /// The receiver is <c>const T&amp;</c> unless the method is a <c>mut fn</c>, which takes <c>T&amp;</c>
+    /// because it may change it (spec 24.2). Every other method keeps the signature it always had, so
+    /// a caller holding a const message can still call it.
+    /// </remarks>
     private static string Signature(IrMethod method)
     {
-        var parameters = new List<string> { $"const {QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
+        var constness = method.Signature.IsMutating ? string.Empty : "const ";
+        var parameters = new List<string> { $"{constness}{QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
         parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
 
         // The method name needs escaping too: ProtoCross names are snake_case and every C++ keyword
@@ -743,6 +749,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
             case IrAssignment assignment:
                 writer.WriteLine($"{Expression(assignment.Target, placement)} = {Expression(assignment.Value, placement)};");
+                break;
+
+            case IrFieldAssignment assignment:
+                writer.WriteLine(FieldAssignment(assignment, placement));
                 break;
 
             case IrReturn { Value: null }:
@@ -805,9 +815,25 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// a local or a parameter outlives the loop, and a call that returns the repeated value itself
     /// returns a temporary that the <c>for</c> keeps alive.
     /// </para>
+    /// <para>
+    /// A loop whose body changes the element it is given (<see cref="IrMutation.ChangesElementsOf"/>)
+    /// binds it by mutable reference, over the field's mutable accessor, since the getter's elements
+    /// are const. The binder allows that only for a field the method may change, which is never one
+    /// of a temporary, so such a loop never needs the local above.
+    /// </para>
     /// </remarks>
     private static void EmitForEach(SourceWriter writer, IrForEach forEach, Placement placement)
     {
+        if (IrMutation.ChangesElementsOf(forEach))
+        {
+            EmitLoop(
+                writer,
+                $"for (auto& {Escape(forEach.Loop.Name)} : {MutableMessage(forEach.Collection, placement)})",
+                forEach.Body,
+                placement);
+            return;
+        }
+
         var element = $"const auto& {Escape(forEach.Loop.Name)}";
         if (TemporaryOwnerOf(forEach.Collection) is not { } owner)
         {
@@ -916,13 +942,80 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static string FieldRead(string receiver, FieldDescriptor field)
         => $"{receiver}.{NameConventions.GetCppFieldName(field)}()";
 
+    /// <remarks>
+    /// A <c>mut fn</c> takes its receiver as <c>T&amp;</c>, so it is handed the message through the
+    /// mutable accessors (<see cref="MutableMessage"/>). Its arguments are passed as every other call's
+    /// are: a parameter is read-only whatever method it belongs to, and an argument that is not a place
+    /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>).
+    /// </remarks>
     private static string EmitCall(IrMethodCall call, Placement placement)
     {
-        var arguments = new List<string> { Expression(call.Receiver, placement) };
+        var receiver = call.Target.IsMutating
+            ? MutableMessage(call.Receiver, placement)
+            : Expression(call.Receiver, placement);
+
+        var arguments = new List<string> { receiver };
         arguments.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
 
         return $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments)})";
     }
+
+    /// <summary>An assignment to a field, through protoc's setter or mutable accessor (spec 18).</summary>
+    /// <remarks>
+    /// <para>
+    /// A scalar, a string or an enum is set with <c>set_x()</c>. A message is assigned through
+    /// <c>mutable_x()</c>, which is the copy spec 13.2 asks for, and a literal is assigned as the
+    /// temporary its lambda returns. The value is copied into a temporary first, <c>T(value)</c>,
+    /// because it may be part of the field it replaces, as <c>node = node.next</c> is, and protobuf's
+    /// copy assignment clears the field before reading what it copies.
+    /// </para>
+    /// <para>
+    /// The assignment operator is called by name, <c>-&gt;operator=(…)</c>. Written as <c>=</c>, C++17
+    /// evaluates the value before the target, so a value asking <c>has</c> of a link the assignment
+    /// sets would see it unset, where C# reaches the target first and sees it set. A call evaluates
+    /// what it is called on before its arguments, so the target comes first in both, as it does for
+    /// every setter.
+    /// </para>
+    /// </remarks>
+    private static string FieldAssignment(IrFieldAssignment assignment, Placement placement)
+    {
+        var target = assignment.Target;
+        var member = MutableMember(target.Receiver, placement);
+        var accessor = NameConventions.GetCppFieldName(target.Field);
+        var value = Expression(assignment.Value, placement);
+
+        if (target.Type is not MessageType message)
+        {
+            return $"{member}set_{accessor}({value});";
+        }
+
+        var copy = assignment.Value.IsCopiedWhenStored ? $"{QualifiedTypeName(message.Descriptor)}({value})" : value;
+        return $"{member}mutable_{accessor}()->operator=({copy});";
+    }
+
+    /// <summary>
+    /// The message <paramref name="place"/> names, as something that can be changed: <c>self</c>, a
+    /// local, or <c>*self.mutable_customer()</c>. A repeated field is named the same way.
+    /// </summary>
+    /// <remarks>
+    /// A mutable accessor sets a field that is unset, as assigning through it does in the language
+    /// (spec 18). A receiver of a mutating call has been guarded already, as every message a method is
+    /// called on is (spec 13.1), so for it nothing is set that was not.
+    /// </remarks>
+    private static string MutableMessage(IrExpression place, Placement placement) => place is IrFieldAccess field
+        ? $"*{MutablePointer(field, placement)}"
+        : Expression(place, placement);
+
+    /// <summary>
+    /// <paramref name="place"/> followed by what reaches one of its members: <c>self.</c>, or
+    /// <c>self.mutable_customer()-&gt;</c>.
+    /// </summary>
+    private static string MutableMember(IrExpression place, Placement placement) => place is IrFieldAccess field
+        ? $"{MutablePointer(field, placement)}->"
+        : $"{Expression(place, placement)}.";
+
+    private static string MutablePointer(IrFieldAccess field, Placement placement)
+        => $"{MutableMember(field.Receiver, placement)}mutable_{NameConventions.GetCppFieldName(field.Field)}()";
 
     private static string EmitBinary(IrBinary binary, Placement placement)
     {

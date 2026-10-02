@@ -33,7 +33,16 @@ public sealed record MethodDeclaration(
     IReadOnlyList<ParameterDeclaration> Parameters,
     TypeReference? ReturnType,
     BlockStatement Body,
-    SourceSpan Span) : SyntaxNode(Span);
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>Whether the declaration begins <c>mut fn</c>, so the method may change its receiver (spec 18).</summary>
+    /// <remarks>
+    /// Init-only beside the positional members, as <see cref="BlockStatement.IsClosed"/> is, so every
+    /// existing construction of a declaration stays valid and means a method that changes nothing,
+    /// which is what every method was before.
+    /// </remarks>
+    public bool IsMutating { get; init; }
+}
 
 public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, SourceSpan Span) : SyntaxNode(Span);
 

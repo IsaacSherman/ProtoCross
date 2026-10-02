@@ -12,7 +12,7 @@ import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
-method_decl       = "fn" identifier
+method_decl       = [ "mut" ] "fn" identifier
                     "(" [ parameter_list ] ")"
                     [ "->" type_ref ]
                     block;
@@ -74,6 +74,8 @@ Normative Requirement:
   wherever an expression may, an unparenthesized `if` or `while` condition included: the brace after
   `new` and a type name is the literal's, and the body's is the first one after it. A list is a
   repeated field's value only.
+- `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
+  anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
 - A semicolon between fields -- before another field or before the closing brace -- is reported as
   one written where a comma goes, because it was the separator fixtures used before #80. Outside a
   fixture, a semicolon anywhere else among a literal's fields ends them, and the statement the
