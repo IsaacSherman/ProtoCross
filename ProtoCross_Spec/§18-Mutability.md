@@ -50,8 +50,8 @@ Normative Requirements:
     ([13.2](./§13-Messages.md#132-message-construction)).
   - Assigning one member of a `oneof`, or writing through one, unsets the others, as setting one
     does in protobuf.
-  - An assignment reaches its target first, setting any unset message on the way, and then
-    evaluates its value ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
+  - An assignment reaches its target first, setting any unset message on the way, then evaluates
+    its value, and sets the field last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
 - **Mutating calls.** A `mut fn` may be called only on a message the calling method may change
   (`PC0094`). Calling one on a message field of the receiver needs that field's guard, as any call on
   a message field does ([13.1](./§13-Messages.md#131-field-access)).

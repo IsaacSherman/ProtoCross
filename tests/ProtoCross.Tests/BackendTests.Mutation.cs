@@ -101,16 +101,33 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// C++ evaluates the value of <c>=</c> before its target, and C# the target first. Calling the
-    /// assignment operator by name makes C++ reach the target first too, and the value is copied
-    /// before the field it may be inside is replaced.
+    /// A message field has no setter in C++, so it is assigned with <c>=</c>, which evaluates its value
+    /// before its target. The message holding the field is reached first, in a statement of its own, so
+    /// the links are set before the value is evaluated and the field itself after it (spec 9.3).
     /// </summary>
     [Fact]
-    public void CppAssignsAMessageFieldThroughACallThatReachesTheTargetFirst()
+    public void CppReachesTheMessageHoldingAFieldBeforeTheValueItIsAssigned()
+    {
+        var generated = MutatingCpp("mut fn f(entry: LedgerEntry) { audit.flagged = entry; }");
+        var reached = generated.IndexOf("auto& owner = *self.mutable_audit();", StringComparison.Ordinal);
+        var assigned = generated.IndexOf(
+            "*owner.mutable_flagged() = ::protocross::conformance::LedgerEntry(entry);",
+            StringComparison.Ordinal);
+
+        Assert.True(reached >= 0, "the message holding the field should be reached in a statement of its own:" + Environment.NewLine + generated);
+        Assert.True(assigned > reached, "the field should be assigned a copy, after its holder is reached:" + Environment.NewLine + generated);
+    }
+
+    /// <summary>
+    /// A string getter returns a reference into the message, which a setter switching a <c>oneof</c>'s
+    /// case destroys before it copies, so a string read from a field is copied first.
+    /// </summary>
+    [Fact]
+    public void CppCopiesAStringReadFromAFieldBeforeSettingAnother()
     {
         Assert.Contains(
-            "self.mutable_audit()->mutable_flagged()->operator=(::protocross::conformance::LedgerEntry(entry));",
-            MutatingCpp("mut fn f(entry: LedgerEntry) { audit.flagged = entry; }"),
+            "self.set_final_note(::std::string(self.draft_note()));",
+            MutatingCpp("mut fn f() { final_note = draft_note; }"),
             StringComparison.Ordinal);
     }
 

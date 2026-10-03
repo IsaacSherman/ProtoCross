@@ -5,8 +5,8 @@ package protocross.conformance;
 // mutating_methods.pcross -- methods that change their receiver, and the messages they hold (spec 18).
 //
 // A ledger of entries, so there are scalars, a string and an enum to assign, a message to write
-// through and to replace, a oneof whose members unset each other, numbers for a loop to traverse,
-// and repeated messages whose elements a loop changes. An entry holds its parent and its splits,
+// through and to replace, oneofs of messages and of strings whose members unset each other, numbers
+// for a loop to traverse, and repeated messages whose elements a loop changes. An entry holds its parent and its splits,
 // so a field can be given a message that was inside it, and a loop can change elements through a
 // loop inside it.
 message Ledger {
@@ -24,6 +24,11 @@ message Ledger {
 
   LedgerAudit audit = 8;
   repeated int64 amounts = 9;
+
+  oneof note {
+    string draft_note = 11;
+    string final_note = 12;
+  }
 }
 
 message LedgerEntry {

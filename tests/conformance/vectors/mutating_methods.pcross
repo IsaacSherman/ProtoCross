@@ -90,7 +90,7 @@ extend Ledger {
 
     // An assignment reaches its target before it evaluates its value, so a value that asks whether
     // a link of the target is set sees the link the assignment has just set. C++ evaluates the
-    // value of '=' first, so a message is assigned through a call that reaches the target first.
+    // value of '=' first, so it reaches the message holding the field in a statement before it.
     mut fn audit_seen_by_its_own_message() -> int64 {
         audit.flagged = new LedgerEntry { cents: audit_count() };
         if has audit {
@@ -109,6 +109,43 @@ extend Ledger {
         }
 
         return -1;
+    }
+
+    fn last_count() -> int64 {
+        if has last {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // The field itself is set only after its value is evaluated, so the value sees it as it was.
+    // C++ sets a message field as its mutable accessor returns it, so it calls that after the value.
+    mut fn last_unset_while_its_value_is_evaluated() -> int64 {
+        last = new LedgerEntry { cents: last_count() };
+        if has last {
+            return last.cents;
+        }
+
+        return -1;
+    }
+
+    // Setting a oneof member unsets the others only once its value is evaluated, so the value can be
+    // another member. C++ copies a message and a string out before the setter destroys them.
+    mut fn dispute_settled() -> int64 {
+        if has disputed {
+            pending = disputed;
+            if has pending {
+                return pending.cents;
+            }
+        }
+
+        return -1;
+    }
+
+    mut fn finalize_note() -> string {
+        final_note = draft_note;
+        return final_note;
     }
 
     // A field given a message holds a copy of it, so changing the field leaves the parameter alone.
@@ -289,6 +326,21 @@ test Ledger.audit_seen_by_its_own_message "a message assignment reaches its targ
 test Ledger.audit_seen_by_its_own_scalar "a scalar assignment reaches its target before its value" {
     receiver { }
     expect return 1;
+}
+
+test Ledger.last_unset_while_its_value_is_evaluated "a field is set only after its value is evaluated" {
+    receiver { }
+    expect return 0;
+}
+
+test Ledger.dispute_settled "a oneof member given the message of another" {
+    receiver { disputed: new LedgerEntry { cents: 7 } }
+    expect return 7;
+}
+
+test Ledger.finalize_note "a oneof member given the string of another" {
+    receiver { draft_note: "a note longer than any short string buffer, so it lives on the heap" }
+    expect return "a note longer than any short string buffer, so it lives on the heap";
 }
 
 test Ledger.last_is_a_copy "a field given a message holds a copy" {

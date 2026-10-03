@@ -752,7 +752,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 break;
 
             case IrFieldAssignment assignment:
-                writer.WriteLine(FieldAssignment(assignment, placement));
+                EmitFieldAssignment(writer, assignment, placement);
                 break;
 
             case IrReturn { Value: null }:
@@ -948,34 +948,73 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// <summary>An assignment to a field, through protoc's setter or mutable accessor (spec 18).</summary>
     /// <remarks>
     /// <para>
-    /// A scalar, a string or an enum is set with <c>set_x()</c>. A message is assigned through
-    /// <c>mutable_x()</c>, which is the copy spec 13.2 asks for, and a literal is assigned as the
-    /// temporary its lambda returns. The value is copied into a temporary first, <c>T(value)</c>,
-    /// because it may be part of the field it replaces, as <c>node = node.next</c> is, and protobuf's
-    /// copy assignment clears the field before reading what it copies.
+    /// Spec 9.3 orders an assignment in three steps, and each can be seen. The target is reached
+    /// first, setting every unset message it writes through. Then the value is evaluated, and it may
+    /// ask <c>has</c> of the field, or read another member of the field's <c>oneof</c>, and has to find
+    /// them as they were. Only then is the field set, which unsets the field's <c>oneof</c> siblings.
     /// </para>
     /// <para>
-    /// The assignment operator is called by name, <c>-&gt;operator=(…)</c>. Written as <c>=</c>, C++17
-    /// evaluates the value before the target, so a value asking <c>has</c> of a link the assignment
-    /// sets would see it unset, where C# reaches the target first and sees it set. A call evaluates
-    /// what it is called on before its arguments, so the target comes first in both, as it does for
-    /// every setter.
+    /// A setter keeps that order by itself: C++17 evaluates what a function is called on before its
+    /// arguments, so <c>self.mutable_audit()-&gt;set_checks(value)</c> reaches <c>audit</c>, evaluates
+    /// the value, and sets <c>checks</c>, in that order. A message field has no setter, only
+    /// <c>mutable_x()</c>, which sets the field as it returns it, so calling the assignment operator on
+    /// what it returns sets the field before the value is evaluated. It is assigned with <c>=</c>
+    /// instead, whose right operand C++17 evaluates before its left. That puts the value ahead of the
+    /// links as well, so a target with links has the message they reach bound by reference first, in a
+    /// block of its own.
     /// </para>
     /// </remarks>
-    private static string FieldAssignment(IrFieldAssignment assignment, Placement placement)
+    private static void EmitFieldAssignment(SourceWriter writer, IrFieldAssignment assignment, Placement placement)
     {
         var target = assignment.Target;
-        var member = MutableMember(target.Receiver, placement);
         var accessor = NameConventions.GetCppFieldName(target.Field);
-        var value = Expression(assignment.Value, placement);
+        var value = StoredValue(assignment.Value, placement);
 
-        if (target.Type is not MessageType message)
+        if (target.Type is not MessageType)
         {
-            return $"{member}set_{accessor}({value});";
+            writer.WriteLine($"{MutableMember(target.Receiver, placement)}set_{accessor}({value});");
+            return;
         }
 
-        var copy = assignment.Value.IsCopiedWhenStored ? $"{QualifiedTypeName(message.Descriptor)}({value})" : value;
-        return $"{member}mutable_{accessor}()->operator=({copy});";
+        if (target.Receiver is not IrFieldAccess link)
+        {
+            writer.WriteLine($"*{MutableMember(target.Receiver, placement)}mutable_{accessor}() = {value};");
+            return;
+        }
+
+        var owner = NamesFor(assignment).Next("owner");
+        using var scope = writer.Block(string.Empty);
+        writer.WriteLine($"auto& {owner} = {MutableMessage(link, placement)};");
+        writer.WriteLine($"*{owner}.mutable_{accessor}() = {value};");
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as an assignment stores it: copied first, wherever it may be inside what
+    /// the assignment replaces or unsets.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A message that is not a literal is copied, <c>T(value)</c>, as spec 13.2 asks, and because it
+    /// may be inside the field it replaces, as <c>node = node.next</c> is: protobuf's copy assignment
+    /// clears the field before it reads what it copies. A literal is already the temporary its lambda
+    /// returns.
+    /// </para>
+    /// <para>
+    /// A string or bytes read from a field is copied too, <c>std::string(value)</c>. The getter returns a
+    /// reference into the message, and a setter that switches a <c>oneof</c>'s case destroys the member
+    /// it switches from before it copies, so <c>after = before;</c> between two members of one
+    /// <c>oneof</c> would copy a string that is gone. Nothing else a string can be read from is changed
+    /// by a setter: a local and a call's result are values, a parameter is the caller's, and a loop over
+    /// a field inside what the assignment unsets is refused (spec 14.1).
+    /// </para>
+    /// </remarks>
+    private static string StoredValue(IrExpression value, Placement placement)
+    {
+        var emitted = Expression(value, placement);
+        var copied = value is { IsCopiedWhenStored: true }
+            or IrFieldAccess { Type: ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes } };
+
+        return copied ? $"{TypeName(value.Type)}({emitted})" : emitted;
     }
 
     /// <summary>

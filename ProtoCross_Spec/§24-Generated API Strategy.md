@@ -159,13 +159,18 @@ const message can call it. The free-function shape needs nothing else: a mutatin
 the message to change, as `self`, as a local, or through the mutable accessors,
 `touch(*self.mutable_last())`.
 
-A change goes through protoc's accessors. A scalar, a string or an enum is set with `set_x()`. A field
-written through is reached with `mutable_x()`, which sets it when it is unset and switches a `oneof`'s
-case. A message field is assigned as `mutable_x()->operator=(T(value))`: the value is copied first,
-because it may be part of the field it replaces, which protobuf's copy assignment clears before it
-reads; and the operator is called by name, because C++17 evaluates the value of `=` before its target,
-while a call evaluates what it is called on first, as C# and spec 9.3 do. A literal is assigned as
-the temporary its lambda returns. A loop whose body changes the element it is given binds it as
+A change goes through protoc's accessors. A scalar, a string or an enum is set with `set_x()`, whose
+call evaluates what it is called on before its argument, so the target is reached before the value
+and the field is set after it, the order spec 9.3 gives. A field written through is reached with
+`mutable_x()`, which sets it when it is unset and switches a `oneof`'s case. A message field has no
+setter, and `mutable_x()` sets the field as it returns it, so it is assigned with `=`, whose value
+C++17 evaluates before its target: `*self.mutable_last() = T(value);`. When the target has links,
+the message they reach is bound first, `auto& owner = *self.mutable_audit();`, and the field is
+assigned through it in the next statement, inside a block of their own. The value is copied before
+anything is set: a message as `T(value)`, and a string or bytes read from a field as
+`std::string(value)`. Either may be inside what the assignment replaces or unsets, as `node =
+node.next` and `after = before` between members of one `oneof` are, and protobuf destroys that
+before it copies. A literal is assigned as the temporary its lambda returns. A loop whose body changes the element it is given binds it as
 `auto&`, over the field's mutable accessor; every other loop binds `const auto&` as it always has.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's

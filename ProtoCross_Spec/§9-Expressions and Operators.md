@@ -148,7 +148,9 @@ Current defined subset:
 - Assignment evaluates the right-hand side before storing the result.
 - An assignment to a field reaches its target before it evaluates its value, setting any unset
   message on the way ([18](./§18-Mutability.md#18-mutability)), and then stores. A value that asks `has` of a link of
-  its own target therefore sees the link set.
+  its own target therefore sees the link set. The field itself is set last, so a value that asks
+  `has` of the field, or reads another member of its `oneof`, sees it as it was before the
+  assignment.
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a
   local or a field cannot fail, and nothing on the right can change either, so no program can
   observe that order.
