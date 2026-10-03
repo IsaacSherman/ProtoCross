@@ -253,11 +253,30 @@ public static class ProtocLocator
     /// resolve them unaided, which would make the test pass without proving anything.
     /// </remarks>
     public static string? FindBundledProtoc()
+        => BundledProtocs().Select(bundled => bundled.Path).FirstOrDefault();
+
+    /// <summary>
+    /// The protoc that version <paramref name="version"/> of Grpc.Tools ships, when that version is
+    /// restored, or null when it is not.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that depends on one version's output rather than on any recent one: the newest
+    /// version in a cache is whatever was last restored on that machine, and two machines building the
+    /// same commit can have different ones.
+    /// </remarks>
+    public static string? FindBundledProtoc(string version)
+        => BundledProtocs()
+            .Where(bundled => string.Equals(bundled.Version, version, StringComparison.OrdinalIgnoreCase))
+            .Select(bundled => bundled.Path)
+            .FirstOrDefault();
+
+    /// <summary>Every restored Grpc.Tools protoc for this machine, most preferred first.</summary>
+    private static IEnumerable<(string Version, string Path)> BundledProtocs()
     {
         var rid = GetRuntimeIdentifier();
         if (rid is null)
         {
-            return null;
+            yield break;
         }
 
         foreach (var packageRoot in GetNuGetPackageRoots())
@@ -277,12 +296,10 @@ public static class ProtocLocator
                 var candidate = Path.Combine(version, "tools", rid, ExecutableName);
                 if (File.Exists(candidate))
                 {
-                    return candidate;
+                    yield return (Path.GetFileName(version), candidate);
                 }
             }
         }
-
-        return null;
     }
 
     private static string? GetRuntimeIdentifier()
