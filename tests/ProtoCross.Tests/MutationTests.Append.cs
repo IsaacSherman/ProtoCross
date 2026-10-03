@@ -127,6 +127,16 @@ public partial class MutationTests
         TheOnly(Compile(methods), code);
     }
 
+    /// <summary>The help says what kind of mismatch it is: a number of another width, or another kind of value.</summary>
+    [Theory]
+    [InlineData("mut fn f(small: int32) { amounts.append(small); }", "implicit numeric conversions")]
+    [InlineData("mut fn f() { amounts.append(\"one\"); }", "Append a value of type 'int64'")]
+    [InlineData("mut fn f() { entries.append(1); }", "Append a value of type 'protocross.conformance.LedgerEntry'")]
+    public void AnAppendOfTheWrongTypeSaysWhatToDoAboutIt(string methods, string help)
+    {
+        Assert.Contains(help, TheOnly(Compile(methods), "PC0046").Help, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// <c>append</c> is a repeated value's one method. Nothing can be removed from one, and the help
     /// says so rather than leaving the author to guess at the name of a method that is not there.

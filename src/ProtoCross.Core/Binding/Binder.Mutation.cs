@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
@@ -489,10 +490,14 @@ public sealed partial class Binder
     /// </para>
     /// </remarks>
     private MemberAccessExpression? AppendCallee(InvocationExpression invocation, Scope scope, MethodContext context)
-        => invocation.Callee is MemberAccessExpression { Name.Text: IrAppend.MethodName } member
-            && TracePlace(member.Receiver, scope, context) is { HoldsARepeatedValue: true }
+        => invocation.Callee is MemberAccessExpression member
+            && IsAppendTo(member.Name.Text, TracePlace(member.Receiver, scope, context))
                 ? member
                 : null;
+
+    /// <summary>Whether calling <paramref name="method"/> on the place <paramref name="trace"/> traced is an append.</summary>
+    private static bool IsAppendTo(string method, [NotNullWhen(true)] PlaceTrace? trace)
+        => method == IrAppend.MethodName && trace is { HoldsARepeatedValue: true };
 
     /// <summary>Binds <c>place.append(value);</c>, which adds an element to the end of a repeated value (spec 14.1).</summary>
     /// <remarks>
@@ -547,7 +552,10 @@ public sealed partial class Binder
                 $"Cannot append a value of type '{value.Type.DisplayName}' to {Spelled(collection)}, whose "
                 + $"elements are '{element.DisplayName}'.",
                 invocation.Arguments[0].Span,
-                "ProtoCross does not apply implicit numeric conversions.");
+                element is ScalarType { IsNumeric: true } && value.Type is ScalarType { IsNumeric: true }
+                    ? "ProtoCross does not apply implicit numeric conversions."
+                    : $"Append a value of type '{element.DisplayName}', or append to a field whose elements are "
+                        + $"'{value.Type.DisplayName}'.");
         }
 
         CheckAppend(collection, span, context);
@@ -560,7 +568,7 @@ public sealed partial class Binder
     /// </summary>
     private void CheckAppend(IrExpression collection, SourceSpan span, MethodContext context)
     {
-        var change = $"This appends to {Spelled(collection)}";
+        var change = Appending(collection);
 
         if (ReportIfReadOnly(collection, change, span, context))
         {
@@ -583,7 +591,7 @@ public sealed partial class Binder
     {
         if (!IrMutation.IsPlace(collection))
         {
-            ReportIfReadOnly(collection, $"This appends to {Spelled(collection)}", invocation.Span, context);
+            ReportIfReadOnly(collection, Appending(collection), invocation.Span, context);
             return;
         }
 
@@ -593,6 +601,9 @@ public sealed partial class Binder
             invocation.Span,
             $"Write it as a statement of its own: '{Unquoted(collection)}.{IrAppend.MethodName}(…);' (spec 14.1).");
     }
+
+    /// <summary>An append to <paramref name="collection"/>, as the start of a sentence saying what is refused.</summary>
+    private static string Appending(IrExpression collection) => $"This appends to {Spelled(collection)}";
 
     // ------- the loop rule
 
@@ -766,8 +777,6 @@ public sealed partial class Binder
     {
         AssignmentStatement assignment => FactsEndedByAssigning(assignment.Target, scope, context),
         CompoundAssignmentStatement assignment => FactsEndedByAssigning(assignment.Target, scope, context),
-        InvocationExpression invocation when AppendCallee(invocation, scope, context) is { } callee
-            => FactsEndedByAppending(callee.Receiver, scope, context),
         InvocationExpression invocation => FactsEndedByCalling(invocation, scope, context),
         _ => [],
     };
@@ -797,16 +806,6 @@ public sealed partial class Binder
         return [EndedFacts.Below(trace.Root, trace.Path), .. SiblingsUnsetThrough(trace, trace.Links.Count)];
     }
 
-    /// <remarks>
-    /// An append changes no element already there, so it ends nothing a guard showed about one. Each
-    /// message it writes through is set, which unsets the other members of that one's <c>oneof</c>, as
-    /// an assignment's links do.
-    /// </remarks>
-    private IEnumerable<EndedFacts> FactsEndedByAppending(Expression collection, Scope scope, MethodContext context)
-        => TracePlace(collection, scope, context) is { IsReadOnly: false } trace
-            ? SiblingsUnsetThrough(trace, trace.Links.Count)
-            : [];
-
     /// <summary>
     /// The facts ended by setting the first <paramref name="count"/> links of <paramref name="trace"/>:
     /// those about every other member of each link's <c>oneof</c>.
@@ -825,8 +824,17 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: false } member:
             {
                 var method = member.Name.Text;
+                var traced = TracePlace(member.Receiver, scope, context);
 
-                if (TracePlace(member.Receiver, scope, context) is not { Message: { } message } trace)
+                // An append changes no element already there, so it ends nothing a guard showed about
+                // one. Each message it writes through is set, which unsets the other members of that
+                // one's oneof, as an assignment's links do.
+                if (IsAppendTo(method, traced))
+                {
+                    return traced.IsReadOnly ? [] : SiblingsUnsetThrough(traced, traced.Links.Count);
+                }
+
+                if (traced is not { Message: { } message } trace)
                 {
                     return _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
                         ? [EndedFacts.Untraced]
