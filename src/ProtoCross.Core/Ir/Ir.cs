@@ -364,6 +364,58 @@ public sealed record IrAssignment(IrLocalReference Target, IrExpression Value, S
 public sealed record IrFieldAssignment(IrFieldAccess Target, IrExpression Value, SourceSpan Span)
     : IrStatement(Span);
 
+/// <summary>
+/// An element added to the end of a repeated value the method may change: <c>entries.append(entry);</c>
+/// (spec 14.1, 18).
+/// </summary>
+/// <param name="Collection">
+/// What the element is added to: a repeated field, reached through a chain of places as an assigned
+/// field is (<see cref="IrFieldAssignment.Target"/>), or a local holding a repeated value.
+/// </param>
+/// <param name="Value">The element, of the collection's element type.</param>
+/// <param name="NameSpan">Where <c>append</c> was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A statement rather than a call, though it is written as one. It has no value, so it can only ever
+/// stand on its own (spec 18), and nothing it could be passed to would know what to do with it. It is
+/// emitted as an assignment is, in the same three steps: the target is reached, setting every unset
+/// message it writes through, then the value is evaluated, and the element is added last.
+/// </para>
+/// <para>
+/// The value is stored as an assigned field's is (<see cref="IrExpression.IsCopiedWhenStored"/>): a
+/// message that is not a literal is copied, so the element is a message of its own.
+/// </para>
+/// <para>
+/// <c>append</c> is the language's, not a method any source declares, so it is recorded nowhere as a
+/// use of a symbol: there is no declaration for an editor to go to, and a stand-in identity would be
+/// one that answers nothing. Its span is kept here instead, for the editor that colours and describes
+/// it.
+/// </para>
+/// </remarks>
+public sealed record IrAppend(IrExpression Collection, IrExpression Value, SourceSpan NameSpan, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <summary>What an append is called, after the dot: <c>entries.append(entry)</c>.</summary>
+    public const string MethodName = "append";
+
+    /// <summary>
+    /// An append to a value of <paramref name="collection"/>'s type, written out as a method's
+    /// signature is (<see cref="IrMethodSignature.DisplayName"/>): <c>mut fn append(value: Entry) -&gt; void</c>.
+    /// </summary>
+    /// <remarks>
+    /// One spelling for every surface that shows it -- a completion's detail and a hover -- for the
+    /// reason a declared method has one. It reads as the <c>mut fn</c> it behaves as: it changes what
+    /// it is called on, and has no value to use.
+    /// </remarks>
+    public static string DisplayNameFor(RepeatedType collection)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+
+        return $"{ContextualKeywords.Mut} fn {MethodName}(value: {collection.ElementType.DisplayName}) -> "
+            + VoidType.Instance.DisplayName;
+    }
+}
+
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
 
 /// <summary>Iteration over a repeated field, in protobuf field order (spec 14).</summary>

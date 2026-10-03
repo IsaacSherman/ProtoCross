@@ -21,7 +21,7 @@ namespace ProtoCross.Tests;
 /// <see cref="SemanticTokenTests"/>'s and is not repeated here.
 /// </para>
 /// </remarks>
-public class SemanticRefinementTests
+public partial class SemanticRefinementTests
 {
     /// <summary>
     /// One of everything the binder can resolve, with no spelling used for two different things.

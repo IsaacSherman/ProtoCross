@@ -5,6 +5,7 @@ using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Symbols;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -755,6 +756,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 EmitFieldAssignment(writer, assignment, placement);
                 break;
 
+            case IrAppend append:
+                EmitAppend(writer, append, placement);
+                break;
+
             case IrReturn { Value: null }:
                 writer.WriteLine("return;");
                 break;
@@ -904,6 +909,13 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static string Expression(IrExpression expression, Placement placement) => expression switch
     {
         IrThis => ReceiverName,
+
+        // protobuf holds a repeated enum as int (RepeatedTypeName), so a loop over one binds an int.
+        // That converts to the enum's value for a comparison, and to the enum itself nowhere: a
+        // setter, add_x, a parameter, a return and a local all refuse it. Read as the enum, the
+        // binding has the type the IR gives it at every use, not only at the ones that were tried.
+        IrLocalReference { Local: { Declaration.Kind: SymbolKind.LoopBinding, Type: EnumPlType enumType } } binding
+            => $"static_cast<{QualifiedEnumName(enumType.Descriptor)}>({Escape(binding.Local.Name)})",
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
         IrFieldAccess field => FieldRead(Expression(field.Receiver, placement), field.Field),
@@ -966,26 +978,96 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// </remarks>
     private static void EmitFieldAssignment(SourceWriter writer, IrFieldAssignment assignment, Placement placement)
     {
-        var target = assignment.Target;
-        var accessor = NameConventions.GetCppFieldName(target.Field);
-        var value = StoredValue(assignment.Value, placement);
+        var accessor = NameConventions.GetCppFieldName(assignment.Target.Field);
 
-        if (target.Type is not MessageType)
+        EmitFieldWrite(
+            writer,
+            assignment,
+            assignment.Target,
+            new FieldWriter($"set_{accessor}", $"mutable_{accessor}", assignment.Target.Type is MessageType),
+            StoredValue(assignment.Value, placement),
+            placement);
+    }
+
+    /// <summary>An element added to the end of a repeated value, through protoc's <c>add_x</c> (spec 14.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// The same three steps as an assignment, in the same order and for the same reasons
+    /// (<see cref="EmitFieldAssignment"/>): the target is reached, the value evaluated, and the element
+    /// added last. A value that counts the field's elements finds the ones that were there.
+    /// <c>add_x(value)</c> keeps that order as a setter does, and a message element, which has only the
+    /// <c>add_x()</c> that adds an empty one and returns it, is assigned with <c>=</c>, as a message
+    /// field is.
+    /// </para>
+    /// <para>
+    /// A local holds a <c>RepeatedField</c> or a <c>RepeatedPtrField</c> of its own (spec 13.2), which
+    /// is added to as protoc's accessors add to a field: <c>Add(value)</c> for a number or an enum, and
+    /// <c>*Add() = value</c> for an element held by pointer.
+    /// </para>
+    /// </remarks>
+    private static void EmitAppend(SourceWriter writer, IrAppend append, Placement placement)
+    {
+        var value = StoredValue(append.Value, placement);
+        var heldByPointer = IsHeldByPointer(((RepeatedType)append.Collection.Type).ElementType);
+
+        if (append.Collection is not IrFieldAccess field)
         {
-            writer.WriteLine($"{MutableMember(target.Receiver, placement)}set_{accessor}({value});");
+            var local = Expression(append.Collection, placement);
+            writer.WriteLine(heldByPointer ? $"*{local}.Add() = {value};" : $"{local}.Add({value});");
+            return;
+        }
+
+        var accessor = $"add_{NameConventions.GetCppFieldName(field.Field)}";
+        EmitFieldWrite(
+            writer,
+            append,
+            field,
+            new FieldWriter(accessor, accessor, field.Type is RepeatedType { ElementType: MessageType }),
+            value,
+            placement);
+    }
+
+    /// <summary>How protoc's accessors write one field.</summary>
+    /// <param name="Setter">The accessor that takes the value: <c>set_x</c>, or <c>add_x</c>.</param>
+    /// <param name="Mutator">The accessor that returns where a message goes: <c>mutable_x</c>, or <c>add_x</c>.</param>
+    /// <param name="TakesAMessage">Whether the value is a message, which only <paramref name="Mutator"/> takes.</param>
+    private sealed record FieldWriter(string Setter, string Mutator, bool TakesAMessage);
+
+    /// <summary>
+    /// Writes <paramref name="value"/> to <paramref name="target"/>: reaching it, evaluating the value,
+    /// and writing it, in that order.
+    /// </summary>
+    /// <remarks>
+    /// A value that is not a message goes through the setter, which C++17 calls after it has evaluated
+    /// what the setter is called on and then its argument. A message is assigned with <c>=</c> to what
+    /// the mutator returns, which evaluates the value first. Where the target has links, that would
+    /// evaluate it before them, so the message they reach is bound by reference in a block of its own
+    /// first.
+    /// </remarks>
+    private static void EmitFieldWrite(
+        SourceWriter writer,
+        IrStatement statement,
+        IrFieldAccess target,
+        FieldWriter accessors,
+        string value,
+        Placement placement)
+    {
+        if (!accessors.TakesAMessage)
+        {
+            writer.WriteLine($"{MutableMember(target.Receiver, placement)}{accessors.Setter}({value});");
             return;
         }
 
         if (target.Receiver is not IrFieldAccess link)
         {
-            writer.WriteLine($"*{MutableMember(target.Receiver, placement)}mutable_{accessor}() = {value};");
+            writer.WriteLine($"*{MutableMember(target.Receiver, placement)}{accessors.Mutator}() = {value};");
             return;
         }
 
-        var owner = NamesFor(assignment).Next("owner");
+        var owner = NamesFor(statement).Next("owner");
         using var scope = writer.Block(string.Empty);
         writer.WriteLine($"auto& {owner} = {MutableMessage(link, placement)};");
-        writer.WriteLine($"*{owner}.mutable_{accessor}() = {value};");
+        writer.WriteLine($"*{owner}.{accessors.Mutator}() = {value};");
     }
 
     /// <summary>
@@ -1478,16 +1560,20 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
     private static string RepeatedTypeName(RepeatedType repeated)
     {
-        // protobuf stores message and string elements in RepeatedPtrField, everything else in
-        // RepeatedField. Repeated enums are stored as int, not as the enum type.
-        var container = repeated.ElementType is MessageType
-            or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes }
-            ? "RepeatedPtrField"
-            : "RepeatedField";
+        // Repeated enums are stored as int, not as the enum type.
+        var container = IsHeldByPointer(repeated.ElementType) ? "RepeatedPtrField" : "RepeatedField";
 
         var element = repeated.ElementType is EnumPlType ? "int" : TypeName(repeated.ElementType);
         return $"::google::protobuf::{container}<{element}>";
     }
+
+    /// <summary>
+    /// Whether protobuf holds a repeated element of <paramref name="element"/> by pointer, in a
+    /// <c>RepeatedPtrField</c>, as it does a message, a string and bytes, rather than in a
+    /// <c>RepeatedField</c>.
+    /// </summary>
+    private static bool IsHeldByPointer(PlType element)
+        => element is MessageType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     /// <summary>Message-typed parameters are passed by const reference; scalars by value.</summary>
     private static string ParameterTypeName(PlType type) => type switch

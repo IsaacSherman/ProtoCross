@@ -27,8 +27,8 @@ Normative Requirements:
   - in the `else` of `if not has f { ... } else { ... }`;
   - after `if not has f { return ...; }`, or any guard whose branch cannot complete normally;
   - in the right operand of `and` when the left proved it, and after `or` on the false side.
-- A fact is about the message a guard tested. Nothing in the language unsets a field except an
-  assignment to another member of its `oneof` ([18](./§18-Mutability.md#18-mutability)), but a change can replace the
+- A fact is about the message a guard tested. Nothing in the language unsets a field except setting
+  another member of its `oneof` ([18](./§18-Mutability.md#18-mutability)), but a change can replace the
   message a fact is about, and what was shown about the old one says nothing about the new one. A fact
   holds until a change that could make it false:
   - Assigning a local ends every fact reached through it, however deep: `c = b;` ends what was shown
@@ -41,6 +41,9 @@ Normative Requirements:
     ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), so the facts setting them ends are already ended for the value: after
     `if has disputed`, `pending.cents = disputed.cents;` is `PC0078`. The field itself is set after
     its value, so `pending = disputed;` still reads the `disputed` the guard tested.
+  - Appending ends every fact about another member of each `oneof` it writes through, which it
+    unsets, before its value is evaluated, as an assignment's links do. It ends nothing else: no
+    element that was there changes, and each message it writes through is set.
   - Calling a `mut fn` ends every fact reached through the message it is called on, since it may
     assign anything inside it.
   - A change through the name a `for` binds ends the same facts about every such name, since two
@@ -53,9 +56,9 @@ Normative Requirements:
   - A loop's body, and a `while` loop's condition, run again after the body may have made a change,
     so they see no fact the body could end. What a `while` condition itself proves still holds
     inside the body, because it is proved afresh on every pass.
-- A field written through needs no guard: `customer.name = "x";` sets `customer` when it is unset
-  ([18](./§18-Mutability.md#18-mutability)). An assignment establishes no fact, though, so reading `customer` after it
-  still needs one.
+- A field written through needs no guard: `customer.name = "x";` and `customer.tags.append("x");`
+  set `customer` when it is unset ([18](./§18-Mutability.md#18-mutability)). Neither establishes a fact, though, so reading
+  `customer` after it still needs one.
 - A message field reached through a value that has no name -- a method result, or a message literal
   ([13.2](#132-message-construction)) -- cannot be guarded, and is `PC0078`. Binding the intermediate to a local first gives it
   the name a guard needs.

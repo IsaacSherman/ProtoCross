@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
@@ -273,8 +274,9 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The field an assignment writes, and every field the assignment unsets: each other member of the
-    /// <c>oneof</c> of that field, or of any message it writes through.
+    /// The field a change writes -- an assignment's target, or what an append adds to -- and every field
+    /// the change unsets: each other member of the <c>oneof</c> of that field, or of any message it
+    /// writes through.
     /// </summary>
     /// <remarks>
     /// Writing through a message sets it when it is unset, and setting a member of a <c>oneof</c> unsets
@@ -454,11 +456,154 @@ public sealed partial class Binder
             IrAssignment assignment => [(assignment.Value, true)],
             IrReturn { Value: { } returned } => [(returned, true)],
             IrFieldAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
+            IrAppend append => [(append.Collection, false), (append.Value, false)],
             IrIf branch => [(branch.Condition, false)],
             IrWhile loop => [(loop.Condition, false)],
             IrForEach loop => [(loop.Collection, false)],
             _ => [],
         };
+
+    // ------- append
+
+    /// <summary>Binds an expression written as a statement, which is where an append is written (spec 14.1).</summary>
+    private IrStatement BindExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
+        => statement.Expression is InvocationExpression invocation
+            && AppendCallee(invocation, scope, context) is { } callee
+                ? BindAppend(invocation, callee, statement.Span, scope, context)
+                : new IrExpressionStatement(BindExpression(statement.Expression, scope, context, null), statement.Span);
+
+    /// <summary>
+    /// The callee of <paramref name="invocation"/> when it appends to a place, <c>place.append</c>, or
+    /// null for any other call.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the syntax before anything is bound, as <see cref="WritesAField"/> is and for the same
+    /// reason: the answer decides how the receiver is bound. A place appended to is written through,
+    /// so its links need no guard, and a message with a method of its own called <c>append</c> is read
+    /// as the receiver of any other call is. Binding the receiver to find out which would bind it one
+    /// way, and then half the time again the other, recording every name in it twice.
+    /// </para>
+    /// <para>
+    /// What this cannot trace to a place -- a call's result, a literal, something read from one -- is
+    /// bound as a call is, and refused there as a change to a value nothing holds.
+    /// </para>
+    /// </remarks>
+    private MemberAccessExpression? AppendCallee(InvocationExpression invocation, Scope scope, MethodContext context)
+        => invocation.Callee is MemberAccessExpression member
+            && IsAppendTo(member.Name.Text, TracePlace(member.Receiver, scope, context))
+                ? member
+                : null;
+
+    /// <summary>Whether calling <paramref name="method"/> on the place <paramref name="trace"/> traced is an append.</summary>
+    private static bool IsAppendTo(string method, [NotNullWhen(true)] PlaceTrace? trace)
+        => method == IrAppend.MethodName && trace is { HoldsARepeatedValue: true };
+
+    /// <summary>Binds <c>place.append(value);</c>, which adds an element to the end of a repeated value (spec 14.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// The place is bound as an assignment's target is, a chain of places needing no guard, and the
+    /// value once the place is reached (<see cref="AfterReaching"/>): appending to
+    /// <c>pending.splits</c> sets <c>pending</c>, which unsets the other members of its <c>oneof</c>
+    /// before the value is evaluated, so a guard on one of those says nothing about it any more.
+    /// </para>
+    /// <para>
+    /// The value is checked against the element type as an argument is checked against its
+    /// parameter, under the same codes, because that is how it is written.
+    /// </para>
+    /// </remarks>
+    private IrStatement BindAppend(
+        InvocationExpression invocation,
+        MemberAccessExpression callee,
+        SourceSpan span,
+        Scope scope,
+        MethodContext context)
+    {
+        var collection = BindPlace(callee.Receiver, scope, context);
+        MarkWritten(AssignedNameOf(callee.Receiver));
+
+        var element = (collection.Type as RepeatedType)?.ElementType;
+        var reached = AfterReaching(callee.Receiver, scope, context);
+        var arguments = invocation.Arguments
+            .Select((argument, index) => BindExpression(argument, scope, reached, index == 0 ? element : null))
+            .ToList();
+
+        // A place that failed to bind has said why where it failed.
+        if (element is null)
+        {
+            return new IrExpressionStatement(new IrUncallableInvocation(collection, arguments, invocation.Span), span);
+        }
+
+        if (arguments.Count != 1)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.WrongNumberOfArguments,
+                $"'{IrAppend.MethodName}' takes 1 argument, the element it adds, but {arguments.Count} were supplied.",
+                invocation.Span,
+                "Append one element at a time (spec 14.1).");
+            return new IrExpressionStatement(new IrUncallableInvocation(collection, arguments, invocation.Span), span);
+        }
+
+        var value = arguments[0];
+        if (value.Type is not ErrorType && element is not ErrorType && !TypesMatch(element, value.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.ArgumentTypeMismatch,
+                $"Cannot append a value of type '{value.Type.DisplayName}' to {Spelled(collection)}, whose "
+                + $"elements are '{element.DisplayName}'.",
+                invocation.Arguments[0].Span,
+                element is ScalarType { IsNumeric: true } && value.Type is ScalarType { IsNumeric: true }
+                    ? "ProtoCross does not apply implicit numeric conversions."
+                    : $"Append a value of type '{element.DisplayName}', or append to a field whose elements are "
+                        + $"'{value.Type.DisplayName}'.");
+        }
+
+        CheckAppend(collection, span, context);
+        return new IrAppend(collection, value, callee.Name.Span, span);
+    }
+
+    /// <summary>
+    /// Everything that can refuse an append here: a place the method may not change, and one holding a
+    /// field a loop is traversing.
+    /// </summary>
+    private void CheckAppend(IrExpression collection, SourceSpan span, MethodContext context)
+    {
+        var change = Appending(collection);
+
+        if (ReportIfReadOnly(collection, change, span, context))
+        {
+            return;
+        }
+
+        ReportIfTraversalChanges(collection is IrFieldAccess field ? FieldsReplacedBy(field) : [collection], change, span, context);
+    }
+
+    /// <summary>
+    /// Refuses an append that is not a statement of its own: one inside an expression, or one to a value
+    /// nothing holds, which the statement could not trace to a place.
+    /// </summary>
+    /// <remarks>
+    /// An append has no value and changes what it adds to, so it is a statement as a call to a
+    /// <c>mut fn</c> is (spec 18), and is refused under the same code. A value nothing holds is refused
+    /// as any change to one is, wherever the append is written.
+    /// </remarks>
+    private void RefuseAppend(IrExpression collection, InvocationExpression invocation, MethodContext context)
+    {
+        if (!IrMutation.IsPlace(collection))
+        {
+            ReportIfReadOnly(collection, Appending(collection), invocation.Span, context);
+            return;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.MutatingCallInsideAnExpression,
+            $"'{IrAppend.MethodName}' changes {Spelled(collection)} and has no value, so it has to stand on its own.",
+            invocation.Span,
+            $"Write it as a statement of its own: '{Unquoted(collection)}.{IrAppend.MethodName}(…);' (spec 14.1).");
+    }
+
+    /// <summary>An append to <paramref name="collection"/>, as the start of a sentence saying what is refused.</summary>
+    private static string Appending(IrExpression collection) => $"This appends to {Spelled(collection)}";
 
     // ------- the loop rule
 
@@ -679,12 +824,27 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: false } member:
             {
                 var method = member.Name.Text;
+                var traced = TracePlace(member.Receiver, scope, context);
 
-                if (TracePlace(member.Receiver, scope, context) is not { Message: { } message } trace)
+                // An append changes no element already there, so it ends nothing a guard showed about
+                // one. Each message it writes through is set, which unsets the other members of that
+                // one's oneof, as an assignment's links do.
+                if (IsAppendTo(method, traced))
                 {
-                    return _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
-                        ? [EndedFacts.Untraced]
-                        : [];
+                    return traced.IsReadOnly ? [] : SiblingsUnsetThrough(traced, traced.Links.Count);
+                }
+
+                // A receiver this cannot trace may be a binding of a loop inside the statement, which is
+                // out of scope from here, and may be on the element another binding's guard tested. So
+                // an untraced call that could change anything ends what every binding showed, as an
+                // untraced assignment does: an append, which may write through a oneof member, or a
+                // call to any mut fn of that name.
+                if (traced is not { Message: { } message } trace)
+                {
+                    return method == IrAppend.MethodName
+                        || _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
+                            ? [EndedFacts.Untraced]
+                            : [];
                 }
 
                 return !trace.IsReadOnly && IsMutating(message, method) ? [EndedFacts.Below(trace.Root, trace.Path)] : [];
@@ -716,11 +876,11 @@ public sealed partial class Binder
                     { Local: { } local } => new PlaceTrace(
                         IsLoopBinding(local) ? LoopPresenceRoot(local.Name) : LocalPresenceRoot(local.Name),
                         [],
-                        (local.Type as MessageType)?.Descriptor),
+                        (local.Type as MessageType)?.Descriptor) { HoldsARepeatedValue = local.Type is RepeatedType },
                     { Parameter: { } parameter } => new PlaceTrace(
                         ParameterPresenceRoot(parameter.Name),
                         [],
-                        (parameter.Type as MessageType)?.Descriptor),
+                        (parameter.Type as MessageType)?.Descriptor) { HoldsARepeatedValue = parameter.Type is RepeatedType },
                     { Field: { } field } => new PlaceTrace(ReceiverPresenceRoot, [], context.Receiver).Through(field),
                     _ => null,
                 };
@@ -742,6 +902,9 @@ public sealed partial class Binder
     {
         public bool IsReadOnly => Root.StartsWith(ParameterPresenceRootPrefix, StringComparison.Ordinal);
 
+        /// <summary>Whether the place holds a repeated value, which an append may add to.</summary>
+        public bool HoldsARepeatedValue { get; init; }
+
         /// <summary>The fields after the root, each after a separator, as a presence key writes them: <c>.customer.card</c>.</summary>
         public string Path => PathTo(Links.Count);
 
@@ -750,7 +913,10 @@ public sealed partial class Binder
             => string.Concat(Links.Take(count).Select(link => $"{PresencePathSeparator}{link.Name}"));
 
         public PlaceTrace Through(FieldDescriptor field)
-            => new(Root, [.. Links, field], IsSingularMessage(field) ? field.MessageType : null);
+            => new(Root, [.. Links, field], IsSingularMessage(field) ? field.MessageType : null)
+            {
+                HoldsARepeatedValue = field.IsRepeated && !field.IsMap,
+            };
     }
 
     /// <summary>The facts one change ends.</summary>

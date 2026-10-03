@@ -478,9 +478,14 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
             case IrFieldAssignment assignment:
                 writer.WriteLine(
-                    $"{WritableMessage(assignment.Target.Receiver, placement)}."
-                    + $"{NameConventions.GetCSharpPropertyName(assignment.Target.Field)} = "
+                    $"{WritableField(assignment.Target, placement)} = "
                     + $"{StoredValue(assignment.Value, placement, ReceiverName)};");
+                break;
+
+            case IrAppend append:
+                writer.WriteLine(
+                    $"{WritableCollection(append.Collection, placement)}."
+                    + $"Add({StoredValue(append.Value, placement, ReceiverName)});");
                 break;
 
             case IrReturn { Value: null }:
@@ -617,6 +622,22 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             + $"new global::{NameConventions.GetCSharpTypeName(field.Field.MessageType)}())",
         _ => Expression(place, placement),
     };
+
+    /// <summary>The field <paramref name="target"/> names, on a message set first where it is unset.</summary>
+    private static string WritableField(IrFieldAccess target, Placement placement)
+        => $"{WritableMessage(target.Receiver, placement)}.{NameConventions.GetCSharpPropertyName(target.Field)}";
+
+    /// <summary>
+    /// What an append adds to: a repeated field, on a message set first where it is unset, or a local.
+    /// </summary>
+    /// <remarks>
+    /// C# evaluates what <c>Add</c> is called on before its argument, so the target is reached before
+    /// the value is evaluated, and the element is added last, as an assignment's field is set last
+    /// (spec 9.3).
+    /// </remarks>
+    private static string WritableCollection(IrExpression collection, Placement placement) => collection is IrFieldAccess field
+        ? WritableField(field, placement)
+        : Expression(collection, placement);
 
     private static string ExtensionClassName(MessageDescriptor receiver)
     {

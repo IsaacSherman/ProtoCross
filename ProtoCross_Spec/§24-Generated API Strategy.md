@@ -95,11 +95,13 @@ is the message itself, since a C# message is a reference. A field is assigned th
 `self.Total = 5`. A message field written through is set first where it is unset,
 `(self.Customer ??= new Customer()).Name = x`, which is what a C++ mutable accessor does: protoc gives
 an unset message field as null, and setting a member of a `oneof` this way switches the case. The
-target is reached before the value is evaluated, as C# evaluates any assignment.
+target is reached before the value is evaluated, as C# evaluates any assignment. An append is `Add`
+on the field's `RepeatedField`, reached the same way, `(self.Review ??= new Review()).Scores.Add(x)`,
+and C# evaluates what `Add` is called on before its argument.
 
-A message stored in a field is `Clone`d unless it is a literal, as it is in a literal's field
-([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that changes a
-message: in any other, nothing can change through the local or through what it was copied from, so a
+A message stored in a field, or appended to one, is `Clone`d unless it is a literal, as it is in a
+literal's field ([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that
+changes a message, and an append to a local counts: in any other, nothing can change through the local or through what it was copied from, so a
 copy and a share cannot be told apart, and every method written before mutation is generated as it
 was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
 because the call may have returned part of the very receiver being changed. For the same reason, in
@@ -170,8 +172,21 @@ assigned through it in the next statement, inside a block of their own. The valu
 anything is set: a message as `T(value)`, and a string or bytes read from a field as
 `std::string(value)`. Either may be inside what the assignment replaces or unsets, as `node =
 node.next` and `after = before` between members of one `oneof` are, and protobuf destroys that
-before it copies. A literal is assigned as the temporary its lambda returns. A loop whose body changes the element it is given binds it as
-`auto&`, over the field's mutable accessor; every other loop binds `const auto&` as it always has.
+before it copies. A literal is assigned as the temporary its lambda returns.
+
+An append goes through protoc's `add_x`. A number, an enum, a string or bytes is added with
+`add_x(value)`, which is called as a setter is, after its target and its argument. A message has only
+the `add_x()` that adds an empty element and returns it, so it is assigned with `=`, as a message
+field is: `*self.add_entries() = T(value);`, which evaluates the value first, and a target with links
+is reached through `auto& owner` in a block of its own first, in the same way. A local holds a
+`RepeatedField` or a `RepeatedPtrField` of its own, and is added to with `Add(value)`, or with
+`*Add() = value` for an element held by pointer.
+
+A loop whose body changes the element it is given, an append to it included, binds it as `auto&`,
+over the field's mutable accessor; every other loop binds `const auto&` as it always has. protobuf
+holds a repeated enum as `int`, so a loop over one binds an `int`, and each use of the element reads
+it as the enum, `static_cast<E>(kind)`: nothing converts an `int` to the enum that a setter, `add_x`,
+a parameter, a return value and a local of the enum's type all take.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
 C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,

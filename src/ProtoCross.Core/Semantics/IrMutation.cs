@@ -20,8 +20,8 @@ namespace ProtoCross.Semantics;
 public static class IrMutation
 {
     /// <summary>
-    /// The place <paramref name="node"/> changes: the field an assignment writes, or the receiver of a
-    /// call to a <c>mut fn</c>. Null for anything that changes no message.
+    /// The place <paramref name="node"/> changes: the field an assignment writes, what an append adds
+    /// to, or the receiver of a call to a <c>mut fn</c>. Null for anything that changes no message.
     /// </summary>
     /// <remarks>
     /// An assignment to a local is not here. It gives the name another value and changes no message,
@@ -34,6 +34,7 @@ public static class IrMutation
         return node switch
         {
             IrFieldAssignment assignment => assignment.Target,
+            IrAppend append => append.Collection,
             IrMethodCall { Target.IsMutating: true } call => call.Receiver,
             _ => null,
         };
@@ -80,10 +81,17 @@ public static class IrMutation
 
     /// <summary>Whether anything <paramref name="method"/> does changes a message.</summary>
     /// <remarks>
+    /// <para>
     /// Where nothing changes, a message stored in a local and the message it was copied from cannot be
     /// told apart, because neither can become different from the other. That is what lets C# share
     /// rather than copy into a local in a method that changes nothing (spec 24.1), which is every method
     /// written before #13.
+    /// </para>
+    /// <para>
+    /// An append to a local counts, though the local holds a repeated value rather than a message. A
+    /// C# local given a field's repeated value shares it unless it is copied, and an append to the share
+    /// would be an append to the field.
+    /// </para>
     /// </remarks>
     public static bool ChangesAMessage(IrMethod method)
     {

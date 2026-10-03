@@ -35,6 +35,17 @@ namespace ProtoCross.LanguageServer.Protocol.Lsp;
 /// </remarks>
 public static class EditorPositions
 {
+    /// <summary>
+    /// Whether a caret at <paramref name="offset"/> is on <paramref name="span"/>, both ends inclusive,
+    /// so a caret that has just finished typing a name is still on it.
+    /// </summary>
+    /// <remarks>
+    /// Half-open is right for what a span covers and wrong for where a caret is: the moment a name is
+    /// typed, the caret sits at its end, and that is when completion, hover and signature help ask.
+    /// </remarks>
+    public static bool Covers(SourceSpan span, int offset)
+        => offset >= span.Start.Offset && offset <= span.End.Offset;
+
     /// <summary>The range an editor draws for a compiler span.</summary>
     /// <remarks>
     /// A span that is nowhere must never go through the subtraction: line 0 minus one is line -1,

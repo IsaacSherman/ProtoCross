@@ -1236,9 +1236,7 @@ public sealed partial class Binder
         ForInStatement forIn => BindForIn(forIn, scope, context),
         AssignmentStatement assignment => BindAssignment(assignment, scope, context),
         CompoundAssignmentStatement assignment => BindCompoundAssignment(assignment, scope, context),
-        ExpressionStatement expression => new IrExpressionStatement(
-            BindExpression(expression.Expression, scope, context, null),
-            expression.Span),
+        ExpressionStatement expression => BindExpressionStatement(expression, scope, context),
         _ => throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement."),
     };
 
@@ -2141,7 +2139,7 @@ public sealed partial class Binder
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
     /// <remarks>
     /// <para>
-    /// Seven paths below decide there is no method here. Every one of them still keeps the arguments,
+    /// Nine paths below decide there is no method here. Every one of them still keeps the arguments,
     /// in an <see cref="IrUncallableInvocation"/>, because the arguments are source the author wrote
     /// and a call that does not resolve is the ordinary state of one being typed. Collapsing to an
     /// error-typed literal spanning the whole call -- which is what every path used to do -- leaves
@@ -2150,7 +2148,7 @@ public sealed partial class Binder
     /// </para>
     /// <para>
     /// Arguments are bound once and only once. The one path that reaches a failure with them already
-    /// bound hands over the list it built; the six that fail before binding anything go through
+    /// bound hands over the list it built; the eight that fail before binding anything go through
     /// <c>Uncallable</c>, which binds with no expected type -- there is no signature to expect
     /// anything from. Binding twice would report every mistake inside an argument twice.
     /// </para>
@@ -2181,6 +2179,25 @@ public sealed partial class Binder
                 // told a second time.
                 if (boundReceiver.Type is ErrorType)
                 {
+                    return Uncallable(boundReceiver);
+                }
+
+                // A statement of its own was bound as an append before it got here (spec 14.1), so
+                // this one is inside an expression, or adds to a value nothing holds.
+                if (boundReceiver.Type is RepeatedType && member.Name.Text == IrAppend.MethodName)
+                {
+                    RefuseAppend(boundReceiver, invocation, context);
+                    return Uncallable(boundReceiver);
+                }
+
+                if (boundReceiver.Type is RepeatedType)
+                {
+                    _diagnostics.Report(
+                        DiagnosticCodes.MethodCallOnANonMessage,
+                        $"Type '{boundReceiver.Type.DisplayName}' has no method named '{member.Name}'.",
+                        invocation.Span,
+                        $"A repeated value has one method, '{IrAppend.MethodName}', which adds an element to its "
+                        + "end. Nothing can be removed from one (spec 14.1).");
                     return Uncallable(boundReceiver);
                 }
 
@@ -2303,7 +2320,7 @@ public sealed partial class Binder
 
         return call;
 
-        // For the six paths that give up before any argument has been looked at. There is no
+        // For the eight paths that give up before any argument has been looked at. There is no
         // signature to take an expected type from -- that is what they gave up on -- so each
         // argument is bound for whatever it is on its own.
         IrUncallableInvocation Uncallable(IrExpression? boundReceiver)

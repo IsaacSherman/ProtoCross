@@ -29,7 +29,9 @@ Normative Requirements:
   - its receiver, if it is a `mut fn`;
   - a message held in a local, which is the method's own copy ([13.2](./§13-Messages.md#132-message-construction));
   - a singular field of either, at any depth, and an element of a repeated field of either, through
-    the name a `for` binds to it.
+    the name a `for` binds to it;
+  - a repeated field of either, at any depth, and a repeated value held in a local, by appending to
+    it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 
   It may change nothing else. A parameter, and anything reached through one, is read-only, and so is
   the receiver of a method that is not `mut`. A call's result and a literal are held by nothing once
@@ -52,6 +54,11 @@ Normative Requirements:
     does in protobuf.
   - An assignment reaches its target first, setting any unset message on the way, then evaluates
     its value, and sets the field last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
+- **Append.** `place.append(value);` adds an element to the end of a repeated value the method may
+  change ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). It is refused where an assignment to the same place would be
+  (`PC0094`, `PC0096`), writes through an unset message as an assignment does, stores a message as a
+  copy unless it is a literal, and is ordered as an assignment is: the target, then the value, then
+  the element added. It has no value, so it is only ever a statement (`PC0095`).
 - **Mutating calls.** A `mut fn` may be called only on a message the calling method may change
   (`PC0094`). Calling one on a message field of the receiver needs that field's guard, as any call on
   a message field does ([13.1](./§13-Messages.md#131-field-access)).
@@ -72,15 +79,15 @@ Normative Requirements:
   with a repeated value, that is not a literal stores a copy
   ([13.2](./§13-Messages.md#132-message-construction)).
 - No field can be cleared, and no element can be removed from a repeated field. So nothing a guard has
-  shown to be set becomes unset, except by an assignment to another member of its `oneof`, or by the
-  message holding it being replaced ([13.1](./§13-Messages.md#131-field-access)).
+  shown to be set becomes unset, except by setting another member of its `oneof`, which an assignment
+  or an append writing through it does, or by the message holding it being replaced
+  ([13.1](./§13-Messages.md#131-field-access)).
 
 Current Status:
 
-- Both backends generate every change above, and the `mutating_methods` conformance vector runs
-  each of them in both ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
+- Both backends generate every change above, and the `mutating_methods` and `repeated_append`
+  conformance vectors run each of them in both ([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
 - C# changes a message through protoc's properties, from the extension methods it always emitted
   ([24.1](./§24-Generated%20API%20Strategy.md#241-c)). C++ passes the receiver of a `mut fn` as `T&`, and changes a message
   through protoc's setters and mutable accessors ([24.2](./§24-Generated%20API%20Strategy.md#242-c)).
-- Appending to a repeated field is decided, and is not implemented yet: until it is, a repeated field
-  changes only through its elements ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+  C# appends with `Add`, and C++ with protoc's `add_x`, or `Add` on a local.
