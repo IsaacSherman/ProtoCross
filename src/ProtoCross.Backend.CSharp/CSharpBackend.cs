@@ -615,6 +615,14 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     /// C++ setters are called, so a value that asks whether a link is set sees it set in both.
     /// </para>
     /// </remarks>
+    private static string WritableMessage(IrExpression place, Placement placement) => place switch
+    {
+        IrFieldAccess field => $"({WritableMessage(field.Receiver, placement)}."
+            + $"{NameConventions.GetCSharpPropertyName(field.Field)} ??= "
+            + $"new global::{NameConventions.GetCSharpTypeName(field.Field.MessageType)}())",
+        _ => Expression(place, placement),
+    };
+
     /// <summary>The field <paramref name="target"/> names, on a message set first where it is unset.</summary>
     private static string WritableField(IrFieldAccess target, Placement placement)
         => $"{WritableMessage(target.Receiver, placement)}.{NameConventions.GetCSharpPropertyName(target.Field)}";
@@ -630,14 +638,6 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static string WritableCollection(IrExpression collection, Placement placement) => collection is IrFieldAccess field
         ? WritableField(field, placement)
         : Expression(collection, placement);
-
-    private static string WritableMessage(IrExpression place, Placement placement) => place switch
-    {
-        IrFieldAccess field => $"({WritableMessage(field.Receiver, placement)}."
-            + $"{NameConventions.GetCSharpPropertyName(field.Field)} ??= "
-            + $"new global::{NameConventions.GetCSharpTypeName(field.Field.MessageType)}())",
-        _ => Expression(place, placement),
-    };
 
     private static string ExtensionClassName(MessageDescriptor receiver)
     {
