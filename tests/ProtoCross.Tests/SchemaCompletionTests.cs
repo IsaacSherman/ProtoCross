@@ -299,8 +299,8 @@ public partial class SchemaCompletionTests
     public async Task ADotAfterARepeatedFieldOffersAppendRatherThanTheElementTypesMembers()
     {
         var offered = await OfferedAsync(
-            "extend Outer {\n    fn f() -> int64 {\n        return nested_values.\n    }\n}\n",
-            "return nested_values.");
+            "extend Outer {\n    mut fn f() {\n        nested_values.\n    }\n}\n",
+            "nested_values.");
 
         var append = Assert.Single(offered);
         Assert.Equal("append()", append.Label);
@@ -309,19 +309,44 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// A repeated value has one member, so it may stand where that member is taken off a name, bare or
-    /// after a dot, beside the messages that always could -- and a number still cannot.
+    /// An append has no value, so it is offered only where it stands as a statement: anywhere else it
+    /// is refused, and would be the one item in the list.
+    /// </summary>
+    [Theory]
+    [InlineData("    fn f() -> int64 {\n        return nested_values.\n    }\n", "return nested_values.")]
+    [InlineData("    mut fn f() {\n        var added = nested_values.\n    }\n", "added = nested_values.")]
+    public async Task AppendIsNotOfferedInsideAnExpression(string method, string marker)
+    {
+        Assert.Empty(await OfferedAsync("extend Outer {\n" + method + "}\n", marker));
+    }
+
+    /// <summary>
+    /// Before <c>.append</c>, what may stand is what has one: a repeated value, bare or after a dot --
+    /// and not a message that declares no method of that name, nor a number.
     /// </summary>
     [Theory]
     [InlineData("        nested_values.append(nested);\n", "nested_val")]
     [InlineData("        var mine: Outer = new Outer { };\n        mine.nested_values.append(nested);\n", "mine.nested_val")]
-    public async Task ARepeatedFieldIsOfferedWhereAReceiverGoes(string body, string marker)
+    public async Task ARepeatedFieldIsOfferedWhereAppendIsTakenOffIt(string body, string marker)
     {
         var offered = Labels(await OfferedAsync("extend Outer {\n    mut fn f() {\n" + body + "    }\n}\n", marker));
 
         Assert.Contains("nested_values", offered);
-        Assert.Contains("inner", offered);
+        Assert.DoesNotContain("inner", offered);
         Assert.DoesNotContain("count", offered);
+    }
+
+    /// <summary>A message that declares a method called <c>append</c> has one too, and is offered there.</summary>
+    [Fact]
+    public async Task AMessageDeclaringAppendIsOfferedWhereAppendIsTakenOffIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend protocross.tests.Outer.Inner {\n    mut fn append(more: int64) {\n    }\n}\n\n"
+                + "extend Outer {\n    mut fn f() {\n        nested_values.append(nested);\n    }\n}\n",
+            "nested_val"));
+
+        Assert.Contains("nested_values", offered);
+        Assert.Contains("inner", offered);
     }
 
     /// <summary>

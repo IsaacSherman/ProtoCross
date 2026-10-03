@@ -371,7 +371,14 @@ public sealed class CompletionProvider
         if (subject.PrecededByDot)
         {
             return Members(
-                ReceiverAt(model, subject), result, subject, presence, writingAReceiver, appendedTo, asked.Document);
+                ReceiverAt(model, subject),
+                result,
+                subject,
+                presence,
+                writingAReceiver,
+                appendedTo,
+                TakenOffAsAStatement(model, subject),
+                asked.Document);
         }
 
         if (Arguments(model, subject, asked.Document) is { } arguments)
@@ -474,6 +481,45 @@ public sealed class CompletionProvider
                     .Select(access => access.Name.Text),
             ]
             : [];
+
+    /// <summary>
+    /// Whether the member the caret is writing after a dot would stand as a statement of its own,
+    /// called or not called yet: <c>entries.|</c> or <c>entries.app|end(e);</c>, and not
+    /// <c>return entries.|</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asked for <c>append</c>, which has no value and so is refused anywhere else (<c>PC0095</c>):
+    /// offered inside an expression, it would be the one item in the list and certain to be wrong.
+    /// Asked of the tree, the member access whose name is at the caret and what holds it. A buffer
+    /// that built no such access is not one this can rule on, and is answered yes, so it still offers
+    /// what it offered before anything was asked.
+    /// </remarks>
+    private static bool TakenOffAsAStatement(SemanticModel model, SchemaSubject subject)
+    {
+        if (model.SyntaxAt(subject.Start) is not { } location)
+        {
+            return true;
+        }
+
+        var path = location.Path;
+        for (var index = path.Count - 1; index > 0; index--)
+        {
+            if (path[index] is not MemberAccessExpression member || !Covers(member.Name.Span, subject.Start))
+            {
+                continue;
+            }
+
+            var holder = path[index - 1];
+            if (holder is InvocationExpression call && ReferenceEquals(call.Callee, member) && index > 1)
+            {
+                holder = path[index - 2];
+            }
+
+            return holder is ExpressionStatement;
+        }
+
+        return true;
+    }
 
     /// <summary>Where an expression's trailing name is written, or null when it ends in no name.</summary>
     /// <remarks>
@@ -1325,7 +1371,7 @@ public sealed class CompletionProvider
         return
         [
             .. scope.Names
-                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, appendedTo))
+                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, appendedTo, result.Module))
                 .Select(visible => Member(
                     visible.Name,
                     visible.Symbol.Kind is SymbolKind.Field
@@ -1493,19 +1539,30 @@ public sealed class CompletionProvider
 
     /// <summary>
     /// Whether a value of <paramref name="type"/> may stand where a member is taken off it: a message,
-    /// which has fields and methods, or, where the member is <c>append</c>, a repeated value, whose one
-    /// member that is (spec 14.1).
+    /// which has fields and methods, or, where the member is <c>append</c>, a value that has one -- a
+    /// repeated value, whose one member it is (spec 14.1), or a message declaring a method of that name.
     /// </summary>
     /// <param name="appendedTo">Whether the member taken off it is <c>append</c>.</param>
     /// <remarks>
+    /// <para>
     /// The one answer to which names may stand where a receiver goes, for a bare name and a member
     /// alike, so the two cannot disagree about whether <c>entries</c> in <c>entries.append(e)</c> is
     /// one. A repeated value before any other member would be offered only to be refused, as
     /// <c>order.lines.quantity</c> is. An enum is not here: its constants are reached through its
     /// name, never through a value.
+    /// </para>
+    /// <para>
+    /// Before <c>.append</c> the member is known, and so is what has it. Before any other, a message is
+    /// offered whether or not it has the member, which is what has always been offered there: asking
+    /// is a question about each message's fields and methods that nothing has needed until now.
+    /// </para>
     /// </remarks>
-    private static bool CanBeAReceiver(PlType type, bool appendedTo)
-        => type is MessageType || (appendedTo && type is RepeatedType);
+    private static bool CanBeAReceiver(PlType type, bool appendedTo, IrModule? module)
+        => appendedTo
+            ? type is RepeatedType
+                || (type is MessageType message
+                    && module?.MethodsOn(message.Descriptor.FullName).Any(method => method.Name == IrAppend.MethodName) == true)
+            : type is MessageType;
 
     /// <summary>What may be written after a dot on a value of this type.</summary>
     /// <remarks>
@@ -1532,6 +1589,7 @@ public sealed class CompletionProvider
         bool presence,
         bool writingAReceiver,
         bool appendedTo,
+        bool aStatement,
         OpenDocument document)
         => receiver switch
         {
@@ -1546,7 +1604,7 @@ public sealed class CompletionProvider
                 .. MessageFields.InDeclarationOrder(message.Descriptor)
                     .Where(field => !field.IsMap
                         && !subject.FollowedByCall
-                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo)))
+                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo, result.Module)))
                     .Select(field => Member(
                         field.Name,
                         CompletionItemKind.Field,
@@ -1572,9 +1630,9 @@ public sealed class CompletionProvider
                     : [],
             ],
 
-            // An append is a statement with no value, so it is never something another member is taken
-            // off, and 'has' asks about a field, never a method (spec 14.1).
-            RepeatedType repeated when !writingAReceiver && !presence =>
+            // An append has no value, so it is offered only where it stands as a statement, which is
+            // never a receiver or the operand of 'has' (spec 14.1).
+            RepeatedType repeated when aStatement =>
             [
                 Member(
                     subject.FollowedByCall ? IrAppend.MethodName : IrAppend.MethodName + "()",
