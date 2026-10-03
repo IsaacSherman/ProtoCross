@@ -403,28 +403,17 @@ public sealed record IrAppend(IrExpression Collection, IrExpression Value, Sourc
     /// signature is (<see cref="IrMethodSignature.DisplayName"/>): <c>mut fn append(value: Entry) -&gt; void</c>.
     /// </summary>
     /// <remarks>
-    /// One spelling for every surface that shows it -- a completion's detail, a hover, signature help
-    /// -- for the reason a declared method has one. It reads as the <c>mut fn</c> it behaves as: it
-    /// changes what it is called on, and has no value to use.
+    /// One spelling for every surface that shows it -- a completion's detail and a hover -- for the
+    /// reason a declared method has one. It reads as the <c>mut fn</c> it behaves as: it changes what
+    /// it is called on, and has no value to use.
     /// </remarks>
     public static string DisplayNameFor(RepeatedType collection)
     {
         ArgumentNullException.ThrowIfNull(collection);
 
-        return $"{Opening}{ValueText(collection)}) -> {VoidType.Instance.DisplayName}";
+        return $"{ContextualKeywords.Mut} fn {MethodName}(value: {collection.ElementType.DisplayName}) -> "
+            + VoidType.Instance.DisplayName;
     }
-
-    /// <summary>Where the one parameter sits inside <see cref="DisplayNameFor"/>.</summary>
-    public static ParameterLabel ValueLabelFor(RepeatedType collection)
-    {
-        ArgumentNullException.ThrowIfNull(collection);
-
-        return new ParameterLabel(Opening.Length, Opening.Length + ValueText(collection).Length);
-    }
-
-    private static string Opening => $"{ContextualKeywords.Mut} fn {MethodName}(";
-
-    private static string ValueText(RepeatedType collection) => $"value: {collection.ElementType.DisplayName}";
 }
 
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
