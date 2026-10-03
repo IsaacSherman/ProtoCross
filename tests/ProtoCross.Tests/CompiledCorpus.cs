@@ -197,7 +197,7 @@ internal static class CompiledCorpus
 
         test protocross.tests.Outer.plain "a package-qualified test target" {
             receiver {
-                count = 2;
+                count: 2,
             }
             expect return 2;
         }
@@ -274,10 +274,12 @@ internal static class CompiledCorpus
 
         test Invoice.total_cents "adds up lines another file prices" {
             receiver {
-                items {
-                    quantity = 2;
-                    unit_price_cents = 300;
-                }
+                items: [
+                    new InvoiceItem {
+                        quantity: 2,
+                        unit_price_cents: 300,
+                    },
+                ],
             }
 
             expect return 600;

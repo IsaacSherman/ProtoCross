@@ -116,6 +116,8 @@ public static class IrWalk
             IrBlock block => [.. block.Statements],
             IrVariableDeclaration declaration => [declaration.Initializer],
             IrAssignment assignment => [assignment.Target, assignment.Value],
+            IrFieldAssignment assignment => [assignment.Target, assignment.Value],
+            IrAppend append => [append.Collection, append.Value],
             IrReturn { Value: { } returned } => [returned],
             IrForEach loop => [loop.Collection, loop.Body],
             IrIf branch => branch.Else is { } otherwise
@@ -137,12 +139,12 @@ public static class IrWalk
                 : [division.Left, division.Right],
             IrUnary unary => [unary.Operand],
             IrConversion conversion => [conversion.Operand],
+            IrMessageLiteral literal => [.. literal.Fields],
+            IrFieldInitializer field => [field.Value],
+            IrList list => [.. list.Elements],
 
             IrTest test => [test.Receiver, .. test.Arguments, test.Expectation],
             IrTestArgument argument => [argument.Value],
-            IrTestMessageValue message => [.. message.Fields],
-            IrTestFieldValue { ScalarValue: { } scalar } => [scalar],
-            IrTestFieldValue { MessageValue: { } message } => [message],
             IrTestReturnExpectation expectation => [expectation.Value],
 
             _ => [],

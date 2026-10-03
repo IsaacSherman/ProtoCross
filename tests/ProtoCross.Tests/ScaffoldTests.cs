@@ -52,12 +52,7 @@ public class ScaffoldTests
     [Fact]
     public void EveryPinnedVersionMatchesCentralPackageManagement()
     {
-        var central = XDocument.Load(TestPaths.DirectoryPackagesProps)
-            .Descendants("PackageVersion")
-            .ToDictionary(
-                element => (string)element.Attribute("Include")!,
-                element => (string)element.Attribute("Version")!,
-                StringComparer.Ordinal);
+        var central = TestPaths.CentralPackageVersions;
 
         foreach (var (package, version) in CSharpTestProject.PackageVersions)
         {

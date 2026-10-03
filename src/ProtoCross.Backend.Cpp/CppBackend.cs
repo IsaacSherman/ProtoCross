@@ -5,6 +5,7 @@ using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Symbols;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -26,7 +27,7 @@ namespace ProtoCross.Backend.Cpp;
 /// case is what keeps generating a single source from moving.
 /// </para>
 /// </remarks>
-public sealed class CppBackend : ITestProjectScaffold
+public sealed partial class CppBackend : ITestProjectScaffold
 {
     private const string ReceiverName = "self";
     private const string RuntimeNamespace = "::protocross_runtime";
@@ -220,7 +221,16 @@ public sealed class CppBackend : ITestProjectScaffold
         var hasFloatingPointExpectations = module.Tests.Any(ExpectsFloatingPoint);
         var placement = new Placement(options.ProjectNamespace);
 
-        WriteTestHeader(writer, options, HeadersTestedBy(module, baseName), hasFailTests, hasFloatingPointExpectations);
+        // The schemas a test names beyond its target's are the ones a literal in it brings: no behavior
+        // header has a reason to include those. They come first, as a header's own schemas do.
+        var schemaHeaders = ProtoHeadersOf(
+            SchemasNamedBeyond(module.Tests.Select(test => test.Target.Receiver.File), module.Tests));
+        WriteTestHeader(
+            writer,
+            options,
+            [.. schemaHeaders, .. HeadersTestedBy(module, baseName)],
+            hasFailTests,
+            hasFloatingPointExpectations);
 
         foreach (var test in module.Tests)
         {
@@ -247,23 +257,38 @@ public sealed class CppBackend : ITestProjectScaffold
         => [new GeneratedFile(CppTestProject.FileName, CppTestProject.Build(options))];
 
     /// <summary>
-    /// The headers declaring the methods this source's tests target, sorted, each once: this source's
-    /// own, and another source's wherever a test targets a method declared there.
+    /// The headers declaring the methods this source's tests call, sorted, each once: this source's
+    /// own, and another source's wherever a test calls a method declared there.
     /// </summary>
     /// <param name="baseName">What this source's own header is named after.</param>
     /// <remarks>
+    /// <para>
     /// A test may target a method in any source of the compilation (spec 5.3), and the driver calls it,
     /// so the driver includes whichever header declares it. A test whose target is in its own source
     /// includes the header named for this source, as every driver always has.
+    /// </para>
+    /// <para>
+    /// The target is not the only method a test calls. A fixture, an argument or an expectation may
+    /// call a method on a literal, <c>new Line { … }.cents()</c>, and that method may be declared in
+    /// any source too, so it is asked the same question.
+    /// </para>
     /// </remarks>
     private static IReadOnlyList<string> HeadersTestedBy(IrModule module, string baseName)
         => module.Tests
-            .Select(test => test.Document is null || test.Target.Declaration.Document == test.Document
-                ? baseName + HeaderExtension
-                : HeaderFor(test.Target.Declaration.Document))
+            .SelectMany(test => MethodsCalledBy(test).Select(method => HeaderDeclaring(method, test, baseName)))
             .Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal)
             .ToList();
+
+    /// <summary>The methods a test's driver calls: its target, and any its fixture, arguments and expectation call.</summary>
+    private static IEnumerable<IrMethodSignature> MethodsCalledBy(IrTest test)
+        => IrWalk.DescendantsAndSelf(test).OfType<IrMethodCall>().Select(call => call.Target).Prepend(test.Target);
+
+    /// <summary>The header declaring <paramref name="method"/>, as the driver for <paramref name="test"/> names it.</summary>
+    private static string HeaderDeclaring(IrMethodSignature method, IrTest test, string baseName)
+        => test.Document is null || method.Declaration.Document == test.Document
+            ? baseName + HeaderExtension
+            : HeaderFor(method.Declaration.Document);
 
     private static void WriteTestHeader(
         SourceWriter writer,
@@ -554,45 +579,16 @@ public sealed class CppBackend : ITestProjectScaffold
             : $"static_cast<void>({CppInvocation(test, placement)});");
     }
 
+    /// <summary>Declares the local named <c>receiver</c> that a test calls its method on.</summary>
     private static void EmitCppReceiver(SourceWriter writer, IrTest test, Placement placement)
-    {
-        writer.WriteLine($"{QualifiedTypeName(test.Target.Receiver)} receiver;");
-        EmitCppFixtureFields(writer, "receiver", false, test.Receiver, new NameAllocator(), placement);
-    }
+        => EmitConstruction(writer, test.Receiver, TestReceiverName, NamesFor(test.Receiver, TestReceiverName), placement);
 
     private static string CppInvocation(IrTest test, Placement placement)
     {
-        var arguments = new List<string> { "receiver" };
+        var arguments = new List<string> { TestReceiverName };
         arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement)));
 
         return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
-    }
-
-    private static void EmitCppFixtureFields(
-        SourceWriter writer,
-        string target,
-        bool targetIsPointer,
-        IrTestMessageValue message,
-        NameAllocator names,
-        Placement placement)
-    {
-        var access = targetIsPointer ? "->" : ".";
-        foreach (var value in message.Fields.OrderBy(v => v.Field.FieldNumber))
-        {
-            var field = value.Field;
-            var accessor = NameConventions.GetCppFieldName(field);
-            if (value.MessageValue is not null)
-            {
-                var local = names.Next(field.Name);
-                var mutator = field.IsRepeated ? $"add_{accessor}" : $"mutable_{accessor}";
-                writer.WriteLine($"auto* {local} = {target}{access}{mutator}();");
-                EmitCppFixtureFields(writer, local, true, value.MessageValue, names, placement);
-                continue;
-            }
-
-            var setter = field.IsRepeated ? $"add_{accessor}" : $"set_{accessor}";
-            writer.WriteLine($"{target}{access}{setter}({Expression(value.ScalarValue!, placement)});");
-        }
     }
 
     private static void WriteHeader(SourceWriter writer, BackendOptions options, string guard, IrModule module)
@@ -629,12 +625,8 @@ public sealed class CppBackend : ITestProjectScaffold
         writer.WriteLine("#include <string>");
         writer.WriteLine();
 
-        var protoHeaders = module.Methods
-            .Select(m => NameConventions.GetCppProtoHeader(m.Receiver.File))
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(header => header, StringComparer.Ordinal);
-
-        foreach (var header in protoHeaders)
+        var receivers = module.Methods.Select(method => method.Receiver.File).ToList();
+        foreach (var header in ProtoHeadersOf(receivers.Concat(SchemasNamedBeyond(receivers, module.Methods))))
         {
             writer.WriteLine($"#include \"{header}\"");
         }
@@ -709,9 +701,15 @@ public sealed class CppBackend : ITestProjectScaffold
             => MakeIncludeGuard(Project is { } project ? $"{project.Package}.{headerName}" : headerName);
     }
 
+    /// <remarks>
+    /// The receiver is <c>const T&amp;</c> unless the method is a <c>mut fn</c>, which takes <c>T&amp;</c>
+    /// because it may change it (spec 24.2). Every other method keeps the signature it always had, so
+    /// a caller holding a const message can still call it.
+    /// </remarks>
     private static string Signature(IrMethod method)
     {
-        var parameters = new List<string> { $"const {QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
+        var constness = method.Signature.IsMutating ? string.Empty : "const ";
+        var parameters = new List<string> { $"{constness}{QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
         parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
 
         // The method name needs escaping too: ProtoCross names are snake_case and every C++ keyword
@@ -754,6 +752,14 @@ public sealed class CppBackend : ITestProjectScaffold
                 writer.WriteLine($"{Expression(assignment.Target, placement)} = {Expression(assignment.Value, placement)};");
                 break;
 
+            case IrFieldAssignment assignment:
+                EmitFieldAssignment(writer, assignment, placement);
+                break;
+
+            case IrAppend append:
+                EmitAppend(writer, append, placement);
+                break;
+
             case IrReturn { Value: null }:
                 writer.WriteLine("return;");
                 break;
@@ -763,12 +769,8 @@ public sealed class CppBackend : ITestProjectScaffold
                 break;
 
             case IrForEach forEach:
-            {
-                using var scope = writer.Block(
-                    $"for (const auto& {Escape(forEach.Loop.Name)} : {Expression(forEach.Collection, placement)})");
-                EmitStatements(writer, forEach.Body.Statements, placement);
+                EmitForEach(writer, forEach, placement);
                 break;
-            }
 
             case IrIf ifStatement:
                 EmitIf(writer, ifStatement, placement);
@@ -797,6 +799,79 @@ public sealed class CppBackend : ITestProjectScaffold
                 throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement.");
         }
     }
+
+    /// <summary>Emits a <c>for</c> loop over a repeated value, as a range-based <c>for</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// A repeated field read off a temporary message, either a literal or a call's result, is a
+    /// reference into a message that C++20 destroys before the loop's first iteration. A range-based
+    /// <c>for</c> keeps alive the temporary it is handed, but an accessor's result is a reference
+    /// rather than one. Iterating it is undefined behavior: the loop may read the elements, read
+    /// garbage or crash. So that message is kept in a local first, under a name nothing in the loop
+    /// reads or declares, and the field is read off the local.
+    /// </para>
+    /// <para>
+    /// The local is declared in a block of its own around the loop, rather than in the loop's C++20
+    /// init-statement. Either one ends its life with the loop, but MSVC refuses a lambda in a
+    /// range-based <c>for</c>'s init-statement (C2059), and a literal is a lambda.
+    /// </para>
+    /// <para>
+    /// Every other collection is iterated as written, as it always has been. A field of the receiver,
+    /// a local or a parameter outlives the loop, and a call that returns the repeated value itself
+    /// returns a temporary that the <c>for</c> keeps alive.
+    /// </para>
+    /// <para>
+    /// A loop whose body changes the element it is given (<see cref="IrMutation.ChangesElementsOf"/>)
+    /// binds it by mutable reference, over the field's mutable accessor, since the getter's elements
+    /// are const. The binder allows that only for a field the method may change, which is never one
+    /// of a temporary, so such a loop never needs the local above.
+    /// </para>
+    /// </remarks>
+    private static void EmitForEach(SourceWriter writer, IrForEach forEach, Placement placement)
+    {
+        if (IrMutation.ChangesElementsOf(forEach))
+        {
+            EmitLoop(
+                writer,
+                $"for (auto& {Escape(forEach.Loop.Name)} : {MutableMessage(forEach.Collection, placement)})",
+                forEach.Body,
+                placement);
+            return;
+        }
+
+        var element = $"const auto& {Escape(forEach.Loop.Name)}";
+        if (IrMutation.TemporaryOwnerOf(forEach.Collection) is not { } owner)
+        {
+            EmitLoop(writer, $"for ({element} : {Expression(forEach.Collection, placement)})", forEach.Body, placement);
+            return;
+        }
+
+        var kept = NamesFor(forEach).Next("owner");
+        writer.WriteLine("{");
+        writer.Indent();
+        writer.WriteLine($"const auto {kept} = {Expression(owner, placement)};");
+        EmitLoop(writer, $"for ({element} : {ReadOff(forEach.Collection, owner, kept)})", forEach.Body, placement);
+        writer.Unindent();
+        writer.WriteLine("}");
+    }
+
+    /// <summary>Emits a loop's header and, braced beneath it, its body.</summary>
+    private static void EmitLoop(SourceWriter writer, string header, IrBlock body, Placement placement)
+    {
+        using var scope = writer.Block(header);
+        EmitStatements(writer, body.Statements, placement);
+    }
+
+    /// <summary>
+    /// The chain of field reads <paramref name="read"/>, begun at the local <paramref name="ownerName"/>
+    /// instead of at <paramref name="owner"/>.
+    /// </summary>
+    private static string ReadOff(IrExpression read, IrExpression owner, string ownerName) => read switch
+    {
+        _ when ReferenceEquals(read, owner) => ownerName,
+        IrFieldAccess field => FieldRead(ReadOff(field.Receiver, owner, ownerName), field.Field),
+        _ => throw new ArgumentOutOfRangeException(nameof(read), read, "Not a chain of field reads from its owner."),
+    };
 
     /// <summary>
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the
@@ -834,9 +909,16 @@ public sealed class CppBackend : ITestProjectScaffold
     private static string Expression(IrExpression expression, Placement placement) => expression switch
     {
         IrThis => ReceiverName,
+
+        // protobuf holds a repeated enum as int (RepeatedTypeName), so a loop over one binds an int.
+        // That converts to the enum's value for a comparison, and to the enum itself nowhere: a
+        // setter, add_x, a parameter, a return and a local all refuse it. Read as the enum, the
+        // binding has the type the IR gives it at every use, not only at the ones that were tried.
+        IrLocalReference { Local: { Declaration.Kind: SymbolKind.LoopBinding, Type: EnumPlType enumType } } binding
+            => $"static_cast<{QualifiedEnumName(enumType.Descriptor)}>({Escape(binding.Local.Name)})",
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, placement)}.{NameConventions.GetCppFieldName(field.Field)}()",
+        IrFieldAccess field => FieldRead(Expression(field.Receiver, placement), field.Field),
 
         // Uniform in C++, unlike C#: protoc emits has_x() for every field with presence,
         // message-typed or not.
@@ -849,16 +931,197 @@ public sealed class CppBackend : ITestProjectScaffold
         IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
+        IrMessageLiteral literal => MessageLiteral(literal, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 
+    /// <summary>A field read off the message <paramref name="receiver"/> names, through protoc's getter.</summary>
+    private static string FieldRead(string receiver, FieldDescriptor field)
+        => $"{receiver}.{NameConventions.GetCppFieldName(field)}()";
+
+    /// <remarks>
+    /// A <c>mut fn</c> takes its receiver as <c>T&amp;</c>, so it is handed the message through the
+    /// mutable accessors (<see cref="MutableMessage"/>). Its arguments are passed as every other call's
+    /// are: a parameter is read-only whatever method it belongs to, and an argument that is not a place
+    /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>).
+    /// </remarks>
     private static string EmitCall(IrMethodCall call, Placement placement)
     {
-        var arguments = new List<string> { Expression(call.Receiver, placement) };
+        var receiver = call.Target.IsMutating
+            ? MutableMessage(call.Receiver, placement)
+            : Expression(call.Receiver, placement);
+
+        var arguments = new List<string> { receiver };
         arguments.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
 
         return $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments)})";
     }
+
+    /// <summary>An assignment to a field, through protoc's setter or mutable accessor (spec 18).</summary>
+    /// <remarks>
+    /// <para>
+    /// Spec 9.3 orders an assignment in three steps, and each can be seen. The target is reached
+    /// first, setting every unset message it writes through. Then the value is evaluated, and it may
+    /// ask <c>has</c> of the field, or read another member of the field's <c>oneof</c>, and has to find
+    /// them as they were. Only then is the field set, which unsets the field's <c>oneof</c> siblings.
+    /// </para>
+    /// <para>
+    /// A setter keeps that order by itself: C++17 evaluates what a function is called on before its
+    /// arguments, so <c>self.mutable_audit()-&gt;set_checks(value)</c> reaches <c>audit</c>, evaluates
+    /// the value, and sets <c>checks</c>, in that order. A message field has no setter, only
+    /// <c>mutable_x()</c>, which sets the field as it returns it, so calling the assignment operator on
+    /// what it returns sets the field before the value is evaluated. It is assigned with <c>=</c>
+    /// instead, whose right operand C++17 evaluates before its left. That puts the value ahead of the
+    /// links as well, so a target with links has the message they reach bound by reference first, in a
+    /// block of its own.
+    /// </para>
+    /// </remarks>
+    private static void EmitFieldAssignment(SourceWriter writer, IrFieldAssignment assignment, Placement placement)
+    {
+        var accessor = NameConventions.GetCppFieldName(assignment.Target.Field);
+
+        EmitFieldWrite(
+            writer,
+            assignment,
+            assignment.Target,
+            new FieldWriter($"set_{accessor}", $"mutable_{accessor}", assignment.Target.Type is MessageType),
+            StoredValue(assignment.Value, placement),
+            placement);
+    }
+
+    /// <summary>An element added to the end of a repeated value, through protoc's <c>add_x</c> (spec 14.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// The same three steps as an assignment, in the same order and for the same reasons
+    /// (<see cref="EmitFieldAssignment"/>): the target is reached, the value evaluated, and the element
+    /// added last. A value that counts the field's elements finds the ones that were there.
+    /// <c>add_x(value)</c> keeps that order as a setter does, and a message element, which has only the
+    /// <c>add_x()</c> that adds an empty one and returns it, is assigned with <c>=</c>, as a message
+    /// field is.
+    /// </para>
+    /// <para>
+    /// A local holds a <c>RepeatedField</c> or a <c>RepeatedPtrField</c> of its own (spec 13.2), which
+    /// is added to as protoc's accessors add to a field: <c>Add(value)</c> for a number or an enum, and
+    /// <c>*Add() = value</c> for an element held by pointer.
+    /// </para>
+    /// </remarks>
+    private static void EmitAppend(SourceWriter writer, IrAppend append, Placement placement)
+    {
+        var value = StoredValue(append.Value, placement);
+        var heldByPointer = IsHeldByPointer(((RepeatedType)append.Collection.Type).ElementType);
+
+        if (append.Collection is not IrFieldAccess field)
+        {
+            var local = Expression(append.Collection, placement);
+            writer.WriteLine(heldByPointer ? $"*{local}.Add() = {value};" : $"{local}.Add({value});");
+            return;
+        }
+
+        var accessor = $"add_{NameConventions.GetCppFieldName(field.Field)}";
+        EmitFieldWrite(
+            writer,
+            append,
+            field,
+            new FieldWriter(accessor, accessor, field.Type is RepeatedType { ElementType: MessageType }),
+            value,
+            placement);
+    }
+
+    /// <summary>How protoc's accessors write one field.</summary>
+    /// <param name="Setter">The accessor that takes the value: <c>set_x</c>, or <c>add_x</c>.</param>
+    /// <param name="Mutator">The accessor that returns where a message goes: <c>mutable_x</c>, or <c>add_x</c>.</param>
+    /// <param name="TakesAMessage">Whether the value is a message, which only <paramref name="Mutator"/> takes.</param>
+    private sealed record FieldWriter(string Setter, string Mutator, bool TakesAMessage);
+
+    /// <summary>
+    /// Writes <paramref name="value"/> to <paramref name="target"/>: reaching it, evaluating the value,
+    /// and writing it, in that order.
+    /// </summary>
+    /// <remarks>
+    /// A value that is not a message goes through the setter, which C++17 calls after it has evaluated
+    /// what the setter is called on and then its argument. A message is assigned with <c>=</c> to what
+    /// the mutator returns, which evaluates the value first. Where the target has links, that would
+    /// evaluate it before them, so the message they reach is bound by reference in a block of its own
+    /// first.
+    /// </remarks>
+    private static void EmitFieldWrite(
+        SourceWriter writer,
+        IrStatement statement,
+        IrFieldAccess target,
+        FieldWriter accessors,
+        string value,
+        Placement placement)
+    {
+        if (!accessors.TakesAMessage)
+        {
+            writer.WriteLine($"{MutableMember(target.Receiver, placement)}{accessors.Setter}({value});");
+            return;
+        }
+
+        if (target.Receiver is not IrFieldAccess link)
+        {
+            writer.WriteLine($"*{MutableMember(target.Receiver, placement)}{accessors.Mutator}() = {value};");
+            return;
+        }
+
+        var owner = NamesFor(statement).Next("owner");
+        using var scope = writer.Block(string.Empty);
+        writer.WriteLine($"auto& {owner} = {MutableMessage(link, placement)};");
+        writer.WriteLine($"*{owner}.{accessors.Mutator}() = {value};");
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> as an assignment stores it: copied first, wherever it may be inside what
+    /// the assignment replaces or unsets.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A message that is not a literal is copied, <c>T(value)</c>, as spec 13.2 asks, and because it
+    /// may be inside the field it replaces, as <c>node = node.next</c> is: protobuf's copy assignment
+    /// clears the field before it reads what it copies. A literal is already the temporary its lambda
+    /// returns.
+    /// </para>
+    /// <para>
+    /// A string or bytes read from a field is copied too, <c>std::string(value)</c>. The getter returns a
+    /// reference into the message, and a setter that switches a <c>oneof</c>'s case destroys the member
+    /// it switches from before it copies, so <c>after = before;</c> between two members of one
+    /// <c>oneof</c> would copy a string that is gone. Nothing else a string can be read from is changed
+    /// by a setter: a local and a call's result are values, a parameter is the caller's, and a loop over
+    /// a field inside what the assignment unsets is refused (spec 14.1).
+    /// </para>
+    /// </remarks>
+    private static string StoredValue(IrExpression value, Placement placement)
+    {
+        var emitted = Expression(value, placement);
+        var copied = value is { IsCopiedWhenStored: true }
+            or IrFieldAccess { Type: ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes } };
+
+        return copied ? $"{TypeName(value.Type)}({emitted})" : emitted;
+    }
+
+    /// <summary>
+    /// The message <paramref name="place"/> names, as something that can be changed: <c>self</c>, a
+    /// local, or <c>*self.mutable_customer()</c>. A repeated field is named the same way.
+    /// </summary>
+    /// <remarks>
+    /// A mutable accessor sets a field that is unset, as assigning through it does in the language
+    /// (spec 18). A receiver of a mutating call has been guarded already, as every message a method is
+    /// called on is (spec 13.1), so for it nothing is set that was not.
+    /// </remarks>
+    private static string MutableMessage(IrExpression place, Placement placement) => place is IrFieldAccess field
+        ? $"*{MutablePointer(field, placement)}"
+        : Expression(place, placement);
+
+    /// <summary>
+    /// <paramref name="place"/> followed by what reaches one of its members: <c>self.</c>, or
+    /// <c>self.mutable_customer()-&gt;</c>.
+    /// </summary>
+    private static string MutableMember(IrExpression place, Placement placement) => place is IrFieldAccess field
+        ? $"{MutablePointer(field, placement)}->"
+        : $"{Expression(place, placement)}.";
+
+    private static string MutablePointer(IrFieldAccess field, Placement placement)
+        => $"{MutableMember(field.Receiver, placement)}mutable_{NameConventions.GetCppFieldName(field.Field)}()";
 
     private static string EmitBinary(IrBinary binary, Placement placement)
     {
@@ -1297,16 +1560,20 @@ public sealed class CppBackend : ITestProjectScaffold
 
     private static string RepeatedTypeName(RepeatedType repeated)
     {
-        // protobuf stores message and string elements in RepeatedPtrField, everything else in
-        // RepeatedField. Repeated enums are stored as int, not as the enum type.
-        var container = repeated.ElementType is MessageType
-            or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes }
-            ? "RepeatedPtrField"
-            : "RepeatedField";
+        // Repeated enums are stored as int, not as the enum type.
+        var container = IsHeldByPointer(repeated.ElementType) ? "RepeatedPtrField" : "RepeatedField";
 
         var element = repeated.ElementType is EnumPlType ? "int" : TypeName(repeated.ElementType);
         return $"::google::protobuf::{container}<{element}>";
     }
+
+    /// <summary>
+    /// Whether protobuf holds a repeated element of <paramref name="element"/> by pointer, in a
+    /// <c>RepeatedPtrField</c>, as it does a message, a string and bytes, rather than in a
+    /// <c>RepeatedField</c>.
+    /// </summary>
+    private static bool IsHeldByPointer(PlType element)
+        => element is MessageType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     /// <summary>Message-typed parameters are passed by const reference; scalars by value.</summary>
     private static string ParameterTypeName(PlType type) => type switch
@@ -1373,18 +1640,5 @@ public sealed class CppBackend : ITestProjectScaffold
         }
 
         return builder.ToString();
-    }
-
-    private sealed class NameAllocator
-    {
-        private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
-
-        public string Next(string stem)
-        {
-            var escaped = Escape(stem);
-            _counts.TryGetValue(escaped, out var count);
-            _counts[escaped] = count + 1;
-            return count == 0 ? escaped : escaped + count.ToString(CultureInfo.InvariantCulture);
-        }
     }
 }

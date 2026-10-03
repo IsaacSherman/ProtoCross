@@ -136,6 +136,7 @@ public class VsCodeExtensionTests
         total<<=1;total>>=2>=3>>4;total&&=x||=y;total+==z;
         var literals = 0xFF + 0b1010 + 1_000 + 1.5e-3 + 2E+8 + 0xE-1 - __INF * __NAN + __inf;
         var malformed = 0x_FF + 5u + 1e + 0b102 + 1_.5e+3 + 0X1F + 7.e;
+        mut fn a(); mut	fn b(); var mut = mut + mutt; mut fnx; xmut fn c; mut_ fn d; mut mut fn e;
         /* runs to the end
         of the file
         """;
@@ -269,21 +270,61 @@ public class VsCodeExtensionTests
         Assert.True(checkedTokens > 0 || string.IsNullOrWhiteSpace(text), "a source with text must have produced tokens to compare");
     }
 
-    /// <summary>The grammar's keywords are spec 6.4's, no more and no fewer.</summary>
+    /// <summary>A reserved operator after a field named new is not a literal's type name.</summary>
+    [Theory]
+    [InlineData("and")]
+    [InlineData("or")]
+    public void NewBeforeABooleanOperatorKeepsItsIdentifierColour(string op)
+    {
+        var source = "import proto \"keyword_fields.proto\";\n"
+            + "extend KeywordFieldCase {\n"
+            + $"    fn present() -> bool {{ return has new {op} has new; }}\n"
+            + "}\n";
+        var path = TestPaths.WriteTempScript(source);
+        var result = Compilation.Compile(path, [Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "protos")]);
+
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
+        TheGrammarColoursEveryTokenAsTheServersLexicalLayerDoes(path);
+    }
+
+    /// <summary>
+    /// Every list of reserved words the grammar holds is spec 6.4's, no more and no fewer: the one it
+    /// colours as keywords, and the one after which <c>new</c> stays a name.
+    /// </summary>
     /// <remarks>
     /// The sweep above already fails for a keyword the grammar misses, if a source in the repository uses
     /// it. This one also fails for a keyword nobody has written yet, and for a word the grammar colours as
-    /// a keyword that the lexer reads as a name.
+    /// a keyword that the lexer reads as a name. The contextual <c>new</c> rule has to spell the list a
+    /// second time, because a TextMate pattern cannot refer to another's, and this is what keeps the two
+    /// copies from drifting apart. The contextual <c>mut</c> rule spells no list: it names only the
+    /// <c>fn</c> after it, which has to be a keyword the lexer reserves.
     /// </remarks>
     [Fact]
     public void TheGrammarsKeywordsAreTheLexersKeywords()
     {
-        var keywords = Json(Path.Combine("syntaxes", "protocross.tmLanguage.json"))
-            .GetProperty("repository").GetProperty("keywords").GetProperty("patterns")[0].GetProperty("match").GetString()!;
+        var patterns = Json(Path.Combine("syntaxes", "protocross.tmLanguage.json"))
+            .GetProperty("repository").GetProperty("keywords").GetProperty("patterns")
+            .EnumerateArray()
+            .Select(pattern => pattern.GetProperty("match").GetString()!)
+            .ToList();
 
-        var listed = Regex.Match(keywords, @"\(\?:([a-z0-9_|]+)\)").Groups[1].Value.Split('|');
+        Assert.Equal(3, patterns.Count);
 
-        Assert.Equal(Lexer.Keywords.Keys.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
+        var lists = patterns
+            .Select(pattern => Regex.Match(pattern, @"\(\?:([a-z0-9_|]+)\)"))
+            .Where(list => list.Success)
+            .ToList();
+
+        Assert.Equal(2, lists.Count);
+
+        foreach (var list in lists)
+        {
+            var listed = list.Groups[1].Value.Split('|');
+
+            Assert.Equal(Lexer.Keywords.Keys.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
+        }
+
+        Assert.Contains("fn", Lexer.Keywords.Keys);
     }
 
     /// <summary>

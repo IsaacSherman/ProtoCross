@@ -1,8 +1,9 @@
 namespace ProtoCross.Diagnostics;
 
 /// <summary>
-/// Every diagnostic the compiler raises: the front end's <c>PC0###</c> codes and the driver and
-/// configuration file's <c>PC20##</c> codes, with the severity and title each one always carries.
+/// Every diagnostic the compiler raises: the front end's <c>PC0###</c> codes, the backends'
+/// <c>PC1###</c> codes, and the driver and configuration file's <c>PC20##</c> codes, with the severity
+/// and title each one always carries.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -17,25 +18,38 @@ namespace ProtoCross.Diagnostics;
 /// <para>
 /// <b>What is not here.</b> The <c>PC21##</c> host-configuration codes live in
 /// <c>HostDiagnosticCodes</c> in the language server, because they are raised by an editor host and
-/// this assembly carries nothing editor-specific. Backend codes have no table at all: PC1001 and
-/// PC1101 were the only two and #10 removed them with <c>virtual</c>. See <see cref="Retired"/>.
+/// this assembly carries nothing editor-specific. The backends' codes are here, because both backend
+/// assemblies already depend on this one and a table each would be two more places to look.
 /// </para>
 /// </remarks>
 public static class DiagnosticCodes
 {
     /// <summary>
-    /// Codes that were raised by a released compiler and no longer exist, and which must never be
-    /// allocated to anything else.
+    /// Codes that a compiler once raised and that no longer exist, which must never be allocated to
+    /// anything else.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A code is how a reader finds an explanation and how an editor client filters, so reusing one
     /// makes every older account of it wrong. Spec 17 still names PC1001 and PC1101 as the diagnostics
     /// the two backends raised for <c>virtual</c> before #10 dropped the keyword, which is history
     /// worth keeping; this set is what lets the test that every code the documentation names still
     /// exists tell that reference apart from a stale one.
+    /// </para>
+    /// <para>
+    /// PC0062 refused a message field in a fixture given anything but a nested value. A message field
+    /// takes any value of its type since #80 made a literal an expression, and a value of another
+    /// type is PC0063, as it is for every other field.
+    /// </para>
+    /// <para>
+    /// PC1002 and PC1102 were the C# and C++ backends' refusals of a message literal outside a test's
+    /// fixture, from #80's second step until each backend learned to generate one: C# in #80's third
+    /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
+    /// a reader can look up must not come to mean something else.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC1001", "PC1101" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -294,29 +308,28 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnknownTestTarget =
         new("PC0058", DiagnosticSeverity.Error, "unknown test target");
 
-    /// <summary>A fixture setting a field the message does not declare (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor UnknownFixtureField =
-        new("PC0059", DiagnosticSeverity.Error, "unknown fixture field");
+    // A fixture is a message literal (spec 25.3), so the five codes below are a literal's, wherever it
+    // is written. They were titled for fixtures while a fixture was the only literal there was.
 
-    /// <summary>A fixture setting a map field, which this compiler does not support (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor MapsAreNotSupportedInFixtures =
-        new("PC0060", DiagnosticSeverity.Error, "maps are not supported in test fixtures");
+    /// <summary>A message literal setting a field the message does not declare (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor UnknownLiteralField =
+        new("PC0059", DiagnosticSeverity.Error, "unknown field in a message literal");
 
-    /// <summary>A fixture setting one field more than once (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor DuplicateFixtureField =
-        new("PC0061", DiagnosticSeverity.Error, "duplicate fixture field");
+    /// <summary>A message literal setting a map field, which this compiler does not support (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor MapsAreNotSupportedInLiterals =
+        new("PC0060", DiagnosticSeverity.Error, "maps are not supported in message literals");
 
-    /// <summary>A message-typed fixture field set from an expression instead of a block (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor FixtureFieldRequiresANestedValue =
-        new("PC0062", DiagnosticSeverity.Error, "fixture field requires a nested value");
+    /// <summary>A message literal setting one field more than once (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor DuplicateLiteralField =
+        new("PC0061", DiagnosticSeverity.Error, "duplicate field in a message literal");
 
-    /// <summary>A fixture value whose type is not the field's (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor FixtureFieldTypeMismatch =
-        new("PC0063", DiagnosticSeverity.Error, "fixture field type mismatch");
+    /// <summary>A value in a message literal whose type is not the field's (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor LiteralFieldTypeMismatch =
+        new("PC0063", DiagnosticSeverity.Error, "message literal field type mismatch");
 
-    /// <summary>A nested fixture block on a field that is not a message (spec 25.3).</summary>
-    public static readonly DiagnosticDescriptor FixtureFieldIsNotAMessage =
-        new("PC0064", DiagnosticSeverity.Error, "fixture field is not a message");
+    /// <summary>A message literal given to a field that is not a message (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor LiteralForANonMessageField =
+        new("PC0064", DiagnosticSeverity.Error, "message literal for a field that is not a message");
 
     /// <summary>A test supplying one argument more than once (spec 25.3).</summary>
     public static readonly DiagnosticDescriptor DuplicateTestArgument =
@@ -451,6 +464,55 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor ProductionSchemaNeedsATestDirectory =
         new("PC0090", DiagnosticSeverity.Error, "production schema found through a test directory");
+
+    // ------------------------------------------------------- message literals
+
+    /// <summary><c>new T { ... }</c> naming a type that is not a message (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor LiteralOfANonMessageType =
+        new("PC0091", DiagnosticSeverity.Error, "literal of a type that is not a message");
+
+    /// <summary>
+    /// <c>expect return</c> on a method that returns a message, which nothing can compare until spec
+    /// 13.3 says what message equality is (spec 25.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MessageReturnCannotBeExpected =
+        new("PC0092", DiagnosticSeverity.Error, "a returned message cannot be expected yet");
+
+    // ------------------------------------------------------- author-written unit tests, continued
+
+    /// <summary>
+    /// A method called by its bare name in a test, which has no implicit receiver to call it on
+    /// (spec 25.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallWithoutAReceiver =
+        new("PC0093", DiagnosticSeverity.Error, "method called with no receiver");
+
+    // ------------------------------------------------------- mutation
+
+    /// <summary>
+    /// A field assigned, or a <c>mut fn</c> called, on a message the method may not change: a
+    /// parameter, the receiver of a method that is not <c>mut</c>, or a message nothing holds (spec 18).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MessageIsReadOnly =
+        new("PC0094", DiagnosticSeverity.Error, "message cannot be changed here");
+
+    /// <summary>
+    /// A call to a <c>mut fn</c> inside a larger expression, where the order it runs in beside the
+    /// rest could be seen (spec 18, 9.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MutatingCallInsideAnExpression =
+        new("PC0095", DiagnosticSeverity.Error, "mutating call inside an expression");
+
+    /// <summary>
+    /// A change, inside a <c>for</c>, to the repeated field it traverses or to something holding it
+    /// (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor TraversedFieldChanged =
+        new("PC0096", DiagnosticSeverity.Error, "traversed field may change");
+
+    /// <summary>An argument to a <c>mut fn</c> that is part of the receiver it changes (spec 18).</summary>
+    public static readonly DiagnosticDescriptor ArgumentIsPartOfTheReceiver =
+        new("PC0097", DiagnosticSeverity.Error, "argument is part of the receiver");
 
     // ------------------------------------------------------- the configuration file
 

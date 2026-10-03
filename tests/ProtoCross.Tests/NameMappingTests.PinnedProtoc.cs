@@ -31,18 +31,21 @@ public partial class NameMappingTests
     /// each declares, in the order given, and the directory it generated into.
     /// </summary>
     /// <remarks>
-    /// Never a protoc found on <c>PATH</c>. Each rule under test is a version's rule: protoc 21.x
-    /// escapes a shorter C++ keyword list and no generated members, so an older system protoc would
-    /// fail for a reason that is not a naming bug.
+    /// Never a protoc found on <c>PATH</c>, and never another version in the NuGet cache. Each rule
+    /// under test is a version's rule: protoc 21.x escapes a shorter C++ keyword list and no generated
+    /// members, and protoc 35 puts a macro between <c>class</c> and a message's name, so another
+    /// version would fail for a reason that is not a naming bug. The newest version in a cache is
+    /// whatever that machine last restored, which is not always what this commit pins.
     /// </remarks>
     private static (IReadOnlyList<FileDescriptor> Files, string Directory) GenerateWithPinnedProtoc(
         IReadOnlyList<(string Name, string Text)> schemas,
         string outputFlag)
     {
-        var protoc = ProtocLocator.FindBundledProtoc();
+        var pinned = TestPaths.CentralPackageVersions["Grpc.Tools"];
+        var protoc = ProtocLocator.FindBundledProtoc(pinned);
         if (protoc is null)
         {
-            Assert.Skip("No Grpc.Tools protoc in the NuGet cache. Restore the solution first.");
+            Assert.Skip($"No Grpc.Tools {pinned} protoc in the NuGet cache. Restore the solution first.");
         }
 
         var directory = TestPaths.CreateTempDirectory();

@@ -28,8 +28,8 @@ Normative Requirements:
   `something.field` stays a field access. Adding an enum to a schema must not silently change what
   an existing expression means.
 - Enum values are ordinary expressions, so they are equally available in a `test` fixture and in an
-  expectation. A fixture sets an enum field from a named value rather than from a nested block,
-  which is reserved for message fields.
+  expectation. A fixture sets an enum field from a named value, where a message field takes a
+  literal ([13.2](./§13-Messages.md#132-message-construction)).
 - Enums compare only for equality. Ordered comparison is rejected, because the numbers behind the
   values are a wire detail rather than a ranking the schema author asked for.
 

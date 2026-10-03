@@ -8,7 +8,7 @@ namespace ProtoCross.Tests;
 /// The corpus is what the sweeps sweep, so what an entry is there to contain is asserted rather than
 /// assumed: an entry that quietly stopped containing it leaves every sweep passing over nothing.
 /// </summary>
-public class CompiledCorpusTests
+public partial class CompiledCorpusTests
 {
     /// <summary>
     /// Every source in the corpus is one of the trees its compilation holds.

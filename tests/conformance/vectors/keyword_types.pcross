@@ -73,7 +73,7 @@ extend New {
 
 test New.kind_is_class "a nested enum value named class compares equal to itself" {
     receiver {
-        kind = Kind.class;
+        kind: Kind.class,
     }
 
     expect return true;
@@ -81,7 +81,7 @@ test New.kind_is_class "a nested enum value named class compares equal to itself
 
 test New.kind_is_class "a nested enum value named class is told apart from another" {
     receiver {
-        kind = Kind.KIND_PLAIN;
+        kind: Kind.KIND_PLAIN,
     }
 
     expect return false;
@@ -89,7 +89,7 @@ test New.kind_is_class "a nested enum value named class is told apart from anoth
 
 test New.mode_is_new "a top-level enum value named new is the default" {
     receiver {
-        inner { value = 1; }
+        inner: new Inner { value: 1 },
     }
 
     expect return true;
@@ -97,7 +97,7 @@ test New.mode_is_new "a top-level enum value named new is the default" {
 
 test New.mode_is_null "a top-level enum value named NULL is set and read back" {
     receiver {
-        mode = Swap.NULL;
+        mode: Swap.NULL,
     }
 
     expect return true;
@@ -105,7 +105,7 @@ test New.mode_is_null "a top-level enum value named NULL is set and read back" {
 
 test New.mode_is_delete "a value named delete is passed as an argument" {
     receiver {
-        mode = Swap.delete;
+        mode: Swap.delete,
     }
 
     expect return true;
@@ -113,7 +113,7 @@ test New.mode_is_delete "a value named delete is passed as an argument" {
 
 test New.mode_matches "a value named delete is given as a test argument" {
     receiver {
-        mode = Swap.delete;
+        mode: Swap.delete,
     }
 
     arg candidate = Swap.delete;
@@ -122,7 +122,7 @@ test New.mode_matches "a value named delete is given as a test argument" {
 
 test New.flipped_mode "a value named delete is returned" {
     receiver {
-        mode = Swap.new;
+        mode: Swap.new,
     }
 
     expect return Swap.delete;
@@ -130,7 +130,7 @@ test New.flipped_mode "a value named delete is returned" {
 
 test New.flipped_mode "a value named new is returned" {
     receiver {
-        mode = Swap.delete;
+        mode: Swap.delete,
     }
 
     expect return Swap.new;
@@ -138,7 +138,7 @@ test New.flipped_mode "a value named new is returned" {
 
 test New.current_kind "a nested enum value named class is returned" {
     receiver {
-        kind = Kind.class;
+        kind: Kind.class,
     }
 
     expect return Kind.class;
@@ -146,7 +146,7 @@ test New.current_kind "a nested enum value named class is returned" {
 
 test New.inner_value "reads a nested message whose parent's name is escaped" {
     receiver {
-        inner { value = 5; }
+        inner: new Inner { value: 5 },
     }
 
     expect return 5;
@@ -154,7 +154,7 @@ test New.inner_value "reads a nested message whose parent's name is escaped" {
 
 test New.pair_value "reads a message whose own name is a keyword" {
     receiver {
-        pair { value = 7; }
+        pair: new union { value: 7 },
     }
 
     expect return 7;

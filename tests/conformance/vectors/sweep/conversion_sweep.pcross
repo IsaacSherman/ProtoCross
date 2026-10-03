@@ -540,16 +540,18 @@ extend ConversionSweep {
 
 test ConversionSweep.first_wrong_int32_as_int32 "every int32 value as int32" {
     receiver {
-        int32_as_int32 { value = -2147483648; expected = -2147483648; } // 0
-        int32_as_int32 { value = -2147483647; expected = -2147483647; } // 1
-        int32_as_int32 { value = -16777217; expected = -16777217; } // 2
-        int32_as_int32 { value = -1; expected = -1; } // 3
-        int32_as_int32 { value = 0; expected = 0; } // 4
-        int32_as_int32 { value = 1; expected = 1; } // 5
-        int32_as_int32 { value = 16777217; expected = 16777217; } // 6
-        int32_as_int32 { value = 16777219; expected = 16777219; } // 7
-        int32_as_int32 { value = 2147483646; expected = 2147483646; } // 8
-        int32_as_int32 { value = 2147483647; expected = 2147483647; } // 9
+        int32_as_int32: [
+            new ConversionSweepInt32AsInt32 { value: -2147483648, expected: -2147483648 }, // 0
+            new ConversionSweepInt32AsInt32 { value: -2147483647, expected: -2147483647 }, // 1
+            new ConversionSweepInt32AsInt32 { value: -16777217, expected: -16777217 }, // 2
+            new ConversionSweepInt32AsInt32 { value: -1, expected: -1 }, // 3
+            new ConversionSweepInt32AsInt32 { value: 0, expected: 0 }, // 4
+            new ConversionSweepInt32AsInt32 { value: 1, expected: 1 }, // 5
+            new ConversionSweepInt32AsInt32 { value: 16777217, expected: 16777217 }, // 6
+            new ConversionSweepInt32AsInt32 { value: 16777219, expected: 16777219 }, // 7
+            new ConversionSweepInt32AsInt32 { value: 2147483646, expected: 2147483646 }, // 8
+            new ConversionSweepInt32AsInt32 { value: 2147483647, expected: 2147483647 }, // 9
+        ],
     }
 
     expect return -1;
@@ -557,16 +559,18 @@ test ConversionSweep.first_wrong_int32_as_int32 "every int32 value as int32" {
 
 test ConversionSweep.first_wrong_int32_as_int64 "every int32 value as int64" {
     receiver {
-        int32_as_int64 { value = -2147483648; expected = -2147483648; } // 0
-        int32_as_int64 { value = -2147483647; expected = -2147483647; } // 1
-        int32_as_int64 { value = -16777217; expected = -16777217; } // 2
-        int32_as_int64 { value = -1; expected = -1; } // 3
-        int32_as_int64 { value = 0; expected = 0; } // 4
-        int32_as_int64 { value = 1; expected = 1; } // 5
-        int32_as_int64 { value = 16777217; expected = 16777217; } // 6
-        int32_as_int64 { value = 16777219; expected = 16777219; } // 7
-        int32_as_int64 { value = 2147483646; expected = 2147483646; } // 8
-        int32_as_int64 { value = 2147483647; expected = 2147483647; } // 9
+        int32_as_int64: [
+            new ConversionSweepInt32AsInt64 { value: -2147483648, expected: -2147483648 }, // 0
+            new ConversionSweepInt32AsInt64 { value: -2147483647, expected: -2147483647 }, // 1
+            new ConversionSweepInt32AsInt64 { value: -16777217, expected: -16777217 }, // 2
+            new ConversionSweepInt32AsInt64 { value: -1, expected: -1 }, // 3
+            new ConversionSweepInt32AsInt64 { value: 0, expected: 0 }, // 4
+            new ConversionSweepInt32AsInt64 { value: 1, expected: 1 }, // 5
+            new ConversionSweepInt32AsInt64 { value: 16777217, expected: 16777217 }, // 6
+            new ConversionSweepInt32AsInt64 { value: 16777219, expected: 16777219 }, // 7
+            new ConversionSweepInt32AsInt64 { value: 2147483646, expected: 2147483646 }, // 8
+            new ConversionSweepInt32AsInt64 { value: 2147483647, expected: 2147483647 }, // 9
+        ],
     }
 
     expect return -1;
@@ -574,16 +578,18 @@ test ConversionSweep.first_wrong_int32_as_int64 "every int32 value as int64" {
 
 test ConversionSweep.first_wrong_int32_as_uint32 "every int32 value as uint32" {
     receiver {
-        int32_as_uint32 { value = -2147483648; expected = 2147483648; } // 0
-        int32_as_uint32 { value = -2147483647; expected = 2147483649; } // 1
-        int32_as_uint32 { value = -16777217; expected = 4278190079; } // 2
-        int32_as_uint32 { value = -1; expected = 4294967295; } // 3
-        int32_as_uint32 { value = 0; expected = 0; } // 4
-        int32_as_uint32 { value = 1; expected = 1; } // 5
-        int32_as_uint32 { value = 16777217; expected = 16777217; } // 6
-        int32_as_uint32 { value = 16777219; expected = 16777219; } // 7
-        int32_as_uint32 { value = 2147483646; expected = 2147483646; } // 8
-        int32_as_uint32 { value = 2147483647; expected = 2147483647; } // 9
+        int32_as_uint32: [
+            new ConversionSweepInt32AsUint32 { value: -2147483648, expected: 2147483648 }, // 0
+            new ConversionSweepInt32AsUint32 { value: -2147483647, expected: 2147483649 }, // 1
+            new ConversionSweepInt32AsUint32 { value: -16777217, expected: 4278190079 }, // 2
+            new ConversionSweepInt32AsUint32 { value: -1, expected: 4294967295 }, // 3
+            new ConversionSweepInt32AsUint32 { value: 0, expected: 0 }, // 4
+            new ConversionSweepInt32AsUint32 { value: 1, expected: 1 }, // 5
+            new ConversionSweepInt32AsUint32 { value: 16777217, expected: 16777217 }, // 6
+            new ConversionSweepInt32AsUint32 { value: 16777219, expected: 16777219 }, // 7
+            new ConversionSweepInt32AsUint32 { value: 2147483646, expected: 2147483646 }, // 8
+            new ConversionSweepInt32AsUint32 { value: 2147483647, expected: 2147483647 }, // 9
+        ],
     }
 
     expect return -1;
@@ -591,16 +597,18 @@ test ConversionSweep.first_wrong_int32_as_uint32 "every int32 value as uint32" {
 
 test ConversionSweep.first_wrong_int32_as_uint64 "every int32 value as uint64" {
     receiver {
-        int32_as_uint64 { value = -2147483648; expected = 18446744071562067968; } // 0
-        int32_as_uint64 { value = -2147483647; expected = 18446744071562067969; } // 1
-        int32_as_uint64 { value = -16777217; expected = 18446744073692774399; } // 2
-        int32_as_uint64 { value = -1; expected = 18446744073709551615; } // 3
-        int32_as_uint64 { value = 0; expected = 0; } // 4
-        int32_as_uint64 { value = 1; expected = 1; } // 5
-        int32_as_uint64 { value = 16777217; expected = 16777217; } // 6
-        int32_as_uint64 { value = 16777219; expected = 16777219; } // 7
-        int32_as_uint64 { value = 2147483646; expected = 2147483646; } // 8
-        int32_as_uint64 { value = 2147483647; expected = 2147483647; } // 9
+        int32_as_uint64: [
+            new ConversionSweepInt32AsUint64 { value: -2147483648, expected: 18446744071562067968 }, // 0
+            new ConversionSweepInt32AsUint64 { value: -2147483647, expected: 18446744071562067969 }, // 1
+            new ConversionSweepInt32AsUint64 { value: -16777217, expected: 18446744073692774399 }, // 2
+            new ConversionSweepInt32AsUint64 { value: -1, expected: 18446744073709551615 }, // 3
+            new ConversionSweepInt32AsUint64 { value: 0, expected: 0 }, // 4
+            new ConversionSweepInt32AsUint64 { value: 1, expected: 1 }, // 5
+            new ConversionSweepInt32AsUint64 { value: 16777217, expected: 16777217 }, // 6
+            new ConversionSweepInt32AsUint64 { value: 16777219, expected: 16777219 }, // 7
+            new ConversionSweepInt32AsUint64 { value: 2147483646, expected: 2147483646 }, // 8
+            new ConversionSweepInt32AsUint64 { value: 2147483647, expected: 2147483647 }, // 9
+        ],
     }
 
     expect return -1;
@@ -608,16 +616,18 @@ test ConversionSweep.first_wrong_int32_as_uint64 "every int32 value as uint64" {
 
 test ConversionSweep.first_wrong_int32_as_float "every int32 value as float" {
     receiver {
-        int32_as_float { value = -2147483648; expected = -2.1474836E+09; } // 0
-        int32_as_float { value = -2147483647; expected = -2.1474836E+09; } // 1
-        int32_as_float { value = -16777217; expected = -16777216.0; } // 2
-        int32_as_float { value = -1; expected = -1.0; } // 3
-        int32_as_float { value = 0; expected = 0.0; } // 4
-        int32_as_float { value = 1; expected = 1.0; } // 5
-        int32_as_float { value = 16777217; expected = 16777216.0; } // 6
-        int32_as_float { value = 16777219; expected = 16777220.0; } // 7
-        int32_as_float { value = 2147483646; expected = 2.1474836E+09; } // 8
-        int32_as_float { value = 2147483647; expected = 2.1474836E+09; } // 9
+        int32_as_float: [
+            new ConversionSweepInt32AsFloat { value: -2147483648, expected: -2.1474836E+09 }, // 0
+            new ConversionSweepInt32AsFloat { value: -2147483647, expected: -2.1474836E+09 }, // 1
+            new ConversionSweepInt32AsFloat { value: -16777217, expected: -16777216.0 }, // 2
+            new ConversionSweepInt32AsFloat { value: -1, expected: -1.0 }, // 3
+            new ConversionSweepInt32AsFloat { value: 0, expected: 0.0 }, // 4
+            new ConversionSweepInt32AsFloat { value: 1, expected: 1.0 }, // 5
+            new ConversionSweepInt32AsFloat { value: 16777217, expected: 16777216.0 }, // 6
+            new ConversionSweepInt32AsFloat { value: 16777219, expected: 16777220.0 }, // 7
+            new ConversionSweepInt32AsFloat { value: 2147483646, expected: 2.1474836E+09 }, // 8
+            new ConversionSweepInt32AsFloat { value: 2147483647, expected: 2.1474836E+09 }, // 9
+        ],
     }
 
     expect return -1;
@@ -625,16 +635,18 @@ test ConversionSweep.first_wrong_int32_as_float "every int32 value as float" {
 
 test ConversionSweep.first_wrong_int32_as_double "every int32 value as double" {
     receiver {
-        int32_as_double { value = -2147483648; expected = -2147483648.0; } // 0
-        int32_as_double { value = -2147483647; expected = -2147483647.0; } // 1
-        int32_as_double { value = -16777217; expected = -16777217.0; } // 2
-        int32_as_double { value = -1; expected = -1.0; } // 3
-        int32_as_double { value = 0; expected = 0.0; } // 4
-        int32_as_double { value = 1; expected = 1.0; } // 5
-        int32_as_double { value = 16777217; expected = 16777217.0; } // 6
-        int32_as_double { value = 16777219; expected = 16777219.0; } // 7
-        int32_as_double { value = 2147483646; expected = 2147483646.0; } // 8
-        int32_as_double { value = 2147483647; expected = 2147483647.0; } // 9
+        int32_as_double: [
+            new ConversionSweepInt32AsDouble { value: -2147483648, expected: -2147483648.0 }, // 0
+            new ConversionSweepInt32AsDouble { value: -2147483647, expected: -2147483647.0 }, // 1
+            new ConversionSweepInt32AsDouble { value: -16777217, expected: -16777217.0 }, // 2
+            new ConversionSweepInt32AsDouble { value: -1, expected: -1.0 }, // 3
+            new ConversionSweepInt32AsDouble { value: 0, expected: 0.0 }, // 4
+            new ConversionSweepInt32AsDouble { value: 1, expected: 1.0 }, // 5
+            new ConversionSweepInt32AsDouble { value: 16777217, expected: 16777217.0 }, // 6
+            new ConversionSweepInt32AsDouble { value: 16777219, expected: 16777219.0 }, // 7
+            new ConversionSweepInt32AsDouble { value: 2147483646, expected: 2147483646.0 }, // 8
+            new ConversionSweepInt32AsDouble { value: 2147483647, expected: 2147483647.0 }, // 9
+        ],
     }
 
     expect return -1;
@@ -642,19 +654,21 @@ test ConversionSweep.first_wrong_int32_as_double "every int32 value as double" {
 
 test ConversionSweep.first_wrong_int64_as_int32 "every int64 value as int32" {
     receiver {
-        int64_as_int32 { value = -9223372036854775808; expected = 0; } // 0
-        int64_as_int32 { value = -9223372036854775807; expected = 1; } // 1
-        int64_as_int32 { value = -9007199254740993; expected = -1; } // 2
-        int64_as_int32 { value = -16777217; expected = -16777217; } // 3
-        int64_as_int32 { value = -1; expected = -1; } // 4
-        int64_as_int32 { value = 0; expected = 0; } // 5
-        int64_as_int32 { value = 1; expected = 1; } // 6
-        int64_as_int32 { value = 16777217; expected = 16777217; } // 7
-        int64_as_int32 { value = 16777219; expected = 16777219; } // 8
-        int64_as_int32 { value = 9007199254740993; expected = 1; } // 9
-        int64_as_int32 { value = 9007199254740995; expected = 3; } // 10
-        int64_as_int32 { value = 9223372036854775806; expected = -2; } // 11
-        int64_as_int32 { value = 9223372036854775807; expected = -1; } // 12
+        int64_as_int32: [
+            new ConversionSweepInt64AsInt32 { value: -9223372036854775808, expected: 0 }, // 0
+            new ConversionSweepInt64AsInt32 { value: -9223372036854775807, expected: 1 }, // 1
+            new ConversionSweepInt64AsInt32 { value: -9007199254740993, expected: -1 }, // 2
+            new ConversionSweepInt64AsInt32 { value: -16777217, expected: -16777217 }, // 3
+            new ConversionSweepInt64AsInt32 { value: -1, expected: -1 }, // 4
+            new ConversionSweepInt64AsInt32 { value: 0, expected: 0 }, // 5
+            new ConversionSweepInt64AsInt32 { value: 1, expected: 1 }, // 6
+            new ConversionSweepInt64AsInt32 { value: 16777217, expected: 16777217 }, // 7
+            new ConversionSweepInt64AsInt32 { value: 16777219, expected: 16777219 }, // 8
+            new ConversionSweepInt64AsInt32 { value: 9007199254740993, expected: 1 }, // 9
+            new ConversionSweepInt64AsInt32 { value: 9007199254740995, expected: 3 }, // 10
+            new ConversionSweepInt64AsInt32 { value: 9223372036854775806, expected: -2 }, // 11
+            new ConversionSweepInt64AsInt32 { value: 9223372036854775807, expected: -1 }, // 12
+        ],
     }
 
     expect return -1;
@@ -662,19 +676,21 @@ test ConversionSweep.first_wrong_int64_as_int32 "every int64 value as int32" {
 
 test ConversionSweep.first_wrong_int64_as_int64 "every int64 value as int64" {
     receiver {
-        int64_as_int64 { value = -9223372036854775808; expected = -9223372036854775808; } // 0
-        int64_as_int64 { value = -9223372036854775807; expected = -9223372036854775807; } // 1
-        int64_as_int64 { value = -9007199254740993; expected = -9007199254740993; } // 2
-        int64_as_int64 { value = -16777217; expected = -16777217; } // 3
-        int64_as_int64 { value = -1; expected = -1; } // 4
-        int64_as_int64 { value = 0; expected = 0; } // 5
-        int64_as_int64 { value = 1; expected = 1; } // 6
-        int64_as_int64 { value = 16777217; expected = 16777217; } // 7
-        int64_as_int64 { value = 16777219; expected = 16777219; } // 8
-        int64_as_int64 { value = 9007199254740993; expected = 9007199254740993; } // 9
-        int64_as_int64 { value = 9007199254740995; expected = 9007199254740995; } // 10
-        int64_as_int64 { value = 9223372036854775806; expected = 9223372036854775806; } // 11
-        int64_as_int64 { value = 9223372036854775807; expected = 9223372036854775807; } // 12
+        int64_as_int64: [
+            new ConversionSweepInt64AsInt64 { value: -9223372036854775808, expected: -9223372036854775808 }, // 0
+            new ConversionSweepInt64AsInt64 { value: -9223372036854775807, expected: -9223372036854775807 }, // 1
+            new ConversionSweepInt64AsInt64 { value: -9007199254740993, expected: -9007199254740993 }, // 2
+            new ConversionSweepInt64AsInt64 { value: -16777217, expected: -16777217 }, // 3
+            new ConversionSweepInt64AsInt64 { value: -1, expected: -1 }, // 4
+            new ConversionSweepInt64AsInt64 { value: 0, expected: 0 }, // 5
+            new ConversionSweepInt64AsInt64 { value: 1, expected: 1 }, // 6
+            new ConversionSweepInt64AsInt64 { value: 16777217, expected: 16777217 }, // 7
+            new ConversionSweepInt64AsInt64 { value: 16777219, expected: 16777219 }, // 8
+            new ConversionSweepInt64AsInt64 { value: 9007199254740993, expected: 9007199254740993 }, // 9
+            new ConversionSweepInt64AsInt64 { value: 9007199254740995, expected: 9007199254740995 }, // 10
+            new ConversionSweepInt64AsInt64 { value: 9223372036854775806, expected: 9223372036854775806 }, // 11
+            new ConversionSweepInt64AsInt64 { value: 9223372036854775807, expected: 9223372036854775807 }, // 12
+        ],
     }
 
     expect return -1;
@@ -682,19 +698,21 @@ test ConversionSweep.first_wrong_int64_as_int64 "every int64 value as int64" {
 
 test ConversionSweep.first_wrong_int64_as_uint32 "every int64 value as uint32" {
     receiver {
-        int64_as_uint32 { value = -9223372036854775808; expected = 0; } // 0
-        int64_as_uint32 { value = -9223372036854775807; expected = 1; } // 1
-        int64_as_uint32 { value = -9007199254740993; expected = 4294967295; } // 2
-        int64_as_uint32 { value = -16777217; expected = 4278190079; } // 3
-        int64_as_uint32 { value = -1; expected = 4294967295; } // 4
-        int64_as_uint32 { value = 0; expected = 0; } // 5
-        int64_as_uint32 { value = 1; expected = 1; } // 6
-        int64_as_uint32 { value = 16777217; expected = 16777217; } // 7
-        int64_as_uint32 { value = 16777219; expected = 16777219; } // 8
-        int64_as_uint32 { value = 9007199254740993; expected = 1; } // 9
-        int64_as_uint32 { value = 9007199254740995; expected = 3; } // 10
-        int64_as_uint32 { value = 9223372036854775806; expected = 4294967294; } // 11
-        int64_as_uint32 { value = 9223372036854775807; expected = 4294967295; } // 12
+        int64_as_uint32: [
+            new ConversionSweepInt64AsUint32 { value: -9223372036854775808, expected: 0 }, // 0
+            new ConversionSweepInt64AsUint32 { value: -9223372036854775807, expected: 1 }, // 1
+            new ConversionSweepInt64AsUint32 { value: -9007199254740993, expected: 4294967295 }, // 2
+            new ConversionSweepInt64AsUint32 { value: -16777217, expected: 4278190079 }, // 3
+            new ConversionSweepInt64AsUint32 { value: -1, expected: 4294967295 }, // 4
+            new ConversionSweepInt64AsUint32 { value: 0, expected: 0 }, // 5
+            new ConversionSweepInt64AsUint32 { value: 1, expected: 1 }, // 6
+            new ConversionSweepInt64AsUint32 { value: 16777217, expected: 16777217 }, // 7
+            new ConversionSweepInt64AsUint32 { value: 16777219, expected: 16777219 }, // 8
+            new ConversionSweepInt64AsUint32 { value: 9007199254740993, expected: 1 }, // 9
+            new ConversionSweepInt64AsUint32 { value: 9007199254740995, expected: 3 }, // 10
+            new ConversionSweepInt64AsUint32 { value: 9223372036854775806, expected: 4294967294 }, // 11
+            new ConversionSweepInt64AsUint32 { value: 9223372036854775807, expected: 4294967295 }, // 12
+        ],
     }
 
     expect return -1;
@@ -702,19 +720,21 @@ test ConversionSweep.first_wrong_int64_as_uint32 "every int64 value as uint32" {
 
 test ConversionSweep.first_wrong_int64_as_uint64 "every int64 value as uint64" {
     receiver {
-        int64_as_uint64 { value = -9223372036854775808; expected = 9223372036854775808; } // 0
-        int64_as_uint64 { value = -9223372036854775807; expected = 9223372036854775809; } // 1
-        int64_as_uint64 { value = -9007199254740993; expected = 18437736874454810623; } // 2
-        int64_as_uint64 { value = -16777217; expected = 18446744073692774399; } // 3
-        int64_as_uint64 { value = -1; expected = 18446744073709551615; } // 4
-        int64_as_uint64 { value = 0; expected = 0; } // 5
-        int64_as_uint64 { value = 1; expected = 1; } // 6
-        int64_as_uint64 { value = 16777217; expected = 16777217; } // 7
-        int64_as_uint64 { value = 16777219; expected = 16777219; } // 8
-        int64_as_uint64 { value = 9007199254740993; expected = 9007199254740993; } // 9
-        int64_as_uint64 { value = 9007199254740995; expected = 9007199254740995; } // 10
-        int64_as_uint64 { value = 9223372036854775806; expected = 9223372036854775806; } // 11
-        int64_as_uint64 { value = 9223372036854775807; expected = 9223372036854775807; } // 12
+        int64_as_uint64: [
+            new ConversionSweepInt64AsUint64 { value: -9223372036854775808, expected: 9223372036854775808 }, // 0
+            new ConversionSweepInt64AsUint64 { value: -9223372036854775807, expected: 9223372036854775809 }, // 1
+            new ConversionSweepInt64AsUint64 { value: -9007199254740993, expected: 18437736874454810623 }, // 2
+            new ConversionSweepInt64AsUint64 { value: -16777217, expected: 18446744073692774399 }, // 3
+            new ConversionSweepInt64AsUint64 { value: -1, expected: 18446744073709551615 }, // 4
+            new ConversionSweepInt64AsUint64 { value: 0, expected: 0 }, // 5
+            new ConversionSweepInt64AsUint64 { value: 1, expected: 1 }, // 6
+            new ConversionSweepInt64AsUint64 { value: 16777217, expected: 16777217 }, // 7
+            new ConversionSweepInt64AsUint64 { value: 16777219, expected: 16777219 }, // 8
+            new ConversionSweepInt64AsUint64 { value: 9007199254740993, expected: 9007199254740993 }, // 9
+            new ConversionSweepInt64AsUint64 { value: 9007199254740995, expected: 9007199254740995 }, // 10
+            new ConversionSweepInt64AsUint64 { value: 9223372036854775806, expected: 9223372036854775806 }, // 11
+            new ConversionSweepInt64AsUint64 { value: 9223372036854775807, expected: 9223372036854775807 }, // 12
+        ],
     }
 
     expect return -1;
@@ -722,19 +742,21 @@ test ConversionSweep.first_wrong_int64_as_uint64 "every int64 value as uint64" {
 
 test ConversionSweep.first_wrong_int64_as_float "every int64 value as float" {
     receiver {
-        int64_as_float { value = -9223372036854775808; expected = -9.223372E+18; } // 0
-        int64_as_float { value = -9223372036854775807; expected = -9.223372E+18; } // 1
-        int64_as_float { value = -9007199254740993; expected = -9.007199E+15; } // 2
-        int64_as_float { value = -16777217; expected = -16777216.0; } // 3
-        int64_as_float { value = -1; expected = -1.0; } // 4
-        int64_as_float { value = 0; expected = 0.0; } // 5
-        int64_as_float { value = 1; expected = 1.0; } // 6
-        int64_as_float { value = 16777217; expected = 16777216.0; } // 7
-        int64_as_float { value = 16777219; expected = 16777220.0; } // 8
-        int64_as_float { value = 9007199254740993; expected = 9.007199E+15; } // 9
-        int64_as_float { value = 9007199254740995; expected = 9.007199E+15; } // 10
-        int64_as_float { value = 9223372036854775806; expected = 9.223372E+18; } // 11
-        int64_as_float { value = 9223372036854775807; expected = 9.223372E+18; } // 12
+        int64_as_float: [
+            new ConversionSweepInt64AsFloat { value: -9223372036854775808, expected: -9.223372E+18 }, // 0
+            new ConversionSweepInt64AsFloat { value: -9223372036854775807, expected: -9.223372E+18 }, // 1
+            new ConversionSweepInt64AsFloat { value: -9007199254740993, expected: -9.007199E+15 }, // 2
+            new ConversionSweepInt64AsFloat { value: -16777217, expected: -16777216.0 }, // 3
+            new ConversionSweepInt64AsFloat { value: -1, expected: -1.0 }, // 4
+            new ConversionSweepInt64AsFloat { value: 0, expected: 0.0 }, // 5
+            new ConversionSweepInt64AsFloat { value: 1, expected: 1.0 }, // 6
+            new ConversionSweepInt64AsFloat { value: 16777217, expected: 16777216.0 }, // 7
+            new ConversionSweepInt64AsFloat { value: 16777219, expected: 16777220.0 }, // 8
+            new ConversionSweepInt64AsFloat { value: 9007199254740993, expected: 9.007199E+15 }, // 9
+            new ConversionSweepInt64AsFloat { value: 9007199254740995, expected: 9.007199E+15 }, // 10
+            new ConversionSweepInt64AsFloat { value: 9223372036854775806, expected: 9.223372E+18 }, // 11
+            new ConversionSweepInt64AsFloat { value: 9223372036854775807, expected: 9.223372E+18 }, // 12
+        ],
     }
 
     expect return -1;
@@ -742,19 +764,21 @@ test ConversionSweep.first_wrong_int64_as_float "every int64 value as float" {
 
 test ConversionSweep.first_wrong_int64_as_double "every int64 value as double" {
     receiver {
-        int64_as_double { value = -9223372036854775808; expected = -9.223372036854776E+18; } // 0
-        int64_as_double { value = -9223372036854775807; expected = -9.223372036854776E+18; } // 1
-        int64_as_double { value = -9007199254740993; expected = -9007199254740992.0; } // 2
-        int64_as_double { value = -16777217; expected = -16777217.0; } // 3
-        int64_as_double { value = -1; expected = -1.0; } // 4
-        int64_as_double { value = 0; expected = 0.0; } // 5
-        int64_as_double { value = 1; expected = 1.0; } // 6
-        int64_as_double { value = 16777217; expected = 16777217.0; } // 7
-        int64_as_double { value = 16777219; expected = 16777219.0; } // 8
-        int64_as_double { value = 9007199254740993; expected = 9007199254740992.0; } // 9
-        int64_as_double { value = 9007199254740995; expected = 9007199254740996.0; } // 10
-        int64_as_double { value = 9223372036854775806; expected = 9.223372036854776E+18; } // 11
-        int64_as_double { value = 9223372036854775807; expected = 9.223372036854776E+18; } // 12
+        int64_as_double: [
+            new ConversionSweepInt64AsDouble { value: -9223372036854775808, expected: -9.223372036854776E+18 }, // 0
+            new ConversionSweepInt64AsDouble { value: -9223372036854775807, expected: -9.223372036854776E+18 }, // 1
+            new ConversionSweepInt64AsDouble { value: -9007199254740993, expected: -9007199254740992.0 }, // 2
+            new ConversionSweepInt64AsDouble { value: -16777217, expected: -16777217.0 }, // 3
+            new ConversionSweepInt64AsDouble { value: -1, expected: -1.0 }, // 4
+            new ConversionSweepInt64AsDouble { value: 0, expected: 0.0 }, // 5
+            new ConversionSweepInt64AsDouble { value: 1, expected: 1.0 }, // 6
+            new ConversionSweepInt64AsDouble { value: 16777217, expected: 16777217.0 }, // 7
+            new ConversionSweepInt64AsDouble { value: 16777219, expected: 16777219.0 }, // 8
+            new ConversionSweepInt64AsDouble { value: 9007199254740993, expected: 9007199254740992.0 }, // 9
+            new ConversionSweepInt64AsDouble { value: 9007199254740995, expected: 9007199254740996.0 }, // 10
+            new ConversionSweepInt64AsDouble { value: 9223372036854775806, expected: 9.223372036854776E+18 }, // 11
+            new ConversionSweepInt64AsDouble { value: 9223372036854775807, expected: 9.223372036854776E+18 }, // 12
+        ],
     }
 
     expect return -1;
@@ -762,15 +786,17 @@ test ConversionSweep.first_wrong_int64_as_double "every int64 value as double" {
 
 test ConversionSweep.first_wrong_uint32_as_int32 "every uint32 value as int32" {
     receiver {
-        uint32_as_int32 { value = 0; expected = 0; } // 0
-        uint32_as_int32 { value = 1; expected = 1; } // 1
-        uint32_as_int32 { value = 2; expected = 2; } // 2
-        uint32_as_int32 { value = 16777217; expected = 16777217; } // 3
-        uint32_as_int32 { value = 16777219; expected = 16777219; } // 4
-        uint32_as_int32 { value = 2147483647; expected = 2147483647; } // 5
-        uint32_as_int32 { value = 2147483648; expected = -2147483648; } // 6
-        uint32_as_int32 { value = 4294967294; expected = -2; } // 7
-        uint32_as_int32 { value = 4294967295; expected = -1; } // 8
+        uint32_as_int32: [
+            new ConversionSweepUint32AsInt32 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint32AsInt32 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint32AsInt32 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint32AsInt32 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint32AsInt32 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint32AsInt32 { value: 2147483647, expected: 2147483647 }, // 5
+            new ConversionSweepUint32AsInt32 { value: 2147483648, expected: -2147483648 }, // 6
+            new ConversionSweepUint32AsInt32 { value: 4294967294, expected: -2 }, // 7
+            new ConversionSweepUint32AsInt32 { value: 4294967295, expected: -1 }, // 8
+        ],
     }
 
     expect return -1;
@@ -778,15 +804,17 @@ test ConversionSweep.first_wrong_uint32_as_int32 "every uint32 value as int32" {
 
 test ConversionSweep.first_wrong_uint32_as_int64 "every uint32 value as int64" {
     receiver {
-        uint32_as_int64 { value = 0; expected = 0; } // 0
-        uint32_as_int64 { value = 1; expected = 1; } // 1
-        uint32_as_int64 { value = 2; expected = 2; } // 2
-        uint32_as_int64 { value = 16777217; expected = 16777217; } // 3
-        uint32_as_int64 { value = 16777219; expected = 16777219; } // 4
-        uint32_as_int64 { value = 2147483647; expected = 2147483647; } // 5
-        uint32_as_int64 { value = 2147483648; expected = 2147483648; } // 6
-        uint32_as_int64 { value = 4294967294; expected = 4294967294; } // 7
-        uint32_as_int64 { value = 4294967295; expected = 4294967295; } // 8
+        uint32_as_int64: [
+            new ConversionSweepUint32AsInt64 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint32AsInt64 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint32AsInt64 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint32AsInt64 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint32AsInt64 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint32AsInt64 { value: 2147483647, expected: 2147483647 }, // 5
+            new ConversionSweepUint32AsInt64 { value: 2147483648, expected: 2147483648 }, // 6
+            new ConversionSweepUint32AsInt64 { value: 4294967294, expected: 4294967294 }, // 7
+            new ConversionSweepUint32AsInt64 { value: 4294967295, expected: 4294967295 }, // 8
+        ],
     }
 
     expect return -1;
@@ -794,15 +822,17 @@ test ConversionSweep.first_wrong_uint32_as_int64 "every uint32 value as int64" {
 
 test ConversionSweep.first_wrong_uint32_as_uint32 "every uint32 value as uint32" {
     receiver {
-        uint32_as_uint32 { value = 0; expected = 0; } // 0
-        uint32_as_uint32 { value = 1; expected = 1; } // 1
-        uint32_as_uint32 { value = 2; expected = 2; } // 2
-        uint32_as_uint32 { value = 16777217; expected = 16777217; } // 3
-        uint32_as_uint32 { value = 16777219; expected = 16777219; } // 4
-        uint32_as_uint32 { value = 2147483647; expected = 2147483647; } // 5
-        uint32_as_uint32 { value = 2147483648; expected = 2147483648; } // 6
-        uint32_as_uint32 { value = 4294967294; expected = 4294967294; } // 7
-        uint32_as_uint32 { value = 4294967295; expected = 4294967295; } // 8
+        uint32_as_uint32: [
+            new ConversionSweepUint32AsUint32 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint32AsUint32 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint32AsUint32 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint32AsUint32 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint32AsUint32 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint32AsUint32 { value: 2147483647, expected: 2147483647 }, // 5
+            new ConversionSweepUint32AsUint32 { value: 2147483648, expected: 2147483648 }, // 6
+            new ConversionSweepUint32AsUint32 { value: 4294967294, expected: 4294967294 }, // 7
+            new ConversionSweepUint32AsUint32 { value: 4294967295, expected: 4294967295 }, // 8
+        ],
     }
 
     expect return -1;
@@ -810,15 +840,17 @@ test ConversionSweep.first_wrong_uint32_as_uint32 "every uint32 value as uint32"
 
 test ConversionSweep.first_wrong_uint32_as_uint64 "every uint32 value as uint64" {
     receiver {
-        uint32_as_uint64 { value = 0; expected = 0; } // 0
-        uint32_as_uint64 { value = 1; expected = 1; } // 1
-        uint32_as_uint64 { value = 2; expected = 2; } // 2
-        uint32_as_uint64 { value = 16777217; expected = 16777217; } // 3
-        uint32_as_uint64 { value = 16777219; expected = 16777219; } // 4
-        uint32_as_uint64 { value = 2147483647; expected = 2147483647; } // 5
-        uint32_as_uint64 { value = 2147483648; expected = 2147483648; } // 6
-        uint32_as_uint64 { value = 4294967294; expected = 4294967294; } // 7
-        uint32_as_uint64 { value = 4294967295; expected = 4294967295; } // 8
+        uint32_as_uint64: [
+            new ConversionSweepUint32AsUint64 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint32AsUint64 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint32AsUint64 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint32AsUint64 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint32AsUint64 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint32AsUint64 { value: 2147483647, expected: 2147483647 }, // 5
+            new ConversionSweepUint32AsUint64 { value: 2147483648, expected: 2147483648 }, // 6
+            new ConversionSweepUint32AsUint64 { value: 4294967294, expected: 4294967294 }, // 7
+            new ConversionSweepUint32AsUint64 { value: 4294967295, expected: 4294967295 }, // 8
+        ],
     }
 
     expect return -1;
@@ -826,15 +858,17 @@ test ConversionSweep.first_wrong_uint32_as_uint64 "every uint32 value as uint64"
 
 test ConversionSweep.first_wrong_uint32_as_float "every uint32 value as float" {
     receiver {
-        uint32_as_float { value = 0; expected = 0.0; } // 0
-        uint32_as_float { value = 1; expected = 1.0; } // 1
-        uint32_as_float { value = 2; expected = 2.0; } // 2
-        uint32_as_float { value = 16777217; expected = 16777216.0; } // 3
-        uint32_as_float { value = 16777219; expected = 16777220.0; } // 4
-        uint32_as_float { value = 2147483647; expected = 2.1474836E+09; } // 5
-        uint32_as_float { value = 2147483648; expected = 2.1474836E+09; } // 6
-        uint32_as_float { value = 4294967294; expected = 4.2949673E+09; } // 7
-        uint32_as_float { value = 4294967295; expected = 4.2949673E+09; } // 8
+        uint32_as_float: [
+            new ConversionSweepUint32AsFloat { value: 0, expected: 0.0 }, // 0
+            new ConversionSweepUint32AsFloat { value: 1, expected: 1.0 }, // 1
+            new ConversionSweepUint32AsFloat { value: 2, expected: 2.0 }, // 2
+            new ConversionSweepUint32AsFloat { value: 16777217, expected: 16777216.0 }, // 3
+            new ConversionSweepUint32AsFloat { value: 16777219, expected: 16777220.0 }, // 4
+            new ConversionSweepUint32AsFloat { value: 2147483647, expected: 2.1474836E+09 }, // 5
+            new ConversionSweepUint32AsFloat { value: 2147483648, expected: 2.1474836E+09 }, // 6
+            new ConversionSweepUint32AsFloat { value: 4294967294, expected: 4.2949673E+09 }, // 7
+            new ConversionSweepUint32AsFloat { value: 4294967295, expected: 4.2949673E+09 }, // 8
+        ],
     }
 
     expect return -1;
@@ -842,15 +876,17 @@ test ConversionSweep.first_wrong_uint32_as_float "every uint32 value as float" {
 
 test ConversionSweep.first_wrong_uint32_as_double "every uint32 value as double" {
     receiver {
-        uint32_as_double { value = 0; expected = 0.0; } // 0
-        uint32_as_double { value = 1; expected = 1.0; } // 1
-        uint32_as_double { value = 2; expected = 2.0; } // 2
-        uint32_as_double { value = 16777217; expected = 16777217.0; } // 3
-        uint32_as_double { value = 16777219; expected = 16777219.0; } // 4
-        uint32_as_double { value = 2147483647; expected = 2147483647.0; } // 5
-        uint32_as_double { value = 2147483648; expected = 2147483648.0; } // 6
-        uint32_as_double { value = 4294967294; expected = 4294967294.0; } // 7
-        uint32_as_double { value = 4294967295; expected = 4294967295.0; } // 8
+        uint32_as_double: [
+            new ConversionSweepUint32AsDouble { value: 0, expected: 0.0 }, // 0
+            new ConversionSweepUint32AsDouble { value: 1, expected: 1.0 }, // 1
+            new ConversionSweepUint32AsDouble { value: 2, expected: 2.0 }, // 2
+            new ConversionSweepUint32AsDouble { value: 16777217, expected: 16777217.0 }, // 3
+            new ConversionSweepUint32AsDouble { value: 16777219, expected: 16777219.0 }, // 4
+            new ConversionSweepUint32AsDouble { value: 2147483647, expected: 2147483647.0 }, // 5
+            new ConversionSweepUint32AsDouble { value: 2147483648, expected: 2147483648.0 }, // 6
+            new ConversionSweepUint32AsDouble { value: 4294967294, expected: 4294967294.0 }, // 7
+            new ConversionSweepUint32AsDouble { value: 4294967295, expected: 4294967295.0 }, // 8
+        ],
     }
 
     expect return -1;
@@ -858,17 +894,19 @@ test ConversionSweep.first_wrong_uint32_as_double "every uint32 value as double"
 
 test ConversionSweep.first_wrong_uint64_as_int32 "every uint64 value as int32" {
     receiver {
-        uint64_as_int32 { value = 0; expected = 0; } // 0
-        uint64_as_int32 { value = 1; expected = 1; } // 1
-        uint64_as_int32 { value = 2; expected = 2; } // 2
-        uint64_as_int32 { value = 16777217; expected = 16777217; } // 3
-        uint64_as_int32 { value = 16777219; expected = 16777219; } // 4
-        uint64_as_int32 { value = 9007199254740993; expected = 1; } // 5
-        uint64_as_int32 { value = 9007199254740995; expected = 3; } // 6
-        uint64_as_int32 { value = 9223372036854775807; expected = -1; } // 7
-        uint64_as_int32 { value = 9223372036854775808; expected = 0; } // 8
-        uint64_as_int32 { value = 18446744073709551614; expected = -2; } // 9
-        uint64_as_int32 { value = 18446744073709551615; expected = -1; } // 10
+        uint64_as_int32: [
+            new ConversionSweepUint64AsInt32 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint64AsInt32 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint64AsInt32 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint64AsInt32 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint64AsInt32 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint64AsInt32 { value: 9007199254740993, expected: 1 }, // 5
+            new ConversionSweepUint64AsInt32 { value: 9007199254740995, expected: 3 }, // 6
+            new ConversionSweepUint64AsInt32 { value: 9223372036854775807, expected: -1 }, // 7
+            new ConversionSweepUint64AsInt32 { value: 9223372036854775808, expected: 0 }, // 8
+            new ConversionSweepUint64AsInt32 { value: 18446744073709551614, expected: -2 }, // 9
+            new ConversionSweepUint64AsInt32 { value: 18446744073709551615, expected: -1 }, // 10
+        ],
     }
 
     expect return -1;
@@ -876,17 +914,19 @@ test ConversionSweep.first_wrong_uint64_as_int32 "every uint64 value as int32" {
 
 test ConversionSweep.first_wrong_uint64_as_int64 "every uint64 value as int64" {
     receiver {
-        uint64_as_int64 { value = 0; expected = 0; } // 0
-        uint64_as_int64 { value = 1; expected = 1; } // 1
-        uint64_as_int64 { value = 2; expected = 2; } // 2
-        uint64_as_int64 { value = 16777217; expected = 16777217; } // 3
-        uint64_as_int64 { value = 16777219; expected = 16777219; } // 4
-        uint64_as_int64 { value = 9007199254740993; expected = 9007199254740993; } // 5
-        uint64_as_int64 { value = 9007199254740995; expected = 9007199254740995; } // 6
-        uint64_as_int64 { value = 9223372036854775807; expected = 9223372036854775807; } // 7
-        uint64_as_int64 { value = 9223372036854775808; expected = -9223372036854775808; } // 8
-        uint64_as_int64 { value = 18446744073709551614; expected = -2; } // 9
-        uint64_as_int64 { value = 18446744073709551615; expected = -1; } // 10
+        uint64_as_int64: [
+            new ConversionSweepUint64AsInt64 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint64AsInt64 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint64AsInt64 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint64AsInt64 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint64AsInt64 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint64AsInt64 { value: 9007199254740993, expected: 9007199254740993 }, // 5
+            new ConversionSweepUint64AsInt64 { value: 9007199254740995, expected: 9007199254740995 }, // 6
+            new ConversionSweepUint64AsInt64 { value: 9223372036854775807, expected: 9223372036854775807 }, // 7
+            new ConversionSweepUint64AsInt64 { value: 9223372036854775808, expected: -9223372036854775808 }, // 8
+            new ConversionSweepUint64AsInt64 { value: 18446744073709551614, expected: -2 }, // 9
+            new ConversionSweepUint64AsInt64 { value: 18446744073709551615, expected: -1 }, // 10
+        ],
     }
 
     expect return -1;
@@ -894,17 +934,19 @@ test ConversionSweep.first_wrong_uint64_as_int64 "every uint64 value as int64" {
 
 test ConversionSweep.first_wrong_uint64_as_uint32 "every uint64 value as uint32" {
     receiver {
-        uint64_as_uint32 { value = 0; expected = 0; } // 0
-        uint64_as_uint32 { value = 1; expected = 1; } // 1
-        uint64_as_uint32 { value = 2; expected = 2; } // 2
-        uint64_as_uint32 { value = 16777217; expected = 16777217; } // 3
-        uint64_as_uint32 { value = 16777219; expected = 16777219; } // 4
-        uint64_as_uint32 { value = 9007199254740993; expected = 1; } // 5
-        uint64_as_uint32 { value = 9007199254740995; expected = 3; } // 6
-        uint64_as_uint32 { value = 9223372036854775807; expected = 4294967295; } // 7
-        uint64_as_uint32 { value = 9223372036854775808; expected = 0; } // 8
-        uint64_as_uint32 { value = 18446744073709551614; expected = 4294967294; } // 9
-        uint64_as_uint32 { value = 18446744073709551615; expected = 4294967295; } // 10
+        uint64_as_uint32: [
+            new ConversionSweepUint64AsUint32 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint64AsUint32 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint64AsUint32 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint64AsUint32 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint64AsUint32 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint64AsUint32 { value: 9007199254740993, expected: 1 }, // 5
+            new ConversionSweepUint64AsUint32 { value: 9007199254740995, expected: 3 }, // 6
+            new ConversionSweepUint64AsUint32 { value: 9223372036854775807, expected: 4294967295 }, // 7
+            new ConversionSweepUint64AsUint32 { value: 9223372036854775808, expected: 0 }, // 8
+            new ConversionSweepUint64AsUint32 { value: 18446744073709551614, expected: 4294967294 }, // 9
+            new ConversionSweepUint64AsUint32 { value: 18446744073709551615, expected: 4294967295 }, // 10
+        ],
     }
 
     expect return -1;
@@ -912,17 +954,19 @@ test ConversionSweep.first_wrong_uint64_as_uint32 "every uint64 value as uint32"
 
 test ConversionSweep.first_wrong_uint64_as_uint64 "every uint64 value as uint64" {
     receiver {
-        uint64_as_uint64 { value = 0; expected = 0; } // 0
-        uint64_as_uint64 { value = 1; expected = 1; } // 1
-        uint64_as_uint64 { value = 2; expected = 2; } // 2
-        uint64_as_uint64 { value = 16777217; expected = 16777217; } // 3
-        uint64_as_uint64 { value = 16777219; expected = 16777219; } // 4
-        uint64_as_uint64 { value = 9007199254740993; expected = 9007199254740993; } // 5
-        uint64_as_uint64 { value = 9007199254740995; expected = 9007199254740995; } // 6
-        uint64_as_uint64 { value = 9223372036854775807; expected = 9223372036854775807; } // 7
-        uint64_as_uint64 { value = 9223372036854775808; expected = 9223372036854775808; } // 8
-        uint64_as_uint64 { value = 18446744073709551614; expected = 18446744073709551614; } // 9
-        uint64_as_uint64 { value = 18446744073709551615; expected = 18446744073709551615; } // 10
+        uint64_as_uint64: [
+            new ConversionSweepUint64AsUint64 { value: 0, expected: 0 }, // 0
+            new ConversionSweepUint64AsUint64 { value: 1, expected: 1 }, // 1
+            new ConversionSweepUint64AsUint64 { value: 2, expected: 2 }, // 2
+            new ConversionSweepUint64AsUint64 { value: 16777217, expected: 16777217 }, // 3
+            new ConversionSweepUint64AsUint64 { value: 16777219, expected: 16777219 }, // 4
+            new ConversionSweepUint64AsUint64 { value: 9007199254740993, expected: 9007199254740993 }, // 5
+            new ConversionSweepUint64AsUint64 { value: 9007199254740995, expected: 9007199254740995 }, // 6
+            new ConversionSweepUint64AsUint64 { value: 9223372036854775807, expected: 9223372036854775807 }, // 7
+            new ConversionSweepUint64AsUint64 { value: 9223372036854775808, expected: 9223372036854775808 }, // 8
+            new ConversionSweepUint64AsUint64 { value: 18446744073709551614, expected: 18446744073709551614 }, // 9
+            new ConversionSweepUint64AsUint64 { value: 18446744073709551615, expected: 18446744073709551615 }, // 10
+        ],
     }
 
     expect return -1;
@@ -930,17 +974,19 @@ test ConversionSweep.first_wrong_uint64_as_uint64 "every uint64 value as uint64"
 
 test ConversionSweep.first_wrong_uint64_as_float "every uint64 value as float" {
     receiver {
-        uint64_as_float { value = 0; expected = 0.0; } // 0
-        uint64_as_float { value = 1; expected = 1.0; } // 1
-        uint64_as_float { value = 2; expected = 2.0; } // 2
-        uint64_as_float { value = 16777217; expected = 16777216.0; } // 3
-        uint64_as_float { value = 16777219; expected = 16777220.0; } // 4
-        uint64_as_float { value = 9007199254740993; expected = 9.007199E+15; } // 5
-        uint64_as_float { value = 9007199254740995; expected = 9.007199E+15; } // 6
-        uint64_as_float { value = 9223372036854775807; expected = 9.223372E+18; } // 7
-        uint64_as_float { value = 9223372036854775808; expected = 9.223372E+18; } // 8
-        uint64_as_float { value = 18446744073709551614; expected = 1.8446744E+19; } // 9
-        uint64_as_float { value = 18446744073709551615; expected = 1.8446744E+19; } // 10
+        uint64_as_float: [
+            new ConversionSweepUint64AsFloat { value: 0, expected: 0.0 }, // 0
+            new ConversionSweepUint64AsFloat { value: 1, expected: 1.0 }, // 1
+            new ConversionSweepUint64AsFloat { value: 2, expected: 2.0 }, // 2
+            new ConversionSweepUint64AsFloat { value: 16777217, expected: 16777216.0 }, // 3
+            new ConversionSweepUint64AsFloat { value: 16777219, expected: 16777220.0 }, // 4
+            new ConversionSweepUint64AsFloat { value: 9007199254740993, expected: 9.007199E+15 }, // 5
+            new ConversionSweepUint64AsFloat { value: 9007199254740995, expected: 9.007199E+15 }, // 6
+            new ConversionSweepUint64AsFloat { value: 9223372036854775807, expected: 9.223372E+18 }, // 7
+            new ConversionSweepUint64AsFloat { value: 9223372036854775808, expected: 9.223372E+18 }, // 8
+            new ConversionSweepUint64AsFloat { value: 18446744073709551614, expected: 1.8446744E+19 }, // 9
+            new ConversionSweepUint64AsFloat { value: 18446744073709551615, expected: 1.8446744E+19 }, // 10
+        ],
     }
 
     expect return -1;
@@ -948,17 +994,19 @@ test ConversionSweep.first_wrong_uint64_as_float "every uint64 value as float" {
 
 test ConversionSweep.first_wrong_uint64_as_double "every uint64 value as double" {
     receiver {
-        uint64_as_double { value = 0; expected = 0.0; } // 0
-        uint64_as_double { value = 1; expected = 1.0; } // 1
-        uint64_as_double { value = 2; expected = 2.0; } // 2
-        uint64_as_double { value = 16777217; expected = 16777217.0; } // 3
-        uint64_as_double { value = 16777219; expected = 16777219.0; } // 4
-        uint64_as_double { value = 9007199254740993; expected = 9007199254740992.0; } // 5
-        uint64_as_double { value = 9007199254740995; expected = 9007199254740996.0; } // 6
-        uint64_as_double { value = 9223372036854775807; expected = 9.223372036854776E+18; } // 7
-        uint64_as_double { value = 9223372036854775808; expected = 9.223372036854776E+18; } // 8
-        uint64_as_double { value = 18446744073709551614; expected = 1.8446744073709552E+19; } // 9
-        uint64_as_double { value = 18446744073709551615; expected = 1.8446744073709552E+19; } // 10
+        uint64_as_double: [
+            new ConversionSweepUint64AsDouble { value: 0, expected: 0.0 }, // 0
+            new ConversionSweepUint64AsDouble { value: 1, expected: 1.0 }, // 1
+            new ConversionSweepUint64AsDouble { value: 2, expected: 2.0 }, // 2
+            new ConversionSweepUint64AsDouble { value: 16777217, expected: 16777217.0 }, // 3
+            new ConversionSweepUint64AsDouble { value: 16777219, expected: 16777219.0 }, // 4
+            new ConversionSweepUint64AsDouble { value: 9007199254740993, expected: 9007199254740992.0 }, // 5
+            new ConversionSweepUint64AsDouble { value: 9007199254740995, expected: 9007199254740996.0 }, // 6
+            new ConversionSweepUint64AsDouble { value: 9223372036854775807, expected: 9.223372036854776E+18 }, // 7
+            new ConversionSweepUint64AsDouble { value: 9223372036854775808, expected: 9.223372036854776E+18 }, // 8
+            new ConversionSweepUint64AsDouble { value: 18446744073709551614, expected: 1.8446744073709552E+19 }, // 9
+            new ConversionSweepUint64AsDouble { value: 18446744073709551615, expected: 1.8446744073709552E+19 }, // 10
+        ],
     }
 
     expect return -1;
@@ -966,29 +1014,31 @@ test ConversionSweep.first_wrong_uint64_as_double "every uint64 value as double"
 
 test ConversionSweep.first_wrong_float_as_int32 "every float value as int32" {
     receiver {
-        float_as_int32 { value = 0.0; expected = 0; } // 0
-        float_as_int32 { value = -0.0; expected = 0; } // 1
-        float_as_int32 { value = 0.1; expected = 0; } // 2
-        float_as_int32 { value = 1.0; expected = 1; } // 3
-        float_as_int32 { value = -1.5; expected = -1; } // 4
-        float_as_int32 { value = 3.4028235E+38; expected = 2147483647; } // 5
-        float_as_int32 { value = 1E-45; expected = 0; } // 6
-        float_as_int32 { value = __INF; expected = 2147483647; } // 7
-        float_as_int32 { value = -__INF; expected = -2147483648; } // 8
-        float_as_int32 { value = __NAN; expected = 0; } // 9
-        float_as_int32 { value = -9.223373E+18; expected = -2147483648; } // 10
-        float_as_int32 { value = -9.223372E+18; expected = -2147483648; } // 11
-        float_as_int32 { value = -2.147484E+09; expected = -2147483648; } // 12
-        float_as_int32 { value = -2.1474836E+09; expected = -2147483648; } // 13
-        float_as_int32 { value = -1.0; expected = -1; } // 14
-        float_as_int32 { value = 2.1474835E+09; expected = 2147483520; } // 15
-        float_as_int32 { value = 2.1474836E+09; expected = 2147483647; } // 16
-        float_as_int32 { value = 4.294967E+09; expected = 2147483647; } // 17
-        float_as_int32 { value = 4.2949673E+09; expected = 2147483647; } // 18
-        float_as_int32 { value = 9.2233715E+18; expected = 2147483647; } // 19
-        float_as_int32 { value = 9.223372E+18; expected = 2147483647; } // 20
-        float_as_int32 { value = 1.8446743E+19; expected = 2147483647; } // 21
-        float_as_int32 { value = 1.8446744E+19; expected = 2147483647; } // 22
+        float_as_int32: [
+            new ConversionSweepFloatAsInt32 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepFloatAsInt32 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepFloatAsInt32 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepFloatAsInt32 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepFloatAsInt32 { value: -1.5, expected: -1 }, // 4
+            new ConversionSweepFloatAsInt32 { value: 3.4028235E+38, expected: 2147483647 }, // 5
+            new ConversionSweepFloatAsInt32 { value: 1E-45, expected: 0 }, // 6
+            new ConversionSweepFloatAsInt32 { value: __INF, expected: 2147483647 }, // 7
+            new ConversionSweepFloatAsInt32 { value: -__INF, expected: -2147483648 }, // 8
+            new ConversionSweepFloatAsInt32 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepFloatAsInt32 { value: -9.223373E+18, expected: -2147483648 }, // 10
+            new ConversionSweepFloatAsInt32 { value: -9.223372E+18, expected: -2147483648 }, // 11
+            new ConversionSweepFloatAsInt32 { value: -2.147484E+09, expected: -2147483648 }, // 12
+            new ConversionSweepFloatAsInt32 { value: -2.1474836E+09, expected: -2147483648 }, // 13
+            new ConversionSweepFloatAsInt32 { value: -1.0, expected: -1 }, // 14
+            new ConversionSweepFloatAsInt32 { value: 2.1474835E+09, expected: 2147483520 }, // 15
+            new ConversionSweepFloatAsInt32 { value: 2.1474836E+09, expected: 2147483647 }, // 16
+            new ConversionSweepFloatAsInt32 { value: 4.294967E+09, expected: 2147483647 }, // 17
+            new ConversionSweepFloatAsInt32 { value: 4.2949673E+09, expected: 2147483647 }, // 18
+            new ConversionSweepFloatAsInt32 { value: 9.2233715E+18, expected: 2147483647 }, // 19
+            new ConversionSweepFloatAsInt32 { value: 9.223372E+18, expected: 2147483647 }, // 20
+            new ConversionSweepFloatAsInt32 { value: 1.8446743E+19, expected: 2147483647 }, // 21
+            new ConversionSweepFloatAsInt32 { value: 1.8446744E+19, expected: 2147483647 }, // 22
+        ],
     }
 
     expect return -1;
@@ -996,29 +1046,31 @@ test ConversionSweep.first_wrong_float_as_int32 "every float value as int32" {
 
 test ConversionSweep.first_wrong_float_as_int64 "every float value as int64" {
     receiver {
-        float_as_int64 { value = 0.0; expected = 0; } // 0
-        float_as_int64 { value = -0.0; expected = 0; } // 1
-        float_as_int64 { value = 0.1; expected = 0; } // 2
-        float_as_int64 { value = 1.0; expected = 1; } // 3
-        float_as_int64 { value = -1.5; expected = -1; } // 4
-        float_as_int64 { value = 3.4028235E+38; expected = 9223372036854775807; } // 5
-        float_as_int64 { value = 1E-45; expected = 0; } // 6
-        float_as_int64 { value = __INF; expected = 9223372036854775807; } // 7
-        float_as_int64 { value = -__INF; expected = -9223372036854775808; } // 8
-        float_as_int64 { value = __NAN; expected = 0; } // 9
-        float_as_int64 { value = -9.223373E+18; expected = -9223372036854775808; } // 10
-        float_as_int64 { value = -9.223372E+18; expected = -9223372036854775808; } // 11
-        float_as_int64 { value = -2.147484E+09; expected = -2147483904; } // 12
-        float_as_int64 { value = -2.1474836E+09; expected = -2147483648; } // 13
-        float_as_int64 { value = -1.0; expected = -1; } // 14
-        float_as_int64 { value = 2.1474835E+09; expected = 2147483520; } // 15
-        float_as_int64 { value = 2.1474836E+09; expected = 2147483648; } // 16
-        float_as_int64 { value = 4.294967E+09; expected = 4294967040; } // 17
-        float_as_int64 { value = 4.2949673E+09; expected = 4294967296; } // 18
-        float_as_int64 { value = 9.2233715E+18; expected = 9223371487098961920; } // 19
-        float_as_int64 { value = 9.223372E+18; expected = 9223372036854775807; } // 20
-        float_as_int64 { value = 1.8446743E+19; expected = 9223372036854775807; } // 21
-        float_as_int64 { value = 1.8446744E+19; expected = 9223372036854775807; } // 22
+        float_as_int64: [
+            new ConversionSweepFloatAsInt64 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepFloatAsInt64 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepFloatAsInt64 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepFloatAsInt64 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepFloatAsInt64 { value: -1.5, expected: -1 }, // 4
+            new ConversionSweepFloatAsInt64 { value: 3.4028235E+38, expected: 9223372036854775807 }, // 5
+            new ConversionSweepFloatAsInt64 { value: 1E-45, expected: 0 }, // 6
+            new ConversionSweepFloatAsInt64 { value: __INF, expected: 9223372036854775807 }, // 7
+            new ConversionSweepFloatAsInt64 { value: -__INF, expected: -9223372036854775808 }, // 8
+            new ConversionSweepFloatAsInt64 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepFloatAsInt64 { value: -9.223373E+18, expected: -9223372036854775808 }, // 10
+            new ConversionSweepFloatAsInt64 { value: -9.223372E+18, expected: -9223372036854775808 }, // 11
+            new ConversionSweepFloatAsInt64 { value: -2.147484E+09, expected: -2147483904 }, // 12
+            new ConversionSweepFloatAsInt64 { value: -2.1474836E+09, expected: -2147483648 }, // 13
+            new ConversionSweepFloatAsInt64 { value: -1.0, expected: -1 }, // 14
+            new ConversionSweepFloatAsInt64 { value: 2.1474835E+09, expected: 2147483520 }, // 15
+            new ConversionSweepFloatAsInt64 { value: 2.1474836E+09, expected: 2147483648 }, // 16
+            new ConversionSweepFloatAsInt64 { value: 4.294967E+09, expected: 4294967040 }, // 17
+            new ConversionSweepFloatAsInt64 { value: 4.2949673E+09, expected: 4294967296 }, // 18
+            new ConversionSweepFloatAsInt64 { value: 9.2233715E+18, expected: 9223371487098961920 }, // 19
+            new ConversionSweepFloatAsInt64 { value: 9.223372E+18, expected: 9223372036854775807 }, // 20
+            new ConversionSweepFloatAsInt64 { value: 1.8446743E+19, expected: 9223372036854775807 }, // 21
+            new ConversionSweepFloatAsInt64 { value: 1.8446744E+19, expected: 9223372036854775807 }, // 22
+        ],
     }
 
     expect return -1;
@@ -1026,29 +1078,31 @@ test ConversionSweep.first_wrong_float_as_int64 "every float value as int64" {
 
 test ConversionSweep.first_wrong_float_as_uint32 "every float value as uint32" {
     receiver {
-        float_as_uint32 { value = 0.0; expected = 0; } // 0
-        float_as_uint32 { value = -0.0; expected = 0; } // 1
-        float_as_uint32 { value = 0.1; expected = 0; } // 2
-        float_as_uint32 { value = 1.0; expected = 1; } // 3
-        float_as_uint32 { value = -1.5; expected = 0; } // 4
-        float_as_uint32 { value = 3.4028235E+38; expected = 4294967295; } // 5
-        float_as_uint32 { value = 1E-45; expected = 0; } // 6
-        float_as_uint32 { value = __INF; expected = 4294967295; } // 7
-        float_as_uint32 { value = -__INF; expected = 0; } // 8
-        float_as_uint32 { value = __NAN; expected = 0; } // 9
-        float_as_uint32 { value = -9.223373E+18; expected = 0; } // 10
-        float_as_uint32 { value = -9.223372E+18; expected = 0; } // 11
-        float_as_uint32 { value = -2.147484E+09; expected = 0; } // 12
-        float_as_uint32 { value = -2.1474836E+09; expected = 0; } // 13
-        float_as_uint32 { value = -1.0; expected = 0; } // 14
-        float_as_uint32 { value = 2.1474835E+09; expected = 2147483520; } // 15
-        float_as_uint32 { value = 2.1474836E+09; expected = 2147483648; } // 16
-        float_as_uint32 { value = 4.294967E+09; expected = 4294967040; } // 17
-        float_as_uint32 { value = 4.2949673E+09; expected = 4294967295; } // 18
-        float_as_uint32 { value = 9.2233715E+18; expected = 4294967295; } // 19
-        float_as_uint32 { value = 9.223372E+18; expected = 4294967295; } // 20
-        float_as_uint32 { value = 1.8446743E+19; expected = 4294967295; } // 21
-        float_as_uint32 { value = 1.8446744E+19; expected = 4294967295; } // 22
+        float_as_uint32: [
+            new ConversionSweepFloatAsUint32 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepFloatAsUint32 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepFloatAsUint32 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepFloatAsUint32 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepFloatAsUint32 { value: -1.5, expected: 0 }, // 4
+            new ConversionSweepFloatAsUint32 { value: 3.4028235E+38, expected: 4294967295 }, // 5
+            new ConversionSweepFloatAsUint32 { value: 1E-45, expected: 0 }, // 6
+            new ConversionSweepFloatAsUint32 { value: __INF, expected: 4294967295 }, // 7
+            new ConversionSweepFloatAsUint32 { value: -__INF, expected: 0 }, // 8
+            new ConversionSweepFloatAsUint32 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepFloatAsUint32 { value: -9.223373E+18, expected: 0 }, // 10
+            new ConversionSweepFloatAsUint32 { value: -9.223372E+18, expected: 0 }, // 11
+            new ConversionSweepFloatAsUint32 { value: -2.147484E+09, expected: 0 }, // 12
+            new ConversionSweepFloatAsUint32 { value: -2.1474836E+09, expected: 0 }, // 13
+            new ConversionSweepFloatAsUint32 { value: -1.0, expected: 0 }, // 14
+            new ConversionSweepFloatAsUint32 { value: 2.1474835E+09, expected: 2147483520 }, // 15
+            new ConversionSweepFloatAsUint32 { value: 2.1474836E+09, expected: 2147483648 }, // 16
+            new ConversionSweepFloatAsUint32 { value: 4.294967E+09, expected: 4294967040 }, // 17
+            new ConversionSweepFloatAsUint32 { value: 4.2949673E+09, expected: 4294967295 }, // 18
+            new ConversionSweepFloatAsUint32 { value: 9.2233715E+18, expected: 4294967295 }, // 19
+            new ConversionSweepFloatAsUint32 { value: 9.223372E+18, expected: 4294967295 }, // 20
+            new ConversionSweepFloatAsUint32 { value: 1.8446743E+19, expected: 4294967295 }, // 21
+            new ConversionSweepFloatAsUint32 { value: 1.8446744E+19, expected: 4294967295 }, // 22
+        ],
     }
 
     expect return -1;
@@ -1056,29 +1110,31 @@ test ConversionSweep.first_wrong_float_as_uint32 "every float value as uint32" {
 
 test ConversionSweep.first_wrong_float_as_uint64 "every float value as uint64" {
     receiver {
-        float_as_uint64 { value = 0.0; expected = 0; } // 0
-        float_as_uint64 { value = -0.0; expected = 0; } // 1
-        float_as_uint64 { value = 0.1; expected = 0; } // 2
-        float_as_uint64 { value = 1.0; expected = 1; } // 3
-        float_as_uint64 { value = -1.5; expected = 0; } // 4
-        float_as_uint64 { value = 3.4028235E+38; expected = 18446744073709551615; } // 5
-        float_as_uint64 { value = 1E-45; expected = 0; } // 6
-        float_as_uint64 { value = __INF; expected = 18446744073709551615; } // 7
-        float_as_uint64 { value = -__INF; expected = 0; } // 8
-        float_as_uint64 { value = __NAN; expected = 0; } // 9
-        float_as_uint64 { value = -9.223373E+18; expected = 0; } // 10
-        float_as_uint64 { value = -9.223372E+18; expected = 0; } // 11
-        float_as_uint64 { value = -2.147484E+09; expected = 0; } // 12
-        float_as_uint64 { value = -2.1474836E+09; expected = 0; } // 13
-        float_as_uint64 { value = -1.0; expected = 0; } // 14
-        float_as_uint64 { value = 2.1474835E+09; expected = 2147483520; } // 15
-        float_as_uint64 { value = 2.1474836E+09; expected = 2147483648; } // 16
-        float_as_uint64 { value = 4.294967E+09; expected = 4294967040; } // 17
-        float_as_uint64 { value = 4.2949673E+09; expected = 4294967296; } // 18
-        float_as_uint64 { value = 9.2233715E+18; expected = 9223371487098961920; } // 19
-        float_as_uint64 { value = 9.223372E+18; expected = 9223372036854775808; } // 20
-        float_as_uint64 { value = 1.8446743E+19; expected = 18446742974197923840; } // 21
-        float_as_uint64 { value = 1.8446744E+19; expected = 18446744073709551615; } // 22
+        float_as_uint64: [
+            new ConversionSweepFloatAsUint64 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepFloatAsUint64 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepFloatAsUint64 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepFloatAsUint64 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepFloatAsUint64 { value: -1.5, expected: 0 }, // 4
+            new ConversionSweepFloatAsUint64 { value: 3.4028235E+38, expected: 18446744073709551615 }, // 5
+            new ConversionSweepFloatAsUint64 { value: 1E-45, expected: 0 }, // 6
+            new ConversionSweepFloatAsUint64 { value: __INF, expected: 18446744073709551615 }, // 7
+            new ConversionSweepFloatAsUint64 { value: -__INF, expected: 0 }, // 8
+            new ConversionSweepFloatAsUint64 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepFloatAsUint64 { value: -9.223373E+18, expected: 0 }, // 10
+            new ConversionSweepFloatAsUint64 { value: -9.223372E+18, expected: 0 }, // 11
+            new ConversionSweepFloatAsUint64 { value: -2.147484E+09, expected: 0 }, // 12
+            new ConversionSweepFloatAsUint64 { value: -2.1474836E+09, expected: 0 }, // 13
+            new ConversionSweepFloatAsUint64 { value: -1.0, expected: 0 }, // 14
+            new ConversionSweepFloatAsUint64 { value: 2.1474835E+09, expected: 2147483520 }, // 15
+            new ConversionSweepFloatAsUint64 { value: 2.1474836E+09, expected: 2147483648 }, // 16
+            new ConversionSweepFloatAsUint64 { value: 4.294967E+09, expected: 4294967040 }, // 17
+            new ConversionSweepFloatAsUint64 { value: 4.2949673E+09, expected: 4294967296 }, // 18
+            new ConversionSweepFloatAsUint64 { value: 9.2233715E+18, expected: 9223371487098961920 }, // 19
+            new ConversionSweepFloatAsUint64 { value: 9.223372E+18, expected: 9223372036854775808 }, // 20
+            new ConversionSweepFloatAsUint64 { value: 1.8446743E+19, expected: 18446742974197923840 }, // 21
+            new ConversionSweepFloatAsUint64 { value: 1.8446744E+19, expected: 18446744073709551615 }, // 22
+        ],
     }
 
     expect return -1;
@@ -1086,29 +1142,31 @@ test ConversionSweep.first_wrong_float_as_uint64 "every float value as uint64" {
 
 test ConversionSweep.first_wrong_float_as_float "every float value as float" {
     receiver {
-        float_as_float { value = 0.0; expected = 0.0; } // 0
-        float_as_float { value = -0.0; expected = -0.0; } // 1
-        float_as_float { value = 0.1; expected = 0.1; } // 2
-        float_as_float { value = 1.0; expected = 1.0; } // 3
-        float_as_float { value = -1.5; expected = -1.5; } // 4
-        float_as_float { value = 3.4028235E+38; expected = 3.4028235E+38; } // 5
-        float_as_float { value = 1E-45; expected = 1E-45; } // 6
-        float_as_float { value = __INF; expected = __INF; } // 7
-        float_as_float { value = -__INF; expected = -__INF; } // 8
-        float_as_float { value = __NAN; nan = true; } // 9
-        float_as_float { value = -9.223373E+18; expected = -9.223373E+18; } // 10
-        float_as_float { value = -9.223372E+18; expected = -9.223372E+18; } // 11
-        float_as_float { value = -2.147484E+09; expected = -2.147484E+09; } // 12
-        float_as_float { value = -2.1474836E+09; expected = -2.1474836E+09; } // 13
-        float_as_float { value = -1.0; expected = -1.0; } // 14
-        float_as_float { value = 2.1474835E+09; expected = 2.1474835E+09; } // 15
-        float_as_float { value = 2.1474836E+09; expected = 2.1474836E+09; } // 16
-        float_as_float { value = 4.294967E+09; expected = 4.294967E+09; } // 17
-        float_as_float { value = 4.2949673E+09; expected = 4.2949673E+09; } // 18
-        float_as_float { value = 9.2233715E+18; expected = 9.2233715E+18; } // 19
-        float_as_float { value = 9.223372E+18; expected = 9.223372E+18; } // 20
-        float_as_float { value = 1.8446743E+19; expected = 1.8446743E+19; } // 21
-        float_as_float { value = 1.8446744E+19; expected = 1.8446744E+19; } // 22
+        float_as_float: [
+            new ConversionSweepFloatAsFloat { value: 0.0, expected: 0.0 }, // 0
+            new ConversionSweepFloatAsFloat { value: -0.0, expected: -0.0 }, // 1
+            new ConversionSweepFloatAsFloat { value: 0.1, expected: 0.1 }, // 2
+            new ConversionSweepFloatAsFloat { value: 1.0, expected: 1.0 }, // 3
+            new ConversionSweepFloatAsFloat { value: -1.5, expected: -1.5 }, // 4
+            new ConversionSweepFloatAsFloat { value: 3.4028235E+38, expected: 3.4028235E+38 }, // 5
+            new ConversionSweepFloatAsFloat { value: 1E-45, expected: 1E-45 }, // 6
+            new ConversionSweepFloatAsFloat { value: __INF, expected: __INF }, // 7
+            new ConversionSweepFloatAsFloat { value: -__INF, expected: -__INF }, // 8
+            new ConversionSweepFloatAsFloat { value: __NAN, nan: true }, // 9
+            new ConversionSweepFloatAsFloat { value: -9.223373E+18, expected: -9.223373E+18 }, // 10
+            new ConversionSweepFloatAsFloat { value: -9.223372E+18, expected: -9.223372E+18 }, // 11
+            new ConversionSweepFloatAsFloat { value: -2.147484E+09, expected: -2.147484E+09 }, // 12
+            new ConversionSweepFloatAsFloat { value: -2.1474836E+09, expected: -2.1474836E+09 }, // 13
+            new ConversionSweepFloatAsFloat { value: -1.0, expected: -1.0 }, // 14
+            new ConversionSweepFloatAsFloat { value: 2.1474835E+09, expected: 2.1474835E+09 }, // 15
+            new ConversionSweepFloatAsFloat { value: 2.1474836E+09, expected: 2.1474836E+09 }, // 16
+            new ConversionSweepFloatAsFloat { value: 4.294967E+09, expected: 4.294967E+09 }, // 17
+            new ConversionSweepFloatAsFloat { value: 4.2949673E+09, expected: 4.2949673E+09 }, // 18
+            new ConversionSweepFloatAsFloat { value: 9.2233715E+18, expected: 9.2233715E+18 }, // 19
+            new ConversionSweepFloatAsFloat { value: 9.223372E+18, expected: 9.223372E+18 }, // 20
+            new ConversionSweepFloatAsFloat { value: 1.8446743E+19, expected: 1.8446743E+19 }, // 21
+            new ConversionSweepFloatAsFloat { value: 1.8446744E+19, expected: 1.8446744E+19 }, // 22
+        ],
     }
 
     expect return -1;
@@ -1116,29 +1174,31 @@ test ConversionSweep.first_wrong_float_as_float "every float value as float" {
 
 test ConversionSweep.first_wrong_float_as_double "every float value as double" {
     receiver {
-        float_as_double { value = 0.0; expected = 0.0; } // 0
-        float_as_double { value = -0.0; expected = -0.0; } // 1
-        float_as_double { value = 0.1; expected = 0.10000000149011612; } // 2
-        float_as_double { value = 1.0; expected = 1.0; } // 3
-        float_as_double { value = -1.5; expected = -1.5; } // 4
-        float_as_double { value = 3.4028235E+38; expected = 3.4028234663852886E+38; } // 5
-        float_as_double { value = 1E-45; expected = 1.401298464324817E-45; } // 6
-        float_as_double { value = __INF; expected = __INF; } // 7
-        float_as_double { value = -__INF; expected = -__INF; } // 8
-        float_as_double { value = __NAN; nan = true; } // 9
-        float_as_double { value = -9.223373E+18; expected = -9.223373136366404E+18; } // 10
-        float_as_double { value = -9.223372E+18; expected = -9.223372036854776E+18; } // 11
-        float_as_double { value = -2.147484E+09; expected = -2147483904.0; } // 12
-        float_as_double { value = -2.1474836E+09; expected = -2147483648.0; } // 13
-        float_as_double { value = -1.0; expected = -1.0; } // 14
-        float_as_double { value = 2.1474835E+09; expected = 2147483520.0; } // 15
-        float_as_double { value = 2.1474836E+09; expected = 2147483648.0; } // 16
-        float_as_double { value = 4.294967E+09; expected = 4294967040.0; } // 17
-        float_as_double { value = 4.2949673E+09; expected = 4294967296.0; } // 18
-        float_as_double { value = 9.2233715E+18; expected = 9.223371487098962E+18; } // 19
-        float_as_double { value = 9.223372E+18; expected = 9.223372036854776E+18; } // 20
-        float_as_double { value = 1.8446743E+19; expected = 1.8446742974197924E+19; } // 21
-        float_as_double { value = 1.8446744E+19; expected = 1.8446744073709552E+19; } // 22
+        float_as_double: [
+            new ConversionSweepFloatAsDouble { value: 0.0, expected: 0.0 }, // 0
+            new ConversionSweepFloatAsDouble { value: -0.0, expected: -0.0 }, // 1
+            new ConversionSweepFloatAsDouble { value: 0.1, expected: 0.10000000149011612 }, // 2
+            new ConversionSweepFloatAsDouble { value: 1.0, expected: 1.0 }, // 3
+            new ConversionSweepFloatAsDouble { value: -1.5, expected: -1.5 }, // 4
+            new ConversionSweepFloatAsDouble { value: 3.4028235E+38, expected: 3.4028234663852886E+38 }, // 5
+            new ConversionSweepFloatAsDouble { value: 1E-45, expected: 1.401298464324817E-45 }, // 6
+            new ConversionSweepFloatAsDouble { value: __INF, expected: __INF }, // 7
+            new ConversionSweepFloatAsDouble { value: -__INF, expected: -__INF }, // 8
+            new ConversionSweepFloatAsDouble { value: __NAN, nan: true }, // 9
+            new ConversionSweepFloatAsDouble { value: -9.223373E+18, expected: -9.223373136366404E+18 }, // 10
+            new ConversionSweepFloatAsDouble { value: -9.223372E+18, expected: -9.223372036854776E+18 }, // 11
+            new ConversionSweepFloatAsDouble { value: -2.147484E+09, expected: -2147483904.0 }, // 12
+            new ConversionSweepFloatAsDouble { value: -2.1474836E+09, expected: -2147483648.0 }, // 13
+            new ConversionSweepFloatAsDouble { value: -1.0, expected: -1.0 }, // 14
+            new ConversionSweepFloatAsDouble { value: 2.1474835E+09, expected: 2147483520.0 }, // 15
+            new ConversionSweepFloatAsDouble { value: 2.1474836E+09, expected: 2147483648.0 }, // 16
+            new ConversionSweepFloatAsDouble { value: 4.294967E+09, expected: 4294967040.0 }, // 17
+            new ConversionSweepFloatAsDouble { value: 4.2949673E+09, expected: 4294967296.0 }, // 18
+            new ConversionSweepFloatAsDouble { value: 9.2233715E+18, expected: 9.223371487098962E+18 }, // 19
+            new ConversionSweepFloatAsDouble { value: 9.223372E+18, expected: 9.223372036854776E+18 }, // 20
+            new ConversionSweepFloatAsDouble { value: 1.8446743E+19, expected: 1.8446742974197924E+19 }, // 21
+            new ConversionSweepFloatAsDouble { value: 1.8446744E+19, expected: 1.8446744073709552E+19 }, // 22
+        ],
     }
 
     expect return -1;
@@ -1146,32 +1206,34 @@ test ConversionSweep.first_wrong_float_as_double "every float value as double" {
 
 test ConversionSweep.first_wrong_double_as_int32 "every double value as int32" {
     receiver {
-        double_as_int32 { value = 0.0; expected = 0; } // 0
-        double_as_int32 { value = -0.0; expected = 0; } // 1
-        double_as_int32 { value = 0.1; expected = 0; } // 2
-        double_as_int32 { value = 1.0; expected = 1; } // 3
-        double_as_int32 { value = -1.5; expected = -1; } // 4
-        double_as_int32 { value = 1.7976931348623157E+308; expected = 2147483647; } // 5
-        double_as_int32 { value = 5E-324; expected = 0; } // 6
-        double_as_int32 { value = __INF; expected = 2147483647; } // 7
-        double_as_int32 { value = -__INF; expected = -2147483648; } // 8
-        double_as_int32 { value = __NAN; expected = 0; } // 9
-        double_as_int32 { value = -9.223372036854778E+18; expected = -2147483648; } // 10
-        double_as_int32 { value = -9.223372036854776E+18; expected = -2147483648; } // 11
-        double_as_int32 { value = -2147483649.0; expected = -2147483648; } // 12
-        double_as_int32 { value = -2147483648.0; expected = -2147483648; } // 13
-        double_as_int32 { value = -1.0; expected = -1; } // 14
-        double_as_int32 { value = 2147483647.9999998; expected = 2147483647; } // 15
-        double_as_int32 { value = 2147483648.0; expected = 2147483647; } // 16
-        double_as_int32 { value = 4294967295.9999995; expected = 2147483647; } // 17
-        double_as_int32 { value = 4294967296.0; expected = 2147483647; } // 18
-        double_as_int32 { value = 9.223372036854775E+18; expected = 2147483647; } // 19
-        double_as_int32 { value = 9.223372036854776E+18; expected = 2147483647; } // 20
-        double_as_int32 { value = 1.844674407370955E+19; expected = 2147483647; } // 21
-        double_as_int32 { value = 1.8446744073709552E+19; expected = 2147483647; } // 22
-        double_as_int32 { value = 3.4028234663852886E+38; expected = 2147483647; } // 23
-        double_as_int32 { value = 3.4028235677973362E+38; expected = 2147483647; } // 24
-        double_as_int32 { value = 3.4028235677973366E+38; expected = 2147483647; } // 25
+        double_as_int32: [
+            new ConversionSweepDoubleAsInt32 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepDoubleAsInt32 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepDoubleAsInt32 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepDoubleAsInt32 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepDoubleAsInt32 { value: -1.5, expected: -1 }, // 4
+            new ConversionSweepDoubleAsInt32 { value: 1.7976931348623157E+308, expected: 2147483647 }, // 5
+            new ConversionSweepDoubleAsInt32 { value: 5E-324, expected: 0 }, // 6
+            new ConversionSweepDoubleAsInt32 { value: __INF, expected: 2147483647 }, // 7
+            new ConversionSweepDoubleAsInt32 { value: -__INF, expected: -2147483648 }, // 8
+            new ConversionSweepDoubleAsInt32 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepDoubleAsInt32 { value: -9.223372036854778E+18, expected: -2147483648 }, // 10
+            new ConversionSweepDoubleAsInt32 { value: -9.223372036854776E+18, expected: -2147483648 }, // 11
+            new ConversionSweepDoubleAsInt32 { value: -2147483649.0, expected: -2147483648 }, // 12
+            new ConversionSweepDoubleAsInt32 { value: -2147483648.0, expected: -2147483648 }, // 13
+            new ConversionSweepDoubleAsInt32 { value: -1.0, expected: -1 }, // 14
+            new ConversionSweepDoubleAsInt32 { value: 2147483647.9999998, expected: 2147483647 }, // 15
+            new ConversionSweepDoubleAsInt32 { value: 2147483648.0, expected: 2147483647 }, // 16
+            new ConversionSweepDoubleAsInt32 { value: 4294967295.9999995, expected: 2147483647 }, // 17
+            new ConversionSweepDoubleAsInt32 { value: 4294967296.0, expected: 2147483647 }, // 18
+            new ConversionSweepDoubleAsInt32 { value: 9.223372036854775E+18, expected: 2147483647 }, // 19
+            new ConversionSweepDoubleAsInt32 { value: 9.223372036854776E+18, expected: 2147483647 }, // 20
+            new ConversionSweepDoubleAsInt32 { value: 1.844674407370955E+19, expected: 2147483647 }, // 21
+            new ConversionSweepDoubleAsInt32 { value: 1.8446744073709552E+19, expected: 2147483647 }, // 22
+            new ConversionSweepDoubleAsInt32 { value: 3.4028234663852886E+38, expected: 2147483647 }, // 23
+            new ConversionSweepDoubleAsInt32 { value: 3.4028235677973362E+38, expected: 2147483647 }, // 24
+            new ConversionSweepDoubleAsInt32 { value: 3.4028235677973366E+38, expected: 2147483647 }, // 25
+        ],
     }
 
     expect return -1;
@@ -1179,32 +1241,34 @@ test ConversionSweep.first_wrong_double_as_int32 "every double value as int32" {
 
 test ConversionSweep.first_wrong_double_as_int64 "every double value as int64" {
     receiver {
-        double_as_int64 { value = 0.0; expected = 0; } // 0
-        double_as_int64 { value = -0.0; expected = 0; } // 1
-        double_as_int64 { value = 0.1; expected = 0; } // 2
-        double_as_int64 { value = 1.0; expected = 1; } // 3
-        double_as_int64 { value = -1.5; expected = -1; } // 4
-        double_as_int64 { value = 1.7976931348623157E+308; expected = 9223372036854775807; } // 5
-        double_as_int64 { value = 5E-324; expected = 0; } // 6
-        double_as_int64 { value = __INF; expected = 9223372036854775807; } // 7
-        double_as_int64 { value = -__INF; expected = -9223372036854775808; } // 8
-        double_as_int64 { value = __NAN; expected = 0; } // 9
-        double_as_int64 { value = -9.223372036854778E+18; expected = -9223372036854775808; } // 10
-        double_as_int64 { value = -9.223372036854776E+18; expected = -9223372036854775808; } // 11
-        double_as_int64 { value = -2147483649.0; expected = -2147483649; } // 12
-        double_as_int64 { value = -2147483648.0; expected = -2147483648; } // 13
-        double_as_int64 { value = -1.0; expected = -1; } // 14
-        double_as_int64 { value = 2147483647.9999998; expected = 2147483647; } // 15
-        double_as_int64 { value = 2147483648.0; expected = 2147483648; } // 16
-        double_as_int64 { value = 4294967295.9999995; expected = 4294967295; } // 17
-        double_as_int64 { value = 4294967296.0; expected = 4294967296; } // 18
-        double_as_int64 { value = 9.223372036854775E+18; expected = 9223372036854774784; } // 19
-        double_as_int64 { value = 9.223372036854776E+18; expected = 9223372036854775807; } // 20
-        double_as_int64 { value = 1.844674407370955E+19; expected = 9223372036854775807; } // 21
-        double_as_int64 { value = 1.8446744073709552E+19; expected = 9223372036854775807; } // 22
-        double_as_int64 { value = 3.4028234663852886E+38; expected = 9223372036854775807; } // 23
-        double_as_int64 { value = 3.4028235677973362E+38; expected = 9223372036854775807; } // 24
-        double_as_int64 { value = 3.4028235677973366E+38; expected = 9223372036854775807; } // 25
+        double_as_int64: [
+            new ConversionSweepDoubleAsInt64 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepDoubleAsInt64 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepDoubleAsInt64 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepDoubleAsInt64 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepDoubleAsInt64 { value: -1.5, expected: -1 }, // 4
+            new ConversionSweepDoubleAsInt64 { value: 1.7976931348623157E+308, expected: 9223372036854775807 }, // 5
+            new ConversionSweepDoubleAsInt64 { value: 5E-324, expected: 0 }, // 6
+            new ConversionSweepDoubleAsInt64 { value: __INF, expected: 9223372036854775807 }, // 7
+            new ConversionSweepDoubleAsInt64 { value: -__INF, expected: -9223372036854775808 }, // 8
+            new ConversionSweepDoubleAsInt64 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepDoubleAsInt64 { value: -9.223372036854778E+18, expected: -9223372036854775808 }, // 10
+            new ConversionSweepDoubleAsInt64 { value: -9.223372036854776E+18, expected: -9223372036854775808 }, // 11
+            new ConversionSweepDoubleAsInt64 { value: -2147483649.0, expected: -2147483649 }, // 12
+            new ConversionSweepDoubleAsInt64 { value: -2147483648.0, expected: -2147483648 }, // 13
+            new ConversionSweepDoubleAsInt64 { value: -1.0, expected: -1 }, // 14
+            new ConversionSweepDoubleAsInt64 { value: 2147483647.9999998, expected: 2147483647 }, // 15
+            new ConversionSweepDoubleAsInt64 { value: 2147483648.0, expected: 2147483648 }, // 16
+            new ConversionSweepDoubleAsInt64 { value: 4294967295.9999995, expected: 4294967295 }, // 17
+            new ConversionSweepDoubleAsInt64 { value: 4294967296.0, expected: 4294967296 }, // 18
+            new ConversionSweepDoubleAsInt64 { value: 9.223372036854775E+18, expected: 9223372036854774784 }, // 19
+            new ConversionSweepDoubleAsInt64 { value: 9.223372036854776E+18, expected: 9223372036854775807 }, // 20
+            new ConversionSweepDoubleAsInt64 { value: 1.844674407370955E+19, expected: 9223372036854775807 }, // 21
+            new ConversionSweepDoubleAsInt64 { value: 1.8446744073709552E+19, expected: 9223372036854775807 }, // 22
+            new ConversionSweepDoubleAsInt64 { value: 3.4028234663852886E+38, expected: 9223372036854775807 }, // 23
+            new ConversionSweepDoubleAsInt64 { value: 3.4028235677973362E+38, expected: 9223372036854775807 }, // 24
+            new ConversionSweepDoubleAsInt64 { value: 3.4028235677973366E+38, expected: 9223372036854775807 }, // 25
+        ],
     }
 
     expect return -1;
@@ -1212,32 +1276,34 @@ test ConversionSweep.first_wrong_double_as_int64 "every double value as int64" {
 
 test ConversionSweep.first_wrong_double_as_uint32 "every double value as uint32" {
     receiver {
-        double_as_uint32 { value = 0.0; expected = 0; } // 0
-        double_as_uint32 { value = -0.0; expected = 0; } // 1
-        double_as_uint32 { value = 0.1; expected = 0; } // 2
-        double_as_uint32 { value = 1.0; expected = 1; } // 3
-        double_as_uint32 { value = -1.5; expected = 0; } // 4
-        double_as_uint32 { value = 1.7976931348623157E+308; expected = 4294967295; } // 5
-        double_as_uint32 { value = 5E-324; expected = 0; } // 6
-        double_as_uint32 { value = __INF; expected = 4294967295; } // 7
-        double_as_uint32 { value = -__INF; expected = 0; } // 8
-        double_as_uint32 { value = __NAN; expected = 0; } // 9
-        double_as_uint32 { value = -9.223372036854778E+18; expected = 0; } // 10
-        double_as_uint32 { value = -9.223372036854776E+18; expected = 0; } // 11
-        double_as_uint32 { value = -2147483649.0; expected = 0; } // 12
-        double_as_uint32 { value = -2147483648.0; expected = 0; } // 13
-        double_as_uint32 { value = -1.0; expected = 0; } // 14
-        double_as_uint32 { value = 2147483647.9999998; expected = 2147483647; } // 15
-        double_as_uint32 { value = 2147483648.0; expected = 2147483648; } // 16
-        double_as_uint32 { value = 4294967295.9999995; expected = 4294967295; } // 17
-        double_as_uint32 { value = 4294967296.0; expected = 4294967295; } // 18
-        double_as_uint32 { value = 9.223372036854775E+18; expected = 4294967295; } // 19
-        double_as_uint32 { value = 9.223372036854776E+18; expected = 4294967295; } // 20
-        double_as_uint32 { value = 1.844674407370955E+19; expected = 4294967295; } // 21
-        double_as_uint32 { value = 1.8446744073709552E+19; expected = 4294967295; } // 22
-        double_as_uint32 { value = 3.4028234663852886E+38; expected = 4294967295; } // 23
-        double_as_uint32 { value = 3.4028235677973362E+38; expected = 4294967295; } // 24
-        double_as_uint32 { value = 3.4028235677973366E+38; expected = 4294967295; } // 25
+        double_as_uint32: [
+            new ConversionSweepDoubleAsUint32 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepDoubleAsUint32 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepDoubleAsUint32 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepDoubleAsUint32 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepDoubleAsUint32 { value: -1.5, expected: 0 }, // 4
+            new ConversionSweepDoubleAsUint32 { value: 1.7976931348623157E+308, expected: 4294967295 }, // 5
+            new ConversionSweepDoubleAsUint32 { value: 5E-324, expected: 0 }, // 6
+            new ConversionSweepDoubleAsUint32 { value: __INF, expected: 4294967295 }, // 7
+            new ConversionSweepDoubleAsUint32 { value: -__INF, expected: 0 }, // 8
+            new ConversionSweepDoubleAsUint32 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepDoubleAsUint32 { value: -9.223372036854778E+18, expected: 0 }, // 10
+            new ConversionSweepDoubleAsUint32 { value: -9.223372036854776E+18, expected: 0 }, // 11
+            new ConversionSweepDoubleAsUint32 { value: -2147483649.0, expected: 0 }, // 12
+            new ConversionSweepDoubleAsUint32 { value: -2147483648.0, expected: 0 }, // 13
+            new ConversionSweepDoubleAsUint32 { value: -1.0, expected: 0 }, // 14
+            new ConversionSweepDoubleAsUint32 { value: 2147483647.9999998, expected: 2147483647 }, // 15
+            new ConversionSweepDoubleAsUint32 { value: 2147483648.0, expected: 2147483648 }, // 16
+            new ConversionSweepDoubleAsUint32 { value: 4294967295.9999995, expected: 4294967295 }, // 17
+            new ConversionSweepDoubleAsUint32 { value: 4294967296.0, expected: 4294967295 }, // 18
+            new ConversionSweepDoubleAsUint32 { value: 9.223372036854775E+18, expected: 4294967295 }, // 19
+            new ConversionSweepDoubleAsUint32 { value: 9.223372036854776E+18, expected: 4294967295 }, // 20
+            new ConversionSweepDoubleAsUint32 { value: 1.844674407370955E+19, expected: 4294967295 }, // 21
+            new ConversionSweepDoubleAsUint32 { value: 1.8446744073709552E+19, expected: 4294967295 }, // 22
+            new ConversionSweepDoubleAsUint32 { value: 3.4028234663852886E+38, expected: 4294967295 }, // 23
+            new ConversionSweepDoubleAsUint32 { value: 3.4028235677973362E+38, expected: 4294967295 }, // 24
+            new ConversionSweepDoubleAsUint32 { value: 3.4028235677973366E+38, expected: 4294967295 }, // 25
+        ],
     }
 
     expect return -1;
@@ -1245,32 +1311,34 @@ test ConversionSweep.first_wrong_double_as_uint32 "every double value as uint32"
 
 test ConversionSweep.first_wrong_double_as_uint64 "every double value as uint64" {
     receiver {
-        double_as_uint64 { value = 0.0; expected = 0; } // 0
-        double_as_uint64 { value = -0.0; expected = 0; } // 1
-        double_as_uint64 { value = 0.1; expected = 0; } // 2
-        double_as_uint64 { value = 1.0; expected = 1; } // 3
-        double_as_uint64 { value = -1.5; expected = 0; } // 4
-        double_as_uint64 { value = 1.7976931348623157E+308; expected = 18446744073709551615; } // 5
-        double_as_uint64 { value = 5E-324; expected = 0; } // 6
-        double_as_uint64 { value = __INF; expected = 18446744073709551615; } // 7
-        double_as_uint64 { value = -__INF; expected = 0; } // 8
-        double_as_uint64 { value = __NAN; expected = 0; } // 9
-        double_as_uint64 { value = -9.223372036854778E+18; expected = 0; } // 10
-        double_as_uint64 { value = -9.223372036854776E+18; expected = 0; } // 11
-        double_as_uint64 { value = -2147483649.0; expected = 0; } // 12
-        double_as_uint64 { value = -2147483648.0; expected = 0; } // 13
-        double_as_uint64 { value = -1.0; expected = 0; } // 14
-        double_as_uint64 { value = 2147483647.9999998; expected = 2147483647; } // 15
-        double_as_uint64 { value = 2147483648.0; expected = 2147483648; } // 16
-        double_as_uint64 { value = 4294967295.9999995; expected = 4294967295; } // 17
-        double_as_uint64 { value = 4294967296.0; expected = 4294967296; } // 18
-        double_as_uint64 { value = 9.223372036854775E+18; expected = 9223372036854774784; } // 19
-        double_as_uint64 { value = 9.223372036854776E+18; expected = 9223372036854775808; } // 20
-        double_as_uint64 { value = 1.844674407370955E+19; expected = 18446744073709549568; } // 21
-        double_as_uint64 { value = 1.8446744073709552E+19; expected = 18446744073709551615; } // 22
-        double_as_uint64 { value = 3.4028234663852886E+38; expected = 18446744073709551615; } // 23
-        double_as_uint64 { value = 3.4028235677973362E+38; expected = 18446744073709551615; } // 24
-        double_as_uint64 { value = 3.4028235677973366E+38; expected = 18446744073709551615; } // 25
+        double_as_uint64: [
+            new ConversionSweepDoubleAsUint64 { value: 0.0, expected: 0 }, // 0
+            new ConversionSweepDoubleAsUint64 { value: -0.0, expected: 0 }, // 1
+            new ConversionSweepDoubleAsUint64 { value: 0.1, expected: 0 }, // 2
+            new ConversionSweepDoubleAsUint64 { value: 1.0, expected: 1 }, // 3
+            new ConversionSweepDoubleAsUint64 { value: -1.5, expected: 0 }, // 4
+            new ConversionSweepDoubleAsUint64 { value: 1.7976931348623157E+308, expected: 18446744073709551615 }, // 5
+            new ConversionSweepDoubleAsUint64 { value: 5E-324, expected: 0 }, // 6
+            new ConversionSweepDoubleAsUint64 { value: __INF, expected: 18446744073709551615 }, // 7
+            new ConversionSweepDoubleAsUint64 { value: -__INF, expected: 0 }, // 8
+            new ConversionSweepDoubleAsUint64 { value: __NAN, expected: 0 }, // 9
+            new ConversionSweepDoubleAsUint64 { value: -9.223372036854778E+18, expected: 0 }, // 10
+            new ConversionSweepDoubleAsUint64 { value: -9.223372036854776E+18, expected: 0 }, // 11
+            new ConversionSweepDoubleAsUint64 { value: -2147483649.0, expected: 0 }, // 12
+            new ConversionSweepDoubleAsUint64 { value: -2147483648.0, expected: 0 }, // 13
+            new ConversionSweepDoubleAsUint64 { value: -1.0, expected: 0 }, // 14
+            new ConversionSweepDoubleAsUint64 { value: 2147483647.9999998, expected: 2147483647 }, // 15
+            new ConversionSweepDoubleAsUint64 { value: 2147483648.0, expected: 2147483648 }, // 16
+            new ConversionSweepDoubleAsUint64 { value: 4294967295.9999995, expected: 4294967295 }, // 17
+            new ConversionSweepDoubleAsUint64 { value: 4294967296.0, expected: 4294967296 }, // 18
+            new ConversionSweepDoubleAsUint64 { value: 9.223372036854775E+18, expected: 9223372036854774784 }, // 19
+            new ConversionSweepDoubleAsUint64 { value: 9.223372036854776E+18, expected: 9223372036854775808 }, // 20
+            new ConversionSweepDoubleAsUint64 { value: 1.844674407370955E+19, expected: 18446744073709549568 }, // 21
+            new ConversionSweepDoubleAsUint64 { value: 1.8446744073709552E+19, expected: 18446744073709551615 }, // 22
+            new ConversionSweepDoubleAsUint64 { value: 3.4028234663852886E+38, expected: 18446744073709551615 }, // 23
+            new ConversionSweepDoubleAsUint64 { value: 3.4028235677973362E+38, expected: 18446744073709551615 }, // 24
+            new ConversionSweepDoubleAsUint64 { value: 3.4028235677973366E+38, expected: 18446744073709551615 }, // 25
+        ],
     }
 
     expect return -1;
@@ -1278,32 +1346,34 @@ test ConversionSweep.first_wrong_double_as_uint64 "every double value as uint64"
 
 test ConversionSweep.first_wrong_double_as_float "every double value as float" {
     receiver {
-        double_as_float { value = 0.0; expected = 0.0; } // 0
-        double_as_float { value = -0.0; expected = -0.0; } // 1
-        double_as_float { value = 0.1; expected = 0.1; } // 2
-        double_as_float { value = 1.0; expected = 1.0; } // 3
-        double_as_float { value = -1.5; expected = -1.5; } // 4
-        double_as_float { value = 1.7976931348623157E+308; expected = __INF; } // 5
-        double_as_float { value = 5E-324; expected = 0.0; } // 6
-        double_as_float { value = __INF; expected = __INF; } // 7
-        double_as_float { value = -__INF; expected = -__INF; } // 8
-        double_as_float { value = __NAN; nan = true; } // 9
-        double_as_float { value = -9.223372036854778E+18; expected = -9.223372E+18; } // 10
-        double_as_float { value = -9.223372036854776E+18; expected = -9.223372E+18; } // 11
-        double_as_float { value = -2147483649.0; expected = -2.1474836E+09; } // 12
-        double_as_float { value = -2147483648.0; expected = -2.1474836E+09; } // 13
-        double_as_float { value = -1.0; expected = -1.0; } // 14
-        double_as_float { value = 2147483647.9999998; expected = 2.1474836E+09; } // 15
-        double_as_float { value = 2147483648.0; expected = 2.1474836E+09; } // 16
-        double_as_float { value = 4294967295.9999995; expected = 4.2949673E+09; } // 17
-        double_as_float { value = 4294967296.0; expected = 4.2949673E+09; } // 18
-        double_as_float { value = 9.223372036854775E+18; expected = 9.223372E+18; } // 19
-        double_as_float { value = 9.223372036854776E+18; expected = 9.223372E+18; } // 20
-        double_as_float { value = 1.844674407370955E+19; expected = 1.8446744E+19; } // 21
-        double_as_float { value = 1.8446744073709552E+19; expected = 1.8446744E+19; } // 22
-        double_as_float { value = 3.4028234663852886E+38; expected = 3.4028235E+38; } // 23
-        double_as_float { value = 3.4028235677973362E+38; expected = 3.4028235E+38; } // 24
-        double_as_float { value = 3.4028235677973366E+38; expected = __INF; } // 25
+        double_as_float: [
+            new ConversionSweepDoubleAsFloat { value: 0.0, expected: 0.0 }, // 0
+            new ConversionSweepDoubleAsFloat { value: -0.0, expected: -0.0 }, // 1
+            new ConversionSweepDoubleAsFloat { value: 0.1, expected: 0.1 }, // 2
+            new ConversionSweepDoubleAsFloat { value: 1.0, expected: 1.0 }, // 3
+            new ConversionSweepDoubleAsFloat { value: -1.5, expected: -1.5 }, // 4
+            new ConversionSweepDoubleAsFloat { value: 1.7976931348623157E+308, expected: __INF }, // 5
+            new ConversionSweepDoubleAsFloat { value: 5E-324, expected: 0.0 }, // 6
+            new ConversionSweepDoubleAsFloat { value: __INF, expected: __INF }, // 7
+            new ConversionSweepDoubleAsFloat { value: -__INF, expected: -__INF }, // 8
+            new ConversionSweepDoubleAsFloat { value: __NAN, nan: true }, // 9
+            new ConversionSweepDoubleAsFloat { value: -9.223372036854778E+18, expected: -9.223372E+18 }, // 10
+            new ConversionSweepDoubleAsFloat { value: -9.223372036854776E+18, expected: -9.223372E+18 }, // 11
+            new ConversionSweepDoubleAsFloat { value: -2147483649.0, expected: -2.1474836E+09 }, // 12
+            new ConversionSweepDoubleAsFloat { value: -2147483648.0, expected: -2.1474836E+09 }, // 13
+            new ConversionSweepDoubleAsFloat { value: -1.0, expected: -1.0 }, // 14
+            new ConversionSweepDoubleAsFloat { value: 2147483647.9999998, expected: 2.1474836E+09 }, // 15
+            new ConversionSweepDoubleAsFloat { value: 2147483648.0, expected: 2.1474836E+09 }, // 16
+            new ConversionSweepDoubleAsFloat { value: 4294967295.9999995, expected: 4.2949673E+09 }, // 17
+            new ConversionSweepDoubleAsFloat { value: 4294967296.0, expected: 4.2949673E+09 }, // 18
+            new ConversionSweepDoubleAsFloat { value: 9.223372036854775E+18, expected: 9.223372E+18 }, // 19
+            new ConversionSweepDoubleAsFloat { value: 9.223372036854776E+18, expected: 9.223372E+18 }, // 20
+            new ConversionSweepDoubleAsFloat { value: 1.844674407370955E+19, expected: 1.8446744E+19 }, // 21
+            new ConversionSweepDoubleAsFloat { value: 1.8446744073709552E+19, expected: 1.8446744E+19 }, // 22
+            new ConversionSweepDoubleAsFloat { value: 3.4028234663852886E+38, expected: 3.4028235E+38 }, // 23
+            new ConversionSweepDoubleAsFloat { value: 3.4028235677973362E+38, expected: 3.4028235E+38 }, // 24
+            new ConversionSweepDoubleAsFloat { value: 3.4028235677973366E+38, expected: __INF }, // 25
+        ],
     }
 
     expect return -1;
@@ -1311,32 +1381,34 @@ test ConversionSweep.first_wrong_double_as_float "every double value as float" {
 
 test ConversionSweep.first_wrong_double_as_double "every double value as double" {
     receiver {
-        double_as_double { value = 0.0; expected = 0.0; } // 0
-        double_as_double { value = -0.0; expected = -0.0; } // 1
-        double_as_double { value = 0.1; expected = 0.1; } // 2
-        double_as_double { value = 1.0; expected = 1.0; } // 3
-        double_as_double { value = -1.5; expected = -1.5; } // 4
-        double_as_double { value = 1.7976931348623157E+308; expected = 1.7976931348623157E+308; } // 5
-        double_as_double { value = 5E-324; expected = 5E-324; } // 6
-        double_as_double { value = __INF; expected = __INF; } // 7
-        double_as_double { value = -__INF; expected = -__INF; } // 8
-        double_as_double { value = __NAN; nan = true; } // 9
-        double_as_double { value = -9.223372036854778E+18; expected = -9.223372036854778E+18; } // 10
-        double_as_double { value = -9.223372036854776E+18; expected = -9.223372036854776E+18; } // 11
-        double_as_double { value = -2147483649.0; expected = -2147483649.0; } // 12
-        double_as_double { value = -2147483648.0; expected = -2147483648.0; } // 13
-        double_as_double { value = -1.0; expected = -1.0; } // 14
-        double_as_double { value = 2147483647.9999998; expected = 2147483647.9999998; } // 15
-        double_as_double { value = 2147483648.0; expected = 2147483648.0; } // 16
-        double_as_double { value = 4294967295.9999995; expected = 4294967295.9999995; } // 17
-        double_as_double { value = 4294967296.0; expected = 4294967296.0; } // 18
-        double_as_double { value = 9.223372036854775E+18; expected = 9.223372036854775E+18; } // 19
-        double_as_double { value = 9.223372036854776E+18; expected = 9.223372036854776E+18; } // 20
-        double_as_double { value = 1.844674407370955E+19; expected = 1.844674407370955E+19; } // 21
-        double_as_double { value = 1.8446744073709552E+19; expected = 1.8446744073709552E+19; } // 22
-        double_as_double { value = 3.4028234663852886E+38; expected = 3.4028234663852886E+38; } // 23
-        double_as_double { value = 3.4028235677973362E+38; expected = 3.4028235677973362E+38; } // 24
-        double_as_double { value = 3.4028235677973366E+38; expected = 3.4028235677973366E+38; } // 25
+        double_as_double: [
+            new ConversionSweepDoubleAsDouble { value: 0.0, expected: 0.0 }, // 0
+            new ConversionSweepDoubleAsDouble { value: -0.0, expected: -0.0 }, // 1
+            new ConversionSweepDoubleAsDouble { value: 0.1, expected: 0.1 }, // 2
+            new ConversionSweepDoubleAsDouble { value: 1.0, expected: 1.0 }, // 3
+            new ConversionSweepDoubleAsDouble { value: -1.5, expected: -1.5 }, // 4
+            new ConversionSweepDoubleAsDouble { value: 1.7976931348623157E+308, expected: 1.7976931348623157E+308 }, // 5
+            new ConversionSweepDoubleAsDouble { value: 5E-324, expected: 5E-324 }, // 6
+            new ConversionSweepDoubleAsDouble { value: __INF, expected: __INF }, // 7
+            new ConversionSweepDoubleAsDouble { value: -__INF, expected: -__INF }, // 8
+            new ConversionSweepDoubleAsDouble { value: __NAN, nan: true }, // 9
+            new ConversionSweepDoubleAsDouble { value: -9.223372036854778E+18, expected: -9.223372036854778E+18 }, // 10
+            new ConversionSweepDoubleAsDouble { value: -9.223372036854776E+18, expected: -9.223372036854776E+18 }, // 11
+            new ConversionSweepDoubleAsDouble { value: -2147483649.0, expected: -2147483649.0 }, // 12
+            new ConversionSweepDoubleAsDouble { value: -2147483648.0, expected: -2147483648.0 }, // 13
+            new ConversionSweepDoubleAsDouble { value: -1.0, expected: -1.0 }, // 14
+            new ConversionSweepDoubleAsDouble { value: 2147483647.9999998, expected: 2147483647.9999998 }, // 15
+            new ConversionSweepDoubleAsDouble { value: 2147483648.0, expected: 2147483648.0 }, // 16
+            new ConversionSweepDoubleAsDouble { value: 4294967295.9999995, expected: 4294967295.9999995 }, // 17
+            new ConversionSweepDoubleAsDouble { value: 4294967296.0, expected: 4294967296.0 }, // 18
+            new ConversionSweepDoubleAsDouble { value: 9.223372036854775E+18, expected: 9.223372036854775E+18 }, // 19
+            new ConversionSweepDoubleAsDouble { value: 9.223372036854776E+18, expected: 9.223372036854776E+18 }, // 20
+            new ConversionSweepDoubleAsDouble { value: 1.844674407370955E+19, expected: 1.844674407370955E+19 }, // 21
+            new ConversionSweepDoubleAsDouble { value: 1.8446744073709552E+19, expected: 1.8446744073709552E+19 }, // 22
+            new ConversionSweepDoubleAsDouble { value: 3.4028234663852886E+38, expected: 3.4028234663852886E+38 }, // 23
+            new ConversionSweepDoubleAsDouble { value: 3.4028235677973362E+38, expected: 3.4028235677973362E+38 }, // 24
+            new ConversionSweepDoubleAsDouble { value: 3.4028235677973366E+38, expected: 3.4028235677973366E+38 }, // 25
+        ],
     }
 
     expect return -1;

@@ -42,8 +42,8 @@ public partial class CliTests
 
         test InvoiceItem.net "one comes off what the other source adds up" {
             receiver {
-                quantity = 2;
-                unit_price_cents = 5;
+                quantity: 2,
+                unit_price_cents: 5,
             }
 
             expect return 9;
@@ -192,8 +192,8 @@ public partial class CliTests
 
                 test InvoiceItem.gross "quantity times unit price" {
                     receiver {
-                        quantity = 2;
-                        unit_price_cents = 5;
+                        quantity: 2,
+                        unit_price_cents: 5,
                     }
 
                     expect return 10;

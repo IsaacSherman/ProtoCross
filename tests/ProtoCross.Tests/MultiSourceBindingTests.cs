@@ -85,7 +85,7 @@ public class MultiSourceBindingTests
                 import proto "invoice.proto";
 
                 test InvoiceItem.gross "multiplies" {
-                    receiver { quantity = 2; unit_price_cents = 3; }
+                    receiver { quantity: 2, unit_price_cents: 3 }
                     expect return 6;
                 }
                 """));

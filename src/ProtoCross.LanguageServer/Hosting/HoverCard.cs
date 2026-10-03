@@ -78,7 +78,7 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutExpression(model, offset);
+        return card ?? AboutAppend(model, offset) ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -199,6 +199,36 @@ internal static class HoverCard
         {
             yield return paragraph;
         }
+    }
+
+    /// <summary>What an append does, where the caret is on its <c>append</c>.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>append</c> is the language's, and names no symbol (spec 22.2), so the symbol arm has nothing
+    /// to say about it. Neither does the expression arm: an append is a statement, with no type to
+    /// show. What it is, is the method it reads as, and that is the card.
+    /// </para>
+    /// <para>
+    /// On the name only, because the card's range is the name, and a range that does not hold the
+    /// position asked about is one a client cannot place. The caret on what it adds to, or inside the
+    /// value it adds, is on an expression of its own, which the arm after this one describes.
+    /// </para>
+    /// </remarks>
+    private static Hover? AboutAppend(SemanticModel model, int offset)
+    {
+        if (model.IrAt(offset)?.Node is not IrAppend { Collection.Type: RepeatedType collection } append
+            || !EditorPositions.Covers(append.NameSpan, offset))
+        {
+            return null;
+        }
+
+        return Card(
+            [
+                Signature(IrAppend.DisplayNameFor(collection)),
+                "Adds `value` to the end. A message is added as a copy of its own, unless it is a literal "
+                    + "(spec 14.1).",
+            ],
+            append.NameSpan);
     }
 
     /// <summary>What the innermost expression covering the caret is, where no name is.</summary>
@@ -358,17 +388,27 @@ internal static class HoverCard
 
     /// <summary>The field descriptor the IR node under this name carries.</summary>
     /// <remarks>
+    /// <para>
     /// The three shapes a field name can be written in and be resolved: read through a receiver or
-    /// bare, tested by <c>has</c>, and set in a test fixture. Asked at the start of the name the
-    /// binder recorded rather than at the caret, so that a caret on a dot or in the whitespace of a
-    /// member access cannot reach a different field than the one this card is about.
+    /// bare, tested by <c>has</c>, and set in a message literal or a fixture. Asked at the start of the
+    /// name the binder recorded rather than at the caret, so that a caret on a dot or in the whitespace
+    /// of a member access cannot reach a different field than the one this card is about.
+    /// </para>
+    /// <para>
+    /// The innermost of the three, because they nest now that a literal is an expression: in
+    /// <c>new T { inner: x }.count</c> the name <c>inner</c> is inside the access of <c>count</c>, and
+    /// asking for the nearest access first would describe the wrong field.
+    /// </para>
     /// </remarks>
     private static FieldDescriptor? FieldAt(SemanticModel model, DeclaredSymbol symbol)
-        => model.IrAt(symbol.Span.Start.Offset) is not { } at
-            ? null
-            : at.Enclosing<IrFieldAccess>()?.Field
-                ?? at.Enclosing<IrFieldPresence>()?.Field
-                ?? at.Enclosing<IrTestFieldValue>()?.Field;
+        => model.IrAt(symbol.Span.Start.Offset)?.Path
+            .LastOrDefault(node => node is IrFieldAccess or IrFieldPresence or IrFieldInitializer) switch
+            {
+                IrFieldAccess access => access.Field,
+                IrFieldPresence presence => presence.Field,
+                IrFieldInitializer initializer => initializer.Field,
+                _ => null,
+            };
 
     /// <inheritdoc cref="FieldAt"/>
     private static EnumValueDescriptor? EnumValueAt(SemanticModel model, DeclaredSymbol symbol)

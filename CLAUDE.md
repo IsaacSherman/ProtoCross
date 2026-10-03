@@ -17,16 +17,18 @@ dotnet build ProtoCross.slnx
 dotnet test ProtoCross.slnx
 ```
 
-The full suite takes about two minutes because it builds and runs real generated projects. Filter
-while iterating (`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered run is the gate.
-`protoc`, the .NET SDK, and a C++ toolchain must be on the machine.
+The full suite takes several minutes because it builds and runs real generated projects, and longer
+with the soak; the README's Building section states the measured times. Filter while iterating
+(`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered run is the gate. `protoc`, the .NET
+SDK, and a C++ toolchain must be on the machine.
 
 Three checks are switched off by default, because none is what a person mid-iteration wants to wait
 for: `PROTOCROSS_SWEEP=1` runs the whole-corpus completion sweep, `PROTOCROSS_SOAK=1` runs the long
 editing soak, and `PROTOCROSS_BENCH=1` measures the latency budgets (which also needs `-c Release`
 and `DOTNET_gcServer=0`, and refuses to run without either: the suite runs the server garbage
 collector, and the language server ships with the workstation one).
-`.github/workflows/ci.yml` turns the first two on for every pull request to `main`, so what a local
+`.github/workflows/ci.yml` turns the first two on for every pull request to `main` or `sprints/**`
+that changes more than Markdown, and for such pushes to `main`, so what a local
 run skips is still checked before anything merges — and `report.ps1` fails the job when one of those
 is skipped there, since a gate that quietly stays shut looks exactly like a green build. CI builds
 and tests in Release, so a failure seen only there reproduces with `-c Release` on both commands.
@@ -177,19 +179,26 @@ alternative rejected, and what did **not** move. Bullets only for a genuine list
 PR bodies follow the same voice with `## Why`, `## What`, `## Compatibility`, `## Tests` headings.
 Compatibility is not optional: say what stayed byte-for-byte identical and how that was checked.
 
-**Open every pull request as a draft, and mark it ready only once it merges cleanly into its base.**
-The base is `main` for a sprint, and the sprint branch an issue branch was cut from for everything
-else. Not a formality — it is what the CI triggers are built around. A draft is not tested, so a
-branch that still has conflicts costs nothing while it is being rebased; marking it ready is the
-event that asks for the full suite, both gated switches thrown. Reversing that order spends a run on
-a branch that cannot merge, and then spends another on the version that can.
+**Open every pull request as a draft, and keep it a draft until the owner says to merge it.** The
+base is `main` for a sprint, and the sprint branch an issue branch was cut from for everything else.
+Not a formality — it is what the CI triggers are built around, and CI is paid for by the minute. A
+draft is not tested, so a branch still being rebased, reviewed and fixed costs nothing; marking it
+ready is the event that asks for the full suite, both gated switches thrown. Until the owner asks
+for that, the suite is run locally. Marking a branch ready early spends a run on code that is still
+going to change, and then spends another on the version that lands.
 
 So the sequence is: open as draft, rebase onto the base until
 `git merge-base --is-ancestor <base> HEAD` succeeds — the branch contains everything on its base, so
-there is nothing left to conflict — run the suite locally, then mark ready. If a conflict appears
-after that, because someone else merged first, put it back into draft, resolve, and mark it ready
-again. The green check has to describe the code that is going to land, and a conflict resolved after
-the check means it no longer does.
+there is nothing left to conflict — and run the suite locally. Then stop, and say it is ready for the
+owner. Mark it ready only when the owner says to merge it. If a conflict appears after that, because
+someone else merged first, put it back into draft, resolve, and mark it ready again. The green check
+has to describe the code that is going to land, and a conflict resolved after the check means it no
+longer does.
+
+**Markdown-only changes skip the build and test suites.** Documentation and workflow notes are checked
+locally, together with any test that reads them, and are never the reason to mark a pull request
+ready or to rerun a check. When the owner asks to merge, mark it ready as usual: the required checks
+then pass after checking the changed paths. Any change beyond Markdown still runs the full suites.
 
 **Rebase onto the base; never merge the base into a branch.** A rebase replays each commit, so a
 conflict is resolved inside an ordinary commit that the pull request's diff shows. A merge buries the

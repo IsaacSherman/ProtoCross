@@ -26,7 +26,7 @@ namespace ProtoCross.Tests;
 /// observable at all.
 /// </para>
 /// </remarks>
-public class SchemaCompletionTests
+public partial class SchemaCompletionTests
 {
     private const string Source =
         """
@@ -293,14 +293,102 @@ public class SchemaCompletionTests
 
     /// <summary>
     /// There is no member access into a repetition -- only 'for x in ...' -- so the element type's
-    /// members are names that cannot be written where the caret is.
+    /// members are names that cannot be written where the caret is. Its one method is (spec 14.1).
     /// </summary>
     [Fact]
-    public async Task ADotAfterARepeatedFieldOffersNothingRatherThanTheElementTypesMembers()
+    public async Task ADotAfterARepeatedFieldOffersAppendRatherThanTheElementTypesMembers()
     {
         var offered = await OfferedAsync(
-            "extend Outer {\n    fn f() -> int64 {\n        return nested_values.\n    }\n}\n",
-            "return nested_values.");
+            "extend Outer {\n    mut fn f() {\n        nested_values.\n    }\n}\n",
+            "nested_values.");
+
+        var append = Assert.Single(offered);
+        Assert.Equal("append()", append.Label);
+        Assert.Equal(CompletionItemKind.Method, append.Kind);
+        Assert.Equal("mut fn append(value: protocross.tests.Outer.Nested) -> void", append.Detail);
+    }
+
+    /// <summary>
+    /// An append has no value, so it is offered only where it stands as a statement: anywhere else it
+    /// is refused, and would be the one item in the list.
+    /// </summary>
+    [Theory]
+    [InlineData("    fn f() -> int64 {\n        return nested_values.\n    }\n", "return nested_values.")]
+    [InlineData("    mut fn f() {\n        var added = nested_values.\n    }\n", "added = nested_values.")]
+    public async Task AppendIsNotOfferedInsideAnExpression(string method, string marker)
+    {
+        Assert.Empty(await OfferedAsync("extend Outer {\n" + method + "}\n", marker));
+    }
+
+    /// <summary>
+    /// Before <c>.append</c>, what may stand is what has one: a repeated value, bare or after a dot --
+    /// and not a message that declares no method of that name, nor a number.
+    /// </summary>
+    [Theory]
+    [InlineData("        nested_values.append(nested);\n", "nested_val")]
+    [InlineData("        var mine: Outer = new Outer { };\n        mine.nested_values.append(nested);\n", "mine.nested_val")]
+    public async Task ARepeatedFieldIsOfferedWhereAppendIsTakenOffIt(string body, string marker)
+    {
+        var offered = Labels(await OfferedAsync("extend Outer {\n    mut fn f() {\n" + body + "    }\n}\n", marker));
+
+        Assert.Contains("nested_values", offered);
+        Assert.DoesNotContain("inner", offered);
+        Assert.DoesNotContain("count", offered);
+    }
+
+    /// <summary>A message that declares a method called <c>append</c> has one too, and is offered there.</summary>
+    [Fact]
+    public async Task AMessageDeclaringAppendIsOfferedWhereAppendIsTakenOffIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend protocross.tests.Outer.Inner {\n    mut fn append(more: int64) {\n    }\n}\n\n"
+                + "extend Outer {\n    mut fn f() {\n        nested_values.append(nested);\n    }\n}\n",
+            "nested_val"));
+
+        Assert.Contains("nested_values", offered);
+        Assert.Contains("inner", offered);
+    }
+
+    /// <summary>
+    /// Before any member but <c>append</c>, a repeated value is the receiver of nothing it has, so it
+    /// would be offered only to be refused, as <c>nested_values.deep</c> is.
+    /// </summary>
+    [Fact]
+    public async Task ARepeatedFieldIsNotOfferedWhereAnotherMemberIsTakenOffIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend Outer {\n    fn f() -> int64 {\n        if has inner {\n            var d = inner.deep;\n"
+                + "        }\n\n        return 0;\n    }\n}\n",
+            "var d = inn"));
+
+        Assert.Contains("inner", offered);
+        Assert.DoesNotContain("nested_values", offered);
+    }
+
+    /// <summary>
+    /// Completion asked again on an append already written offers it again, as it offers a field's
+    /// siblings on a field already written, and without parentheses, which are already there.
+    /// </summary>
+    [Fact]
+    public async Task CompletionOnAnAppendAlreadyWrittenOffersIt()
+    {
+        var offered = await OfferedAsync(
+            "extend Outer {\n    mut fn f() {\n        nested_values.append(nested);\n    }\n}\n",
+            "nested_values.app");
+
+        Assert.Equal("append", Assert.Single(offered).Label);
+    }
+
+    /// <summary>
+    /// An append has no value, so nothing is taken off one, and <c>has</c> asks about a field, never a
+    /// method: where either goes, a repeated value offers nothing at all.
+    /// </summary>
+    [Theory]
+    [InlineData("        var x = nested_values..count;\n", "nested_values.")]
+    [InlineData("        var x = has nested_values.;\n", "has nested_values.")]
+    public async Task ADotAfterARepeatedFieldOffersNothingWhereAReceiverOrAFieldGoes(string body, string before)
+    {
+        var offered = await OfferedAsync("extend Outer {\n    mut fn f() {\n" + body + "    }\n}\n", before);
 
         Assert.Empty(offered);
     }
@@ -881,7 +969,7 @@ public class SchemaCompletionTests
         + "\n"
         + "test Outer.scaled \"scales\" {\n"
         + "    receiver {\n"
-        + "        count = 2;\n"
+        + "        count: 2,\n"
         + "    }\n"
         + "    arg factor = 3;\n"
         + "    expect return 6;\n"
@@ -951,7 +1039,7 @@ public class SchemaCompletionTests
     [Fact]
     public async Task ATestFixtureOffersTheFieldsOfTheMessageBeingBuilt()
     {
-        var offered = await OfferedAsync(Fixtured, "        count = 2;\n");
+        var offered = await OfferedAsync(Fixtured, "        count: 2,\n");
 
         Assert.Contains("label", Labels(offered));
         Assert.Contains("inner", Labels(offered));
@@ -962,7 +1050,7 @@ public class SchemaCompletionTests
     [Fact]
     public async Task AFieldAlreadySetInAFixtureIsNotOfferedAgain()
     {
-        var offered = await OfferedAsync(Fixtured, "        count = 2;\n");
+        var offered = await OfferedAsync(Fixtured, "        count: 2,\n");
 
         Assert.DoesNotContain("count", Labels(offered));
     }
@@ -973,9 +1061,9 @@ public class SchemaCompletionTests
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 { return count; }\n}\n"
-                + "\ntest Mapped.f \"counts\" {\n    receiver {\n        count = 1;\n    }\n"
+                + "\ntest Mapped.f \"counts\" {\n    receiver {\n        count: 1,\n    }\n"
                 + "    expect return 1;\n}\n",
-            "        count = 1;\n");
+            "        count: 1,\n");
 
         Assert.DoesNotContain("tags", Labels(offered));
     }
@@ -1133,7 +1221,7 @@ public class SchemaCompletionTests
         + "extend Outer {\n    fn scaled(factor: int64) -> int64 { return count * factor; }\n\n"
         + "    fn plain() -> int64 { return count; }\n}\n\n"
         + "test Outer.plain \"a target names a message and one of its methods\" {\n"
-        + "    receiver {\n        count = 2;\n    }\n    expect return 2;\n}\n";
+        + "    receiver {\n        count: 2,\n    }\n    expect return 2;\n}\n";
 
     [Fact]
     public async Task ATestTargetOffersTheMethodsOfTheReceiverItAlreadyNames()
@@ -1233,7 +1321,7 @@ public class SchemaCompletionTests
         var carets = new[]
         {
             After(text, "extend Out"),
-            After(text, "        count = 2;\n"),
+            After(text, "        count: 2,\n"),
             After(text, "arg fact"),
 
             // Inside the expectation, which is neither a fixture field nor an argument, and where
@@ -1425,8 +1513,8 @@ public class SchemaCompletionTests
     {
         var offered = await OfferedAsync(
             "extend Outer { fn f() -> int64 { return count; } }\n"
-                + "test Outer.f \"value\" { receiver { count = true; } expect return 1; }",
-            "count = tr");
+                + "test Outer.f \"value\" { receiver { count: true } expect return 1; }",
+            "count: tr");
 
         Assert.True(
             offered.All(item => item.Kind != CompletionItemKind.Field),

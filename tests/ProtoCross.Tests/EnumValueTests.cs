@@ -154,7 +154,7 @@ public class EnumValueTests
 
             test Outer.f "an enum field takes a named value" {
                 receiver {
-                    status = TopLevelStatus.TOP_LEVEL_STATUS_OK;
+                    status: TopLevelStatus.TOP_LEVEL_STATUS_OK,
                 }
 
                 expect return true;
@@ -178,7 +178,7 @@ public class EnumValueTests
 
             test Outer.f "an enum field rejects a value from another enum" {
                 receiver {
-                    status = Nested.NESTED_SOME;
+                    status: Nested.NESTED_SOME,
                 }
 
                 expect return 0;
@@ -186,31 +186,6 @@ public class EnumValueTests
             """);
 
         Assert.Contains(result.Diagnostics, d => d.Code == "PC0063");
-    }
-
-    /// <summary>A message field still demands a nested block rather than an expression.</summary>
-    [Fact]
-    public void StillRequiresANestedBlockForAMessageFixtureField()
-    {
-        var result = Compile(
-            FixturePrelude +
-            """
-            extend Outer {
-                fn f() -> int64 {
-                    return count;
-                }
-            }
-
-            test Outer.f "a message field cannot be set from an expression" {
-                receiver {
-                    inner = 1;
-                }
-
-                expect return 0;
-            }
-            """);
-
-        Assert.Contains(result.Diagnostics, d => d.Code == "PC0062");
     }
 
     [Fact]
@@ -227,7 +202,7 @@ public class EnumValueTests
 
             test Outer.f "a named value is a valid expectation" {
                 receiver {
-                    status = TopLevelStatus.OTHER_RESULT;
+                    status: TopLevelStatus.OTHER_RESULT,
                 }
 
                 expect return TopLevelStatus.OTHER_RESULT;

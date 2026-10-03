@@ -30,7 +30,7 @@ public partial class BackendTests
                 }
 
                 test google.protobuf.Timestamp.{{method}} "a container's name stays callable" {
-                    receiver { seconds = 40; }
+                    receiver { seconds: 40 }
                     expect return 41;
                 }
                 """));

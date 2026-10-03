@@ -13,7 +13,7 @@ namespace ProtoCross.Tests;
 /// The conformance corpus covers what a guarded read <em>does</em> in both backends. These cover
 /// what the compiler refuses, which a vector cannot: a vector has to compile.
 /// </remarks>
-public class PresenceTests
+public partial class PresenceTests
 {
     private const string Prelude = "import proto \"fixtures.proto\";\n";
     private const string ConformancePrelude = "import proto \"presence.proto\";\n";
@@ -24,12 +24,16 @@ public class PresenceTests
     private static CompilationResult Compile(string source)
         => Compilation.Compile(TestPaths.WriteTempScript(source), [TestPaths.FixtureProtoDirectory]);
 
-    private static CompilationResult CompileBody(string body)
-        => Compile(Prelude + "extend Outer {\n" + body + "\n}");
+    private static string BodySource(string body) => Prelude + "extend Outer {\n" + body + "\n}";
+
+    private static CompilationResult CompileBody(string body) => Compile(BodySource(body));
+
+    private static string ConformanceBodySource(string body)
+        => ConformancePrelude + "extend PresenceCase {\n" + body + "\n}";
 
     private static CompilationResult CompileConformanceBody(string body)
         => Compilation.Compile(
-            TestPaths.WriteTempScript(ConformancePrelude + "extend PresenceCase {\n" + body + "\n}"),
+            TestPaths.WriteTempScript(ConformanceBodySource(body)),
             [ConformanceProtoDirectory]);
 
     private static void AssertOk(CompilationResult result)
@@ -238,8 +242,9 @@ public class PresenceTests
     }
 
     /// <summary>
-    /// Presence facts are monotone within a method -- nothing can unset a field -- so a fact
-    /// established before a loop still holds inside it, with no fixpoint needed to say so.
+    /// Nothing can unset a field, and nothing can assign the receiver, so a fact about the receiver
+    /// established before a loop still holds inside it, with no fixpoint needed to say so. A fact
+    /// about a local is another matter; see the reassignment section.
     /// </summary>
     [Fact]
     public void AGuardHoldsInsideALoopBody()

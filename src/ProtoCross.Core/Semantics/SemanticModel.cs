@@ -1,3 +1,4 @@
+using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
@@ -300,6 +301,18 @@ public sealed class SemanticModel
     /// </para>
     /// </remarks>
     public IReadOnlyList<SymbolReference> AllReferences => _references.Value?.AllIn(_document) ?? [];
+
+    /// <summary>
+    /// Where this document wrote a method the language defines rather than any source: the
+    /// <c>append</c> of each append (spec 14.1).
+    /// </summary>
+    /// <remarks>
+    /// Apart from <see cref="AllReferences"/>, because such a name refers to no symbol. Nothing declares
+    /// it, so there is no identity a reference could carry that would answer anything (spec 22.2), and
+    /// what an editor wants of it is only where it is, to colour it as the method it reads as.
+    /// </remarks>
+    public IReadOnlyList<SourceSpan> LanguageMethodNames
+        => _module is null ? [] : [.. IrWalk.DescendantsAndSelf(_module).OfType<IrAppend>().Select(append => append.NameSpan)];
 
     /// <summary>
     /// Where <paramref name="symbol"/> was declared, or null when this compilation does not declare

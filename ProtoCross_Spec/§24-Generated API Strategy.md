@@ -89,13 +89,30 @@ declared in. Method names and extension classes are not converted this way: thei
 agree with itself. The namespace rule is protoc's `GetFileNamespace`, and it is the same in protoc
 31.1 and 33.4.
 
-This choice may need revisiting if mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, since extension methods cannot access
-anything the public surface does not already expose.
+**A change is made through the public surface protoc already declares, so mutation needs nothing
+else** ([18](./§18-Mutability.md#18-mutability)). A `mut fn` is an extension method like any other, and its receiver
+is the message itself, since a C# message is a reference. A field is assigned through its property:
+`self.Total = 5`. A message field written through is set first where it is unset,
+`(self.Customer ??= new Customer()).Name = x`, which is what a C++ mutable accessor does: protoc gives
+an unset message field as null, and setting a member of a `oneof` this way switches the case. The
+target is reached before the value is evaluated, as C# evaluates any assignment. An append is `Add`
+on the field's `RepeatedField`, reached the same way, `(self.Review ??= new Review()).Scores.Add(x)`,
+and C# evaluates what `Add` is called on before its argument.
+
+A message stored in a field, or appended to one, is `Clone`d unless it is a literal, as it is in a
+literal's field ([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that
+changes a message, and an append to a local counts: in any other, nothing can change through the local or through what it was copied from, so a
+copy and a share cannot be told apart, and every method written before mutation is generated as it
+was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
+because the call may have returned part of the very receiver being changed. For the same reason, in
+a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
+result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
 
 Questions:
 
 - Are generated protobuf C# classes safe to extend directly?
-- Should mutable methods require partial class integration?
+- ~~Should mutable methods require partial class integration?~~ Decided: no. Everything a change
+  needs is public ([18](./§18-Mutability.md#18-mutability)).
 
 ### 24.2 C++
 
@@ -107,13 +124,13 @@ Potential strategies:
 - Wrapper/adaptor classes.
 
 **Decided for the current implementation: header-only free functions**, taking the receiver as
-`const T&`, in the project's namespace, or in the message's own protobuf namespace for sources
-compiled without a project. A consumer calls `acme::billing::line_total_cents(order)`. This
-subclasses nothing, needs no protoc insertion points, and behaves the same whether the protobuf
-codegen is regenerated or vendored. All declarations are emitted before any definition so methods
-may call one another in any order. Every call a generated function or test makes to another is
-qualified with the callee's namespace, so argument-dependent lookup cannot find another library's
-function of the same name.
+`const T&`, or as `T&` for a `mut fn`, in the project's namespace, or in the message's own protobuf
+namespace for sources compiled without a project. A consumer calls
+`acme::billing::line_total_cents(order)`. This subclasses nothing, needs no protoc insertion points,
+and behaves the same whether the protobuf codegen is regenerated or vendored. All declarations are
+emitted before any definition so methods may call one another in any order. Every call a generated
+function or test makes to another is qualified with the callee's namespace, so argument-dependent
+lookup cannot find another library's function of the same name.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is
@@ -128,16 +145,52 @@ do includes each such source's header after its own declarations and before its 
 sources may therefore call each other, and whichever of their headers a translation unit includes
 first, the other's definitions find the functions they call already declared, while the include
 guard stops the inclusion going round again. A header that calls no other source includes none, and
-is laid out as it always was. A generated test driver includes the header of each source its tests
-target.
+is laid out as it always was. A generated test driver includes the header of each source whose
+methods its tests call. That is the method a test targets, and any method its fixture, arguments or
+expectation call on a literal.
 
-Const-correctness follows from the read-only method model: every receiver is `const T&` and every
-message-typed parameter is `const T&`. If mutation ([18](./§18-Mutability.md#18-mutability)) is allowed, that decision has to be
-revisited along with the free-function shape.
+A header includes the protobuf header of each schema its methods' receivers are declared in. Each of
+those includes the header of every schema its own schema imports. Any other schema a header names a
+type from also gets its header included: through a literal, a parameter, a return value, a local or
+an enum value. So does any such schema a test driver names beyond its targets' schemas. A schema
+that is already declared by those includes is not included a second time.
+
+**A `mut fn` takes its receiver as `T&`; every other receiver, and every parameter, stays `const`**
+([18](./§18-Mutability.md#18-mutability)). A method that changes nothing keeps the signature it always had, so a caller holding a
+const message can call it. The free-function shape needs nothing else: a mutating method is handed
+the message to change, as `self`, as a local, or through the mutable accessors,
+`touch(*self.mutable_last())`.
+
+A change goes through protoc's accessors. A scalar, a string or an enum is set with `set_x()`, whose
+call evaluates what it is called on before its argument, so the target is reached before the value
+and the field is set after it, the order spec 9.3 gives. A field written through is reached with
+`mutable_x()`, which sets it when it is unset and switches a `oneof`'s case. A message field has no
+setter, and `mutable_x()` sets the field as it returns it, so it is assigned with `=`, whose value
+C++17 evaluates before its target: `*self.mutable_last() = T(value);`. When the target has links,
+the message they reach is bound first, `auto& owner = *self.mutable_audit();`, and the field is
+assigned through it in the next statement, inside a block of their own. The value is copied before
+anything is set: a message as `T(value)`, and a string or bytes read from a field as
+`std::string(value)`. Either may be inside what the assignment replaces or unsets, as `node =
+node.next` and `after = before` between members of one `oneof` are, and protobuf destroys that
+before it copies. A literal is assigned as the temporary its lambda returns.
+
+An append goes through protoc's `add_x`. A number, an enum, a string or bytes is added with
+`add_x(value)`, which is called as a setter is, after its target and its argument. A message has only
+the `add_x()` that adds an empty element and returns it, so it is assigned with `=`, as a message
+field is: `*self.add_entries() = T(value);`, which evaluates the value first, and a target with links
+is reached through `auto& owner` in a block of its own first, in the same way. A local holds a
+`RepeatedField` or a `RepeatedPtrField` of its own, and is added to with `Add(value)`, or with
+`*Add() = value` for an element held by pointer.
+
+A loop whose body changes the element it is given, an append to it included, binds it as `auto&`,
+over the field's mutable accessor; every other loop binds `const auto&` as it always has. protobuf
+holds a repeated enum as `int`, so a loop over one binds an `int`, and each use of the element reads
+it as the enum, `static_cast<E>(kind)`: nothing converts an `int` to the enum that a setter, `add_x`,
+a parameter, a return value and a local of the enum's type all take.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
 C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,
-and the presence test and the setters a test fixture uses are `has_name()`, `set_name()`,
+and the presence test and the setters a message literal uses are `has_name()`, `set_name()`,
 `mutable_name()` and `add_name()`. That name is the field's name lowercased, with an underscore
 appended when the result is on protoc's list of C++ keywords and macros (`class`, `new`, `assert`) or
 names a nullary member every generated message declares (`descriptor`, `default_instance`,
@@ -174,6 +227,37 @@ underscore the prefixed name would not have needed. This is the same shape as `s
 
 These are protoc's `Namespace`, `ClassName` and `EnumValueName`, reproduced for the same reason as
 `FieldName`, and they are the same in 31.1 and 33.4.
+
+**A message literal is a lambda, called where it is written.** protobuf's C++ API has no
+initializer syntax: a message is built by declaring one and calling its setters. So
+`new Order { number: 1, featured: given }` is written as
+
+```cpp
+[&] {
+  ::acme::Order message;
+  message.set_number(1LL);
+  *message.mutable_featured() = given;
+  return message;
+}()
+```
+
+The lambda is an expression, so the literal is evaluated exactly where it is written
+([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), and it returns the message by
+value.
+- A nested literal is built in place, through the pointer that `mutable_x()` or `add_x()`
+  returns. One that sets nothing only asks for that pointer, which gives the field its presence.
+- A message that is not a literal is assigned through the same pointer, and assignment copies it
+  ([13.2](./§13-Messages.md#132-message-construction)).
+- The lambda captures by reference, so the names it declares are chosen to differ from every name
+  its literal reads.
+- A literal that sets nothing is `T()`.
+- A test's receiver fixture is written by the same writer, into the local `receiver`.
+
+**A loop over a field of a temporary message keeps that message alive.** In
+`for line in with_lines().lines`, the accessor returns a reference into a message that C++20
+destroys before the loop's first iteration. So the message is held in a local declared in a block
+around the loop, and the field is read from that local. A loop over anything else is written as it
+always was.
 
 Implementation Note:
 

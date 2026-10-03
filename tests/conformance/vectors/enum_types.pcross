@@ -79,7 +79,7 @@ extend EnumCase {
 
 test EnumCase.levels_match "two enum fields at their default compare equal" {
     receiver {
-        count = 1;
+        count: 1,
     }
 
     expect return true;
@@ -87,8 +87,8 @@ test EnumCase.levels_match "two enum fields at their default compare equal" {
 
 test EnumCase.levels_match "two enum fields set to different values compare unequal" {
     receiver {
-        level = Level.LEVEL_HIGH;
-        other = Level.LEVEL_LOW;
+        level: Level.LEVEL_HIGH,
+        other: Level.LEVEL_LOW,
     }
 
     expect return false;
@@ -96,7 +96,7 @@ test EnumCase.levels_match "two enum fields set to different values compare uneq
 
 test EnumCase.round_trips "an enum survives a round trip through an argument and a return" {
     receiver {
-        level = Level.LEVEL_LOW;
+        level: Level.LEVEL_LOW,
     }
 
     expect return true;
@@ -104,7 +104,7 @@ test EnumCase.round_trips "an enum survives a round trip through an argument and
 
 test EnumCase.matches_by_qualified_name "an enum can be named by its fully qualified name" {
     receiver {
-        level = Level.LEVEL_HIGH;
+        level: Level.LEVEL_HIGH,
     }
 
     expect return true;
@@ -112,7 +112,7 @@ test EnumCase.matches_by_qualified_name "an enum can be named by its fully quali
 
 test EnumCase.is_high "a field compares equal to the named value it was set to" {
     receiver {
-        level = Level.LEVEL_HIGH;
+        level: Level.LEVEL_HIGH,
     }
 
     expect return true;
@@ -120,7 +120,7 @@ test EnumCase.is_high "a field compares equal to the named value it was set to" 
 
 test EnumCase.is_high "a field left at its default does not compare equal to another value" {
     receiver {
-        count = 1;
+        count: 1,
     }
 
     expect return false;
@@ -128,7 +128,7 @@ test EnumCase.is_high "a field left at its default does not compare equal to ano
 
 test EnumCase.is_ready "a top-level enum value is named the same way a nested one is" {
     receiver {
-        status = ConformanceStatus.CONFORMANCE_STATUS_READY;
+        status: ConformanceStatus.CONFORMANCE_STATUS_READY,
     }
 
     expect return true;
@@ -136,7 +136,7 @@ test EnumCase.is_ready "a top-level enum value is named the same way a nested on
 
 test EnumCase.is_low_by_qualified_name "an enum value can be named through its fully qualified type" {
     receiver {
-        level = Level.LEVEL_LOW;
+        level: Level.LEVEL_LOW,
     }
 
     expect return true;
@@ -144,7 +144,7 @@ test EnumCase.is_low_by_qualified_name "an enum value can be named through its f
 
 test EnumCase.promoted "a named value is returned from a branch" {
     receiver {
-        level = Level.LEVEL_LOW;
+        level: Level.LEVEL_LOW,
     }
 
     expect return Level.LEVEL_HIGH;
@@ -152,7 +152,7 @@ test EnumCase.promoted "a named value is returned from a branch" {
 
 test EnumCase.promoted "a value that needs no promotion is returned unchanged" {
     receiver {
-        level = Level.LEVEL_UNSPECIFIED;
+        level: Level.LEVEL_UNSPECIFIED,
     }
 
     expect return Level.LEVEL_UNSPECIFIED;
@@ -160,8 +160,8 @@ test EnumCase.promoted "a value that needs no promotion is returned unchanged" {
 
 test EnumCase.counts_high "named values drive control flow over two fields" {
     receiver {
-        level = Level.LEVEL_HIGH;
-        other = Level.LEVEL_LOW;
+        level: Level.LEVEL_HIGH,
+        other: Level.LEVEL_LOW,
     }
 
     expect return 1;

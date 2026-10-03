@@ -57,7 +57,7 @@ internal static class ScopeSearch
         // region is not delimited -- it is the span of the parts that hold expressions -- so every
         // offset in it is genuinely in it, and ordinary containment is right there instead.
         //
-        // The two arms differ in exactly what the binder's AllowImplicitReceiverFields says: a
+        // The two arms differ in exactly what the binder's HasImplicitReceiver says: a
         // method body reaches its receiver's fields by bare name, and everything inside a test binds
         // against a scope holding nothing. Reading it off the shape rather than restating the policy
         // is what keeps the two from drifting apart.

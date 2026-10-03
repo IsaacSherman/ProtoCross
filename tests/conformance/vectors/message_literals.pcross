@@ -1,0 +1,222 @@
+// Conformance vectors for message literals in expression position (spec 13.2): a message built in
+// a method, read from, called on, nested, given lists, passed to a call and to a test, and
+// iterated.
+//
+// Until #80 and #81, neither backend generated a literal outside a test's fixture. C# writes an
+// object initializer. C++ writes a lambda that sets each field on a local and returns it, called
+// where the literal is written. These vectors pin that the two agree everywhere a literal can
+// stand. Two of those places could go wrong in C++ and still compile. One is the right operand of
+// an 'and', which must not be built when the left is false. The other is a loop over a field of a
+// message that exists only in the loop's head.
+
+import proto "message_literals.proto";
+
+extend ConstructedLine {
+    fn cents() -> int64 {
+        return quantity * price_cents;
+    }
+}
+
+extend ConstructedOrder {
+    // A message built from the receiver's own fields, with a nested message in each line and two
+    // repeated fields, then read back through a local.
+    fn rebuilt_total() -> int64 {
+        var built: ConstructedOrder = new ConstructedOrder {
+            number: number + 1,
+            lines: [
+                new ConstructedLine { label: "first", quantity: 2, price_cents: 300 },
+                new ConstructedLine { label: "second", quantity: number, price_cents: 125 },
+            ],
+            tags: [number, number * 2],
+        };
+
+        var total: int64 = built.number;
+        for line in built.lines {
+            total += line.cents();
+        }
+
+        for tag in built.tags {
+            total += tag;
+        }
+
+        return total;
+    }
+
+    // A nested message, read back once 'has' has shown it is there. A literal establishes no
+    // presence a guard can use, but a local holding one is guarded like any other.
+    fn featured_quantity() -> int64 {
+        var built: ConstructedOrder = new ConstructedOrder {
+            featured: new ConstructedLine { quantity: number * 3 },
+        };
+
+        if has built.featured {
+            return built.featured.quantity;
+        }
+
+        return -1;
+    }
+
+    // A nested message that sets nothing still sets its field. C# assigns a new message, C++ asks
+    // for the field's mutable pointer, and both give the field presence.
+    fn empty_featured_is_present() -> bool {
+        var built: ConstructedOrder = new ConstructedOrder { featured: new ConstructedLine { } };
+        return has built.featured;
+    }
+
+    fn unset_featured_is_absent() -> bool {
+        var built: ConstructedOrder = new ConstructedOrder { number: 1 };
+        return has built.featured;
+    }
+
+    fn cents_of(line: ConstructedLine) -> int64 {
+        return line.cents();
+    }
+
+    // Read straight off a literal, called on one, and passed to a call.
+    fn read_called_and_passed() -> int64 {
+        return new ConstructedLine { quantity: 3, price_cents: 7 }.price_cents
+            + new ConstructedLine { quantity: 2, price_cents: 5 }.cents()
+            + cents_of(new ConstructedLine { quantity: 2, price_cents: number });
+    }
+
+    // The right operand of 'and' is not evaluated when the left is false, so a literal there is
+    // not built. If it were, dividing by the zero divisor would end the process.
+    fn large_share() -> bool {
+        return divisor != 0 and new ConstructedLine { quantity: 100 / divisor on_zero fail }.quantity > 10;
+    }
+
+    // An unparenthesized 'if' condition takes a literal like any other operand.
+    fn many_in_a_line() -> bool {
+        if new ConstructedLine { quantity: number }.quantity > 2 {
+            return true;
+        }
+
+        return false;
+    }
+
+    // A loop over a field of a literal. In C++ the message exists only while the loop runs, so it
+    // is kept in the loop's own declaration rather than read through a reference into a temporary.
+    fn counted_from_a_literal() -> int64 {
+        var total: int64 = 0;
+        for line in new ConstructedOrder {
+            lines: [new ConstructedLine { quantity: number }, new ConstructedLine { quantity: 2 }],
+        }.lines {
+            total += line.quantity;
+        }
+
+        return total;
+    }
+
+    fn with_lines() -> ConstructedOrder {
+        return new ConstructedOrder {
+            lines: [new ConstructedLine { quantity: number }, new ConstructedLine { quantity: number + 1 }],
+        };
+    }
+
+    // The same over a field of a call's result, which is as temporary as a literal.
+    fn counted_from_a_call() -> int64 {
+        var total: int64 = 0;
+        for line in with_lines().lines {
+            total += line.quantity;
+        }
+
+        return total;
+    }
+
+    // A parameter that shares its name with the field its own nested literal sets is still the
+    // parameter inside that literal. A list given the parameter holds copies of it.
+    fn featured_after(featured: ConstructedLine) -> int64 {
+        var built: ConstructedOrder = new ConstructedOrder {
+            featured: new ConstructedLine { quantity: featured.quantity + 1 },
+            lines: [featured, featured],
+        };
+
+        var total: int64 = 0;
+        for line in built.lines {
+            total += line.quantity;
+        }
+
+        if has built.featured {
+            total += built.featured.quantity;
+        }
+
+        return total;
+    }
+
+    // A message field given a message that is not a literal holds a copy of it.
+    fn copied_quantity(line: ConstructedLine) -> int64 {
+        var built: ConstructedOrder = new ConstructedOrder { featured: line };
+        if has built.featured {
+            return built.featured.quantity;
+        }
+
+        return -1;
+    }
+}
+
+test ConstructedOrder.rebuilt_total "a literal built from the receiver, with nested and repeated values" {
+    receiver { number: 4 }
+    expect return 1117;
+}
+
+test ConstructedOrder.featured_quantity "a nested literal is read back through a guarded local" {
+    receiver { number: 5 }
+    expect return 15;
+}
+
+test ConstructedOrder.featured_quantity "a literal read inside a fixture's value" {
+    receiver { number: new ConstructedLine { quantity: 2 }.quantity }
+    expect return 6;
+}
+
+test ConstructedOrder.empty_featured_is_present "a nested literal that sets nothing gives its field presence" {
+    receiver { }
+    expect return true;
+}
+
+test ConstructedOrder.unset_featured_is_absent "a field a literal leaves out has no presence" {
+    receiver { }
+    expect return false;
+}
+
+test ConstructedOrder.read_called_and_passed "a literal read from, called on, and passed" {
+    receiver { number: 10 }
+    expect return 37;
+}
+
+test ConstructedOrder.large_share "a literal right of a false 'and' is never built" {
+    receiver { divisor: 0 }
+    expect return false;
+}
+
+test ConstructedOrder.large_share "a literal right of a true 'and' is built" {
+    receiver { divisor: 5 }
+    expect return true;
+}
+
+test ConstructedOrder.many_in_a_line "a literal in an 'if' condition" {
+    receiver { number: 3 }
+    expect return true;
+}
+
+test ConstructedOrder.counted_from_a_literal "a loop over a literal's repeated field" {
+    receiver { number: 5 }
+    expect return 7;
+}
+
+test ConstructedOrder.counted_from_a_call "a loop over a repeated field of a call's result" {
+    receiver { number: 3 }
+    expect return 7;
+}
+
+test ConstructedOrder.featured_after "a parameter named as the field its nested literal sets" {
+    receiver { }
+    arg featured = new ConstructedLine { quantity: 41 };
+    expect return 124;
+}
+
+test ConstructedOrder.copied_quantity "a message given to a field is stored" {
+    receiver { }
+    arg line = new ConstructedLine { quantity: 9 };
+    expect return 9;
+}

@@ -43,8 +43,7 @@ public static class SyntaxWalk
 
             TestDeclaration test => [test.Target, test.Receiver, .. test.Arguments, test.Expectation],
             TestReceiverFixture fixture => [.. fixture.Fields],
-            TestScalarFieldInitializer field => [field.Value],
-            TestMessageFieldInitializer field => [.. field.Fields],
+            FieldInitializer field => [field.Value],
             TestArgumentDeclaration argument => [argument.Value],
             TestReturnExpectation expectation => [expectation.Value],
 
@@ -73,6 +72,8 @@ public static class SyntaxWalk
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
             CastExpression cast => [cast.Operand, cast.TargetType],
+            MessageLiteralExpression literal => [literal.Type, .. literal.Fields],
+            ListExpression list => [.. list.Elements],
 
             _ => [],
         };

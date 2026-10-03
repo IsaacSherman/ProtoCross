@@ -110,9 +110,9 @@ extend GroupingCase {
 
 test GroupingCase.weight_through_parentheses "a parenthesized receiver reads the field it names" {
     receiver {
-        inner {
-            weight = 12;
-        }
+        inner: new GroupingInner {
+            weight: 12,
+        },
     }
 
     expect return 12;
@@ -120,7 +120,7 @@ test GroupingCase.weight_through_parentheses "a parenthesized receiver reads the
 
 test GroupingCase.weight_through_parentheses "and still takes the other branch when unset" {
     receiver {
-        count = 1;
+        count: 1,
     }
 
     expect return -1;
@@ -128,9 +128,9 @@ test GroupingCase.weight_through_parentheses "and still takes the other branch w
 
 test GroupingCase.weight_through_nested_parentheses "redundant parentheses nest and span lines" {
     receiver {
-        inner {
-            weight = 12;
-        }
+        inner: new GroupingInner {
+            weight: 12,
+        },
     }
 
     expect return 12;
@@ -138,9 +138,9 @@ test GroupingCase.weight_through_nested_parentheses "redundant parentheses nest 
 
 test GroupingCase.weight_across_a_line_break "a dot reaches its receiver across a line break" {
     receiver {
-        inner {
-            weight = 12;
-        }
+        inner: new GroupingInner {
+            weight: 12,
+        },
     }
 
     expect return 12;
@@ -148,12 +148,12 @@ test GroupingCase.weight_across_a_line_break "a dot reaches its receiver across 
 
 test GroupingCase.depth_guarded_with_parentheses "a guard with parentheses covers a read without" {
     receiver {
-        inner {
-            leaf {
-                depth = 4;
-            }
-            weight = 1;
-        }
+        inner: new GroupingInner {
+            leaf: new GroupingLeaf {
+                depth: 4,
+            },
+            weight: 1,
+        },
     }
 
     expect return 4;
@@ -161,9 +161,9 @@ test GroupingCase.depth_guarded_with_parentheses "a guard with parentheses cover
 
 test GroupingCase.depth_guarded_with_parentheses "an unset leaf takes the guard's other branch" {
     receiver {
-        inner {
-            weight = 1;
-        }
+        inner: new GroupingInner {
+            weight: 1,
+        },
     }
 
     expect return -1;
@@ -171,12 +171,12 @@ test GroupingCase.depth_guarded_with_parentheses "an unset leaf takes the guard'
 
 test GroupingCase.depth_guarded_without_parentheses "a guard without parentheses covers a read with" {
     receiver {
-        inner {
-            leaf {
-                depth = 4;
-            }
-            weight = 1;
-        }
+        inner: new GroupingInner {
+            leaf: new GroupingLeaf {
+                depth: 4,
+            },
+            weight: 1,
+        },
     }
 
     expect return 4;
@@ -184,9 +184,9 @@ test GroupingCase.depth_guarded_without_parentheses "a guard without parentheses
 
 test GroupingCase.depth_guarded_without_parentheses "and the unset leaf again, from the other spelling" {
     receiver {
-        inner {
-            weight = 1;
-        }
+        inner: new GroupingInner {
+            weight: 1,
+        },
     }
 
     expect return -1;
@@ -194,7 +194,7 @@ test GroupingCase.depth_guarded_without_parentheses "and the unset leaf again, f
 
 test GroupingCase.tuned_through_parentheses "an optional scalar set to zero is still set" {
     receiver {
-        tuning = 0;
+        tuning: 0,
     }
 
     expect return true;
@@ -202,7 +202,7 @@ test GroupingCase.tuned_through_parentheses "an optional scalar set to zero is s
 
 test GroupingCase.tuned_through_parentheses "an optional scalar never set" {
     receiver {
-        count = 1;
+        count: 1,
     }
 
     expect return false;
@@ -210,8 +210,8 @@ test GroupingCase.tuned_through_parentheses "an optional scalar never set" {
 
 test GroupingCase.tuned_and_counted "both halves true" {
     receiver {
-        tuning = 0;
-        count = 3;
+        tuning: 0,
+        count: 3,
     }
 
     expect return true;
@@ -219,8 +219,8 @@ test GroupingCase.tuned_and_counted "both halves true" {
 
 test GroupingCase.tuned_and_counted "the grouped comparison decides it" {
     receiver {
-        tuning = 0;
-        count = 0;
+        tuning: 0,
+        count: 0,
     }
 
     expect return false;
@@ -228,8 +228,8 @@ test GroupingCase.tuned_and_counted "the grouped comparison decides it" {
 
 test GroupingCase.ratio_or_bias "a parenthesized divisor divides" {
     receiver {
-        count = 9;
-        scale = 2;
+        count: 9,
+        scale: 2,
     }
 
     expect return 4;
@@ -237,7 +237,7 @@ test GroupingCase.ratio_or_bias "a parenthesized divisor divides" {
 
 test GroupingCase.ratio_or_bias "a parenthesized fallback answers for a zero divisor" {
     receiver {
-        count = 9;
+        count: 9,
     }
 
     expect return 10;
@@ -245,7 +245,7 @@ test GroupingCase.ratio_or_bias "a parenthesized fallback answers for a zero div
 
 test GroupingCase.negated_narrow "a parenthesized cast operand narrows before it is negated" {
     receiver {
-        count = 5;
+        count: 5,
     }
 
     expect return -5;
@@ -253,8 +253,8 @@ test GroupingCase.negated_narrow "a parenthesized cast operand narrows before it
 
 test GroupingCase.banded "grouping that changes the answer, above the band" {
     receiver {
-        count = 8;
-        scale = 4;
+        count: 8,
+        scale: 4,
     }
 
     expect return 24;
@@ -262,8 +262,8 @@ test GroupingCase.banded "grouping that changes the answer, above the band" {
 
 test GroupingCase.banded "grouping that changes the answer, below the band" {
     receiver {
-        count = 1;
-        scale = 2;
+        count: 1,
+        scale: 2,
     }
 
     expect return 5;

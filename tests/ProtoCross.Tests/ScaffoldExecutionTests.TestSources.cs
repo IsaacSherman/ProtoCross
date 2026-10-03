@@ -39,12 +39,12 @@ public partial class ScaffoldExecutionTests
                           }
 
                           test InvoiceItem.gross "a production method" {
-                              receiver { quantity = 2; unit_price_cents = 300; }
+                              receiver { quantity: 2, unit_price_cents: 300 }
                               expect return 600;
                           }
 
                           test InvoiceItem.doubled "a helper calling a production method" {
-                              receiver { quantity = 2; unit_price_cents = 300; }
+                              receiver { quantity: 2, unit_price_cents: 300 }
                               expect return 1200;
                           }
                           """)

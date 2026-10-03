@@ -425,7 +425,7 @@ public class SymbolIdentityTests
         }
 
         test Outer.f "reads count" {
-            receiver { count = 7; }
+            receiver { count: 7 }
             expect return 7;
         }
         """;

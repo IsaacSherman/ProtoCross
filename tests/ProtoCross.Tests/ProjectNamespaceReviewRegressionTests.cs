@@ -22,7 +22,7 @@ public class ProjectNamespaceReviewRegressionTests
                 }
 
                 test google.protobuf.Timestamp.caller "a container name remains callable" {
-                    receiver { seconds = 40; }
+                    receiver { seconds: 40 }
                     expect return 41;
                 }
                 """));

@@ -68,8 +68,8 @@ extend WellKnownCase {
 
 test WellKnownCase.ends_at_seconds "a duration advances a timestamp" {
     receiver {
-        starts_at { seconds = 1700000000; nanos = 250000000; }
-        length { seconds = 3600; }
+        starts_at: new google.protobuf.Timestamp { seconds: 1700000000, nanos: 250000000 },
+        length: new Duration { seconds: 3600 },
     }
 
     expect return 1700003600;
@@ -77,8 +77,8 @@ test WellKnownCase.ends_at_seconds "a duration advances a timestamp" {
 
 test WellKnownCase.ends_at_seconds "a negative duration walks a timestamp backwards" {
     receiver {
-        starts_at { seconds = 1700000000; }
-        length { seconds = -3600; }
+        starts_at: new google.protobuf.Timestamp { seconds: 1700000000 },
+        length: new Duration { seconds: -3600 },
     }
 
     expect return 1699996400;
@@ -86,9 +86,9 @@ test WellKnownCase.ends_at_seconds "a negative duration walks a timestamp backwa
 
 test WellKnownCase.start_nanos_total "seconds and nanos combine across integer widths" {
     receiver {
-        starts_at { seconds = 90; nanos = 500000000; }
-        length { seconds = 0; }
-        nanos_per_second = 1000000000;
+        starts_at: new google.protobuf.Timestamp { seconds: 90, nanos: 500000000 },
+        length: new Duration { seconds: 0 },
+        nanos_per_second: 1000000000,
     }
 
     expect return 90500000000;
@@ -96,9 +96,9 @@ test WellKnownCase.start_nanos_total "seconds and nanos combine across integer w
 
 test WellKnownCase.start_nanos_total "a negative timestamp keeps its nanos positive" {
     receiver {
-        starts_at { seconds = -2; nanos = 750000000; }
-        length { seconds = 0; }
-        nanos_per_second = 1000000000;
+        starts_at: new google.protobuf.Timestamp { seconds: -2, nanos: 750000000 },
+        length: new Duration { seconds: 0 },
+        nanos_per_second: 1000000000,
     }
 
     expect return -1250000000;
@@ -106,14 +106,16 @@ test WellKnownCase.start_nanos_total "a negative timestamp keeps its nanos posit
 
 test WellKnownCase.checkpoint_span_seconds "the span runs from the earliest checkpoint to the latest" {
     receiver {
-        starts_at { seconds = 0; }
-        length { seconds = 0; }
+        starts_at: new google.protobuf.Timestamp { seconds: 0 },
+        length: new Duration { seconds: 0 },
 
         // Deliberately out of order, so a version that assumed sorted input would disagree.
-        checkpoints { seconds = 500; }
-        checkpoints { seconds = 100; }
-        checkpoints { seconds = 900; }
-        checkpoints { seconds = 300; }
+        checkpoints: [
+            new google.protobuf.Timestamp { seconds: 500 },
+            new google.protobuf.Timestamp { seconds: 100 },
+            new google.protobuf.Timestamp { seconds: 900 },
+            new google.protobuf.Timestamp { seconds: 300 },
+        ],
     }
 
     expect return 800;
@@ -121,10 +123,11 @@ test WellKnownCase.checkpoint_span_seconds "the span runs from the earliest chec
 
 test WellKnownCase.checkpoint_span_seconds "one checkpoint spans nothing" {
     receiver {
-        starts_at { seconds = 0; }
-        length { seconds = 0; }
-
-        checkpoints { seconds = 42; }
+        starts_at: new google.protobuf.Timestamp { seconds: 0 },
+        length: new Duration { seconds: 0 },
+        checkpoints: [
+            new google.protobuf.Timestamp { seconds: 42 },
+        ],
     }
 
     expect return 0;
@@ -132,8 +135,8 @@ test WellKnownCase.checkpoint_span_seconds "one checkpoint spans nothing" {
 
 test WellKnownCase.checkpoint_span_seconds "no checkpoints spans nothing" {
     receiver {
-        starts_at { seconds = 0; }
-        length { seconds = 0; }
+        starts_at: new google.protobuf.Timestamp { seconds: 0 },
+        length: new Duration { seconds: 0 },
     }
 
     expect return 0;
@@ -144,8 +147,8 @@ test WellKnownCase.checkpoint_span_seconds "no checkpoints spans nothing" {
 
 test WellKnownCase.sub_second_precision "nanos on the timestamp alone count" {
     receiver {
-        starts_at { seconds = 5; nanos = 1; }
-        length { seconds = 5; nanos = 0; }
+        starts_at: new google.protobuf.Timestamp { seconds: 5, nanos: 1 },
+        length: new Duration { seconds: 5, nanos: 0 },
     }
 
     expect return true;
@@ -153,8 +156,8 @@ test WellKnownCase.sub_second_precision "nanos on the timestamp alone count" {
 
 test WellKnownCase.sub_second_precision "nanos on the duration alone count" {
     receiver {
-        starts_at { seconds = 5; nanos = 0; }
-        length { seconds = 5; nanos = 1; }
+        starts_at: new google.protobuf.Timestamp { seconds: 5, nanos: 0 },
+        length: new Duration { seconds: 5, nanos: 1 },
     }
 
     expect return true;
@@ -162,8 +165,8 @@ test WellKnownCase.sub_second_precision "nanos on the duration alone count" {
 
 test WellKnownCase.sub_second_precision "whole seconds on both sides do not" {
     receiver {
-        starts_at { seconds = 5; nanos = 0; }
-        length { seconds = 5; nanos = 0; }
+        starts_at: new google.protobuf.Timestamp { seconds: 5, nanos: 0 },
+        length: new Duration { seconds: 5, nanos: 0 },
     }
 
     expect return false;

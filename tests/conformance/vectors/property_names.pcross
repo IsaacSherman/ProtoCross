@@ -68,7 +68,7 @@ extend PropertyNameCase {
 
 test PropertyNameCase.own_name_value "reads a field named after its own message" {
     receiver {
-        property_name_case = 3;
+        property_name_case: 3,
     }
 
     expect return 3;
@@ -76,7 +76,7 @@ test PropertyNameCase.own_name_value "reads a field named after its own message"
 
 test PropertyNameCase.descriptor_inner "reads through a message field named descriptor to a field named after its message" {
     receiver {
-        descriptor { property_name_inner = 5; }
+        descriptor: new PropertyNameInner { property_name_inner: 5 },
     }
 
     expect return 5;
@@ -84,7 +84,7 @@ test PropertyNameCase.descriptor_inner "reads through a message field named desc
 
 test PropertyNameCase.descriptor_inner "an unset message field named descriptor takes the guard's other branch" {
     receiver {
-        property_name_case = 1;
+        property_name_case: 1,
     }
 
     expect return -1;
@@ -92,9 +92,7 @@ test PropertyNameCase.descriptor_inner "an unset message field named descriptor 
 
 test PropertyNameCase.types_total "iterates a repeated scalar field named types" {
     receiver {
-        types = 2;
-        types = 3;
-        types = 4;
+        types: [2, 3, 4],
     }
 
     expect return 9;
@@ -102,8 +100,10 @@ test PropertyNameCase.types_total "iterates a repeated scalar field named types"
 
 test PropertyNameCase.parser_total "iterates a repeated message field named parser" {
     receiver {
-        parser { property_name_inner = 10; }
-        parser { property_name_inner = 20; }
+        parser: [
+            new PropertyNameInner { property_name_inner: 10 },
+            new PropertyNameInner { property_name_inner: 20 },
+        ],
     }
 
     expect return 30;
@@ -111,7 +111,7 @@ test PropertyNameCase.parser_total "iterates a repeated message field named pars
 
 test PropertyNameCase.clone_is_set "has clone is true for an explicit zero" {
     receiver {
-        clone = 0;
+        clone: 0,
     }
 
     expect return true;
@@ -119,7 +119,7 @@ test PropertyNameCase.clone_is_set "has clone is true for an explicit zero" {
 
 test PropertyNameCase.clone_is_set "has clone is false when it was never set" {
     receiver {
-        property_name_case = 1;
+        property_name_case: 1,
     }
 
     expect return false;
@@ -127,7 +127,7 @@ test PropertyNameCase.clone_is_set "has clone is false when it was never set" {
 
 test PropertyNameCase.after_digit_value "a letter after a digit is capitalized" {
     receiver {
-        field1a = 7;
+        field1a: 7,
     }
 
     expect return 7;
@@ -135,7 +135,7 @@ test PropertyNameCase.after_digit_value "a letter after a digit is capitalized" 
 
 test PropertyNameCase.retry2x_is_set "presence is spelled from the capitalized name" {
     receiver {
-        retry2x = 0;
+        retry2x: 0,
     }
 
     expect return true;
@@ -143,7 +143,7 @@ test PropertyNameCase.retry2x_is_set "presence is spelled from the capitalized n
 
 test PropertyNameCase.leading_digit_value "an underscore before a leading digit is kept" {
     receiver {
-        _1st = 11;
+        _1st: 11,
     }
 
     expect return 11;

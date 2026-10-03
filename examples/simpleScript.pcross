@@ -103,15 +103,16 @@ extend Invoice {
 
 test Invoice.total_cents "sums line totals" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 300;
-        }
-
-        items {
-            quantity = 4;
-            unit_price_cents = 125;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 300,
+            },
+            new InvoiceItem {
+                quantity: 4,
+                unit_price_cents: 125,
+            },
+        ],
     }
 
     expect return 1100;
@@ -119,8 +120,8 @@ test Invoice.total_cents "sums line totals" {
 
 test InvoiceItem.discount_percent "charges full price below ten units" {
     receiver {
-        quantity = 5;
-        unit_price_cents = 100;
+        quantity: 5,
+        unit_price_cents: 100,
     }
 
     expect return 0;
@@ -128,8 +129,8 @@ test InvoiceItem.discount_percent "charges full price below ten units" {
 
 test InvoiceItem.discount_percent "discounts ten percent at ten units" {
     receiver {
-        quantity = 10;
-        unit_price_cents = 100;
+        quantity: 10,
+        unit_price_cents: 100,
     }
 
     expect return 10;
@@ -137,8 +138,8 @@ test InvoiceItem.discount_percent "discounts ten percent at ten units" {
 
 test InvoiceItem.discount_percent "discounts twenty percent at a hundred units" {
     receiver {
-        quantity = 100;
-        unit_price_cents = 100;
+        quantity: 100,
+        unit_price_cents: 100,
     }
 
     expect return 20;
@@ -146,7 +147,7 @@ test InvoiceItem.discount_percent "discounts twenty percent at a hundred units" 
 
 test InvoiceItem.case_count "counts whole cases and drops the remainder" {
     receiver {
-        quantity = 30;
+        quantity: 30,
     }
 
     arg case_size = 12;
@@ -156,7 +157,7 @@ test InvoiceItem.case_count "counts whole cases and drops the remainder" {
 
 test InvoiceItem.case_count "refuses a non-positive case size" {
     receiver {
-        quantity = 30;
+        quantity: 30,
     }
 
     arg case_size = 0;
@@ -166,15 +167,16 @@ test InvoiceItem.case_count "refuses a non-positive case size" {
 
 test Invoice.discounted_total_cents "applies each line's bulk discount" {
     receiver {
-        items {
-            quantity = 10;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 2;
-            unit_price_cents = 250;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 10,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 250,
+            },
+        ],
     }
 
     expect return 1400;
@@ -182,30 +184,28 @@ test Invoice.discounted_total_cents "applies each line's bulk discount" {
 
 test Invoice.billable_line_count "skips empty lines and stops at a free sample" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 0;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 5;
-            unit_price_cents = 250;
-        }
-
-        items {
-            quantity = 1;
-            unit_price_cents = 0;
-        }
-
-        items {
-            quantity = 9;
-            unit_price_cents = 100;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 0,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 5,
+                unit_price_cents: 250,
+            },
+            new InvoiceItem {
+                quantity: 1,
+                unit_price_cents: 0,
+            },
+            new InvoiceItem {
+                quantity: 9,
+                unit_price_cents: 100,
+            },
+        ],
     }
 
     expect return 2;
@@ -213,7 +213,7 @@ test Invoice.billable_line_count "skips empty lines and stops at a free sample" 
 
 test InvoiceItem.leftover_units "returns the remainder after whole cases" {
     receiver {
-        quantity = 30;
+        quantity: 30,
     }
 
     arg case_size = 12;
@@ -223,7 +223,7 @@ test InvoiceItem.leftover_units "returns the remainder after whole cases" {
 
 test InvoiceItem.leftover_units "leaves the quantity alone for a non-positive case size" {
     receiver {
-        quantity = 30;
+        quantity: 30,
     }
 
     arg case_size = 0;
@@ -233,20 +233,20 @@ test InvoiceItem.leftover_units "leaves the quantity alone for a non-positive ca
 
 test Invoice.billable_line_count "skips an empty line" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 0;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 5;
-            unit_price_cents = 250;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 0,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 5,
+                unit_price_cents: 250,
+            },
+        ],
     }
 
     expect return 2;
@@ -254,20 +254,20 @@ test Invoice.billable_line_count "skips an empty line" {
 
 test Invoice.billable_line_count "stops at a free sample" {
     receiver {
-        items {
-            quantity = 2;
-            unit_price_cents = 100;
-        }
-
-        items {
-            quantity = 1;
-            unit_price_cents = 0;
-        }
-
-        items {
-            quantity = 9;
-            unit_price_cents = 100;
-        }
+        items: [
+            new InvoiceItem {
+                quantity: 2,
+                unit_price_cents: 100,
+            },
+            new InvoiceItem {
+                quantity: 1,
+                unit_price_cents: 0,
+            },
+            new InvoiceItem {
+                quantity: 9,
+                unit_price_cents: 100,
+            },
+        ],
     }
 
     expect return 1;

@@ -379,10 +379,11 @@ public class PositionQueryTests
     /// </summary>
     /// <remarks>
     /// One pair shares a span without nesting: the target of a compound assignment, and the read of
-    /// it in the operation the assignment stands for (spec 9.2). Both are one local at one name the
-    /// author wrote once, and the target is the assignment's first child, so it is the one reached
-    /// first -- the node for what was written, with the read the binder added after it. Nothing else
-    /// is excused.
+    /// it in the operation the assignment stands for (spec 9.2). Both are one place the author wrote
+    /// once, and the target is the assignment's first child, so it is the one reached first -- the
+    /// node for what was written, with the read the binder added after it. A field is reached through a
+    /// chain, and the target and the read each have one, so each link of the target pairs with the
+    /// same link of the read (spec 22.2). Nothing else is excused.
     /// </remarks>
     [Fact]
     public void IrNodesThatShareASpanAlwaysStandInsideOneAnother()
@@ -406,7 +407,7 @@ public class PositionQueryTests
                     Assert.True(
                         inside.Any(held => ReferenceEquals(held, node))
                             || compoundReads.Any(pair =>
-                                ReferenceEquals(pair.Target, outermost) && ReferenceEquals(pair.Read, node)),
+                                Holds(pair.Target, outermost) && Holds(pair.Read, node)),
                         $"{source.Name}: a {node.GetType().Name} at {node.Span} shares its span with a "
                         + $"{outermost.GetType().Name} without standing inside it");
                 }
@@ -415,24 +416,32 @@ public class PositionQueryTests
     }
 
     /// <summary>
-    /// Each assignment's target, with the read of the same local its value opens with, where that
+    /// Each assignment's target, with the read of the same place its value opens with, where that
     /// read carries the target's span -- which only a compound assignment's does.
     /// </summary>
     private static List<(IrNode Target, IrNode Read)> CompoundTargetsAndReads(IrModule module)
         => [
             .. IrWalk.DescendantsAndSelf(module)
-                .OfType<IrAssignment>()
-                .Select(assignment => (assignment.Target, Read: assignment.Value switch
+                .Select(node => node switch
+                {
+                    IrAssignment assignment => ((IrExpression)assignment.Target, assignment.Value),
+                    IrFieldAssignment assignment => (assignment.Target, assignment.Value),
+                    _ => default((IrExpression Target, IrExpression Value)?),
+                })
+                .OfType<(IrExpression Target, IrExpression Value)>()
+                .Select(pair => (pair.Target, Read: pair.Value switch
                 {
                     IrBinary binary => binary.Left,
                     IrIntegerDivision division => division.Left,
                     _ => null,
                 }))
-                .Where(pair => pair.Read is IrLocalReference read
-                    && read.Local.Id == pair.Target.Local.Id
-                    && read.Span == pair.Target.Span)
+                .Where(pair => pair.Read is not null && pair.Read == pair.Target && pair.Read.Span == pair.Target.Span)
                 .Select(pair => ((IrNode)pair.Target, (IrNode)pair.Read!)),
         ];
+
+    /// <summary>Whether <paramref name="node"/> is <paramref name="holder"/> or anything it holds.</summary>
+    private static bool Holds(IrNode holder, IrNode node)
+        => IrWalk.DescendantsAndSelf(holder).Any(held => ReferenceEquals(held, node));
 
     // ------- a call that could not be made
 
@@ -514,8 +523,8 @@ public class PositionQueryTests
         var target = source.IndexOf("InvoiceItem.f", StringComparison.Ordinal);
         var brace = source.IndexOf("{", source.IndexOf("\"neither half\"", StringComparison.Ordinal), StringComparison.Ordinal);
 
-        Assert.Null(model.IrAt(target)?.Node as IrTestMessageValue);
-        Assert.NotNull(model.IrAt(brace + 1)?.Node as IrTestMessageValue);
+        Assert.Null(model.IrAt(target)?.Node as IrMessageLiteral);
+        Assert.NotNull(model.IrAt(brace + 1)?.Node as IrMessageLiteral);
     }
 
     // ------- every position at once

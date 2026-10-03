@@ -36,8 +36,8 @@ extend DivisionCase {
 
 test DivisionCase.quotient "truncates a negative quotient toward zero" {
     receiver {
-        numerator = -7;
-        divisor = 2;
+        numerator: -7,
+        divisor: 2,
     }
 
     expect return -3;
@@ -45,8 +45,8 @@ test DivisionCase.quotient "truncates a negative quotient toward zero" {
 
 test DivisionCase.quotient "truncates toward zero for a negative divisor" {
     receiver {
-        numerator = -7;
-        divisor = -2;
+        numerator: -7,
+        divisor: -2,
     }
 
     expect return 3;
@@ -54,8 +54,8 @@ test DivisionCase.quotient "truncates toward zero for a negative divisor" {
 
 test DivisionCase.remainder "gives the remainder the sign of the dividend" {
     receiver {
-        numerator = -7;
-        divisor = 2;
+        numerator: -7,
+        divisor: 2,
     }
 
     expect return -1;
@@ -63,8 +63,8 @@ test DivisionCase.remainder "gives the remainder the sign of the dividend" {
 
 test DivisionCase.remainder "keeps the dividend sign for a negative divisor" {
     receiver {
-        numerator = -7;
-        divisor = -2;
+        numerator: -7,
+        divisor: -2,
     }
 
     expect return -1;
@@ -72,8 +72,8 @@ test DivisionCase.remainder "keeps the dividend sign for a negative divisor" {
 
 test DivisionCase.quotient "yields the on_zero fallback for a zero divisor" {
     receiver {
-        numerator = -7;
-        divisor = 0;
+        numerator: -7,
+        divisor: 0,
     }
 
     expect return 0;
@@ -81,8 +81,8 @@ test DivisionCase.quotient "yields the on_zero fallback for a zero divisor" {
 
 test DivisionCase.remainder "yields the on_zero fallback for a zero divisor" {
     receiver {
-        numerator = -7;
-        divisor = 0;
+        numerator: -7,
+        divisor: 0,
     }
 
     expect return 0;
@@ -90,8 +90,8 @@ test DivisionCase.remainder "yields the on_zero fallback for a zero divisor" {
 
 test DivisionCase.quotient "wraps MIN divided by minus one to MIN" {
     receiver {
-        numerator = -9223372036854775808;
-        divisor = -1;
+        numerator: -9223372036854775808,
+        divisor: -1,
     }
 
     expect return -9223372036854775808;
@@ -99,8 +99,8 @@ test DivisionCase.quotient "wraps MIN divided by minus one to MIN" {
 
 test DivisionCase.remainder "gives zero for MIN remainder minus one" {
     receiver {
-        numerator = -9223372036854775808;
-        divisor = -1;
+        numerator: -9223372036854775808,
+        divisor: -1,
     }
 
     expect return 0;
@@ -108,8 +108,8 @@ test DivisionCase.remainder "gives zero for MIN remainder minus one" {
 
 test DivisionCase.strict_quotient "divides normally when the divisor is not zero" {
     receiver {
-        numerator = -7;
-        divisor = 2;
+        numerator: -7,
+        divisor: 2,
     }
 
     expect return -3;
@@ -117,8 +117,8 @@ test DivisionCase.strict_quotient "divides normally when the divisor is not zero
 
 test DivisionCase.strict_remainder "takes the remainder when the divisor is not zero" {
     receiver {
-        numerator = -7;
-        divisor = 2;
+        numerator: -7,
+        divisor: 2,
     }
 
     expect return -1;
@@ -126,8 +126,8 @@ test DivisionCase.strict_remainder "takes the remainder when the divisor is not 
 
 test DivisionCase.strict_quotient "stops the program on a zero divisor" {
     receiver {
-        numerator = -7;
-        divisor = 0;
+        numerator: -7,
+        divisor: 0,
     }
 
     expect fail;
@@ -135,8 +135,8 @@ test DivisionCase.strict_quotient "stops the program on a zero divisor" {
 
 test DivisionCase.strict_remainder "stops the program on a zero divisor" {
     receiver {
-        numerator = -7;
-        divisor = 0;
+        numerator: -7,
+        divisor: 0,
     }
 
     expect fail;

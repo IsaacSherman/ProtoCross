@@ -32,9 +32,9 @@ public class DiagnosticCodeTests
     /// <summary>The ranges spec 26 assigns, and the table the layer owning each one raises from.</summary>
     /// <remarks>
     /// Written out here rather than read from the specification: a test that parsed the table it is
-    /// checking against would agree with whatever that table said, including a typo. Two of these
-    /// ranges are empty, because PC1001 and PC1101 left with <c>virtual</c> in #10 and no backend has
-    /// raised a diagnostic since.
+    /// checking against would agree with whatever that table said, including a typo. The two backend
+    /// ranges begin one past their bounds, because PC1001 and PC1101 left with <c>virtual</c> in #10
+    /// and are retired.
     /// </remarks>
     private static readonly Layer[] Layers =
     [
@@ -190,7 +190,8 @@ public class DiagnosticCodeTests
             var missing = Enumerable
                 .Range(numbers[0], numbers[^1] - numbers[0] + 1)
                 .Except(numbers)
-                .Select(number => $"PC{number:D4}");
+                .Select(number => $"PC{number:D4}")
+                .Where(code => !DiagnosticCodes.Retired.Contains(code));
 
             Assert.True(
                 !missing.Any(),

@@ -1,3 +1,5 @@
+using System.Xml.Linq;
+
 namespace ProtoCross.Tests;
 
 internal static class TestPaths
@@ -21,6 +23,15 @@ internal static class TestPaths
     /// </summary>
     public static string DirectoryPackagesProps
         => Path.Combine(RepositoryRoot, "Directory.Packages.props");
+
+    /// <summary>Each package <see cref="DirectoryPackagesProps"/> declares, and the version it pins.</summary>
+    public static IReadOnlyDictionary<string, string> CentralPackageVersions
+        => XDocument.Load(DirectoryPackagesProps)
+            .Descendants("PackageVersion")
+            .ToDictionary(
+                element => (string)element.Attribute("Include")!,
+                element => (string)element.Attribute("Version")!,
+                StringComparer.Ordinal);
 
     private static string FindRepositoryRoot()
     {
