@@ -834,11 +834,17 @@ public sealed partial class Binder
                     return traced.IsReadOnly ? [] : SiblingsUnsetThrough(traced, traced.Links.Count);
                 }
 
+                // A receiver this cannot trace may be a binding of a loop inside the statement, which is
+                // out of scope from here, and may be on the element another binding's guard tested. So
+                // an untraced call that could change anything ends what every binding showed, as an
+                // untraced assignment does: an append, which may write through a oneof member, or a
+                // call to any mut fn of that name.
                 if (traced is not { Message: { } message } trace)
                 {
-                    return _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
-                        ? [EndedFacts.Untraced]
-                        : [];
+                    return method == IrAppend.MethodName
+                        || _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
+                            ? [EndedFacts.Untraced]
+                            : [];
                 }
 
                 return !trace.IsReadOnly && IsMutating(message, method) ? [EndedFacts.Below(trace.Root, trace.Path)] : [];
