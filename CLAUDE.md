@@ -178,19 +178,25 @@ alternative rejected, and what did **not** move. Bullets only for a genuine list
 PR bodies follow the same voice with `## Why`, `## What`, `## Compatibility`, `## Tests` headings.
 Compatibility is not optional: say what stayed byte-for-byte identical and how that was checked.
 
-**Open every pull request as a draft, and mark it ready only once it merges cleanly into its base.**
-The base is `main` for a sprint, and the sprint branch an issue branch was cut from for everything
-else. Not a formality — it is what the CI triggers are built around. A draft is not tested, so a
-branch that still has conflicts costs nothing while it is being rebased; marking it ready is the
-event that asks for the full suite, both gated switches thrown. Reversing that order spends a run on
-a branch that cannot merge, and then spends another on the version that can.
+**Open every pull request as a draft, and keep it a draft until the owner says to merge it.** The
+base is `main` for a sprint, and the sprint branch an issue branch was cut from for everything else.
+Not a formality — it is what the CI triggers are built around, and CI is paid for by the minute. A
+draft is not tested, so a branch still being rebased, reviewed and fixed costs nothing; marking it
+ready is the event that asks for the full suite, both gated switches thrown. Until the owner asks
+for that, the suite is run locally. Marking a branch ready early spends a run on code that is still
+going to change, and then spends another on the version that lands.
 
 So the sequence is: open as draft, rebase onto the base until
 `git merge-base --is-ancestor <base> HEAD` succeeds — the branch contains everything on its base, so
-there is nothing left to conflict — run the suite locally, then mark ready. If a conflict appears
-after that, because someone else merged first, put it back into draft, resolve, and mark it ready
-again. The green check has to describe the code that is going to land, and a conflict resolved after
-the check means it no longer does.
+there is nothing left to conflict — and run the suite locally. Then stop, and say it is ready for the
+owner. Mark it ready only when the owner says to merge it. If a conflict appears after that, because
+someone else merged first, put it back into draft, resolve, and mark it ready again. The green check
+has to describe the code that is going to land, and a conflict resolved after the check means it no
+longer does.
+
+**A change that needs no CI to verify it gets no CI run.** Documentation, workflow notes and other
+resources are checked locally, together with any test that reads them, and are never the reason to
+mark a pull request ready or to rerun a check.
 
 **Rebase onto the base; never merge the base into a branch.** A rebase replays each commit, so a
 conflict is resolved inside an ordinary commit that the pull request's diff shows. A merge buries the
