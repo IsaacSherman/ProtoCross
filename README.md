@@ -84,7 +84,7 @@ The typed IR is important. It gives the project a place to define semantics once
 
 ## Specification
 
-The current draft specification template is in:
+The current draft specification is in:
 
 [ProtoCross_Spec/](ProtoCross_Spec/README.md), one file per numbered section
 
@@ -136,8 +136,16 @@ Implemented:
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends
+- Several sources compiled as one program, and a `.pcproj` project file that names them; see
+  [Running the compiler](#running-the-compiler)
+- A language server, `protocross-server`, and a VS Code extension in
+  [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
+  find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: maps, oneof, `Result` types, `switch`, and the Python backend. Backends reject these rather than emitting something whose semantics differ from the spec.
+Not implemented: maps, `switch`, `Result` types, asking which member of a `oneof` is set, and the
+Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read, tested with
+`has` and assigned, and assigning one unsets the others. The compiler refuses what it does not
+implement, such as a map field, rather than emitting something whose semantics differ from the spec.
 
 ### Building
 
@@ -156,7 +164,7 @@ a build here and a build there are the same build. Warnings are errors in this r
 what makes the pin worth having: an SDK that ships one new analyzer rule would otherwise turn a green
 change red on a schedule nobody here controls.
 
-Two checks are switched off by default, because neither is what a person mid-iteration wants to wait
+Three checks are switched off by default, because none is what a person mid-iteration wants to wait
 for:
 
 ```bash
@@ -178,9 +186,10 @@ In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- a
 rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
 
 Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
-full suite, both switches thrown, for **every pull request to `main` and every commit landed on
-`main` directly** -- and for nothing else. Pushing to a feature branch triggers no build, and a pull
-request left in draft is not tested until it is marked ready for review. So the cost of ordinary work
+full suite, both switches thrown, for **every pull request to `main` or to a sprint branch
+(`sprints/**`), and every commit landed on `main` directly** -- and for nothing else. Pushing to a
+feature branch triggers no build, and a pull request left in draft is not tested until it is marked
+ready for review. So the cost of ordinary work
 is nothing, and the cost of proposing a change is one run of the same suite you would run yourself.
 
 A run that skips a gated test fails, rather than passing quickly. A switch that quietly stayed shut
@@ -503,9 +512,9 @@ does the same. Neither needs any wiring from you beyond building the generated f
 The compiler's own cross-language test suite lives in
 [tests/conformance/](tests/conformance/README.md). Each vector is a `.pcross` file whose `test`
 declarations state an expected result once; every backend then compiles, builds, and executes them,
-and all backends must agree. It covers the cases where the targets natively disagree: integer
-overflow wrapping, `on_zero` and `on_zero fail`, `MIN / -1`, truncating integer division, and IEEE
-754 division by zero.
+and all backends must agree. It runs the language's constructs in both backends, and above all the
+cases where the targets natively disagree: integer overflow wrapping, `on_zero` and `on_zero fail`,
+`MIN / -1`, truncating integer division, and IEEE 754 division by zero.
 
 It runs as part of `dotnet test`, and skips with a message naming the missing tool when protoc, a
 C++ compiler, or a protobuf C++ install is not available.
@@ -568,7 +577,8 @@ On Windows, the test can find Visual Studio C++ Build Tools even when `cl.exe` i
 `PATH`; it runs MSVC through `VsDevCmd.bat`. The link-and-run test currently targets MSVC with
 vcpkg's `x64-windows` protobuf package, using vcpkg's matching `protoc.exe`, headers, import
 library, and DLLs. If the C++ compiler or protobuf C++ install is not available, the relevant test
-is skipped with a message. A fully active local run should report zero skipped tests.
+is skipped with a message. A fully active local run skips only the gated checks described under
+[Building](#building) that were not switched on.
 
 ### Architecture
 
@@ -578,7 +588,10 @@ is skipped with a message. A fully active local run should report zero skipped t
 | `src/ProtoCross.Backend.CSharp` | C# code generation |
 | `src/ProtoCross.Backend.Cpp` | C++ code generation |
 | `src/ProtoCross.Cli` | `protocross` command-line driver |
-| `tests/ProtoCross.Tests` | Lexer, parser, binder, and backend tests, plus the conformance harness |
+| `src/ProtoCross.Projects` | Reading a `.pcproj` and settling what each build compiles |
+| `src/ProtoCross.LanguageServer` | `protocross-server`, the language server |
+| `editors/vscode` | The VS Code extension ([README](editors/vscode/README.md)) |
+| `tests/ProtoCross.Tests` | Tests of all of the above, plus the conformance harness |
 | `tests/conformance` | Cross-language conformance vectors ([README](tests/conformance/README.md)) |
 
 Backends depend only on the IR, never on the AST.
