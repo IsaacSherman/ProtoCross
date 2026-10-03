@@ -563,7 +563,10 @@ public sealed partial class Binder
             receiver,
             new DeclarationSite(SymbolKind.Method, _document, method.Name, method.Span),
             returnType,
-            parameters);
+            parameters)
+        {
+            IsMutating = method.IsMutating,
+        };
     }
 
 
@@ -734,7 +737,7 @@ public sealed partial class Binder
             Declare(scope, parameter.Declaration, parameter.Type, ScopeEntry.FirstOffsetInside(method.Body.Span));
         }
 
-        var context = new MethodContext(receiver, signature.ReturnType);
+        var context = new MethodContext(receiver, signature.ReturnType) { Method = signature };
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
@@ -1043,7 +1046,7 @@ public sealed partial class Binder
             // inside it runs after its condition was tested, and so ends what the condition proved.
             context = context with
             {
-                Present = ForgetAssignedIn(statement, Advance(context.Present, bound)),
+                Present = ForgetChangedIn(statement, scope, context, Advance(context.Present, bound)),
             };
         }
 
@@ -1152,15 +1155,21 @@ public sealed partial class Binder
     /// names are unique within a method, because shadowing is rejected at declaration.
     /// </remarks>
     private static string? PresencePath(IrExpression receiver, FieldDescriptor field)
-        => PresenceRoot(receiver) is { } root ? $"{root}{PresencePathSeparator}{field.Name}" : null;
+        => PresenceRoot(receiver) is { } root ? Through(root, field) : null;
 
     private const char PresencePathSeparator = '.';
 
+    /// <summary><paramref name="key"/> extended by <paramref name="field"/>, the one way any key here grows.</summary>
+    /// <remarks>
+    /// Shared by the presence key and the storage key (<see cref="StorageOf"/>), because the loop rule
+    /// and the overlap check compare one with prefixes of another, and two spellings of the join would
+    /// compare strings that never match.
+    /// </remarks>
+    private static string Through(string key, FieldDescriptor field) => $"{key}{PresencePathSeparator}{field.Name}";
+
     private static string? PresenceRoot(IrExpression expression) => expression switch
     {
-        IrThis => "this",
-        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
-        IrParameterReference parameter => $"param:{parameter.Parameter.Name}",
+        IrLocalReference { Local: var binding } when IsLoopBinding(binding) => LoopPresenceRoot(binding.Name),
 
         // Only a singular message field extends a path; a scalar cannot be read through, and a
         // repeated field is reached by iteration rather than by name.
@@ -1170,82 +1179,52 @@ public sealed partial class Binder
         // language comes from a root, a guarded read or a literal -- but neither has a name, so
         // nothing reached through one can be guarded. BindFieldAccess turns that into a diagnostic
         // with a way out.
+        _ => NamedRoot(expression),
+    };
+
+    /// <summary>
+    /// The key of the receiver, a local or a parameter, which every key reached from one begins with;
+    /// null for anything else. A loop binding is keyed apart, differently by each key that has one.
+    /// </summary>
+    private static string? NamedRoot(IrExpression expression) => expression switch
+    {
+        IrThis => ReceiverPresenceRoot,
+        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
+        IrParameterReference parameter => ParameterPresenceRoot(parameter.Parameter.Name),
         _ => null,
     };
 
     private static bool IsSingularMessage(FieldDescriptor field)
         => !field.IsRepeated && !field.IsMap && field.FieldType is FieldType.Message or FieldType.Group;
 
+    private const string ReceiverPresenceRoot = "this";
+
     private static string LocalPresenceRoot(string name) => $"local:{name}";
 
-    /// <summary>
-    /// <paramref name="facts"/> without the ones reached through a local that
-    /// <paramref name="statement"/> assigns anywhere inside it.
-    /// </summary>
+    private static string ParameterPresenceRoot(string name) => $"{ParameterPresenceRootPrefix}{name}";
+
+    private const string ParameterPresenceRootPrefix = "param:";
+
     /// <remarks>
-    /// <para>
-    /// A field cannot be unset, but a local can be given another message, and what a guard proved
-    /// about the message it held says nothing about the next one (#151). So an assignment ends every
-    /// fact reached through its target, however deep: <c>c = b;</c> ends <c>c.inner</c> and
-    /// <c>c.inner.stamp</c> alike.
-    /// </para>
-    /// <para>
-    /// Asked of the syntax, and of the whole statement rather than of each branch's IR. A loop has
-    /// to ask before its body is bound, because the body is bound once and stands for every pass,
-    /// and at that point there is no IR to ask. An assignment in a branch that returns counts too,
-    /// although nothing after the statement can see it. That costs a guard the author writes again,
-    /// never a read the analysis lets through, which is the trade <see cref="PresenceFacts"/> makes
-    /// for a condition it does not recognise.
-    /// </para>
-    /// <para>
-    /// <see cref="SyntaxWalk"/> finds the assignments rather than a recursion here, because it is
-    /// the one place that says what each node holds, and a test holds it to the records. A
-    /// statement kind added later is searched without anyone remembering this method, and a
-    /// statement it missed would reopen #151 without a single test noticing.
-    /// </para>
-    /// <para>
-    /// Only locals are named. The receiver and parameters cannot be assigned (PC0034), so a fact
-    /// about one of them holds for the rest of the method.
-    /// </para>
+    /// Apart from a local's, because a change through a binding has to end what was shown about every
+    /// other binding (see <see cref="ForgetChangedIn"/>), and a local, which holds a message of its own,
+    /// can be the element of no loop.
     /// </remarks>
-    private static IReadOnlySet<string> ForgetAssignedIn(Statement statement, IReadOnlySet<string> facts)
+    private static string LoopPresenceRoot(string name) => $"{LoopPresenceRootPrefix}{name}";
+
+    private static bool IsLoopPresenceRoot(string root) => root.StartsWith(LoopPresenceRootPrefix, StringComparison.Ordinal);
+
+    private const string LoopPresenceRootPrefix = "loop:";
+
+    /// <summary>Binds a statement, and refuses a mutating call it makes inside an expression (spec 18).</summary>
+    private IrStatement BindStatement(Statement statement, Scope scope, MethodContext context)
     {
-        // Most methods prove nothing, and then there is nothing to forget and no reason to walk.
-        if (facts.Count == 0)
-        {
-            return facts;
-        }
-
-        var reassigned = NamesAssignedIn(statement)
-            .Select(name => LocalPresenceRoot(name) + PresencePathSeparator)
-            .ToList();
-
-        if (reassigned.Count == 0)
-        {
-            return facts;
-        }
-
-        return new HashSet<string>(
-            facts.Where(fact => !reassigned.Any(root => fact.StartsWith(root, StringComparison.Ordinal))),
-            StringComparer.Ordinal);
+        var bound = BindStatementItself(statement, scope, context);
+        ReportMutatingCallsInsideExpressions(bound);
+        return bound;
     }
 
-    /// <summary>Every name <paramref name="statement"/> assigns, anywhere inside it.</summary>
-    private static IEnumerable<string> NamesAssignedIn(Statement statement)
-        => SyntaxWalk.DescendantsAndSelf(statement)
-            .Select(AssignmentTarget)
-            .OfType<NameExpression>()
-            .Select(target => target.Name.Text)
-            .Distinct(StringComparer.Ordinal);
-
-    private static Expression? AssignmentTarget(SyntaxNode node) => node switch
-    {
-        AssignmentStatement assignment => assignment.Target,
-        CompoundAssignmentStatement assignment => assignment.Target,
-        _ => null,
-    };
-
-    private IrStatement BindStatement(Statement statement, Scope scope, MethodContext context) => statement switch
+    private IrStatement BindStatementItself(Statement statement, Scope scope, MethodContext context) => statement switch
     {
         BlockStatement block => BindBlock(block, scope, context),
         VariableDeclarationStatement declaration => BindVariableDeclaration(declaration, scope, context),
@@ -1419,15 +1398,20 @@ public sealed partial class Binder
             }
         }
 
+        // Whatever the binding is an element of answers for it: whether it may be changed, and which
+        // field a change through it reaches (spec 18).
+        _elementsOf[loop.Id] = collection;
+
         // The collection is read once, before the first pass, so it keeps every fact. The body is
-        // bound once for every pass, so it keeps only the facts a pass cannot end (#151).
+        // bound once for every pass, so it keeps only the facts a pass cannot end (#151). The binding
+        // is in scope for that question, since a change through it may end a fact about another.
         var body = BindBlock(
             statement.Body,
             loopScope,
-            context with
+            Traversing(collection, context) with
             {
                 LoopDepth = context.LoopDepth + 1,
-                Present = ForgetAssignedIn(statement.Body, context.Present),
+                Present = ForgetChangedIn(statement.Body, loopScope, context, context.Present),
             });
 
         return new IrForEach(loop, collection, body, statement.Span);
@@ -1456,7 +1440,7 @@ public sealed partial class Binder
     /// </remarks>
     private IrStatement BindWhile(WhileStatement statement, Scope scope, MethodContext context)
     {
-        var everyPass = context with { Present = ForgetAssignedIn(statement.Body, context.Present) };
+        var everyPass = context with { Present = ForgetChangedIn(statement.Body, scope, context, context.Present) };
         var condition = BindCondition(statement.Condition, scope, everyPass, "while");
         var (whenTrue, _) = PresenceFacts(condition);
         var body = BindBlock(
@@ -1519,10 +1503,17 @@ public sealed partial class Binder
 
     private IrStatement BindAssignment(AssignmentStatement statement, Scope scope, MethodContext context)
     {
-        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        if (WritesAField(statement.Target, scope, context))
+        {
+            return BindFieldAssignment(statement, scope, context);
+        }
+
+        if (AssignableLocal(statement.Target, scope) is not { } assignable)
         {
             return BindRefusedAssignment(statement.Target, [statement.Value], statement.Span, scope, context);
         }
+
+        var (name, local) = assignable;
 
         Use(local.Id, name.Name.Span, ReferenceKind.Write);
 
@@ -1538,8 +1529,20 @@ public sealed partial class Binder
                 "ProtoCross does not apply implicit numeric conversions.");
         }
 
-        return new IrAssignment(new IrLocalReference(local, name.Span), value, statement.Span);
+        var target = new IrLocalReference(local, name.Span);
+        ReportIfTraversalChanges([target], $"This assigns '{local.Name}'", statement.Span, context);
+
+        return new IrAssignment(target, value, statement.Span);
     }
+
+    /// <summary>
+    /// The local <paramref name="target"/> names, with the name as written, when it is one that may be
+    /// assigned: a local declared with <c>var</c>, which a loop binding is not (spec 18).
+    /// </summary>
+    private static (NameExpression Name, IrLocal Local)? AssignableLocal(Expression target, Scope scope)
+        => target is NameExpression name && scope.LookupLocal(name.Name.Text) is { } local && !IsLoopBinding(local)
+            ? (name, local)
+            : null;
 
     /// <summary>Binds <c>x op= y</c> as <c>x = x op y</c> (spec 9.2).</summary>
     /// <remarks>
@@ -1566,7 +1569,12 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
-        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        if (WritesAField(statement.Target, scope, context))
+        {
+            return BindCompoundFieldAssignment(statement, scope, context);
+        }
+
+        if (AssignableLocal(statement.Target, scope) is not { } assignable)
         {
             return BindRefusedAssignment(
                 statement.Target,
@@ -1576,10 +1584,15 @@ public sealed partial class Binder
                 context);
         }
 
+        var (name, local) = assignable;
+
         var operation = BindBinary(LongFormOf(statement), scope, context, local.Type, OperatorForm.Compound);
         MarkWritten(name.Name);
 
-        return new IrAssignment(new IrLocalReference(local, name.Span), operation, statement.Span);
+        var target = new IrLocalReference(local, name.Span);
+        ReportIfTraversalChanges([target], $"This assigns '{local.Name}'", statement.Span, context);
+
+        return new IrAssignment(target, operation, statement.Span);
     }
 
     /// <summary>The operation a compound assignment stands for: <c>x op y</c>, for <c>x op= y</c>.</summary>
@@ -1623,27 +1636,51 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
-        _diagnostics.Report(
-            DiagnosticCodes.InvalidAssignmentTarget,
-            "Only local variables can be assigned.",
-            target.Span,
-            "Whether methods may mutate the receiver is still an open question (spec 16.1).");
+        ReportUnassignable(target, scope);
 
-        var refusedTarget = new IrExpressionStatement(
-            BindExpression(target, scope, context, null),
-            target.Span);
-
+        var refusedTarget = BindExpression(target, scope, context, null);
         MarkWritten(AssignedNameOf(target));
 
-        return new IrBlock(
+        return Refused(refusedTarget, [.. operands.Select(operand => BindExpression(operand, scope, context, null))], span);
+    }
+
+    /// <summary>Reports <c>PC0034</c> for a target that names neither a local nor a field.</summary>
+    /// <remarks>
+    /// A loop binding and a parameter are named, because the reader can see each is a name and needs
+    /// telling why it is not one that may be assigned (#153). Both are read-only by decision (spec 18),
+    /// and the way out of both is the same: a local of one's own.
+    /// </remarks>
+    private void ReportUnassignable(Expression target, Scope scope)
+    {
+        var (message, help) = target is NameExpression name
+            ? (scope.LookupLocal(name.Name.Text), scope.LookupParameter(name.Name.Text)) switch
+            {
+                ({ } binding, _) => (
+                    $"'{binding.Name}' is a loop binding, which cannot be assigned.",
+                    $"Copy it into a local first: 'var copy: {binding.Type.DisplayName} = {binding.Name};'."),
+                (_, { } parameter) => (
+                    $"'{parameter.Name}' is a parameter, which cannot be assigned.",
+                    $"Copy it into a local first: 'var copy: {parameter.Type.DisplayName} = {parameter.Name};'."),
+                _ => (UnassignableMessage, UnassignableHelp),
+            }
+            : (UnassignableMessage, UnassignableHelp);
+
+        _diagnostics.Report(DiagnosticCodes.InvalidAssignmentTarget, message, target.Span, help);
+    }
+
+    private const string UnassignableMessage = "Only a local variable or a field can be assigned.";
+
+    private const string UnassignableHelp =
+        "Assign a local declared with 'var', or a field of a message this method may change (spec 18).";
+
+    /// <summary>A refused assignment's target and operands, kept as statements of a block.</summary>
+    private static IrBlock Refused(IrExpression target, IReadOnlyList<IrExpression> operands, SourceSpan span)
+        => new(
             [
-                refusedTarget,
-                .. operands.Select(operand => new IrExpressionStatement(
-                    BindExpression(operand, scope, context, null),
-                    operand.Span)),
+                new IrExpressionStatement(target, target.Span),
+                .. operands.Select(operand => new IrExpressionStatement(operand, operand.Span)),
             ],
             span);
-    }
 
     private IrExpression BindExpression(
         Expression expression,
@@ -1727,30 +1764,23 @@ public sealed partial class Binder
 
     private IrExpression BindName(NameExpression name, Scope scope, MethodContext context)
     {
-        if (scope.LookupLocal(name.Name.Text) is { } local)
+        switch (Resolve(name.Name.Text, scope, context))
         {
-            Use(local.Id, name.Name.Span);
-            return new IrLocalReference(local, name.Span);
-        }
+            case { Local: { } local }:
+                Use(local.Id, name.Name.Span);
+                return new IrLocalReference(local, name.Span);
 
-        if (scope.LookupParameter(name.Name.Text) is { } parameter)
-        {
-            Use(parameter.Id, name.Name.Span);
-            return new IrParameterReference(parameter, name.Span);
-        }
+            case { Parameter: { } parameter }:
+                Use(parameter.Id, name.Name.Span);
+                return new IrParameterReference(parameter, name.Span);
 
-        if (context.HasImplicitReceiver)
-        {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            var field = MessageFields.Named(context.Receiver, name.Name.Text);
-            if (field is not null)
-            {
+            case { Field: { } field }:
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
                 // receiver is a fact about the text and not about what was named.
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return BindFieldAccess(
                     new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
-            }
         }
 
         _diagnostics.Report(
@@ -1786,10 +1816,7 @@ public sealed partial class Binder
     {
         if (field.IsMap)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.MapsAreNotSupported,
-                $"Field '{field.Name}' is a map, which this compiler version does not support.",
-                span);
+            ReportMap(field, span);
             return new IrLiteral(null, ErrorType.Instance, span);
         }
 
@@ -1821,6 +1848,12 @@ public sealed partial class Binder
 
         return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
     }
+
+    private void ReportMap(FieldDescriptor field, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.MapsAreNotSupported,
+            $"Field '{field.Name}' is a map, which this compiler version does not support.",
+            span);
 
     /// <summary>
     /// Resolves <c>SomeEnum.SOME_VALUE</c>, or returns null when the member access is not naming an
@@ -2002,11 +2035,27 @@ public sealed partial class Binder
         return string.Join('.', parts);
     }
 
-    /// <summary>Whether an identifier names a value in scope, using the same order as BindName.</summary>
+    /// <summary>Whether an identifier names a value in scope.</summary>
     private static bool IsValueName(string name, Scope scope, MethodContext context)
-        => scope.LookupLocal(name) is not null
-        || scope.LookupParameter(name) is not null
-        || (context.HasImplicitReceiver && MessageFields.Named(context.Receiver, name) is not null);
+        => Resolve(name, scope, context) is not { Local: null, Parameter: null, Field: null };
+
+    /// <summary>
+    /// What a bare name means where it is written: a local, then a parameter, then a field of the
+    /// implicit receiver, the first of those that has the name. None of them when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// One home for the order, because everything that reads a bare name has to agree on it: binding
+    /// a read, binding a write, deciding whether a dotted name is an enum, and tracing what a change
+    /// reaches before a loop body is bound. A second copy of the order is a write the binder resolves
+    /// to one place and the presence analysis to another.
+    /// </remarks>
+    private static BareName Resolve(string name, Scope scope, MethodContext context)
+        => scope.LookupLocal(name) is { } local ? new BareName(local, null, null)
+            : scope.LookupParameter(name) is { } parameter ? new BareName(null, parameter, null)
+            : new BareName(null, null, context.HasImplicitReceiver ? MessageFields.Named(context.Receiver, name) : null);
+
+    /// <summary>What <see cref="Resolve"/> found a bare name to mean: at most one of the three.</summary>
+    private readonly record struct BareName(IrLocal? Local, IrParameter? Parameter, FieldDescriptor? Field);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -2034,7 +2083,23 @@ public sealed partial class Binder
         }
 
         var receiver = BindExpression(member.Receiver, scope, context, null);
+        return Member(receiver, member, field => BindFieldAccess(receiver, field, member.Span, context));
+    }
 
+    /// <summary>
+    /// The field <paramref name="member"/> names on <paramref name="receiver"/>, as
+    /// <paramref name="access"/> makes it, or what the name is instead when it is not a field.
+    /// </summary>
+    /// <remarks>
+    /// One answer for a field read and a field written, so the two cannot come to report a name that
+    /// is not a field differently. Only what is made of the field differs: a read is guarded (spec
+    /// 13.1), and a place written through is not.
+    /// </remarks>
+    private IrExpression Member(
+        IrExpression receiver,
+        MemberAccessExpression member,
+        Func<FieldDescriptor, IrExpression> access)
+    {
         if (receiver.Type is ErrorType)
         {
             return new IrLiteral(null, ErrorType.Instance, member.Span);
@@ -2053,7 +2118,7 @@ public sealed partial class Binder
         if (field is not null)
         {
             Use(SymbolId.ForField(field), member.Name.Span);
-            return BindFieldAccess(receiver, field, member.Span, context);
+            return access(field);
         }
 
         if (_methods.ContainsKey((messageType.Descriptor.FullName, member.Name.Text)))
@@ -2230,7 +2295,13 @@ public sealed partial class Binder
             }
         }
 
-        return new IrMethodCall(receiver, signature, arguments, invocation.Span);
+        var call = new IrMethodCall(receiver, signature, arguments, invocation.Span);
+        if (signature.IsMutating)
+        {
+            CheckMutatingCall(call, invocation, context);
+        }
+
+        return call;
 
         // For the six paths that give up before any argument has been looked at. There is no
         // signature to take an expected type from -- that is what they gave up on -- so each
@@ -2979,20 +3050,29 @@ public sealed partial class Binder
         /// </summary>
         /// <remarks>
         /// <para>
-        /// A set rather than a lattice, and no fixpoint over loops. ProtoCross cannot assign to a
-        /// field, so nothing that has been shown to be set can become unset before the method ends.
-        /// If receiver mutation ever arrives (spec 18), this is the assumption that has to be
-        /// revisited.
+        /// A set rather than a lattice, and no fixpoint over loops. Nothing in the language unsets a
+        /// field except an assignment to another member of its <c>oneof</c>, so a fact ends only when
+        /// something replaces the message it is about or unsets the field it is about.
         /// </para>
         /// <para>
         /// That does not make the facts monotone, which is what this once said. A local can be
-        /// assigned another message, so a fact reached through a local ends when the local is
-        /// assigned, and a loop enters its body with only the facts its body cannot end. See
-        /// <see cref="ForgetAssignedIn"/>. No fixpoint is needed for that either: which locals a loop
-        /// assigns is written in its body, and asking the syntax answers it in one pass.
+        /// assigned another message, a field can be assigned one (spec 18), and a mutating method may
+        /// do either to anything inside its receiver. So a fact ends at a change that could make it
+        /// false, and a loop enters its body with only the facts its body cannot end. See
+        /// <see cref="ForgetChangedIn"/>. No fixpoint is needed for that either: what a loop changes
+        /// is written in its body, and asking the syntax answers it in one pass.
         /// </para>
         /// </remarks>
         public IReadOnlySet<string> Present { get; init; } = EmptyPresence;
+
+        /// <summary>The method being bound, or null in a test, which is no method's body.</summary>
+        public IrMethodSignature? Method { get; init; }
+
+        /// <summary>Whether the method is a <c>mut fn</c>, which may change its receiver (spec 18).</summary>
+        public bool ChangesReceiver => Method is { IsMutating: true };
+
+        /// <summary>The repeated fields the <c>for</c> loops around the statement traverse, outermost first.</summary>
+        public IReadOnlyList<Traversal> Traversing { get; init; } = [];
     }
 
     private static readonly IReadOnlySet<string> EmptyPresence =

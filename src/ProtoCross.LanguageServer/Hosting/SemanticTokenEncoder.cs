@@ -78,7 +78,7 @@ public static class SemanticTokenEncoder
             }
 
             // A contextual keyword where it is one names nothing, so there is nothing to refine it by.
-            var isAName = token.Kind is TokenKind.Identifier && !ContextualKeywords.BeginsAMessageLiteral(token, next);
+            var isAName = token.Kind is TokenKind.Identifier && !ContextualKeywords.IsAKeywordHere(token, next);
 
             classified.Add(
                 isAName && resolved.Covering(token.Span) is { } reference

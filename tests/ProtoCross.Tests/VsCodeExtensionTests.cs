@@ -136,6 +136,7 @@ public class VsCodeExtensionTests
         total<<=1;total>>=2>=3>>4;total&&=x||=y;total+==z;
         var literals = 0xFF + 0b1010 + 1_000 + 1.5e-3 + 2E+8 + 0xE-1 - __INF * __NAN + __inf;
         var malformed = 0x_FF + 5u + 1e + 0b102 + 1_.5e+3 + 0X1F + 7.e;
+        mut fn a(); mut	fn b(); var mut = mut + mutt; mut fnx; xmut fn c; mut_ fn d; mut mut fn e;
         /* runs to the end
         of the file
         """;
@@ -295,7 +296,8 @@ public class VsCodeExtensionTests
     /// it. This one also fails for a keyword nobody has written yet, and for a word the grammar colours as
     /// a keyword that the lexer reads as a name. The contextual <c>new</c> rule has to spell the list a
     /// second time, because a TextMate pattern cannot refer to another's, and this is what keeps the two
-    /// copies from drifting apart.
+    /// copies from drifting apart. The contextual <c>mut</c> rule spells no list: it names only the
+    /// <c>fn</c> after it, which has to be a keyword the lexer reserves.
     /// </remarks>
     [Fact]
     public void TheGrammarsKeywordsAreTheLexersKeywords()
@@ -306,14 +308,23 @@ public class VsCodeExtensionTests
             .Select(pattern => pattern.GetProperty("match").GetString()!)
             .ToList();
 
-        Assert.Equal(2, patterns.Count);
+        Assert.Equal(3, patterns.Count);
 
-        foreach (var pattern in patterns)
+        var lists = patterns
+            .Select(pattern => Regex.Match(pattern, @"\(\?:([a-z0-9_|]+)\)"))
+            .Where(list => list.Success)
+            .ToList();
+
+        Assert.Equal(2, lists.Count);
+
+        foreach (var list in lists)
         {
-            var listed = Regex.Match(pattern, @"\(\?:([a-z0-9_|]+)\)").Groups[1].Value.Split('|');
+            var listed = list.Groups[1].Value.Split('|');
 
             Assert.Equal(Lexer.Keywords.Keys.Order(StringComparer.Ordinal), listed.Order(StringComparer.Ordinal));
         }
+
+        Assert.Contains("fn", Lexer.Keywords.Keys);
     }
 
     /// <summary>

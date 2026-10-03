@@ -16,13 +16,14 @@ public partial class BackendTests
 
     /// <summary>
     /// The C# generated for <paramref name="source"/>: its tests when <paramref name="tests"/> is set,
-    /// and its behavior otherwise. Generating it must report nothing.
+    /// and its behavior otherwise. The schemas are looked for in <paramref name="protoDirectory"/>, or
+    /// else beside the examples and the test fixtures. Generating it must report nothing.
     /// </summary>
-    private static string CSharpOf(string source, bool tests = false)
+    private static string CSharpOf(string source, bool tests = false, string? protoDirectory = null)
     {
         var result = Compilation.Compile(
             TestPaths.WriteTempScript(source),
-            [TestPaths.ExampleProtoDirectory, TestPaths.FixtureProtoDirectory]);
+            protoDirectory is null ? [TestPaths.ExampleProtoDirectory, TestPaths.FixtureProtoDirectory] : [protoDirectory]);
         Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
 
         var backend = new CSharpBackend();

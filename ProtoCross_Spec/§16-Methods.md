@@ -28,10 +28,13 @@ Normative Requirements:
   method in every source is declared before any body is bound.
 - A method whose declaration is syntactically incomplete may still be bound into a partial semantic
   model for editor use, but it is not callable when it lacks a usable declaration name.
+- A method declared `mut fn` may change its receiver, and one declared `fn` may not
+  ([18](./§18-Mutability.md#18-mutability)). `mut` is not a keyword anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)).
 
 Open Questions:
 
-- Should methods ever be allowed to mutate the receiver?
+- ~~Should methods ever be allowed to mutate the receiver?~~ Decided: a `mut fn` may
+  ([18](./§18-Mutability.md#18-mutability)).
 
 ### 16.2 Parameters and Returns
 
@@ -43,7 +46,8 @@ Normative Requirements:
 - Methods have either one return value or no return value. Multiple return values are not supported.
 - A non-void method must return a value on every path that can reach the end of the body.
 - A void method may use `return;`.
-- Parameters are not assignable. The only assignment target currently supported is a local variable.
+- Parameters are not assignable, and a message passed as one cannot be changed through it
+  ([18](./§18-Mutability.md#18-mutability)).
 
 Open Questions:
 

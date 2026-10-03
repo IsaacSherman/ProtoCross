@@ -296,7 +296,7 @@ public sealed class Parser
         var methods = new List<MethodDeclaration>();
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
         {
-            if (Current.Kind == TokenKind.Fn)
+            if (StartsAMethod())
             {
                 methods.Add(ParseMethodDeclaration());
                 continue;
@@ -308,7 +308,7 @@ public sealed class Parser
                 Current.Span,
                 "Extend blocks contain methods. Fields belong in the .proto schema.");
 
-            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile or TokenKind.Fn))
+            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !StartsAMethod())
             {
                 Advance();
             }
@@ -909,9 +909,19 @@ public sealed class Parser
         return new SyntaxName(string.Join('.', parts), span);
     }
 
+    /// <summary>Whether a method declaration begins here: <c>fn</c>, or <c>mut fn</c>.</summary>
+    /// <remarks>
+    /// Recovery inside an extend block stops at the same place, so a stray token before a
+    /// <c>mut fn</c> skips to the <c>mut</c> and keeps it, rather than to the <c>fn</c> and losing it.
+    /// </remarks>
+    private bool StartsAMethod()
+        => Current.Kind == TokenKind.Fn || ContextualKeywords.MarksAMutatingMethod(Current, Peek(1));
+
     private MethodDeclaration ParseMethodDeclaration()
     {
-        var start = Expect(TokenKind.Fn).Span;
+        var mutating = ContextualKeywords.MarksAMutatingMethod(Current, Peek(1));
+        var start = mutating ? Advance().Span : Current.Span;
+        Expect(TokenKind.Fn);
         var name = ExpectName();
 
         Expect(TokenKind.OpenParen);
@@ -941,7 +951,10 @@ public sealed class Parser
         }
 
         var body = ParseBlock();
-        return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span));
+        return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span))
+        {
+            IsMutating = mutating,
+        };
     }
 
     private TypeReference ParseTypeReference()

@@ -55,6 +55,20 @@ public class MethodSignatureTests
             MethodNamed(module, "scaled").Signature.DisplayName);
     }
 
+    /// <summary>A method that may change its receiver says so where it is shown, as its declaration does (spec 18).</summary>
+    [Fact]
+    public void AMutatingMethodRendersWithTheMutItIsDeclaredWith()
+    {
+        var module = Bind(
+            """
+            extend Outer {
+                mut fn reset(to: int64) { count = to; }
+            }
+            """);
+
+        Assert.Equal("mut fn reset(to: int64) -> void", MethodNamed(module, "reset").Signature.DisplayName);
+    }
+
     [Fact]
     public void AMethodTakingNothingRendersEmptyParentheses()
     {
@@ -138,11 +152,12 @@ public class MethodSignatureTests
                 fn b(one: int64) -> int64 { return one; }
                 fn c(one: int64, two: string) -> int64 { return one; }
                 fn d(same: int64, same: int64) -> int64 { return 1; }
+                mut fn e(one: int64, two: string) { count = one; }
             }
             """,
             errorFree: false);
 
-        Assert.Equal(4, module.Methods.Count);
+        Assert.Equal(5, module.Methods.Count);
 
         foreach (var method in module.Methods)
         {

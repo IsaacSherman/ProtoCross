@@ -487,6 +487,33 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor CallWithoutAReceiver =
         new("PC0093", DiagnosticSeverity.Error, "method called with no receiver");
 
+    // ------------------------------------------------------- mutation
+
+    /// <summary>
+    /// A field assigned, or a <c>mut fn</c> called, on a message the method may not change: a
+    /// parameter, the receiver of a method that is not <c>mut</c>, or a message nothing holds (spec 18).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MessageIsReadOnly =
+        new("PC0094", DiagnosticSeverity.Error, "message cannot be changed here");
+
+    /// <summary>
+    /// A call to a <c>mut fn</c> inside a larger expression, where the order it runs in beside the
+    /// rest could be seen (spec 18, 9.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MutatingCallInsideAnExpression =
+        new("PC0095", DiagnosticSeverity.Error, "mutating call inside an expression");
+
+    /// <summary>
+    /// A change, inside a <c>for</c>, to the repeated field it traverses or to something holding it
+    /// (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor TraversedFieldChanged =
+        new("PC0096", DiagnosticSeverity.Error, "traversed field may change");
+
+    /// <summary>An argument to a <c>mut fn</c> that is part of the receiver it changes (spec 18).</summary>
+    public static readonly DiagnosticDescriptor ArgumentIsPartOfTheReceiver =
+        new("PC0097", DiagnosticSeverity.Error, "argument is part of the receiver");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

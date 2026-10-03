@@ -21,10 +21,32 @@ public static class ContextualKeywords
     /// <summary>The word that begins a message literal (spec 13.2).</summary>
     public const string New = "new";
 
+    /// <summary>The word that marks a method that may change its receiver (spec 18).</summary>
+    public const string Mut = "mut";
+
     /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
     /// </summary>
     public static bool BeginsAMessageLiteral(Token token, Token next)
         => token is { Kind: TokenKind.Identifier, Text: New } && next.Kind == TokenKind.Identifier;
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>mut</c> that marks a method: one with <c>fn</c> straight
+    /// after it.
+    /// </summary>
+    /// <remarks>
+    /// An identifier is never followed by <c>fn</c> anywhere else, because <c>fn</c> only begins a
+    /// method, and a method only begins where an extend block expects one. So the two tokens alone
+    /// settle it, as a type name after <c>new</c> does.
+    /// </remarks>
+    public static bool MarksAMutatingMethod(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Mut } && next.Kind == TokenKind.Fn;
+
+    /// <summary>
+    /// Whether <paramref name="token"/>, with <paramref name="next"/> after it, is one of these words
+    /// where it is a keyword.
+    /// </summary>
+    public static bool IsAKeywordHere(Token token, Token next)
+        => BeginsAMessageLiteral(token, next) || MarksAMutatingMethod(token, next);
 }

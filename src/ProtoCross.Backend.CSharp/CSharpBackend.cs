@@ -4,6 +4,7 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -389,36 +390,97 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         using var methodScope = writer.Block(
             $"public static {returnType} {methodName}({string.Join(", ", parameters)})");
 
-        EmitStatements(writer, method.Body.Statements, placement);
+        EmitStatements(writer, method.Body.Statements, new Body(placement, IrMutation.ChangesAMessage(method)));
     }
 
-    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements, Placement placement)
+    /// <summary>What every statement of one method's body is written with.</summary>
+    /// <param name="CopiesIntoLocals">
+    /// Whether a message stored in a local is a copy of its own (spec 13.2), which it has to be only in
+    /// a method that changes a message.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// A local holds a message of its own in the language, and C++ copies into one whatever it is
+    /// told. A C# message is a reference, so a local shares the message it was given, and a change
+    /// through either would show through the other. In a method that changes no message, nothing can
+    /// change through either, a copy and a share cannot be told apart, and the copy is a deep clone
+    /// for nothing (<see cref="IrMutation.ChangesAMessage"/>). That is every method written before
+    /// mutation, and what C# writes for them has not moved.
+    /// </para>
+    /// <para>
+    /// A field is different. A field's new value is copied in every method, because the message
+    /// stored there outlives the method, and whoever reads it next may change it.
+    /// </para>
+    /// </remarks>
+    private sealed record Body(Placement Placement, bool CopiesIntoLocals)
+    {
+        /// <summary><paramref name="value"/> as a local stores it.</summary>
+        public string ForLocal(IrExpression value)
+            => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Expression(value, Placement);
+
+        /// <summary>
+        /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
+        /// changes a message, a field of a copy of the call's result it is read from.
+        /// </summary>
+        /// <remarks>
+        /// A call's result is a reference in C#, and may be part of the receiver the loop's body
+        /// changes, where C++ keeps the result in a local of its own (spec 24.2). A loop over it would
+        /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. A
+        /// literal is held by nothing else, and is traversed as it is.
+        /// </remarks>
+        public string Collection(IrForEach loop)
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is IrMethodCall owner
+                ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
+                : Expression(loop.Collection, Placement);
+    }
+
+    /// <summary>
+    /// The chain of field reads <paramref name="read"/>, begun at <paramref name="ownerText"/> instead
+    /// of at <paramref name="owner"/>.
+    /// </summary>
+    private static string ReadOff(IrExpression read, IrExpression owner, string ownerText) => read switch
+    {
+        _ when ReferenceEquals(read, owner) => ownerText,
+        IrFieldAccess field => $"{ReadOff(field.Receiver, owner, ownerText)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
+        _ => throw new ArgumentOutOfRangeException(nameof(read), read, "Not a chain of field reads from its owner."),
+    };
+
+    private static void EmitStatements(SourceWriter writer, IReadOnlyList<IrStatement> statements, Body body)
     {
         foreach (var statement in statements)
         {
-            EmitStatement(writer, statement, placement);
+            EmitStatement(writer, statement, body);
         }
     }
 
-    private static void EmitStatement(SourceWriter writer, IrStatement statement, Placement placement)
+    private static void EmitStatement(SourceWriter writer, IrStatement statement, Body body)
     {
+        var placement = body.Placement;
+
         switch (statement)
         {
             case IrBlock block:
             {
                 using var scope = writer.Block(string.Empty);
-                EmitStatements(writer, block.Statements, placement);
+                EmitStatements(writer, block.Statements, body);
                 break;
             }
 
             case IrVariableDeclaration declaration:
                 writer.WriteLine(
                     $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = "
-                    + $"{Expression(declaration.Initializer, placement)};");
+                    + $"{body.ForLocal(declaration.Initializer)};");
                 break;
 
             case IrAssignment assignment:
-                writer.WriteLine($"{Expression(assignment.Target, placement)} = {Expression(assignment.Value, placement)};");
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {body.ForLocal(assignment.Value)};");
+                break;
+
+            case IrFieldAssignment assignment:
+                writer.WriteLine(
+                    $"{WritableMessage(assignment.Target.Receiver, placement)}."
+                    + $"{NameConventions.GetCSharpPropertyName(assignment.Target.Field)} = "
+                    + $"{StoredValue(assignment.Value, placement, ReceiverName)};");
                 break;
 
             case IrReturn { Value: null }:
@@ -432,19 +494,19 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             case IrForEach forEach:
             {
                 using var scope = writer.Block(
-                    $"foreach (var {Escape(forEach.Loop.Name)} in {Expression(forEach.Collection, placement)})");
-                EmitStatements(writer, forEach.Body.Statements, placement);
+                    $"foreach (var {Escape(forEach.Loop.Name)} in {body.Collection(forEach)})");
+                EmitStatements(writer, forEach.Body.Statements, body);
                 break;
             }
 
             case IrIf ifStatement:
-                EmitIf(writer, ifStatement, placement);
+                EmitIf(writer, ifStatement, body);
                 break;
 
             case IrWhile whileStatement:
             {
                 using var scope = writer.Block($"while ({Expression(whileStatement.Condition, placement)})");
-                EmitStatements(writer, whileStatement.Body.Statements, placement);
+                EmitStatements(writer, whileStatement.Body.Statements, body);
                 break;
             }
 
@@ -469,15 +531,16 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the
     /// source stays an 'else if' in the output instead of gaining a brace level per branch.
     /// </summary>
-    private static void EmitIf(SourceWriter writer, IrIf statement, Placement placement)
+    private static void EmitIf(SourceWriter writer, IrIf statement, Body body)
     {
+        var placement = body.Placement;
         var keyword = "if";
 
         while (true)
         {
             using (writer.Block($"{keyword} ({Expression(statement.Condition, placement)})"))
             {
-                EmitStatements(writer, statement.Then.Statements, placement);
+                EmitStatements(writer, statement.Then.Statements, body);
             }
 
             // The binder only ever puts a block or a nested 'if' in the else branch.
@@ -491,7 +554,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             if (statement.Else is IrBlock elseBlock)
             {
                 using var scope = writer.Block("else");
-                EmitStatements(writer, elseBlock.Statements, placement);
+                EmitStatements(writer, elseBlock.Statements, body);
             }
 
             return;
@@ -522,11 +585,38 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
     {
         var arguments = new List<string> { Expression(call.Receiver, placement, receiverName) };
-        arguments.AddRange(call.Arguments.Select(a => Expression(a, placement, receiverName)));
+        arguments.AddRange(call.Arguments.Select(argument => IrMutation.IsPassedAsACopy(call, argument)
+            ? StoredValue(argument, placement, receiverName)
+            : Expression(argument, placement, receiverName)));
 
         var methodName = placement.MethodNameOf(call.Target);
         return $"{placement.QualifiedClassOf(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
     }
+
+    /// <summary>
+    /// The message <paramref name="place"/> names, set first where it is unset, so that a field of it
+    /// can be assigned (spec 18).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Assigning <c>customer.name</c> sets <c>customer</c> when it is unset, as a C++ mutable accessor
+    /// does. protoc's C# gives an unset message field as null, so each link of the chain is written
+    /// <c>(x.Customer ??= new Customer())</c>, which is the message there or a new one put there. For a
+    /// member of a <c>oneof</c>, the property reads null while another member is set, and setting it
+    /// switches the case, which is what <c>mutable_x()</c> does too.
+    /// </para>
+    /// <para>
+    /// The chain is reached before the value is evaluated, as C# evaluates any assignment and as the
+    /// C++ setters are called, so a value that asks whether a link is set sees it set in both.
+    /// </para>
+    /// </remarks>
+    private static string WritableMessage(IrExpression place, Placement placement) => place switch
+    {
+        IrFieldAccess field => $"({WritableMessage(field.Receiver, placement)}."
+            + $"{NameConventions.GetCSharpPropertyName(field.Field)} ??= "
+            + $"new global::{NameConventions.GetCSharpTypeName(field.Field.MessageType)}())",
+        _ => Expression(place, placement),
+    };
 
     private static string ExtensionClassName(MessageDescriptor receiver)
     {

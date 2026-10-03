@@ -116,6 +116,7 @@ public static class IrWalk
             IrBlock block => [.. block.Statements],
             IrVariableDeclaration declaration => [declaration.Initializer],
             IrAssignment assignment => [assignment.Target, assignment.Value],
+            IrFieldAssignment assignment => [assignment.Target, assignment.Value],
             IrReturn { Value: { } returned } => [returned],
             IrForEach loop => [loop.Collection, loop.Body],
             IrIf branch => branch.Else is { } otherwise
