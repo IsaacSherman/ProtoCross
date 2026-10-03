@@ -78,7 +78,7 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutExpression(model, offset);
+        return card ?? AboutAppend(model, offset) ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -199,6 +199,35 @@ internal static class HoverCard
         {
             yield return paragraph;
         }
+    }
+
+    /// <summary>What an append does, where the caret is on the append rather than inside it.</summary>
+    /// <remarks>
+    /// <para>
+    /// <c>append</c> is the language's, and names no symbol (spec 22.2), so the symbol arm has nothing
+    /// to say about it. Neither does the expression arm: an append is a statement, with no type to
+    /// show. What it is, is the method it reads as, and that is the card.
+    /// </para>
+    /// <para>
+    /// Wherever the innermost node is the append itself -- its name, its dot, its parentheses -- as the
+    /// parentheses of a call are the call's. The caret on what it adds to, or inside the value it adds,
+    /// is on an expression of its own, which the arm after this one describes.
+    /// </para>
+    /// </remarks>
+    private static Hover? AboutAppend(SemanticModel model, int offset)
+    {
+        if (model.IrAt(offset)?.Node is not IrAppend { Collection.Type: RepeatedType collection } append)
+        {
+            return null;
+        }
+
+        return Card(
+            [
+                Signature(IrAppend.DisplayNameFor(collection)),
+                "Adds `value` to the end. A message is added as a copy of its own, unless it is a literal "
+                    + "(spec 14.1).",
+            ],
+            append.NameSpan);
     }
 
     /// <summary>What the innermost expression covering the caret is, where no name is.</summary>

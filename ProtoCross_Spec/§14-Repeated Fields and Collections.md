@@ -8,12 +8,13 @@ Implemented operation set:
 - Read the repeated field as a collection value for iteration.
 - Change the element a `for` is given, where the method may change the field
   ([18](./§18-Mutability.md#18-mutability)).
+- Append an element to the end with `place.append(value);`, where the method may change the place
+  ([18](./§18-Mutability.md#18-mutability)).
 
 Not implemented:
 
 - Length.
 - Indexing.
-- Append. Decided ([18](./§18-Mutability.md#18-mutability)), and not implemented yet.
 - Clear, and removing an element. Decided against: a field that cannot be emptied keeps what a guard
   shows set ([13.1](./§13-Messages.md#131-field-access)).
 - Element assignment.
@@ -30,6 +31,14 @@ for item in invoice.items {
 return total;
 ```
 
+```protocross
+extend Invoice {
+    mut fn add_item(item: InvoiceItem) {
+        items.append(item);
+    }
+}
+```
+
 Normative Requirement:
 
 - `for` may iterate only a protobuf repeated field value. Iterating anything else is `PC0033`.
@@ -40,10 +49,29 @@ Normative Requirement:
   an element of ([18](./§18-Mutability.md#18-mutability)): a field of it may be assigned, and a `mut fn` called on
   it. `for item in items { item.add_trait(trait); }` is allowed, because the field still holds the
   same elements in the same order.
+- **`place.append(value);` adds `value` to the end of a repeated value the method may change**: a
+  repeated field of a message it may change, at any depth, or a local holding a repeated value, which
+  is the method's own copy ([18](./§18-Mutability.md#18-mutability), [13.2](./§13-Messages.md#132-message-construction)).
+  - It is the one method a repeated value has. Any other is `PC0042`.
+  - It takes one value, of the element type. Another number of them is `PC0045`, and a value of
+    another type is `PC0046`: no implicit numeric conversion is applied.
+  - It has no value, so it is a statement of its own. Anywhere else -- an operand, an argument, an
+    initializer -- it is `PC0095`, as a call to a `mut fn` is, and a call to a `mut fn` cannot be the
+    value it appends.
+  - A message appended is stored as a copy, unless it is a literal ([13.2](./§13-Messages.md#132-message-construction)).
+  - Its target is written through as an assignment's is ([18](./§18-Mutability.md#18-mutability)): an unset message on the
+    way is set, and needs no guard, and setting a member of a `oneof` that way unsets the others.
+  - It reaches its target first, then evaluates its value, and adds the element last
+    ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A value that counts the elements counts the ones that were there.
+  - Appending to a parameter's field, to the receiver of a method that is not `mut`, or to a value
+    nothing holds -- a call's result, a literal -- is `PC0094`.
+  - `append` is not a keyword. A method a source declares on a message under that name is called as
+    any method is.
 - **While a `for` traverses a repeated field, nothing inside it may change that field's
   membership, order or identity** (`PC0096`). That refuses anything that could, whether or not it
   would:
   - assigning the field, the message holding it, or anything further out, which replaces it;
+  - appending to the field, which adds to it;
   - assigning, or writing through, another member of a `oneof` holding it, which unsets it;
   - calling a `mut fn` on the message holding it, or on anything further out, which may change it.
 
@@ -56,8 +84,8 @@ Open Questions:
 
 - Should filtering, mapping, sorting, or aggregation helpers exist? `No. Basics only. ~IS`
 - ~~Should repeated field mutation ever be allowed?~~ Decided: an element may change through the name
-  a `for` binds, and a field may be appended to (not implemented yet). Nothing may be cleared or
-  removed ([18](./§18-Mutability.md#18-mutability)).
+  a `for` binds, and a field, or a local holding a repeated value, may be appended to with
+  `place.append(value);`. Nothing may be cleared or removed ([18](./§18-Mutability.md#18-mutability)).
 - Should collection indexing be bounds-checked with explicit error results if indexing is added?
   `Ugh... probably. I really want to say no, but... I have a feeling that not doing this could lead to security concerns in some language or another. ~IS`
 

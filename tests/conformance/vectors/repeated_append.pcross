@@ -1,0 +1,376 @@
+// Conformance vectors for appending to a repeated value (spec 14.1): a field of the receiver, a field
+// written through a message that may not be there yet, the field of an element a loop is given, and a
+// local holding a repeated value of its own.
+//
+// protobuf holds repeated elements three ways in C++ -- numbers and enums in a RepeatedField, strings,
+// bytes and messages by pointer in a RepeatedPtrField -- and adds to each through a different
+// accessor, where C# has one RepeatedField and one Add. C# holds a message by reference, so an
+// element appended can be the very message something else holds, where C++ has a copy. These vectors
+// pin that the two agree anyway: on the order elements arrive in, on copies, on writing through a
+// message that is not there yet and a oneof member that unsets the other, and on the order an append
+// reaches its target, evaluates its value and adds it in.
+
+import proto "repeated_append.proto";
+
+extend Tally {
+    fn count_total() -> int64 {
+        var total: int64 = 0;
+        for count in counts {
+            total += count;
+        }
+
+        return total;
+    }
+
+    fn entry_count() -> int64 {
+        var count: int64 = 0;
+        for entry in entries {
+            count += 1;
+        }
+
+        return count;
+    }
+
+    fn review_count() -> int64 {
+        if has review {
+            return 1;
+        }
+
+        return 0;
+    }
+
+    // Each number goes on the end, after the ones that were there, in the order appended.
+    mut fn counted(more: int64) -> int64 {
+        counts.append(more);
+        counts.append(more * 10);
+
+        var digits: int64 = 0;
+        for count in counts {
+            digits = digits * 100 + count;
+        }
+
+        return digits;
+    }
+
+    // A string, and one read from a field, which C++ copies before it adds it.
+    mut fn last_note_after_appending(note: string) -> string {
+        notes.append(note);
+        notes.append(headline);
+
+        var last: string = "";
+        for written in notes {
+            last = written;
+        }
+
+        return last;
+    }
+
+    // A string literal, and then a parameter after it.
+    mut fn note_position(note: string) -> int64 {
+        notes.append("between");
+        notes.append(note);
+
+        var position: int64 = 0;
+        var found: int64 = -1;
+        for written in notes {
+            position += 1;
+            if written == note {
+                found = position;
+            }
+        }
+
+        return found;
+    }
+
+    // An enum, which C++ holds as an int.
+    mut fn kinds_appended() -> int64 {
+        kinds.append(TallyKind.TALLY_KIND_COUNTED);
+        kinds.append(TallyKind.TALLY_KIND_SKIPPED);
+
+        var skipped: int64 = 0;
+        for kind in kinds {
+            if kind == TallyKind.TALLY_KIND_SKIPPED {
+                skipped += 1;
+            }
+        }
+
+        return skipped;
+    }
+
+    // Bytes, read from a field, which C++ holds as a string.
+    mut fn stamps_appended() -> int64 {
+        stamps.append(stamp);
+        stamps.append(stamp);
+
+        var count: int64 = 0;
+        for written in stamps {
+            count += 1;
+        }
+
+        return count;
+    }
+
+    // A message literal, and a parameter, which is appended as a copy.
+    mut fn entries_appended(entry: TallyEntry) -> int64 {
+        entries.append(new TallyEntry { cents: 5 });
+        entries.append(entry);
+
+        var total: int64 = 0;
+        for appended in entries {
+            total += appended.cents;
+        }
+
+        return total;
+    }
+
+    // The element appended holds a copy of a field, so changing the field leaves the element alone.
+    // In C# the element would otherwise be the field's own message.
+    mut fn appended_latest_is_a_copy() -> int64 {
+        if not has latest {
+            return -1;
+        }
+
+        entries.append(latest);
+        latest.cents = 100;
+
+        var total: int64 = 0;
+        for appended in entries {
+            total += appended.cents;
+        }
+
+        return total;
+    }
+
+    // And changing the element leaves the field it was copied from alone.
+    mut fn latest_outlives_its_appended_copy() -> int64 {
+        if not has latest {
+            return -1;
+        }
+
+        entries.append(latest);
+        for appended in entries {
+            appended.cents = 50;
+        }
+
+        return latest.cents;
+    }
+
+    // Appending through a message that is not set sets it.
+    mut fn appended_through_an_unset_review() -> bool {
+        review.scores.append(3);
+        return has review;
+    }
+
+    // Appending through one member of a oneof unsets the other.
+    mut fn appended_through_the_review_unsets_the_waiver() -> bool {
+        review.scores.append(1);
+        return has waiver;
+    }
+
+    // An append reaches its target before it evaluates its value, so a value that asks whether a
+    // message it writes through is set sees it set. C++ evaluates the value of '=' first, so it
+    // reaches the message holding a field of messages in a statement before it.
+    mut fn review_seen_by_its_own_score() -> int64 {
+        review.scores.append(review_count());
+
+        var total: int64 = 0;
+        if has review {
+            for score in review.scores {
+                total += score;
+            }
+        }
+
+        return total;
+    }
+
+    mut fn review_seen_by_its_own_flag() -> int64 {
+        review.flagged.append(new TallyEntry { cents: review_count() });
+
+        var total: int64 = 0;
+        if has review {
+            for flagged in review.flagged {
+                total += flagged.cents;
+            }
+        }
+
+        return total;
+    }
+
+    // The element is added only after its value is evaluated, so a value that counts the field's
+    // elements counts the ones that were there. C++ adds a message element as add_x() returns it, so
+    // it calls that after the value.
+    mut fn entries_counted_before_they_are_added() -> int64 {
+        entries.append(new TallyEntry { cents: entry_count() });
+        entries.append(new TallyEntry { cents: entry_count() });
+
+        var digits: int64 = 0;
+        for appended in entries {
+            digits = digits * 10 + appended.cents;
+        }
+
+        return digits;
+    }
+
+    // A loop appends to the element it is given.
+    mut fn parts_appended_to_every_entry() -> int64 {
+        for entry in entries {
+            entry.parts.append(new TallyEntry { cents: entry.cents });
+        }
+
+        var total: int64 = 0;
+        for entry in entries {
+            for part in entry.parts {
+                total += part.cents;
+            }
+        }
+
+        return total;
+    }
+
+    // Inside a loop over one field, another may be appended to.
+    mut fn counts_from_entries() -> int64 {
+        for entry in entries {
+            counts.append(entry.cents);
+        }
+
+        return count_total();
+    }
+
+    // A local holds a repeated value of its own, so appending to it leaves the field alone, whether
+    // the method is a 'mut fn' or not. In C# the local would otherwise be the field itself.
+    fn local_counts_appended() -> int64 {
+        var mine = counts;
+        mine.append(100);
+
+        var total: int64 = 0;
+        for count in mine {
+            total += count;
+        }
+
+        return total * 1000 + count_total();
+    }
+
+    fn local_entries_appended() -> int64 {
+        var mine = entries;
+        mine.append(new TallyEntry { cents: 40 });
+
+        var total: int64 = 0;
+        for appended in mine {
+            total += appended.cents;
+        }
+
+        return total * 10 + entry_count();
+    }
+
+    fn local_notes_appended(note: string) -> int64 {
+        var mine = notes;
+        mine.append(note);
+
+        var count: int64 = 0;
+        for written in mine {
+            count += 1;
+        }
+
+        return count;
+    }
+}
+
+test Tally.counted "numbers are appended in order, after the ones there" {
+    receiver { counts: [1, 2] }
+    arg more = 3;
+    expect return 1020330;
+}
+
+test Tally.last_note_after_appending "a string read from a field is appended last" {
+    receiver { notes: ["first"], headline: "a headline longer than any short string buffer, so it lives on the heap" }
+    arg note = "second";
+    expect return "a headline longer than any short string buffer, so it lives on the heap";
+}
+
+test Tally.note_position "strings are appended at the end, in order" {
+    receiver { notes: ["first", "second"] }
+    arg note = "third";
+    expect return 4;
+}
+
+test Tally.kinds_appended "an enum is appended" {
+    receiver { kinds: [TallyKind.TALLY_KIND_SKIPPED] }
+    expect return 2;
+}
+
+test Tally.stamps_appended "bytes are appended" {
+    receiver { stamps: [] }
+    expect return 2;
+}
+
+test Tally.entries_appended "a message literal and a parameter are appended" {
+    receiver { entries: [new TallyEntry { cents: 1 }] }
+    arg entry = new TallyEntry { cents: 7 };
+    expect return 13;
+}
+
+test Tally.appended_latest_is_a_copy "an appended message is a copy of the field it came from" {
+    receiver { latest: new TallyEntry { cents: 7 } }
+    expect return 7;
+}
+
+test Tally.latest_outlives_its_appended_copy "changing an appended copy leaves its source alone" {
+    receiver { latest: new TallyEntry { cents: 7 } }
+    expect return 7;
+}
+
+test Tally.appended_through_an_unset_review "appending through an unset message sets it" {
+    receiver { }
+    expect return true;
+}
+
+test Tally.appended_through_the_review_unsets_the_waiver "appending through a oneof member unsets the other" {
+    receiver { waiver: new TallyReview { scores: [1] } }
+    expect return false;
+}
+
+test Tally.review_seen_by_its_own_score "a number append reaches its target before its value" {
+    receiver { }
+    expect return 1;
+}
+
+test Tally.review_seen_by_its_own_flag "a message append reaches its target before its value" {
+    receiver { }
+    expect return 1;
+}
+
+test Tally.entries_counted_before_they_are_added "an element is added only after its value is evaluated" {
+    receiver { entries: [new TallyEntry { cents: 9 }] }
+    expect return 912;
+}
+
+test Tally.parts_appended_to_every_entry "a loop appends to the elements it is given" {
+    receiver {
+        entries: [
+            new TallyEntry { cents: 2 },
+            new TallyEntry { cents: 3, parts: [new TallyEntry { cents: 10 }] },
+        ],
+    }
+    expect return 15;
+}
+
+test Tally.counts_from_entries "a loop over one field appends to another" {
+    receiver { counts: [1], entries: [new TallyEntry { cents: 2 }, new TallyEntry { cents: 3 }] }
+    expect return 6;
+}
+
+test Tally.local_counts_appended "a local repeated value of numbers is a copy" {
+    receiver { counts: [1, 2] }
+    expect return 103003;
+}
+
+test Tally.local_entries_appended "a local repeated value of messages is a copy" {
+    receiver { entries: [new TallyEntry { cents: 2 }] }
+    expect return 421;
+}
+
+test Tally.local_notes_appended "a local repeated value of strings is a copy" {
+    receiver { notes: ["first"] }
+    arg note = "second";
+    expect return 2;
+}

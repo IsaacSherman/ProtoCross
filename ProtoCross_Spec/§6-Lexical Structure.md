@@ -167,8 +167,12 @@ Normative Requirements:
   constant carry `readonly`, because [18](./§18-Mutability.md#18-mutability) never lets a method assign one. A message
   field does not: a `mut fn` may assign its receiver's, and any method a field of a message it holds in
   a local. Where a name is introduced carries `declaration`, and the
-  target of an assignment carries `modification` -- including an assignment the language refuses,
-  since what is being described is what the author wrote.
+  target of an assignment, and what an append adds to, carry `modification` -- including a change the
+  language refuses, since what is being described is what the author wrote.
+- **`append` is the language's own method** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Where an append is bound, it is
+  `method`, with `defaultLibrary`: it resolves to no symbol, so no reference refines it, and it would
+  otherwise keep the `variable` of a name that did not resolve. A method a source declares under the
+  same name is coloured as any declared method is.
 - **Refinement adds and never subtracts.** An identifier that resolved to nothing, a file that did
   not parse, a schema that would not load, a category the client did not say it could paint: each
   keeps the answer the token stream gave. A file is never less classified for having been compiled.

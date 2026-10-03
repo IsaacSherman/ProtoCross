@@ -478,9 +478,14 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
             case IrFieldAssignment assignment:
                 writer.WriteLine(
-                    $"{WritableMessage(assignment.Target.Receiver, placement)}."
-                    + $"{NameConventions.GetCSharpPropertyName(assignment.Target.Field)} = "
+                    $"{WritableField(assignment.Target, placement)} = "
                     + $"{StoredValue(assignment.Value, placement, ReceiverName)};");
+                break;
+
+            case IrAppend append:
+                writer.WriteLine(
+                    $"{WritableCollection(append.Collection, placement)}."
+                    + $"Add({StoredValue(append.Value, placement, ReceiverName)});");
                 break;
 
             case IrReturn { Value: null }:
@@ -610,6 +615,22 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     /// C++ setters are called, so a value that asks whether a link is set sees it set in both.
     /// </para>
     /// </remarks>
+    /// <summary>The field <paramref name="target"/> names, on a message set first where it is unset.</summary>
+    private static string WritableField(IrFieldAccess target, Placement placement)
+        => $"{WritableMessage(target.Receiver, placement)}.{NameConventions.GetCSharpPropertyName(target.Field)}";
+
+    /// <summary>
+    /// What an append adds to: a repeated field, on a message set first where it is unset, or a local.
+    /// </summary>
+    /// <remarks>
+    /// C# evaluates what <c>Add</c> is called on before its argument, so the target is reached before
+    /// the value is evaluated, and the element is added last, as an assignment's field is set last
+    /// (spec 9.3).
+    /// </remarks>
+    private static string WritableCollection(IrExpression collection, Placement placement) => collection is IrFieldAccess field
+        ? WritableField(field, placement)
+        : Expression(collection, placement);
+
     private static string WritableMessage(IrExpression place, Placement placement) => place switch
     {
         IrFieldAccess field => $"({WritableMessage(field.Receiver, placement)}."

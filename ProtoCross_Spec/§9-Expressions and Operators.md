@@ -151,6 +151,9 @@ Current defined subset:
   its own target therefore sees the link set. The field itself is set last, so a value that asks
   `has` of the field, or reads another member of its `oneof`, sees it as it was before the
   assignment.
+- An append ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)) is ordered as an assignment to a field is: it reaches its
+  target, setting any unset message on the way, then evaluates its value, and adds the element
+  last. A value that counts the elements therefore counts the ones that were there.
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a
   local or a field cannot fail, and nothing on the right can change either, so no program can
   observe that order.

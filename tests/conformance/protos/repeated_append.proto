@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// repeated_append.pcross -- appending to a repeated field, and to a local holding a repeated value
+// (spec 14.1).
+//
+// A tally with a repeated field of each kind of element protobuf holds differently: numbers, strings,
+// bytes, an enum and messages. Its review is a message to append through, in a oneof with a waiver,
+// so an append through one unsets the other. An entry holds entries of its own, so a loop can append
+// to the element it is given.
+message Tally {
+  repeated int64 counts = 1;
+  repeated string notes = 2;
+  repeated TallyKind kinds = 3;
+  repeated TallyEntry entries = 4;
+  TallyEntry latest = 5;
+
+  oneof outcome {
+    TallyReview review = 6;
+    TallyReview waiver = 7;
+  }
+
+  string headline = 8;
+  bytes stamp = 9;
+  repeated bytes stamps = 10;
+}
+
+message TallyEntry {
+  int64 cents = 1;
+  repeated TallyEntry parts = 2;
+}
+
+message TallyReview {
+  repeated int64 scores = 1;
+  repeated TallyEntry flagged = 2;
+}
+
+enum TallyKind {
+  TALLY_KIND_UNSPECIFIED = 0;
+  TALLY_KIND_COUNTED = 1;
+  TALLY_KIND_SKIPPED = 2;
+}

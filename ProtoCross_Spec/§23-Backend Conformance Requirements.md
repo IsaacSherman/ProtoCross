@@ -29,7 +29,8 @@ time rather than emitting something whose semantics differ.
 | Cross-message method calls | Yes | Yes | — | C++ emits all declarations before any definition. |
 | Local variables and assignment | Yes | Yes | — | A local, or a field of a message the method may change ([18](./§18-Mutability.md#18-mutability)). A local holds a copy: C++ copies on assignment, and C# `Clone`s in a method that changes a message. |
 | Compound assignment | Yes | Yes | — | Bound as its long form ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so neither backend sees one. |
-| Mutating methods (`mut fn`) | Yes | Yes | — | C# changes a message through protoc's properties, setting an unset one with `??=`; C++ takes `T&` and changes it through setters and mutable accessors ([18](./§18-Mutability.md#18-mutability), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). Appending is not implemented yet. |
+| Mutating methods (`mut fn`) | Yes | Yes | — | C# changes a message through protoc's properties, setting an unset one with `??=`; C++ takes `T&` and changes it through setters and mutable accessors ([18](./§18-Mutability.md#18-mutability), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
+| Appending (`append`) | Yes | Yes | — | C# `Add` on the field's `RepeatedField`, cloning a message that is not a literal; C++ protoc's `add_x(value)`, or `*add_x() = T(value)` for a message, and `Add` on a local ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
 | Maps | No | No | — | Blocked on 14.2. |
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |

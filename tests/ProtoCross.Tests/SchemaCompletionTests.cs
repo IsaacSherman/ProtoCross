@@ -293,14 +293,77 @@ public partial class SchemaCompletionTests
 
     /// <summary>
     /// There is no member access into a repetition -- only 'for x in ...' -- so the element type's
-    /// members are names that cannot be written where the caret is.
+    /// members are names that cannot be written where the caret is. Its one method is (spec 14.1).
     /// </summary>
     [Fact]
-    public async Task ADotAfterARepeatedFieldOffersNothingRatherThanTheElementTypesMembers()
+    public async Task ADotAfterARepeatedFieldOffersAppendRatherThanTheElementTypesMembers()
     {
         var offered = await OfferedAsync(
             "extend Outer {\n    fn f() -> int64 {\n        return nested_values.\n    }\n}\n",
             "return nested_values.");
+
+        var append = Assert.Single(offered);
+        Assert.Equal("append()", append.Label);
+        Assert.Equal(CompletionItemKind.Method, append.Kind);
+        Assert.Equal("mut fn append(value: protocross.tests.Outer.Nested) -> void", append.Detail);
+    }
+
+    /// <summary>
+    /// A repeated value has one member, so it may stand where that member is taken off a name, bare or
+    /// after a dot, beside the messages that always could -- and a number still cannot.
+    /// </summary>
+    [Theory]
+    [InlineData("        nested_values.append(nested);\n", "nested_val")]
+    [InlineData("        var mine: Outer = new Outer { };\n        mine.nested_values.append(nested);\n", "mine.nested_val")]
+    public async Task ARepeatedFieldIsOfferedWhereAReceiverGoes(string body, string marker)
+    {
+        var offered = Labels(await OfferedAsync("extend Outer {\n    mut fn f() {\n" + body + "    }\n}\n", marker));
+
+        Assert.Contains("nested_values", offered);
+        Assert.Contains("inner", offered);
+        Assert.DoesNotContain("count", offered);
+    }
+
+    /// <summary>
+    /// Before any member but <c>append</c>, a repeated value is the receiver of nothing it has, so it
+    /// would be offered only to be refused, as <c>nested_values.deep</c> is.
+    /// </summary>
+    [Fact]
+    public async Task ARepeatedFieldIsNotOfferedWhereAnotherMemberIsTakenOffIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend Outer {\n    fn f() -> int64 {\n        if has inner {\n            var d = inner.deep;\n"
+                + "        }\n\n        return 0;\n    }\n}\n",
+            "var d = inn"));
+
+        Assert.Contains("inner", offered);
+        Assert.DoesNotContain("nested_values", offered);
+    }
+
+    /// <summary>
+    /// Completion asked again on an append already written offers it again, as it offers a field's
+    /// siblings on a field already written, and without parentheses, which are already there.
+    /// </summary>
+    [Fact]
+    public async Task CompletionOnAnAppendAlreadyWrittenOffersIt()
+    {
+        var offered = await OfferedAsync(
+            "extend Outer {\n    mut fn f() {\n        nested_values.append(nested);\n    }\n}\n",
+            "nested_values.app");
+
+        Assert.Equal("append", Assert.Single(offered).Label);
+    }
+
+    /// <summary>
+    /// An append has no value, so nothing is taken off one, and <c>has</c> asks about a field, never a
+    /// method: where either goes, a repeated value offers nothing at all.
+    /// </summary>
+    [Theory]
+    [InlineData("        var x = nested_values..count;\n", "nested_values.")]
+    [InlineData("        var x = has nested_values.;\n", "has nested_values.")]
+    public async Task ADotAfterARepeatedFieldOffersNothingWhereAReceiverOrAFieldGoes(string body, string before)
+    {
+        var offered = await OfferedAsync("extend Outer {\n    mut fn f() {\n" + body + "    }\n}\n", before);
 
         Assert.Empty(offered);
     }

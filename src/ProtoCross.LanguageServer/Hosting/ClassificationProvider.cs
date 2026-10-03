@@ -226,6 +226,7 @@ public sealed class ClassificationProvider
             asked.Document.Text,
             asked.Uri.Text,
             compiled.Semantics?.AllReferences ?? [],
+            compiled.Semantics?.LanguageMethodNames ?? [],
             Client);
 
         return Deltas ? Named(asked, classified, withdrawals) : classified;

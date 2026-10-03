@@ -364,12 +364,14 @@ public sealed class CompletionProvider
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
-        var writingAReceiver = subject.FollowedByDot || NamesAReceiver(model, subject);
+        var takenOff = MembersTakenOff(model, subject);
+        var writingAReceiver = subject.FollowedByDot || takenOff.Count > 0;
+        var appendedTo = subject.FollowedByAppend || takenOff.Contains(IrAppend.MethodName);
 
         if (subject.PrecededByDot)
         {
             return Members(
-                ReceiverAt(model, subject), result, subject, presence, writingAReceiver, asked.Document);
+                ReceiverAt(model, subject), result, subject, presence, writingAReceiver, appendedTo, asked.Document);
         }
 
         if (Arguments(model, subject, asked.Document) is { } arguments)
@@ -382,7 +384,7 @@ public sealed class CompletionProvider
             return fields;
         }
 
-        return InScope(model, result, subject, presence, writingAReceiver, asked.Document);
+        return InScope(model, result, subject, presence, writingAReceiver, appendedTo, asked.Document);
     }
 
     /// <summary>
@@ -422,7 +424,8 @@ public sealed class CompletionProvider
             && Covers(field, subject.Start);
 
     /// <summary>
-    /// Whether the caret is writing a name that something else is about to take a member off.
+    /// The member something else is about to take off the name the caret is writing, for each access
+    /// that takes one: none where the name is not a receiver.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -457,11 +460,20 @@ public sealed class CompletionProvider
     /// the state completion is usually asked in, and a buffer that has not parsed has no member
     /// access to find -- so the two are a union, each answering where the other cannot.
     /// </para>
+    /// <para>
+    /// The members rather than only whether there are any, because one of them decides what else may
+    /// stand there: a repeated value has one member, <c>append</c>, so it is a receiver of that and of
+    /// nothing else (<see cref="CanBeAReceiver"/>).
+    /// </para>
     /// </remarks>
-    private static bool NamesAReceiver(SemanticModel model, SchemaSubject subject)
+    private static IReadOnlyList<string> MembersTakenOff(SemanticModel model, SchemaSubject subject)
         => model.SyntaxAt(subject.Start) is { } location
-            && location.Path.OfType<MemberAccessExpression>().Any(access
-                => EndsAt(access.Receiver) is { } name && Covers(name, subject.Start));
+            ? [
+                .. location.Path.OfType<MemberAccessExpression>()
+                    .Where(access => EndsAt(access.Receiver) is { } name && Covers(name, subject.Start))
+                    .Select(access => access.Name.Text),
+            ]
+            : [];
 
     /// <summary>Where an expression's trailing name is written, or null when it ends in no name.</summary>
     /// <remarks>
@@ -1255,6 +1267,7 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
+        bool appendedTo,
         OpenDocument document)
     {
         if (model.ScopeAt(subject.Start) is not { } scope)
@@ -1312,7 +1325,7 @@ public sealed class CompletionProvider
         return
         [
             .. scope.Names
-                .Where(visible => !writingAReceiver || visible.Type is MessageType)
+                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, appendedTo))
                 .Select(visible => Member(
                     visible.Name,
                     visible.Symbol.Kind is SymbolKind.Field
@@ -1408,7 +1421,7 @@ public sealed class CompletionProvider
     /// <summary>The type whose members may be written after the caret's dot, or null when there is none.</summary>
     /// <remarks>
     /// <para>
-    /// Four shapes, and the first is the one that matters. <see cref="IrMissingMemberAccess"/> is what
+    /// Five shapes, and the first is the one that matters. <see cref="IrMissingMemberAccess"/> is what
     /// the binder leaves where a member name has not been written yet -- <c>line.</c> with the caret
     /// after the dot, which is the state completion is triggered in -- and it exists precisely so the
     /// receiver's type survives a binding that otherwise failed. Everything else about that
@@ -1417,11 +1430,11 @@ public sealed class CompletionProvider
     /// <para>
     /// The others are accesses that did resolve, so that invoking completion on a name already
     /// written offers its siblings rather than nothing. A field access, a presence test and a method
-    /// call each keep the receiver they resolved against; an enum constant keeps no receiver because
-    /// it never had one, and its own type is what the name before the dot named. A presence test is
-    /// in that list because <c>has inner.stamp</c> is a member access like any other and reads
-    /// nothing like one in the IR: it binds to its own node, so a list of the node kinds that carry a
-    /// receiver is a list that can be, and was, incomplete.
+    /// call each keep the receiver they resolved against, and an append keeps what it adds to; an enum
+    /// constant keeps no receiver because it never had one, and its own type is what the name before
+    /// the dot named. A presence test is in that list because <c>has inner.stamp</c> is a member
+    /// access like any other and reads nothing like one in the IR: it binds to its own node, so a list
+    /// of the node kinds that carry a receiver is a list that can be, and was, incomplete.
     /// </para>
     /// <para>
     /// <b>An enum-typed receiver is the one case where knowing the type is not enough.</b> Constants
@@ -1456,26 +1469,43 @@ public sealed class CompletionProvider
             return constant.EnumType;
         }
 
-        // The innermost of the four, since they nest: in 'new T { flag: has x.flag }.y' the presence
+        // The innermost of the five, since they nest: in 'new T { flag: has x.flag }.y' the presence
         // test is inside the access of 'y', and taking the nearest access first would offer T's fields
         // after 'x.'.
         var receiver = at.Path
-            .LastOrDefault(node => node is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall) switch
+            .LastOrDefault(node => node is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend) switch
             {
                 IrMissingMemberAccess awaiting => awaiting.Receiver,
                 IrFieldAccess access => access.Receiver,
                 IrFieldPresence presence => presence.Receiver,
                 IrMethodCall call => call.Receiver,
+                IrAppend append => append.Collection,
                 _ => null,
             };
 
         return receiver switch
         {
-            { Type: MessageType } => receiver.Type,
+            { Type: MessageType or RepeatedType } => receiver.Type,
             IrLiteral { Value: null, Type: EnumPlType } => receiver.Type,
             _ => null,
         };
     }
+
+    /// <summary>
+    /// Whether a value of <paramref name="type"/> may stand where a member is taken off it: a message,
+    /// which has fields and methods, or, where the member is <c>append</c>, a repeated value, whose one
+    /// member that is (spec 14.1).
+    /// </summary>
+    /// <param name="appendedTo">Whether the member taken off it is <c>append</c>.</param>
+    /// <remarks>
+    /// The one answer to which names may stand where a receiver goes, for a bare name and a member
+    /// alike, so the two cannot disagree about whether <c>entries</c> in <c>entries.append(e)</c> is
+    /// one. A repeated value before any other member would be offered only to be refused, as
+    /// <c>order.lines.quantity</c> is. An enum is not here: its constants are reached through its
+    /// name, never through a value.
+    /// </remarks>
+    private static bool CanBeAReceiver(PlType type, bool appendedTo)
+        => type is MessageType || (appendedTo && type is RepeatedType);
 
     /// <summary>What may be written after a dot on a value of this type.</summary>
     /// <remarks>
@@ -1488,10 +1518,11 @@ public sealed class CompletionProvider
     /// <c>PC0040</c>.
     /// </para>
     /// <para>
-    /// A repeated field offers nothing, which is the whole answer rather than an omission: there is no
-    /// member access into a repetition, only <c>for x in ...</c>, so offering the element type's
-    /// members would offer names that cannot be written where the caret is. An unknown receiver
-    /// offers nothing for the same reason -- returning a wrong list is worse than returning none.
+    /// A repeated value offers its one method, <c>append</c>, and nothing of its element type's, which
+    /// is the whole answer rather than an omission: there is no member access into a repetition, only
+    /// <c>for x in ...</c>, so offering the element type's members would offer names that cannot be
+    /// written where the caret is. An unknown receiver offers nothing for the same reason -- returning
+    /// a wrong list is worse than returning none.
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem> Members(
@@ -1500,6 +1531,7 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
+        bool appendedTo,
         OpenDocument document)
         => receiver switch
         {
@@ -1507,14 +1539,14 @@ public sealed class CompletionProvider
             [
                 // What the caret's name is used for constrains this exactly as it constrains a bare
                 // name. A member something else takes a member off is itself a receiver, so only a
-                // singular message field can go there -- 'inner.weight.seconds' asks an int64 for a
+                // field with members can go there -- 'inner.weight.seconds' asks an int64 for a
                 // member it cannot have. And parentheses already written mean a call, which a field
                 // can never be: 'other.count()' is PC0044, an unknown method, rather than a field
                 // read with punctuation after it.
                 .. MessageFields.InDeclarationOrder(message.Descriptor)
                     .Where(field => !field.IsMap
                         && !subject.FollowedByCall
-                        && (!writingAReceiver || TypeFactory.FromField(field) is MessageType))
+                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo)))
                     .Select(field => Member(
                         field.Name,
                         CompletionItemKind.Field,
@@ -1538,6 +1570,20 @@ public sealed class CompletionProvider
                         subject,
                         document))
                     : [],
+            ],
+
+            // An append is a statement with no value, so it is never something another member is taken
+            // off, and 'has' asks about a field, never a method (spec 14.1).
+            RepeatedType repeated when !writingAReceiver && !presence =>
+            [
+                Member(
+                    subject.FollowedByCall ? IrAppend.MethodName : IrAppend.MethodName + "()",
+                    CompletionItemKind.Method,
+                    IrAppend.DisplayNameFor(repeated),
+                    null,
+                    rank: "1",
+                    subject,
+                    document),
             ],
 
             // A constant has no members of its own and is not callable, so where a receiver or a call

@@ -62,9 +62,10 @@ This section should be maintained as the authoritative list of open decisions.
   ([13.2](./§13-Messages.md#132-message-construction)).
 - Message equality semantics.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
-  the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; and
-  nothing inside a `for` may change the field it traverses
-  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [18](./§18-Mutability.md#18-mutability)). Appending is decided and not implemented yet.
+  the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; an
+  element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
+  and nothing inside a `for` may change the field it traverses, an append to it included
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [18](./§18-Mutability.md#18-mutability)).
 - Map support and map iteration order.
 - Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
   and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).

@@ -80,9 +80,9 @@ public static class SemanticTokenLegend
 
     /// <summary>The modifiers, in the order their bits refer to.</summary>
     /// <remarks>
-    /// Three of the ten are emitted; the rest are declared for the same reason the unused types are,
+    /// Four of the ten are emitted; the rest are declared for the same reason the unused types are,
     /// since a modifier added later shifts every bit above it. <see cref="Definition"/> is one of the
-    /// seven on purpose: in ProtoCross a name is declared and defined in the same breath, so emitting
+    /// six on purpose: in ProtoCross a name is declared and defined in the same breath, so emitting
     /// both bits for one event would be telling a client twice about one thing.
     /// </remarks>
     public static IReadOnlyList<string> TokenModifiers { get; } =
@@ -117,6 +117,17 @@ public static class SemanticTokenLegend
     private static readonly int DeclarationBit = BitOf(Declaration);
     private static readonly int ReadOnlyBit = BitOf(ReadOnly);
     private static readonly int ModificationBit = BitOf(Modification);
+
+    /// <summary>The category of a method the language defines rather than any source: <c>append</c>.</summary>
+    public static int LanguageMethodIndex => MethodIndex;
+
+    /// <summary>What else is true of a method the language defines: it is the language's own.</summary>
+    /// <remarks>
+    /// LSP's <c>defaultLibrary</c>, which is what that modifier is for: a name that is part of the
+    /// language rather than of the program, so a client can tell <c>entries.append</c> from a method an
+    /// author wrote, as it tells a built-in function from one in the file.
+    /// </remarks>
+    public static int LanguageMethodModifiers { get; } = BitOf(DefaultLibrary);
 
     /// <summary>Which category a token belongs to, or null when it is not classified.</summary>
     /// <remarks>

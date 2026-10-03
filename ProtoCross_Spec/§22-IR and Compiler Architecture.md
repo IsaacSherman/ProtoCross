@@ -40,7 +40,8 @@ The IR preserves:
   than the construct around it. Recorded as the binder resolves, because that is the only point
   holding both the identity and the range of the name: a type reference resolves to a type and leaves
   no node behind, and the spans a node does carry are extents. A reference that did not resolve is
-  not recorded; it refers to nothing.
+  not recorded; it refers to nothing. Nor is `append`, which nothing declares
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)): the append keeps where it was written instead.
 - **What was in scope at each point of a method body**: one entry per name that entered a scope, with
   the range it can be written over and the offset it starts resolving from. Recorded where each name
   is declared, because whether a name won is decided there and nowhere else.
@@ -99,7 +100,8 @@ The IR preserves:
 - **What changes.** An assignment is to a local or to a field, and the two are nodes of their own.
   The target of an assignment to a field is a chain of places rather than reads: the receiver, a
   local, a parameter or a loop binding at its root, and a field at each link after it, none of which
-  needed a guard. Which place a statement or a call changes, whether a loop changes the elements it
+  needed a guard. An append is a node of its own too, a statement holding what it adds to -- such a
+  chain, or a local -- and the element. Which place a statement or a call changes, whether a loop changes the elements it
   is given, and whether anything in a method changes a message are asked of the IR rather than
   recorded beside it, so every backend has one answer to each.
 - Assignment intent. A compound assignment is not a node of its own: `x += y` is the
