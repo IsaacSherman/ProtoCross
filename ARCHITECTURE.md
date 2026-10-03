@@ -708,7 +708,9 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same
 suite, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
-every commit landed on `main` directly. It also runs the extension's
+every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
+required checks pass after checking the changed paths, without building or running the suites.
+For changes beyond Markdown it also runs the extension's
 three suites on Windows, Linux and macOS, before and after a `protoc` is installed.
 
 ## Invariants that constrain a change

@@ -186,11 +186,16 @@ In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- a
 rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
 
 Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
-full suite, both switches thrown, for **every pull request to `main` or to a sprint branch
-(`sprints/**`), and every commit landed on `main` directly** -- and for nothing else. Pushing to a
+full suite, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
+sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. Pushing to a
 feature branch triggers no build, and a pull request left in draft is not tested until it is marked
 ready for review. So the cost of ordinary work
 is nothing, and the cost of proposing a change is one run of the same suite you would run yourself.
+
+When every changed file is Markdown, the required checks pass after checking the changed paths,
+without building or running the suites. This applies to both pull requests and pushes to `main`;
+any code, build input or workflow change still runs the full suite. Documentation and any tests that
+read it are checked locally before merging.
 
 A run that skips a gated test fails, rather than passing quickly. A switch that quietly stayed shut
 produces a green build indistinguishable from a thorough one, which is the failure this arrangement

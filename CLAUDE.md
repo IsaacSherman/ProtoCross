@@ -27,7 +27,8 @@ for: `PROTOCROSS_SWEEP=1` runs the whole-corpus completion sweep, `PROTOCROSS_SO
 editing soak, and `PROTOCROSS_BENCH=1` measures the latency budgets (which also needs `-c Release`
 and `DOTNET_gcServer=0`, and refuses to run without either: the suite runs the server garbage
 collector, and the language server ships with the workstation one).
-`.github/workflows/ci.yml` turns the first two on for every pull request to `main`, so what a local
+`.github/workflows/ci.yml` turns the first two on for every pull request to `main` or `sprints/**`
+that changes more than Markdown, and for such pushes to `main`, so what a local
 run skips is still checked before anything merges — and `report.ps1` fails the job when one of those
 is skipped there, since a gate that quietly stays shut looks exactly like a green build. CI builds
 and tests in Release, so a failure seen only there reproduces with `-c Release` on both commands.
@@ -194,9 +195,10 @@ someone else merged first, put it back into draft, resolve, and mark it ready ag
 has to describe the code that is going to land, and a conflict resolved after the check means it no
 longer does.
 
-**A change that needs no CI to verify it gets no CI run.** Documentation, workflow notes and other
-resources are checked locally, together with any test that reads them, and are never the reason to
-mark a pull request ready or to rerun a check.
+**Markdown-only changes skip the build and test suites.** Documentation and workflow notes are checked
+locally, together with any test that reads them, and are never the reason to mark a pull request
+ready or to rerun a check. When the owner asks to merge, mark it ready as usual: the required checks
+then pass after checking the changed paths. Any change beyond Markdown still runs the full suites.
 
 **Rebase onto the base; never merge the base into a branch.** A rebase replays each commit, so a
 conflict is resolved inside an ordinary commit that the pull request's diff shows. A merge buries the
