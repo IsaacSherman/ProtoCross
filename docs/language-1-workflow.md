@@ -38,6 +38,24 @@ including fixes to the sprint branch itself. When the tip moves, rebase onto it 
 never merge the sprint branch in. The rules for side sessions, and the reasons for all of this, are
 in [CLAUDE.md](../CLAUDE.md).
 
+### The version follows the sprint
+
+The extension's version in [editors/vscode/package.json](../editors/vscode/package.json) is numbered
+as the sprints are: **`0.<sprint>.<pull request>`**. The server inside the package takes the same
+number, because `npm run stage` publishes it with the extension's version, so a status report names
+one version for both.
+
+- **Every pull request into a sprint branch increments the third digit.** Sprint 3 began at `0.3.1`,
+  so the next issue pull request into `sprints/language-1-3` makes it `0.3.2`.
+- **The pull request that takes a sprint to `main` increments the second digit and resets the third**,
+  so sprint 3 reaches `main` as `0.4.0`, and sprint 4's first issue pull request makes it `0.4.1`.
+
+Bump it with `npm version <next> --no-git-tag-version` in `editors/vscode`, which changes both
+`package.json` and `package-lock.json`, and commit it with the pull request it belongs to. Because
+pull requests land one at a time, two branches will bump to the same number; the second to land
+rebases and takes the next one, which is a one-line conflict and exactly the conflict that should be
+looked at.
+
 ### The comments are part of the issue
 
 The owner settles design questions **in comments on the issue being decided**, and many of those
