@@ -99,6 +99,45 @@ public partial class MutationTests
             "disputed.cents");
     }
 
+    /// <summary>
+    /// An assignment reaches its target before it evaluates its value (spec 9.3), so the value of one
+    /// written through a <c>oneof</c> member is read after the other members are unset, however deep
+    /// the member is in the target.
+    /// </summary>
+    [Theory]
+    [InlineData("pending.cents")]
+    [InlineData("pending.parent.cents")]
+    public void WritingThroughAOneofMemberEndsWhatAGuardProvedAboutAnotherBeforeTheValueIsRead(string target)
+    {
+        AssertTheReadAfterTheChangeIsRefused(
+            $$"""
+            mut fn f() {
+                if has disputed {
+                    var before: int64 = disputed.cents;
+                    {{target}} = disputed.cents;
+                }
+            }
+            """,
+            "disputed.cents");
+    }
+
+    /// <summary>
+    /// The field assigned is set only once its value has been evaluated, so the value still reads the
+    /// other member of its <c>oneof</c> that a guard tested.
+    /// </summary>
+    [Fact]
+    public void AssigningAOneofMemberKeepsWhatAGuardProvedAboutAnotherWhileTheValueIsRead()
+    {
+        AssertOk(Compile(
+            """
+            mut fn f() {
+                if has disputed {
+                    pending = disputed;
+                }
+            }
+            """));
+    }
+
     /// <summary>A mutating method may assign anything inside its receiver, so the call ends everything shown there.</summary>
     [Fact]
     public void AMutatingCallEndsWhatAGuardProvedInsideItsReceiver()

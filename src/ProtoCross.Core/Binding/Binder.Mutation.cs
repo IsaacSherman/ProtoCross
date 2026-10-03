@@ -182,7 +182,7 @@ public sealed partial class Binder
             return Refused(place, [BindExpression(statement.Value, scope, context, null)], statement.Span);
         }
 
-        var value = BindExpression(statement.Value, scope, context, field.Type);
+        var value = BindExpression(statement.Value, scope, AfterReaching(statement.Target, scope, context), field.Type);
         CheckFieldWrite(field, statement.Span, context);
 
         if (value.Type is not ErrorType && field.Type is not ErrorType && !TypesMatch(field.Type, value.Type))
@@ -588,14 +588,44 @@ public sealed partial class Binder
             .SelectMany(node => FactsEndedBy(node, scope, context))
             .ToList();
 
-        if (ended.Count == 0)
+        return Without(facts, ended);
+    }
+
+    /// <summary><paramref name="facts"/> without the ones <paramref name="ended"/> ends.</summary>
+    private static IReadOnlySet<string> Without(IReadOnlySet<string> facts, IReadOnlyCollection<EndedFacts> ended)
+        => ended.Count == 0
+            ? facts
+            : new HashSet<string>(facts.Where(fact => !ended.Any(end => end.Ends(fact))), StringComparer.Ordinal);
+
+    /// <summary>
+    /// <paramref name="context"/> as it stands once an assignment has reached <paramref name="target"/>,
+    /// which is where its value is evaluated.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An assignment reaches its target before it evaluates its value (spec 9.3, 18), and reaching it
+    /// sets every message it writes through, which unsets the other members of each one's
+    /// <c>oneof</c>. So <c>pending.cents = disputed.cents;</c> has unset <c>disputed</c> by the time it
+    /// reads it, and a guard before the statement no longer says anything about it. Ending those facts
+    /// only after the statement, with everything else it changes, let that read through.
+    /// </para>
+    /// <para>
+    /// The field itself is set after the value is evaluated, so what was shown about it and about the
+    /// other members of its own <c>oneof</c> still holds while the value is: <c>pending = disputed;</c>
+    /// reads the <c>disputed</c> a guard tested. A compound assignment needs no such step. It reads its
+    /// target, so every message it writes through is guarded, and writing through one that is set sets
+    /// nothing.
+    /// </para>
+    /// </remarks>
+    private MethodContext AfterReaching(Expression target, Scope scope, MethodContext context)
+    {
+        if (context.Present.Count == 0 || TracePlace(target, scope, context) is not { IsReadOnly: false } trace)
         {
-            return facts;
+            return context;
         }
 
-        return new HashSet<string>(
-            facts.Where(fact => !ended.Any(end => end.Ends(fact))),
-            StringComparer.Ordinal);
+        var ended = SiblingsUnsetThrough(trace, trace.Links.Count - 1).ToList();
+        return context with { Present = Without(context.Present, ended) };
     }
 
     private IEnumerable<EndedFacts> FactsEndedBy(SyntaxNode node, Scope scope, MethodContext context) => node switch
@@ -628,13 +658,16 @@ public sealed partial class Binder
 
         // The field assigned holds a new message, and each link written through is set, which unsets
         // the other members of its oneof as surely as assigning the field does (FieldsReplacedBy).
-        return
-        [
-            EndedFacts.Below(trace.Root, trace.Path),
-            .. trace.Links.SelectMany((link, depth) => OneofSiblingsOf(link).Select(sibling =>
-                EndedFacts.AtOrBelow(trace.Root, $"{trace.PathTo(depth)}{PresencePathSeparator}{sibling.Name}"))),
-        ];
+        return [EndedFacts.Below(trace.Root, trace.Path), .. SiblingsUnsetThrough(trace, trace.Links.Count)];
     }
+
+    /// <summary>
+    /// The facts ended by setting the first <paramref name="count"/> links of <paramref name="trace"/>:
+    /// those about every other member of each link's <c>oneof</c>.
+    /// </summary>
+    private static IEnumerable<EndedFacts> SiblingsUnsetThrough(PlaceTrace trace, int count)
+        => trace.Links.Take(count).SelectMany((link, depth) => OneofSiblingsOf(link).Select(sibling =>
+            EndedFacts.AtOrBelow(trace.Root, $"{trace.PathTo(depth)}{PresencePathSeparator}{sibling.Name}")));
 
     private IEnumerable<EndedFacts> FactsEndedByCalling(InvocationExpression invocation, Scope scope, MethodContext context)
     {

@@ -37,6 +37,10 @@ Normative Requirements:
     every fact about another member of its `oneof`, which it unsets. Each message it writes through
     is set too, so the same goes for the other members of that message's `oneof`. What was shown
     about the field itself still holds: the assignment sets it.
+  - The messages an assignment writes through are set before its value is evaluated
+    ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), so the facts setting them ends are already ended for the value: after
+    `if has disputed`, `pending.cents = disputed.cents;` is `PC0078`. The field itself is set after
+    its value, so `pending = disputed;` still reads the `disputed` the guard tested.
   - Calling a `mut fn` ends every fact reached through the message it is called on, since it may
     assign anything inside it.
   - A change through the name a `for` binds ends the same facts about every such name, since two
