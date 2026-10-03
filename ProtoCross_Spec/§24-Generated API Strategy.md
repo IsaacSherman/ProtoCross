@@ -183,7 +183,10 @@ is reached through `auto& owner` in a block of its own first, in the same way. A
 `*Add() = value` for an element held by pointer.
 
 A loop whose body changes the element it is given, an append to it included, binds it as `auto&`,
-over the field's mutable accessor; every other loop binds `const auto&` as it always has.
+over the field's mutable accessor; every other loop binds `const auto&` as it always has. protobuf
+holds a repeated enum as `int`, so a loop over one binds an `int`, and each use of the element reads
+it as the enum, `static_cast<E>(kind)`: nothing converts an `int` to the enum that a setter, `add_x`,
+a parameter, a return value and a local of the enum's type all take.
 
 **Fields are reached through the accessors protoc declares, spelled as protoc spells them.** protoc's
 C++ generator derives one name per field and builds every accessor from it: the getter is `name()`,

@@ -5,6 +5,7 @@ using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Symbols;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -908,6 +909,13 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static string Expression(IrExpression expression, Placement placement) => expression switch
     {
         IrThis => ReceiverName,
+
+        // protobuf holds a repeated enum as int (RepeatedTypeName), so a loop over one binds an int.
+        // That converts to the enum's value for a comparison, and to the enum itself nowhere: a
+        // setter, add_x, a parameter, a return and a local all refuse it. Read as the enum, the
+        // binding has the type the IR gives it at every use, not only at the ones that were tried.
+        IrLocalReference { Local: { Declaration.Kind: SymbolKind.LoopBinding, Type: EnumPlType enumType } } binding
+            => $"static_cast<{QualifiedEnumName(enumType.Descriptor)}>({Escape(binding.Local.Name)})",
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
         IrFieldAccess field => FieldRead(Expression(field.Receiver, placement), field.Field),

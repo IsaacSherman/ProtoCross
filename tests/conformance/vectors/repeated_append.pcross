@@ -97,6 +97,34 @@ extend Tally {
         return skipped;
     }
 
+    // An enum read from a loop over enums. protobuf holds a repeated enum as an int in C++, and
+    // add_x takes the enum, so the loop's element is read as one.
+    mut fn kinds_doubled() -> int64 {
+        var mine = kinds;
+        for kind in mine {
+            kinds.append(kind);
+        }
+
+        var skipped: int64 = 0;
+        for kind in kinds {
+            if kind == TallyKind.TALLY_KIND_SKIPPED {
+                skipped += 1;
+            }
+        }
+
+        return skipped;
+    }
+
+    // The same element kept in a local and returned, which take the enum too.
+    fn last_kind() -> TallyKind {
+        var last: TallyKind = TallyKind.TALLY_KIND_UNSPECIFIED;
+        for kind in kinds {
+            last = kind;
+        }
+
+        return last;
+    }
+
     // Bytes, read from a field, which C++ holds as a string.
     mut fn stamps_appended() -> int64 {
         stamps.append(stamp);
@@ -296,6 +324,16 @@ test Tally.note_position "strings are appended at the end, in order" {
 test Tally.kinds_appended "an enum is appended" {
     receiver { kinds: [TallyKind.TALLY_KIND_SKIPPED] }
     expect return 2;
+}
+
+test Tally.kinds_doubled "an enum read from a loop over enums is appended" {
+    receiver { kinds: [TallyKind.TALLY_KIND_SKIPPED, TallyKind.TALLY_KIND_COUNTED] }
+    expect return 2;
+}
+
+test Tally.last_kind "an enum read from a loop over enums is held in a local" {
+    receiver { kinds: [TallyKind.TALLY_KIND_COUNTED, TallyKind.TALLY_KIND_SKIPPED] }
+    expect return TallyKind.TALLY_KIND_SKIPPED;
 }
 
 test Tally.stamps_appended "bytes are appended" {

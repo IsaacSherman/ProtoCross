@@ -94,6 +94,28 @@ public partial class BackendTests
     }
 
     /// <summary>
+    /// protobuf holds a repeated enum as <c>int</c>, and nothing converts an int back to the enum that
+    /// <c>add_x</c>, a setter or a local of the enum's type takes, so C++ reads the loop's element as
+    /// the enum wherever it is used.
+    /// </summary>
+    [Fact]
+    public void CppReadsTheElementOfALoopOverEnumsAsTheEnum()
+    {
+        var generated = AppendingCpp(
+            """
+            mut fn f() {
+                var mine = kinds;
+                for kind in mine {
+                    kinds.append(kind);
+                }
+            }
+            """);
+
+        Assert.Contains("for (const auto& kind : mine)", generated, StringComparison.Ordinal);
+        Assert.Contains("self.add_kinds(static_cast<::protocross::conformance::TallyKind>(kind));", generated, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// A loop that appends to the element it is given changes that element, so C++ iterates it by
     /// mutable reference.
     /// </summary>
