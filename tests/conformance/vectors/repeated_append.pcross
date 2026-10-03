@@ -290,6 +290,29 @@ extend Tally {
         return total * 10 + entry_count();
     }
 
+    // A message held in a local is the method's own too, so appending to a field of it leaves the
+    // field it was copied from alone. In C# the local would otherwise be that field's own message.
+    fn local_message_appended() -> int64 {
+        if not has latest {
+            return -1;
+        }
+
+        var held: TallyEntry = latest;
+        held.parts.append(new TallyEntry { cents: 5 });
+
+        var total: int64 = 0;
+        for part in held.parts {
+            total += part.cents;
+        }
+
+        var original: int64 = 0;
+        for part in latest.parts {
+            original += 1;
+        }
+
+        return total * 10 + original;
+    }
+
     fn local_notes_appended(note: string) -> int64 {
         var mine = notes;
         mine.append(note);
@@ -405,6 +428,11 @@ test Tally.local_counts_appended "a local repeated value of numbers is a copy" {
 test Tally.local_entries_appended "a local repeated value of messages is a copy" {
     receiver { entries: [new TallyEntry { cents: 2 }] }
     expect return 421;
+}
+
+test Tally.local_message_appended "a field of a local message appended to is the local's own" {
+    receiver { latest: new TallyEntry { cents: 1, parts: [new TallyEntry { cents: 2 }] } }
+    expect return 71;
 }
 
 test Tally.local_notes_appended "a local repeated value of strings is a copy" {
