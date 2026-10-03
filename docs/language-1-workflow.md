@@ -87,6 +87,23 @@ or its comments settle:
 A decision the owner made in a comment that the spec does not show has not been recorded. The next
 session will reopen it.
 
+### The README and ARCHITECTURE.md move with every pull request
+
+The #47 loop's step 9 updates ARCHITECTURE.md once an issue's shape has settled, and says nothing of
+the README. Here, **every pull request into a sprint branch** reads both against what it changed
+and updates whichever no longer describes the code, in the same pull request:
+
+- **The README** says what a user can do: what is implemented and what is not, the commands and
+  their options, how the suite and CI run, and the project table.
+- **ARCHITECTURE.md** says where things are: projects, pipeline stages, and the types a cold reader
+  needs.
+
+A change to one usually means a change to the other. A new project goes in both tables, and a
+construct that ARCHITECTURE.md now traces through the pipeline also leaves the README's "Not
+implemented" line. Sprint 3 reached `main` with a README that still called mutation unimplemented
+and never mentioned the language server or projects, two sprints after they landed, because no step
+said to look. A stale document is worse than none, because it is trusted.
+
 ### Semantics go in the conformance corpus
 
 Unit tests cover the layer above. What a construct *means* is proven in
@@ -102,7 +119,6 @@ issue over, name what to try in the extension alongside the short list of what d
 
 ## What is not different
 
-The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, the
-byte-for-byte proof against a base worktree, and ARCHITECTURE.md updates once the shape settles. All
-of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-3` in
+The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, and the
+byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-3` in
 place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.`
