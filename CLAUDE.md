@@ -17,9 +17,10 @@ dotnet build ProtoCross.slnx
 dotnet test ProtoCross.slnx
 ```
 
-The full suite takes about two minutes because it builds and runs real generated projects. Filter
-while iterating (`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered run is the gate.
-`protoc`, the .NET SDK, and a C++ toolchain must be on the machine.
+The full suite takes several minutes because it builds and runs real generated projects, and longer
+with the soak; the README's Building section states the measured times. Filter while iterating
+(`--filter "FullyQualifiedName~LexerTests"`), but the unfiltered run is the gate. `protoc`, the .NET
+SDK, and a C++ toolchain must be on the machine.
 
 Three checks are switched off by default, because none is what a person mid-iteration wants to wait
 for: `PROTOCROSS_SWEEP=1` runs the whole-corpus completion sweep, `PROTOCROSS_SOAK=1` runs the long

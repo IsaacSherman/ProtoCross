@@ -116,6 +116,20 @@ Implemented:
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
+- Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
+  expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
+  `items: [a, b]`, and the values are evaluated in the order written. A literal shows no field to be
+  present, so a message field read straight off one still needs a guard. The spec has the rules in
+  section 13.2.
+- Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
+  change a parameter. Any method may change its own locals. A singular field is assigned, through
+  nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
+  element to a repeated value. Nothing is cleared or removed. A mutating call stands on its own rather
+  than inside a larger expression, and nothing inside a `for` may change the field it traverses. The
+  spec has the rules in section 18.
+- Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
+  list or an append. A local holds a copy of the message or repeated value it is given, so changing
+  the local never changes what it was copied from, in either backend.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow
 - C# backend (extension methods) and C++ backend (header-only free functions)
@@ -123,7 +137,7 @@ Implemented:
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends
 
-Not implemented: maps, oneof, mutation, `Result` types, `switch`, and the Python backend. Backends reject these rather than emitting something whose semantics differ from the spec.
+Not implemented: maps, oneof, `Result` types, `switch`, and the Python backend. Backends reject these rather than emitting something whose semantics differ from the spec.
 
 ### Building
 
@@ -131,8 +145,9 @@ Not implemented: maps, oneof, mutation, `Result` types, `switch`, and the Python
 dotnet test ProtoCross.slnx
 ```
 
-That is the whole gate, and it takes about two minutes because it builds and runs real generated
-projects in both backends rather than asserting about strings. It needs `protoc`, the .NET SDK and a
+That is the whole gate. It builds and runs real generated projects in both backends rather than
+asserting about strings, so it takes about 7 minutes, and about 15 with the long editing soak below
+(`PROTOCROSS_SOAK=1`), which CI always runs. It needs `protoc`, the .NET SDK and a
 C++ toolchain on the machine; a test that cannot find what it needs says so and declines rather than
 failing, so a short run with a lot of skips means a missing dependency rather than a passing suite.
 
