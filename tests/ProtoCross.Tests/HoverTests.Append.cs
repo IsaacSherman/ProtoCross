@@ -30,6 +30,16 @@ public partial class HoverTests
         Assert.Contains("copy", card, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The card's range is the name, so the punctuation around it answers nothing: a range that does
+    /// not hold the position asked about is one a client cannot place.
+    /// </summary>
+    [Fact]
+    public async Task AnAppendsPunctuationShowsNoCard()
+    {
+        Assert.Null(await CardAsync(AppendSource, EditorFixture.After(AppendSource, "append(nested)")));
+    }
+
     /// <summary>What an append adds to, and what it adds, are each described as themselves.</summary>
     [Fact]
     public async Task WhatAnAppendAddsToAndWhatItAddsAreNotTheAppend()

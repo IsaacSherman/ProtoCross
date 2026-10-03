@@ -1,5 +1,6 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.Syntax;
 
 namespace ProtoCross.LanguageServer.Hosting;
@@ -134,7 +135,7 @@ internal sealed record SchemaSubject(
         var lexer = new Lexer(text, SourceIdentity.UnsavedName, new DiagnosticBag());
         var tokens = lexer.Tokenize();
 
-        if (lexer.Comments.Any(comment => Covers(comment.Span, offset)))
+        if (lexer.Comments.Any(comment => EditorPositions.Covers(comment.Span, offset)))
         {
             return false;
         }
@@ -146,7 +147,7 @@ internal sealed record SchemaSubject(
         // fixture written by hand had none.
         if (tokens.Any(token => token.Kind is TokenKind.StringLiteral or TokenKind.IntegerLiteral
                 or TokenKind.FloatLiteral
-            && Covers(token.Span, offset)))
+            && EditorPositions.Covers(token.Span, offset)))
         {
             return false;
         }
@@ -171,10 +172,6 @@ internal sealed record SchemaSubject(
 
         return true;
     }
-
-    /// <summary>Both ends inclusive, so a caret that has just finished typing is still inside.</summary>
-    private static bool Covers(SourceSpan span, int offset)
-        => offset >= span.Start.Offset && offset <= span.End.Offset;
 
     /// <summary>The whole identifier the caret is in or beside, as a half-open range.</summary>
     /// <remarks>

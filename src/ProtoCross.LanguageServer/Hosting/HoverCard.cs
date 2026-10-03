@@ -201,7 +201,7 @@ internal static class HoverCard
         }
     }
 
-    /// <summary>What an append does, where the caret is on the append rather than inside it.</summary>
+    /// <summary>What an append does, where the caret is on its <c>append</c>.</summary>
     /// <remarks>
     /// <para>
     /// <c>append</c> is the language's, and names no symbol (spec 22.2), so the symbol arm has nothing
@@ -209,14 +209,15 @@ internal static class HoverCard
     /// show. What it is, is the method it reads as, and that is the card.
     /// </para>
     /// <para>
-    /// Wherever the innermost node is the append itself -- its name, its dot, its parentheses -- as the
-    /// parentheses of a call are the call's. The caret on what it adds to, or inside the value it adds,
-    /// is on an expression of its own, which the arm after this one describes.
+    /// On the name only, because the card's range is the name, and a range that does not hold the
+    /// position asked about is one a client cannot place. The caret on what it adds to, or inside the
+    /// value it adds, is on an expression of its own, which the arm after this one describes.
     /// </para>
     /// </remarks>
     private static Hover? AboutAppend(SemanticModel model, int offset)
     {
-        if (model.IrAt(offset)?.Node is not IrAppend { Collection.Type: RepeatedType collection } append)
+        if (model.IrAt(offset)?.Node is not IrAppend { Collection.Type: RepeatedType collection } append
+            || !EditorPositions.Covers(append.NameSpan, offset))
         {
             return null;
         }

@@ -428,7 +428,7 @@ public sealed class CompletionProvider
     private static bool NamesAPresenceField(SemanticModel model, SchemaSubject subject)
         => model.SyntaxAt(subject.Start)?.Enclosing<HasExpression>() is { } has
             && EndsAt(has.Operand) is { } field
-            && Covers(field, subject.Start);
+            && EditorPositions.Covers(field, subject.Start);
 
     /// <summary>
     /// The member something else is about to take off the name the caret is writing, for each access
@@ -477,7 +477,7 @@ public sealed class CompletionProvider
         => model.SyntaxAt(subject.Start) is { } location
             ? [
                 .. location.Path.OfType<MemberAccessExpression>()
-                    .Where(access => EndsAt(access.Receiver) is { } name && Covers(name, subject.Start))
+                    .Where(access => EndsAt(access.Receiver) is { } name && EditorPositions.Covers(name, subject.Start))
                     .Select(access => access.Name.Text),
             ]
             : [];
@@ -504,7 +504,7 @@ public sealed class CompletionProvider
         var path = location.Path;
         for (var index = path.Count - 1; index > 0; index--)
         {
-            if (path[index] is not MemberAccessExpression member || !Covers(member.Name.Span, subject.Start))
+            if (path[index] is not MemberAccessExpression member || !EditorPositions.Covers(member.Name.Span, subject.Start))
             {
                 continue;
             }
@@ -559,7 +559,7 @@ public sealed class CompletionProvider
         SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
         if (model.SyntaxAt(subject.Start)?.Enclosing<ExtendDeclaration>() is { } extend
-            && Covers(extend.MessageName.Span, subject.Start))
+            && EditorPositions.Covers(extend.MessageName.Span, subject.Start))
         {
             return Replacing(subject, extend.MessageName.Span, document);
         }
@@ -792,12 +792,12 @@ public sealed class CompletionProvider
         // The method first, because a missing method's insertion point is the position just after
         // the dot, and a missing receiver's is just before the method -- so at 'test Outer.|' both
         // are empty ranges at nearly the same place, and only one of them is what is being written.
-        if (Covers(target.Method.Span, subject.Start))
+        if (EditorPositions.Covers(target.Method.Span, subject.Start))
         {
             return Methods(module, types, target, Replacing(subject, target.Method.Span, document), document);
         }
 
-        return Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
+        return EditorPositions.Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
             ? Receivers(module, types, result, target, Replacing(subject, target.Receiver.Span, document), document)
             : null;
     }
@@ -923,7 +923,7 @@ public sealed class CompletionProvider
         // the one list where they are deciding whether to keep it. #56 found the same thing about the
         // import being edited, and it is the same mistake.
         var written = test.Arguments
-            .Where(argument => !Covers(argument.Span, subject.Start))
+            .Where(argument => !EditorPositions.Covers(argument.Span, subject.Start))
             .Select(argument => argument.Name)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -1010,7 +1010,7 @@ public sealed class CompletionProvider
         };
 
         var already = fieldsHere
-            .Where(written => !written.Name.IsMissing && !Covers(written.Span, subject.Start))
+            .Where(written => !written.Name.IsMissing && !EditorPositions.Covers(written.Span, subject.Start))
             .Select(written => written.Name.Text)
             .ToHashSet(StringComparer.Ordinal);
 
@@ -1039,10 +1039,6 @@ public sealed class CompletionProvider
     /// </remarks>
     private static bool BeforeItsClosingBrace(SourceSpan span, int offset, string text)
         => offset < span.End.Offset || span.Length == 0 || text[span.End.Offset - 1] != '}';
-
-    /// <summary>Both ends inclusive, so a caret that has just finished typing a name is still in it.</summary>
-    private static bool Covers(SourceSpan span, int offset)
-        => offset >= span.Start.Offset && offset <= span.End.Offset;
 
     /// <summary>The types that could be named where the caret is, or null when it is not a type position.</summary>
     /// <remarks>
