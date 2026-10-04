@@ -151,13 +151,44 @@ Current Status:
 
 ### 13.3 Equality
 
+**Decided until equality is defined: `==` and `!=` refuse two messages and two repeated values.**
+
+```protocross
+extend Order {
+    fn same_customer(other: Order) -> bool {
+        return has customer and has other.customer
+            and customer.id == other.customer.id;
+    }
+}
+```
+
+Normative Requirements:
+
+- `==` or `!=` on two messages, or on two repeated values, is `PC0098`. That includes a message
+  literal, a guarded field, and a well-known type such as `google.protobuf.Timestamp`. Its help says
+  to compare the fields that decide it, or to declare a method that compares them.
+- Every scalar and every enum keeps its equality ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
+- Two operands of different types are `PC0048` before either is asked about. An ordered comparison
+  of two messages is `PC0049` and nothing more, because a message has no order either.
+- The comparison is still a `bool`, so the expression around it reports nothing further.
+
+The backends had given it two meanings. In C#, protoc's classes override `Equals` but not `==`, so
+`==` compares references: a message built by a literal equals nothing, an equal one included, while
+a `Timestamp`, which overloads `==`, compares by value. C++ declares no `==` for a message or a
+repeated field, so the comparison did not build.
+
+It is refused rather than given a meaning. Equality the compiler wrote field by field would add
+behavior to messages the author does not own, and would compare fields that may not count, such as
+an identifier or a timestamp. The author knows which fields decide it. Accepting `==` later breaks
+nothing, whereas taking a meaning back would break code.
+
 Open Questions:
 
 - Does message equality mean identity, field-wise equality, or backend-defined equality?
 - Is deep equality part of version 1?
-- Should the binder reject equality on message and repeated values until this is settled? The
-  current type rule permits equality for operands of the same type, while the semantic meaning for
-  messages and repeated collections is not specified here.
+- Should a comparison of identity exist, spelled apart from `==` (`===`, say)?
+- ~~Should the binder reject equality on message and repeated values until this is settled?~~
+  Decided: yes, as above.
 
 ### 13.4 Extensions
 

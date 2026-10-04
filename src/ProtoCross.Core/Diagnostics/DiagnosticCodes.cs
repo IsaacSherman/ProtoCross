@@ -514,6 +514,15 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ArgumentIsPartOfTheReceiver =
         new("PC0097", DiagnosticSeverity.Error, "argument is part of the receiver");
 
+    // ------------------------------------------------------- operators, continued
+
+    /// <summary>
+    /// <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing until spec
+    /// 13.3 says what makes two of them equal (spec 9.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OperandsHaveNoEquality =
+        new("PC0098", DiagnosticSeverity.Error, "operands have no equality");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

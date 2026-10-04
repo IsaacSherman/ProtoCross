@@ -2642,6 +2642,11 @@ public sealed partial class Binder
                     binary.Span);
             }
 
+            if (!ordered && left.Type is MessageType or RepeatedType)
+            {
+                ReportUndefinedEquality(binary, symbol, left.Type);
+            }
+
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
         }
 
@@ -2686,6 +2691,41 @@ public sealed partial class Binder
 
         return new IrBinary(
             op, left, right, resultType, _policy.ResolveArithmetic(op, resultType), binary.Span);
+    }
+
+    /// <summary>
+    /// Reports <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing
+    /// until spec 13.3 says what makes two of them equal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The backends had already given it two meanings. C# compares references, because protoc's
+    /// classes override <c>Equals</c> but not <c>==</c>, and neither does <c>RepeatedField</c>; so a
+    /// message built by a literal equals nothing, an equal one included, while a <c>Timestamp</c>,
+    /// which does overload <c>==</c>, compares by value. C++ declares no <c>==</c> for either, and the
+    /// comparison does not build.
+    /// </para>
+    /// <para>
+    /// It is refused rather than given a meaning. Equality the compiler wrote field by field would
+    /// compare fields the author may not count, an identifier or a timestamp, on a message the author
+    /// does not own, so the help points at the comparison only the author can write. Accepting it
+    /// later breaks nothing, where taking a meaning back would. The result is still a <c>bool</c>, as
+    /// an unordered <c>&lt;</c>'s is, so the expression around it reports nothing further.
+    /// </para>
+    /// </remarks>
+    private void ReportUndefinedEquality(BinaryExpression binary, string symbol, PlType operandType)
+    {
+        var isMessage = operandType is MessageType;
+        _diagnostics.Report(
+            DiagnosticCodes.OperandsHaveNoEquality,
+            $"Cannot apply '{symbol}' to two '{operandType.DisplayName}' values: what makes two "
+            + (isMessage ? "messages" : "repeated values") + " equal is not defined.",
+            binary.Span,
+            isMessage
+                ? "Compare the fields that decide it here, or declare a method that compares them "
+                  + "and call that (spec 13.3)."
+                : "Compare what matters about the elements instead, such as a count or a total "
+                  + "taken in a loop (spec 13.3).");
     }
 
     /// <summary>
