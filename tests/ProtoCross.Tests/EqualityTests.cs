@@ -1,4 +1,5 @@
 using ProtoCross.Diagnostics;
+using ProtoCross.Types;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -35,15 +36,38 @@ public class EqualityTests
 
     // ------- what keeps its equality
 
+    /// <summary>Every scalar type, taken from <see cref="ScalarKind"/> so that one added later is swept too.</summary>
+    public static TheoryData<string> EveryScalarType()
+    {
+        var data = new TheoryData<string>();
+
+        foreach (var kind in Enum.GetValues<ScalarKind>())
+        {
+            data.Add(new ScalarType(kind).DisplayName);
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Swept rather than sampled, because <c>bytes</c> is the type a list of what may be compared would
+    /// forget. It compares by value in both backends: in C# through the <c>==</c> that
+    /// <c>ByteString</c> overloads, and in C++ as a <c>std::string</c>.
+    /// </summary>
     [Theory]
-    [InlineData("count == count")]
-    [InlineData("amount != amount")]
-    [InlineData("tally == 3")]
-    [InlineData("label == \"x\"")]
-    [InlineData("true != false")]
+    [MemberData(nameof(EveryScalarType))]
+    public void EveryScalarKeepsItsEquality(string type)
+    {
+        var result = CompileBody(
+            $"fn f(given: {type}, other: {type}) -> bool {{ return given == other or given != other; }}");
+
+        Assert.True(result.Success, Describe(result));
+    }
+
+    [Theory]
     [InlineData("status == TopLevelStatus.TOP_LEVEL_STATUS_OK")]
     [InlineData("nested != Nested.NESTED_SOME")]
-    public void AScalarOrAnEnumKeepsItsEquality(string expression)
+    public void AnEnumKeepsItsEquality(string expression)
     {
         var result = CompileBody($"fn f() -> bool {{ return {expression}; }}");
 

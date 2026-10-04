@@ -956,8 +956,8 @@ public sealed partial class Binder
                 // Refused whatever the value is, because what is missing is not a value but a meaning
                 // for '=='. The value is still bound, for the names in it, and not checked against the
                 // return type: a second diagnostic would be about a comparison that cannot be made.
-                var comparesMessages = signature.ReturnType is MessageType;
-                if (comparesMessages)
+                var cannotCompare = !HasEquality(signature.ReturnType);
+                if (cannotCompare)
                 {
                     _diagnostics.Report(
                         DiagnosticCodes.MessageReturnCannotBeExpected,
@@ -969,7 +969,7 @@ public sealed partial class Binder
 
                 var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);
                 if (signature.ReturnType is not VoidType
-                    && !comparesMessages
+                    && !cannotCompare
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
@@ -2642,7 +2642,7 @@ public sealed partial class Binder
                     binary.Span);
             }
 
-            if (!ordered && left.Type is MessageType or RepeatedType)
+            if (!ordered && !HasEquality(left.Type))
             {
                 ReportUndefinedEquality(binary, symbol, left.Type);
             }
@@ -2692,6 +2692,17 @@ public sealed partial class Binder
         return new IrBinary(
             op, left, right, resultType, _policy.ResolveArithmetic(op, resultType), binary.Span);
     }
+
+    /// <summary>
+    /// Whether <c>==</c> means anything for two values of this type. It does not for a message or a
+    /// repeated value until spec 13.3 says what makes two of them equal.
+    /// </summary>
+    /// <remarks>
+    /// Both places that compare two values ask this one question: an operator, and an
+    /// <c>expect return</c> (spec 25.3). When 13.3 decides, they change together, so neither states
+    /// the rule for itself.
+    /// </remarks>
+    private static bool HasEquality(PlType type) => type is not (MessageType or RepeatedType);
 
     /// <summary>
     /// Reports <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing
