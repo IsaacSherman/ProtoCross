@@ -21,7 +21,7 @@ namespace ProtoCross.Tests;
 /// <see cref="SemanticTokenTests"/>'s and is not repeated here.
 /// </para>
 /// </remarks>
-public class SemanticRefinementTests
+public partial class SemanticRefinementTests
 {
     /// <summary>
     /// One of everything the binder can resolve, with no spelling used for two different things.
@@ -53,7 +53,7 @@ public class SemanticRefinementTests
         }
 
         test Outer.scaled "doubles what it is given" {
-            receiver { count = 2; }
+            receiver { count: 2 }
             arg scale = 3;
             expect return 12;
         }
@@ -326,8 +326,8 @@ public class SemanticRefinementTests
     /// </summary>
     /// <remarks>
     /// LSP publishes no category for a loop binding and spec 6.5 fixed the set, so the distinction has
-    /// to live in a modifier. It is not a workaround: spec 18 makes a local the only thing a method
-    /// may assign, so the bit is simply true.
+    /// to live in a modifier. It is not a workaround: spec 18 never lets a loop binding be assigned, so
+    /// the bit is simply true.
     /// </remarks>
     [Fact]
     public async Task ALoopBindingIsAVariableThatCannotBeAssigned()
@@ -339,44 +339,47 @@ public class SemanticRefinementTests
 
         Assert.Equal(SemanticTokenLegend.Variable, binding.Type);
         Assert.True(binding.Has(SemanticTokenLegend.ReadOnly), "a loop binding cannot be assigned");
-        Assert.False(local.Has(SemanticTokenLegend.ReadOnly), "a local is the one thing that can be");
+        Assert.False(local.Has(SemanticTokenLegend.ReadOnly), "a local can be");
     }
 
-    /// <summary>Everything a method may not assign says so, and a method and a type do not.</summary>
+    /// <summary>
+    /// Everything a method may never assign says so, and a field, which a <c>mut fn</c> may assign, a
+    /// method and a type do not.
+    /// </summary>
     /// <remarks>
     /// A sweep over the categories rather than a case each, because the property is about the whole
     /// mapping: `readonly` describes a place a value could have been stored and was not allowed to be,
     /// and saying it of a method or a message would be saying something of everything.
     /// </remarks>
     [Fact]
-    public async Task OnlyAPlaceAValueCouldBeStoredIsCalledReadOnly()
+    public async Task OnlyWhatAMethodMayNeverAssignIsCalledReadOnly()
     {
-        var storage = new[]
+        var neverAssigned = new[]
         {
-            SemanticTokenLegend.Parameter, SemanticTokenLegend.Property, SemanticTokenLegend.EnumMember,
+            SemanticTokenLegend.Parameter, SemanticTokenLegend.EnumMember,
         };
 
         var elsewhere = new[]
         {
-            SemanticTokenLegend.Method, SemanticTokenLegend.Class, SemanticTokenLegend.Enum,
+            SemanticTokenLegend.Property, SemanticTokenLegend.Method, SemanticTokenLegend.Class, SemanticTokenLegend.Enum,
         };
 
         var names = await NamesAsync(Source);
 
-        var stored = names.Where(name => storage.Contains(name.Token.Type, StringComparer.Ordinal)).ToList();
+        var readOnly = names.Where(name => neverAssigned.Contains(name.Token.Type, StringComparer.Ordinal)).ToList();
         var other = names.Where(name => elsewhere.Contains(name.Token.Type, StringComparer.Ordinal)).ToList();
 
         // Every category named above is actually written somewhere in the fixture. Without this the
         // two sweeps below are assertions over nothing the moment refinement stops happening at all,
         // which is the one failure they exist to catch.
         Assert.All(
-            [.. storage, .. elsewhere],
+            [.. neverAssigned, .. elsewhere],
             category => Assert.Contains(
                 names,
                 name => string.Equals(name.Token.Type, category, StringComparison.Ordinal)));
 
         Assert.All(
-            stored,
+            readOnly,
             name => Assert.True(
                 name.Token.Has(SemanticTokenLegend.ReadOnly),
                 $"'{name.Text}' is a {name.Token.Type}, which spec 18 forbids assigning"));
@@ -385,7 +388,7 @@ public class SemanticRefinementTests
             other,
             name => Assert.False(
                 name.Token.Has(SemanticTokenLegend.ReadOnly),
-                $"'{name.Text}' is a {name.Token.Type}, which is not a place a value is kept"));
+                $"'{name.Text}' is a {name.Token.Type}, which is assignable or is not a place a value is kept"));
     }
 
     // ------------------------------------------------------- agreeing with the binder

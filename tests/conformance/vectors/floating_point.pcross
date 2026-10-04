@@ -26,8 +26,8 @@ extend FloatCase {
 
 test FloatCase.quotient "dividing a positive value by zero yields positive infinity" {
     receiver {
-        numerator = 1.0;
-        denominator = 0.0;
+        numerator: 1.0,
+        denominator: 0.0,
     }
 
     expect return __INF;
@@ -35,8 +35,8 @@ test FloatCase.quotient "dividing a positive value by zero yields positive infin
 
 test FloatCase.quotient "dividing a negative value by zero yields negative infinity" {
     receiver {
-        numerator = -1.0;
-        denominator = 0.0;
+        numerator: -1.0,
+        denominator: 0.0,
     }
 
     expect return -__INF;
@@ -44,8 +44,8 @@ test FloatCase.quotient "dividing a negative value by zero yields negative infin
 
 test FloatCase.quotient "zero divided by zero yields NaN" {
     receiver {
-        numerator = 0.0;
-        denominator = 0.0;
+        numerator: 0.0,
+        denominator: 0.0,
     }
 
     expect return __NAN;
@@ -53,8 +53,8 @@ test FloatCase.quotient "zero divided by zero yields NaN" {
 
 test FloatCase.nan_compares_false "every comparison against NaN is false" {
     receiver {
-        numerator = 0.0;
-        denominator = 0.0;
+        numerator: 0.0,
+        denominator: 0.0,
     }
 
     expect return true;
@@ -62,8 +62,8 @@ test FloatCase.nan_compares_false "every comparison against NaN is false" {
 
 test FloatCase.quotient "double division is exact for a power of two" {
     receiver {
-        numerator = 1.0;
-        denominator = 4.0;
+        numerator: 1.0,
+        denominator: 4.0,
     }
 
     expect return 0.25;
@@ -71,8 +71,8 @@ test FloatCase.quotient "double division is exact for a power of two" {
 
 test FloatCase.narrow_quotient "float division follows the same rules as double" {
     receiver {
-        narrow_numerator = 0.0;
-        narrow_denominator = 0.0;
+        narrow_numerator: 0.0,
+        narrow_denominator: 0.0,
     }
 
     expect return __NAN;
@@ -80,8 +80,8 @@ test FloatCase.narrow_quotient "float division follows the same rules as double"
 
 test FloatCase.narrow_quotient "float division is exact for a power of two" {
     receiver {
-        narrow_numerator = 1.0;
-        narrow_denominator = 4.0;
+        narrow_numerator: 1.0,
+        narrow_denominator: 4.0,
     }
 
     expect return 0.25;

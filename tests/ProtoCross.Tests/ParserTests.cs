@@ -69,15 +69,16 @@ public class ParserTests
             import proto "invoice.proto";
             test Invoice.total_cents "sums line totals" {
                 receiver {
-                    items {
-                        quantity = 2;
-                        unit_price_cents = 300;
-                    }
-
-                    items {
-                        quantity = 4;
-                        unit_price_cents = 125;
-                    }
+                    items: [
+                        new InvoiceItem {
+                            quantity: 2,
+                            unit_price_cents: 300,
+                        },
+                        new InvoiceItem {
+                            quantity: 4,
+                            unit_price_cents: 125,
+                        },
+                    ],
                 }
 
                 expect return 1100;
@@ -93,12 +94,14 @@ public class ParserTests
         Assert.Equal("sums line totals", test.Name);
         Assert.IsType<TestReturnExpectation>(test.Expectation);
 
-        var items = new List<TestMessageFieldInitializer>();
-        Assert.Collection(
-            test.Receiver.Fields,
-            first => items.Add(Assert.IsType<TestMessageFieldInitializer>(first)),
-            second => items.Add(Assert.IsType<TestMessageFieldInitializer>(second)));
-        Assert.Equal("items", items[0].FieldName.Text);
+        var items = Assert.Single(test.Receiver.Fields);
+        Assert.Equal("items", items.Name.Text);
+
+        var list = Assert.IsType<ListExpression>(items.Value);
+        Assert.All(
+            list.Elements,
+            element => Assert.Equal("InvoiceItem", Assert.IsType<MessageLiteralExpression>(element).Type.Name.Text));
+        Assert.Equal(2, list.Elements.Count);
     }
 
     [Fact]
@@ -723,29 +726,15 @@ public class ParserTests
     }
 
     /// <inheritdoc cref="Names(CompilationUnit)"/>
-    private static IEnumerable<SyntaxName> Names(IReadOnlyList<TestFieldInitializer> fields)
+    private static IEnumerable<SyntaxName> Names(IReadOnlyList<FieldInitializer> fields)
     {
         foreach (var field in fields)
         {
-            yield return field.FieldName;
+            yield return field.Name;
 
-            switch (field)
+            foreach (var name in Names(field.Value))
             {
-                case TestScalarFieldInitializer scalar:
-                    foreach (var name in Names(scalar.Value))
-                    {
-                        yield return name;
-                    }
-
-                    break;
-
-                case TestMessageFieldInitializer message:
-                    foreach (var name in Names(message.Fields))
-                    {
-                        yield return name;
-                    }
-
-                    break;
+                yield return name;
             }
         }
     }
@@ -907,6 +896,24 @@ public class ParserTests
 
             case HasExpression has:
                 foreach (var name in Names(has.Operand))
+                {
+                    yield return name;
+                }
+
+                break;
+
+            case MessageLiteralExpression literal:
+                yield return literal.Type.Name;
+
+                foreach (var name in Names(literal.Fields))
+                {
+                    yield return name;
+                }
+
+                break;
+
+            case ListExpression list:
+                foreach (var name in list.Elements.SelectMany(Names))
                 {
                     yield return name;
                 }

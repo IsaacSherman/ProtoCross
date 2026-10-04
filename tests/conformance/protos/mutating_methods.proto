@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// mutating_methods.pcross -- methods that change their receiver, and the messages they hold (spec 18).
+//
+// A ledger of entries, so there are scalars, a string and an enum to assign, a message to write
+// through and to replace, oneofs of messages and of strings whose members unset each other, numbers
+// for a loop to traverse, and repeated messages whose elements a loop changes. An entry holds its parent and its splits,
+// so a field can be given a message that was inside it, and a loop can change elements through a
+// loop inside it.
+message Ledger {
+  int64 balance = 1;
+  string owner = 2;
+  LedgerEntry last = 3;
+  repeated LedgerEntry entries = 4;
+  LedgerStatus status = 5;
+
+  oneof settlement {
+    LedgerEntry pending = 6;
+    int64 settled_cents = 7;
+    LedgerEntry disputed = 10;
+  }
+
+  LedgerAudit audit = 8;
+  repeated int64 amounts = 9;
+
+  oneof note {
+    string draft_note = 11;
+    string final_note = 12;
+  }
+}
+
+message LedgerEntry {
+  string memo = 1;
+  int64 cents = 2;
+  int64 touches = 3;
+  repeated LedgerEntry splits = 4;
+  LedgerEntry parent = 5;
+}
+
+message LedgerAudit {
+  LedgerEntry flagged = 1;
+  int64 checks = 2;
+}
+
+enum LedgerStatus {
+  LEDGER_STATUS_UNSPECIFIED = 0;
+  LEDGER_STATUS_OPEN = 1;
+  LEDGER_STATUS_CLOSED = 2;
+}

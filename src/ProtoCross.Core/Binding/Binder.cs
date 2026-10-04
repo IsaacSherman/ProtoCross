@@ -2,6 +2,7 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
@@ -341,7 +342,7 @@ public sealed partial class Binder
     /// <remarks>
     /// Every expression inside a <c>test</c> binds against one of these -- a fixture value, an
     /// argument, an expectation -- which together with
-    /// <see cref="MethodContext.AllowImplicitReceiverFields"/> being false there is why a bare name
+    /// <see cref="MethodContext.HasImplicitReceiver"/> being false there is why a bare name
     /// in a test resolves to nothing at all. It reaches nowhere because nothing may be declared in
     /// it: it can contribute nothing to <see cref="IrModule.Scope"/> and hide nothing from a query.
     /// </remarks>
@@ -562,7 +563,10 @@ public sealed partial class Binder
             receiver,
             new DeclarationSite(SymbolKind.Method, _document, method.Name, method.Span),
             returnType,
-            parameters);
+            parameters)
+        {
+            IsMutating = method.IsMutating,
+        };
     }
 
 
@@ -733,7 +737,7 @@ public sealed partial class Binder
             Declare(scope, parameter.Declaration, parameter.Type, ScopeEntry.FirstOffsetInside(method.Body.Span));
         }
 
-        var context = new MethodContext(receiver, signature.ReturnType);
+        var context = new MethodContext(receiver, signature.ReturnType) { Method = signature };
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
@@ -759,7 +763,7 @@ public sealed partial class Binder
         var context = new MethodContext(
             signature.Receiver,
             signature.ReturnType,
-            AllowImplicitReceiverFields: false);
+            HasImplicitReceiver: false);
         var receiver = BindTestReceiver(test.Receiver, signature.Receiver, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
@@ -819,116 +823,6 @@ public sealed partial class Binder
             span,
             "Tests can only target methods declared in an extend block.");
         return null;
-    }
-
-    private IrTestMessageValue BindTestReceiver(
-        TestReceiverFixture receiver,
-        MessageDescriptor descriptor,
-        MethodContext context)
-        => BindTestMessageValue(receiver.Fields, descriptor, receiver.Span, context);
-
-    private IrTestMessageValue BindTestMessageValue(
-        IReadOnlyList<TestFieldInitializer> fields,
-        MessageDescriptor descriptor,
-        SourceSpan span,
-        MethodContext context)
-    {
-        var values = new List<IrTestFieldValue>();
-        var seenSingular = new HashSet<string>(StringComparer.Ordinal);
-
-        foreach (var field in fields)
-        {
-            if (field.FieldName.IsMissing)
-            {
-                continue;
-            }
-
-            var descriptorField = MessageFields.Named(descriptor, field.FieldName.Text);
-            if (descriptorField is null)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.UnknownFixtureField,
-                    $"'{descriptor.FullName}' has no field named '{field.FieldName}'.",
-                    field.Span);
-                continue;
-            }
-
-            // Recorded before the refusals below rather than beside each arm that builds a value.
-            // The name resolved -- that is what the checks that follow are checks *on* -- and a
-            // fixture field the compiler goes on to reject is still a use of that field, which is
-            // exactly the one someone renaming it must be shown.
-            Use(SymbolId.ForField(descriptorField), field.FieldName.Span);
-
-            if (descriptorField.IsMap)
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.MapsAreNotSupportedInFixtures,
-                    $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
-                    field.Span);
-                continue;
-            }
-
-            if (!descriptorField.IsRepeated && !seenSingular.Add(descriptorField.Name))
-            {
-                _diagnostics.Report(
-                    DiagnosticCodes.DuplicateFixtureField,
-                    $"Field '{descriptorField.Name}' is set more than once.",
-                    field.Span,
-                    "Repeated fields may be listed multiple times; singular fields may not.");
-                continue;
-            }
-
-            switch (field)
-            {
-                case TestScalarFieldInitializer scalar:
-                {
-                    var expectedType = TypeFactory.FromFieldValue(descriptorField);
-
-                    // Enums are not excluded here: an enum field is set from a named constant, which
-                    // is an ordinary expression. PC0063 below catches one of the wrong enum type.
-                    if (expectedType is MessageType)
-                    {
-                        _diagnostics.Report(
-                            DiagnosticCodes.FixtureFieldRequiresANestedValue,
-                            $"Field '{descriptorField.Name}' is message '{expectedType.DisplayName}' and cannot be set from an expression.",
-                            field.Span,
-                            $"Write '{descriptorField.Name} {{ ... }}' to build the nested message.");
-                        continue;
-                    }
-
-                    var value = BindExpression(scalar.Value, NoNames(), context, expectedType);
-                    if (value.Type is not ErrorType && !TypesMatch(expectedType, value.Type))
-                    {
-                        _diagnostics.Report(
-                            DiagnosticCodes.FixtureFieldTypeMismatch,
-                            $"Field '{descriptorField.Name}' expects '{expectedType.DisplayName}' but got '{value.Type.DisplayName}'.",
-                            field.Span);
-                    }
-
-                    values.Add(new IrTestFieldValue(descriptorField, value, null, field.Span));
-                    break;
-                }
-
-                case TestMessageFieldInitializer message:
-                {
-                    var fieldType = TypeFactory.FromFieldValue(descriptorField);
-                    if (fieldType is not MessageType messageType)
-                    {
-                        _diagnostics.Report(
-                            DiagnosticCodes.FixtureFieldIsNotAMessage,
-                            $"Field '{descriptorField.Name}' has type '{fieldType.DisplayName}' and cannot contain nested fields.",
-                            field.Span);
-                        continue;
-                    }
-
-                    var value = BindTestMessageValue(message.Fields, messageType.Descriptor, message.Span, context);
-                    values.Add(new IrTestFieldValue(descriptorField, null, value, field.Span));
-                    break;
-                }
-            }
-        }
-
-        return new IrTestMessageValue(descriptor, values, span);
     }
 
     private IReadOnlyList<IrTestArgument> BindTestArguments(
@@ -1059,8 +953,23 @@ public sealed partial class Binder
                         returns.Span);
                 }
 
+                // Refused whatever the value is, because what is missing is not a value but a meaning
+                // for '=='. The value is still bound, for the names in it, and not checked against the
+                // return type: a second diagnostic would be about a comparison that cannot be made.
+                var comparesMessages = signature.ReturnType is MessageType;
+                if (comparesMessages)
+                {
+                    _diagnostics.Report(
+                        DiagnosticCodes.MessageReturnCannotBeExpected,
+                        $"'{signature.Name}' returns message '{signature.ReturnType.DisplayName}', and what makes two "
+                        + "messages equal is not decided yet.",
+                        returns.Span,
+                        "Until spec 13.3 decides, expect a scalar instead: test a method that returns the field you want to check.");
+                }
+
                 var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);
                 if (signature.ReturnType is not VoidType
+                    && !comparesMessages
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
@@ -1132,8 +1041,13 @@ public sealed partial class Binder
             statements.Add(bound);
 
             // A guard clause establishes presence for everything after it, not only inside its own
-            // branch: 'if not has x { return 0; }' leaves x set for the rest of the block.
-            context = context with { Present = Advance(context.Present, bound) };
+            // branch: 'if not has x { return 0; }' leaves x set for the rest of the block. What the
+            // statement assigns is forgotten after that rather than before, because an assignment
+            // inside it runs after its condition was tested, and so ends what the condition proved.
+            context = context with
+            {
+                Present = ForgetChangedIn(statement, scope, context, Advance(context.Present, bound)),
+            };
         }
 
         return new IrBlock(statements, block.Span) { IsClosed = block.IsClosed };
@@ -1241,28 +1155,76 @@ public sealed partial class Binder
     /// names are unique within a method, because shadowing is rejected at declaration.
     /// </remarks>
     private static string? PresencePath(IrExpression receiver, FieldDescriptor field)
-        => PresenceRoot(receiver) is { } root ? $"{root}.{field.Name}" : null;
+        => PresenceRoot(receiver) is { } root ? Through(root, field) : null;
+
+    private const char PresencePathSeparator = '.';
+
+    /// <summary><paramref name="key"/> extended by <paramref name="field"/>, the one way any key here grows.</summary>
+    /// <remarks>
+    /// Shared by the presence key and the storage key (<see cref="StorageOf"/>), because the loop rule
+    /// and the overlap check compare one with prefixes of another, and two spellings of the join would
+    /// compare strings that never match.
+    /// </remarks>
+    private static string Through(string key, FieldDescriptor field) => $"{key}{PresencePathSeparator}{field.Name}";
 
     private static string? PresenceRoot(IrExpression expression) => expression switch
     {
-        IrThis => "this",
-        IrLocalReference local => $"local:{local.Local.Name}",
-        IrParameterReference parameter => $"param:{parameter.Parameter.Name}",
+        IrLocalReference { Local: var binding } when IsLoopBinding(binding) => LoopPresenceRoot(binding.Name),
 
         // Only a singular message field extends a path; a scalar cannot be read through, and a
         // repeated field is reached by iteration rather than by name.
         IrFieldAccess field when IsSingularMessage(field.Field) => PresencePath(field.Receiver, field.Field),
 
-        // A method result is present by construction -- every message value in the language comes
-        // from a root or a guarded read -- but it has no name, so nothing reached through it can be
-        // guarded. BindFieldAccess turns that into a diagnostic with a way out.
+        // A method result and a literal are present by construction -- every message value in the
+        // language comes from a root, a guarded read or a literal -- but neither has a name, so
+        // nothing reached through one can be guarded. BindFieldAccess turns that into a diagnostic
+        // with a way out.
+        _ => NamedRoot(expression),
+    };
+
+    /// <summary>
+    /// The key of the receiver, a local or a parameter, which every key reached from one begins with;
+    /// null for anything else. A loop binding is keyed apart, differently by each key that has one.
+    /// </summary>
+    private static string? NamedRoot(IrExpression expression) => expression switch
+    {
+        IrThis => ReceiverPresenceRoot,
+        IrLocalReference local => LocalPresenceRoot(local.Local.Name),
+        IrParameterReference parameter => ParameterPresenceRoot(parameter.Parameter.Name),
         _ => null,
     };
 
     private static bool IsSingularMessage(FieldDescriptor field)
         => !field.IsRepeated && !field.IsMap && field.FieldType is FieldType.Message or FieldType.Group;
 
-    private IrStatement BindStatement(Statement statement, Scope scope, MethodContext context) => statement switch
+    private const string ReceiverPresenceRoot = "this";
+
+    private static string LocalPresenceRoot(string name) => $"local:{name}";
+
+    private static string ParameterPresenceRoot(string name) => $"{ParameterPresenceRootPrefix}{name}";
+
+    private const string ParameterPresenceRootPrefix = "param:";
+
+    /// <remarks>
+    /// Apart from a local's, because a change through a binding has to end what was shown about every
+    /// other binding (see <see cref="ForgetChangedIn"/>), and a local, which holds a message of its own,
+    /// can be the element of no loop.
+    /// </remarks>
+    private static string LoopPresenceRoot(string name) => $"{LoopPresenceRootPrefix}{name}";
+
+    private static bool IsLoopPresenceRoot(string root) => root.StartsWith(LoopPresenceRootPrefix, StringComparison.Ordinal);
+
+    private const string LoopPresenceRootPrefix = "loop:";
+
+    /// <summary>Binds a statement, and refuses a mutating call it makes inside an expression (spec 18).</summary>
+    private IrStatement BindStatement(Statement statement, Scope scope, MethodContext context)
+    {
+        var bound = BindStatementItself(statement, scope, context);
+        ReportMutatingCallsInsideExpressions(bound);
+        return bound;
+    }
+
+    private IrStatement BindStatementItself(Statement statement, Scope scope, MethodContext context) => statement switch
     {
         BlockStatement block => BindBlock(block, scope, context),
         VariableDeclarationStatement declaration => BindVariableDeclaration(declaration, scope, context),
@@ -1274,9 +1236,7 @@ public sealed partial class Binder
         ForInStatement forIn => BindForIn(forIn, scope, context),
         AssignmentStatement assignment => BindAssignment(assignment, scope, context),
         CompoundAssignmentStatement assignment => BindCompoundAssignment(assignment, scope, context),
-        ExpressionStatement expression => new IrExpressionStatement(
-            BindExpression(expression.Expression, scope, context, null),
-            expression.Span),
+        ExpressionStatement expression => BindExpressionStatement(expression, scope, context),
         _ => throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement."),
     };
 
@@ -1436,7 +1396,22 @@ public sealed partial class Binder
             }
         }
 
-        var body = BindBlock(statement.Body, loopScope, context with { LoopDepth = context.LoopDepth + 1 });
+        // Whatever the binding is an element of answers for it: whether it may be changed, and which
+        // field a change through it reaches (spec 18).
+        _elementsOf[loop.Id] = collection;
+
+        // The collection is read once, before the first pass, so it keeps every fact. The body is
+        // bound once for every pass, so it keeps only the facts a pass cannot end (#151). The binding
+        // is in scope for that question, since a change through it may end a fact about another.
+        var body = BindBlock(
+            statement.Body,
+            loopScope,
+            Traversing(collection, context) with
+            {
+                LoopDepth = context.LoopDepth + 1,
+                Present = ForgetChangedIn(statement.Body, loopScope, context, context.Present),
+            });
+
         return new IrForEach(loop, collection, body, statement.Span);
     }
 
@@ -1455,17 +1430,24 @@ public sealed partial class Binder
         return new IrIf(condition, then, elseBranch, statement.Span);
     }
 
+    /// <remarks>
+    /// The condition is tested again after every pass, so it is bound with only the facts that
+    /// survive the body: a fact about a local the body assigns held on the first test and may not
+    /// on the second (#151). What the condition proves is added after that, not forgotten with it,
+    /// because it is proved afresh each time the body is entered.
+    /// </remarks>
     private IrStatement BindWhile(WhileStatement statement, Scope scope, MethodContext context)
     {
-        var condition = BindCondition(statement.Condition, scope, context, "while");
+        var everyPass = context with { Present = ForgetChangedIn(statement.Body, scope, context, context.Present) };
+        var condition = BindCondition(statement.Condition, scope, everyPass, "while");
         var (whenTrue, _) = PresenceFacts(condition);
         var body = BindBlock(
             statement.Body,
             scope,
-            context with
+            everyPass with
             {
                 LoopDepth = context.LoopDepth + 1,
-                Present = Union(context.Present, whenTrue),
+                Present = Union(everyPass.Present, whenTrue),
             });
 
         return new IrWhile(condition, body, statement.Span);
@@ -1519,10 +1501,17 @@ public sealed partial class Binder
 
     private IrStatement BindAssignment(AssignmentStatement statement, Scope scope, MethodContext context)
     {
-        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        if (WritesAField(statement.Target, scope, context))
+        {
+            return BindFieldAssignment(statement, scope, context);
+        }
+
+        if (AssignableLocal(statement.Target, scope) is not { } assignable)
         {
             return BindRefusedAssignment(statement.Target, [statement.Value], statement.Span, scope, context);
         }
+
+        var (name, local) = assignable;
 
         Use(local.Id, name.Name.Span, ReferenceKind.Write);
 
@@ -1538,8 +1527,20 @@ public sealed partial class Binder
                 "ProtoCross does not apply implicit numeric conversions.");
         }
 
-        return new IrAssignment(new IrLocalReference(local, name.Span), value, statement.Span);
+        var target = new IrLocalReference(local, name.Span);
+        ReportIfTraversalChanges([target], $"This assigns '{local.Name}'", statement.Span, context);
+
+        return new IrAssignment(target, value, statement.Span);
     }
+
+    /// <summary>
+    /// The local <paramref name="target"/> names, with the name as written, when it is one that may be
+    /// assigned: a local declared with <c>var</c>, which a loop binding is not (spec 18).
+    /// </summary>
+    private static (NameExpression Name, IrLocal Local)? AssignableLocal(Expression target, Scope scope)
+        => target is NameExpression name && scope.LookupLocal(name.Name.Text) is { } local && !IsLoopBinding(local)
+            ? (name, local)
+            : null;
 
     /// <summary>Binds <c>x op= y</c> as <c>x = x op y</c> (spec 9.2).</summary>
     /// <remarks>
@@ -1566,7 +1567,12 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
-        if (statement.Target is not NameExpression name || scope.LookupLocal(name.Name.Text) is not { } local)
+        if (WritesAField(statement.Target, scope, context))
+        {
+            return BindCompoundFieldAssignment(statement, scope, context);
+        }
+
+        if (AssignableLocal(statement.Target, scope) is not { } assignable)
         {
             return BindRefusedAssignment(
                 statement.Target,
@@ -1576,10 +1582,15 @@ public sealed partial class Binder
                 context);
         }
 
+        var (name, local) = assignable;
+
         var operation = BindBinary(LongFormOf(statement), scope, context, local.Type, OperatorForm.Compound);
         MarkWritten(name.Name);
 
-        return new IrAssignment(new IrLocalReference(local, name.Span), operation, statement.Span);
+        var target = new IrLocalReference(local, name.Span);
+        ReportIfTraversalChanges([target], $"This assigns '{local.Name}'", statement.Span, context);
+
+        return new IrAssignment(target, operation, statement.Span);
     }
 
     /// <summary>The operation a compound assignment stands for: <c>x op y</c>, for <c>x op= y</c>.</summary>
@@ -1623,27 +1634,51 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
-        _diagnostics.Report(
-            DiagnosticCodes.InvalidAssignmentTarget,
-            "Only local variables can be assigned.",
-            target.Span,
-            "Whether methods may mutate the receiver is still an open question (spec 16.1).");
+        ReportUnassignable(target, scope);
 
-        var refusedTarget = new IrExpressionStatement(
-            BindExpression(target, scope, context, null),
-            target.Span);
-
+        var refusedTarget = BindExpression(target, scope, context, null);
         MarkWritten(AssignedNameOf(target));
 
-        return new IrBlock(
+        return Refused(refusedTarget, [.. operands.Select(operand => BindExpression(operand, scope, context, null))], span);
+    }
+
+    /// <summary>Reports <c>PC0034</c> for a target that names neither a local nor a field.</summary>
+    /// <remarks>
+    /// A loop binding and a parameter are named, because the reader can see each is a name and needs
+    /// telling why it is not one that may be assigned (#153). Both are read-only by decision (spec 18),
+    /// and the way out of both is the same: a local of one's own.
+    /// </remarks>
+    private void ReportUnassignable(Expression target, Scope scope)
+    {
+        var (message, help) = target is NameExpression name
+            ? (scope.LookupLocal(name.Name.Text), scope.LookupParameter(name.Name.Text)) switch
+            {
+                ({ } binding, _) => (
+                    $"'{binding.Name}' is a loop binding, which cannot be assigned.",
+                    $"Copy it into a local first: 'var copy: {binding.Type.DisplayName} = {binding.Name};'."),
+                (_, { } parameter) => (
+                    $"'{parameter.Name}' is a parameter, which cannot be assigned.",
+                    $"Copy it into a local first: 'var copy: {parameter.Type.DisplayName} = {parameter.Name};'."),
+                _ => (UnassignableMessage, UnassignableHelp),
+            }
+            : (UnassignableMessage, UnassignableHelp);
+
+        _diagnostics.Report(DiagnosticCodes.InvalidAssignmentTarget, message, target.Span, help);
+    }
+
+    private const string UnassignableMessage = "Only a local variable or a field can be assigned.";
+
+    private const string UnassignableHelp =
+        "Assign a local declared with 'var', or a field of a message this method may change (spec 18).";
+
+    /// <summary>A refused assignment's target and operands, kept as statements of a block.</summary>
+    private static IrBlock Refused(IrExpression target, IReadOnlyList<IrExpression> operands, SourceSpan span)
+        => new(
             [
-                refusedTarget,
-                .. operands.Select(operand => new IrExpressionStatement(
-                    BindExpression(operand, scope, context, null),
-                    operand.Span)),
+                new IrExpressionStatement(target, target.Span),
+                .. operands.Select(operand => new IrExpressionStatement(operand, operand.Span)),
             ],
             span);
-    }
 
     private IrExpression BindExpression(
         Expression expression,
@@ -1662,6 +1697,7 @@ public sealed partial class Binder
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
             CastExpression cast => BindCast(cast, scope, context),
+            MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
         };
@@ -1726,30 +1762,23 @@ public sealed partial class Binder
 
     private IrExpression BindName(NameExpression name, Scope scope, MethodContext context)
     {
-        if (scope.LookupLocal(name.Name.Text) is { } local)
+        switch (Resolve(name.Name.Text, scope, context))
         {
-            Use(local.Id, name.Name.Span);
-            return new IrLocalReference(local, name.Span);
-        }
+            case { Local: { } local }:
+                Use(local.Id, name.Name.Span);
+                return new IrLocalReference(local, name.Span);
 
-        if (scope.LookupParameter(name.Name.Text) is { } parameter)
-        {
-            Use(parameter.Id, name.Name.Span);
-            return new IrParameterReference(parameter, name.Span);
-        }
+            case { Parameter: { } parameter }:
+                Use(parameter.Id, name.Name.Span);
+                return new IrParameterReference(parameter, name.Span);
 
-        if (context.AllowImplicitReceiverFields)
-        {
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            var field = MessageFields.Named(context.Receiver, name.Name.Text);
-            if (field is not null)
-            {
+            case { Field: { } field }:
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
                 // receiver is a fact about the text and not about what was named.
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return BindFieldAccess(
                     new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
-            }
         }
 
         _diagnostics.Report(
@@ -1785,10 +1814,7 @@ public sealed partial class Binder
     {
         if (field.IsMap)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.MapsAreNotSupported,
-                $"Field '{field.Name}' is a map, which this compiler version does not support.",
-                span);
+            ReportMap(field, span);
             return new IrLiteral(null, ErrorType.Instance, span);
         }
 
@@ -1820,6 +1846,12 @@ public sealed partial class Binder
 
         return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
     }
+
+    private void ReportMap(FieldDescriptor field, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.MapsAreNotSupported,
+            $"Field '{field.Name}' is a map, which this compiler version does not support.",
+            span);
 
     /// <summary>
     /// Resolves <c>SomeEnum.SOME_VALUE</c>, or returns null when the member access is not naming an
@@ -2001,11 +2033,27 @@ public sealed partial class Binder
         return string.Join('.', parts);
     }
 
-    /// <summary>Whether an identifier names a value in scope, using the same order as BindName.</summary>
+    /// <summary>Whether an identifier names a value in scope.</summary>
     private static bool IsValueName(string name, Scope scope, MethodContext context)
-        => scope.LookupLocal(name) is not null
-        || scope.LookupParameter(name) is not null
-        || (context.AllowImplicitReceiverFields && MessageFields.Named(context.Receiver, name) is not null);
+        => Resolve(name, scope, context) is not { Local: null, Parameter: null, Field: null };
+
+    /// <summary>
+    /// What a bare name means where it is written: a local, then a parameter, then a field of the
+    /// implicit receiver, the first of those that has the name. None of them when nothing does.
+    /// </summary>
+    /// <remarks>
+    /// One home for the order, because everything that reads a bare name has to agree on it: binding
+    /// a read, binding a write, deciding whether a dotted name is an enum, and tracing what a change
+    /// reaches before a loop body is bound. A second copy of the order is a write the binder resolves
+    /// to one place and the presence analysis to another.
+    /// </remarks>
+    private static BareName Resolve(string name, Scope scope, MethodContext context)
+        => scope.LookupLocal(name) is { } local ? new BareName(local, null, null)
+            : scope.LookupParameter(name) is { } parameter ? new BareName(null, parameter, null)
+            : new BareName(null, null, context.HasImplicitReceiver ? MessageFields.Named(context.Receiver, name) : null);
+
+    /// <summary>What <see cref="Resolve"/> found a bare name to mean: at most one of the three.</summary>
+    private readonly record struct BareName(IrLocal? Local, IrParameter? Parameter, FieldDescriptor? Field);
 
     /// <remarks>
     /// The missing-name case comes first and does the most work of any failure path here, because it
@@ -2033,7 +2081,23 @@ public sealed partial class Binder
         }
 
         var receiver = BindExpression(member.Receiver, scope, context, null);
+        return Member(receiver, member, field => BindFieldAccess(receiver, field, member.Span, context));
+    }
 
+    /// <summary>
+    /// The field <paramref name="member"/> names on <paramref name="receiver"/>, as
+    /// <paramref name="access"/> makes it, or what the name is instead when it is not a field.
+    /// </summary>
+    /// <remarks>
+    /// One answer for a field read and a field written, so the two cannot come to report a name that
+    /// is not a field differently. Only what is made of the field differs: a read is guarded (spec
+    /// 13.1), and a place written through is not.
+    /// </remarks>
+    private IrExpression Member(
+        IrExpression receiver,
+        MemberAccessExpression member,
+        Func<FieldDescriptor, IrExpression> access)
+    {
         if (receiver.Type is ErrorType)
         {
             return new IrLiteral(null, ErrorType.Instance, member.Span);
@@ -2052,7 +2116,7 @@ public sealed partial class Binder
         if (field is not null)
         {
             Use(SymbolId.ForField(field), member.Name.Span);
-            return BindFieldAccess(receiver, field, member.Span, context);
+            return access(field);
         }
 
         if (_methods.ContainsKey((messageType.Descriptor.FullName, member.Name.Text)))
@@ -2075,7 +2139,7 @@ public sealed partial class Binder
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
     /// <remarks>
     /// <para>
-    /// Six paths below decide there is no method here. Every one of them still keeps the arguments,
+    /// Nine paths below decide there is no method here. Every one of them still keeps the arguments,
     /// in an <see cref="IrUncallableInvocation"/>, because the arguments are source the author wrote
     /// and a call that does not resolve is the ordinary state of one being typed. Collapsing to an
     /// error-typed literal spanning the whole call -- which is what every path used to do -- leaves
@@ -2083,8 +2147,8 @@ public sealed partial class Binder
     /// signature help ask about.
     /// </para>
     /// <para>
-    /// Arguments are bound once and only once. The two paths that reach a failure with them already
-    /// bound hand over the list they built; the four that fail before binding anything go through
+    /// Arguments are bound once and only once. The one path that reaches a failure with them already
+    /// bound hands over the list it built; the eight that fail before binding anything go through
     /// <c>Uncallable</c>, which binds with no expected type -- there is no signature to expect
     /// anything from. Binding twice would report every mistake inside an argument twice.
     /// </para>
@@ -2118,6 +2182,25 @@ public sealed partial class Binder
                     return Uncallable(boundReceiver);
                 }
 
+                // A statement of its own was bound as an append before it got here (spec 14.1), so
+                // this one is inside an expression, or adds to a value nothing holds.
+                if (boundReceiver.Type is RepeatedType && member.Name.Text == IrAppend.MethodName)
+                {
+                    RefuseAppend(boundReceiver, invocation, context);
+                    return Uncallable(boundReceiver);
+                }
+
+                if (boundReceiver.Type is RepeatedType)
+                {
+                    _diagnostics.Report(
+                        DiagnosticCodes.MethodCallOnANonMessage,
+                        $"Type '{boundReceiver.Type.DisplayName}' has no method named '{member.Name}'.",
+                        invocation.Span,
+                        $"A repeated value has one method, '{IrAppend.MethodName}', which adds an element to its "
+                        + "end. Nothing can be removed from one (spec 14.1).");
+                    return Uncallable(boundReceiver);
+                }
+
                 if (boundReceiver.Type is not MessageType messageType)
                 {
                     _diagnostics.Report(
@@ -2133,6 +2216,19 @@ public sealed partial class Binder
                 receiverDescriptor = messageType.Descriptor;
                 break;
             }
+
+            // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
+            // field name there names no field. Bound against the method's receiver it would read the
+            // message the fixture is still building, which neither backend can generate: C# reads the
+            // fixture's local inside its own initializer, and C++ names a receiver that is not there.
+            case NameExpression name when !context.HasImplicitReceiver:
+                _diagnostics.Report(
+                    DiagnosticCodes.CallWithoutAReceiver,
+                    $"'{name.Name}' is called with no receiver, and a test has none of its own.",
+                    invocation.Span,
+                    $"A test calls the method it targets, on the receiver its fixture builds. Write the value "
+                    + $"itself, or test '{name.Name}' in a test of its own (spec 25.3).");
+                return Uncallable(null);
 
             case NameExpression name:
                 receiver = new IrThis(new MessageType(context.Receiver), name.Span);
@@ -2216,9 +2312,15 @@ public sealed partial class Binder
             }
         }
 
-        return new IrMethodCall(receiver, signature, arguments, invocation.Span);
+        var call = new IrMethodCall(receiver, signature, arguments, invocation.Span);
+        if (signature.IsMutating)
+        {
+            CheckMutatingCall(call, invocation, context);
+        }
 
-        // For the four paths that give up before any argument has been looked at. There is no
+        return call;
+
+        // For the eight paths that give up before any argument has been looked at. There is no
         // signature to take an expected type from -- that is what they gave up on -- so each
         // argument is bound for whatever it is on its own.
         IrUncallableInvocation Uncallable(IrExpression? boundReceiver)
@@ -2333,7 +2435,7 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return BindMemberAccess(member, scope, context);
 
-            case NameExpression bare when context.AllowImplicitReceiverFields
+            case NameExpression bare when context.HasImplicitReceiver
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
                 receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
@@ -2941,6 +3043,11 @@ public sealed partial class Binder
     /// How many enclosing loops the statement being bound sits inside. Zero means 'break' and
     /// 'continue' have nothing to bind to.
     /// </param>
+    /// <param name="HasImplicitReceiver">
+    /// Whether a bare name may reach <paramref name="Receiver"/>: a field read as <c>count</c>, a
+    /// method called as <c>helper()</c>. A method body has one. A test does not (spec 25.3): the
+    /// receiver it names is the message its fixture builds, which nothing in the test is inside.
+    /// </param>
     /// <remarks>
     /// Carries no parameter list, deliberately. <see cref="Scope"/> is what answers a name, and it
     /// holds a filtered view of what a signature declares: a parameter nobody has named is not in
@@ -2951,7 +3058,7 @@ public sealed partial class Binder
     private sealed record MethodContext(
         MessageDescriptor Receiver,
         PlType ReturnType,
-        bool AllowImplicitReceiverFields = true,
+        bool HasImplicitReceiver = true,
         int LoopDepth = 0)
     {
         /// <summary>
@@ -2959,12 +3066,30 @@ public sealed partial class Binder
         /// being bound (spec 13.1).
         /// </summary>
         /// <remarks>
-        /// A set rather than a lattice, and no fixpoint over loops, because presence facts are
-        /// monotone within a method: ProtoCross cannot assign to a field, so nothing that has been
-        /// shown to be set can become unset before the method ends. If receiver mutation ever
-        /// arrives (spec 18), this is the assumption that has to be revisited.
+        /// <para>
+        /// A set rather than a lattice, and no fixpoint over loops. Nothing in the language unsets a
+        /// field except an assignment to another member of its <c>oneof</c>, so a fact ends only when
+        /// something replaces the message it is about or unsets the field it is about.
+        /// </para>
+        /// <para>
+        /// That does not make the facts monotone, which is what this once said. A local can be
+        /// assigned another message, a field can be assigned one (spec 18), and a mutating method may
+        /// do either to anything inside its receiver. So a fact ends at a change that could make it
+        /// false, and a loop enters its body with only the facts its body cannot end. See
+        /// <see cref="ForgetChangedIn"/>. No fixpoint is needed for that either: what a loop changes
+        /// is written in its body, and asking the syntax answers it in one pass.
+        /// </para>
         /// </remarks>
         public IReadOnlySet<string> Present { get; init; } = EmptyPresence;
+
+        /// <summary>The method being bound, or null in a test, which is no method's body.</summary>
+        public IrMethodSignature? Method { get; init; }
+
+        /// <summary>Whether the method is a <c>mut fn</c>, which may change its receiver (spec 18).</summary>
+        public bool ChangesReceiver => Method is { IsMutating: true };
+
+        /// <summary>The repeated fields the <c>for</c> loops around the statement traverse, outermost first.</summary>
+        public IReadOnlyList<Traversal> Traversing { get; init; } = [];
     }
 
     private static readonly IReadOnlySet<string> EmptyPresence =

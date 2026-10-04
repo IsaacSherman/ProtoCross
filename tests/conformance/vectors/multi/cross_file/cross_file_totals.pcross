@@ -31,15 +31,16 @@ extend CrossFileOrder {
 // Beside the method it tests, so this source has a driver of its own as well as the tests source.
 test CrossFileOrder.subtotal_cents "each line is priced by the source that declares the line's method" {
     receiver {
-        lines {
-            quantity = 2;
-            unit_price_cents = 300;
-        }
-
-        lines {
-            quantity = 1;
-            unit_price_cents = 150;
-        }
+        lines: [
+            new CrossFileLine {
+                quantity: 2,
+                unit_price_cents: 300,
+            },
+            new CrossFileLine {
+                quantity: 1,
+                unit_price_cents: 150,
+            },
+        ],
     }
 
     expect return 750;

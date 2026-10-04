@@ -55,8 +55,8 @@ public class CompilationTests
 
             test InvoiceItem.line_total_cents "line total" {
                 receiver {
-                    quantity = 2;
-                    unit_price_cents = "oops";
+                    quantity: 2,
+                    unit_price_cents: "oops",
                 }
 
                 expect return 600;
@@ -80,8 +80,8 @@ public class CompilationTests
 
             test InvoiceItem.line_total_cents "line total" {
                 receiver {
-                    quantity = unit_price_cents;
-                    unit_price_cents = 300;
+                    quantity: unit_price_cents,
+                    unit_price_cents: 300,
                 }
 
                 expect return 600;
@@ -234,14 +234,13 @@ public class CompilationTests
     }
 
     [Fact]
-    public void RejectsAssigningToAProtobufField()
+    public void RejectsAssigningToTheReceiverOfAMethodThatIsNotMutating()
     {
-        // Whether methods may mutate the receiver is still open (spec 16.1); until it is decided,
-        // the compiler refuses rather than picking a semantics.
+        // Only a 'mut fn' may change its receiver (spec 18).
         var result = CompileSource(
             Prelude + "extend InvoiceItem { fn f() -> int64 { quantity = 1; return quantity; } }");
 
-        Assert.Contains(result.Diagnostics, d => d.Code == "PC0034");
+        Assert.Contains(result.Diagnostics, d => d.Code == "PC0094");
     }
 
     [Fact]

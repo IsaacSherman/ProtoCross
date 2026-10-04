@@ -1,6 +1,7 @@
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Symbols;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 
 namespace ProtoCross.Ir;
@@ -179,8 +180,22 @@ public sealed record IrMethodSignature(
     /// <summary>What identifies this method, and every call that resolves to it.</summary>
     public SymbolId Id => Declaration.Id;
 
+    /// <summary>Whether the method is declared <c>mut fn</c>, and so may change its receiver (spec 18).</summary>
+    /// <remarks>
+    /// <para>
+    /// On the signature rather than the method, because a call reaches the signature and not the
+    /// method, and the call is where it matters: what a mutating method may be called on, where the
+    /// call may stand, and what C++ passes as its receiver are all decided at the call.
+    /// </para>
+    /// <para>
+    /// Init-only with a default of false, so every existing construction of a signature stays valid
+    /// and describes a method that changes nothing, which every method was before #13.
+    /// </para>
+    /// </remarks>
+    public bool IsMutating { get; init; }
+
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
-    /// int64</c>.</summary>
+    /// int64</c>, or <c>mut fn …</c> for one that may change its receiver.</summary>
     /// <remarks>
     /// <para>
     /// Rendered here rather than by each surface that shows a method, for the reason
@@ -234,7 +249,7 @@ public sealed record IrMethodSignature(
         }
     }
 
-    private string Opening => $"fn {Name}(";
+    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}(" : $"fn {Name}(";
 
     private const string Separator = ", ";
 
@@ -327,6 +342,80 @@ public sealed record IrVariableDeclaration(IrLocal Local, IrExpression Initializ
 public sealed record IrAssignment(IrLocalReference Target, IrExpression Value, SourceSpan Span)
     : IrStatement(Span);
 
+/// <summary>An assignment to a field of a message the method may change: <c>total = 5;</c> (spec 18).</summary>
+/// <param name="Target">
+/// The field written, reached through the message it belongs to. Every link of the chain is a place
+/// rather than a read: the receiver of a <c>mut fn</c>, a local or a loop binding at its root, and a
+/// singular message field at each link after it. A link that is unset when the assignment runs is
+/// set by it, as protobuf's mutable accessors set it, so no link needs a guard (spec 13.1).
+/// </param>
+/// <remarks>
+/// <para>
+/// A node of its own rather than <see cref="IrAssignment"/> with a wider target, because the two are
+/// emitted nothing alike. A local is a variable in both targets. A field is a setter in C++, and in
+/// C# a property on a message that the assignment may first have to create, and a backend that
+/// switched on the shape of one node's target would be choosing between two statements anyway.
+/// </para>
+/// <para>
+/// The value is stored as a field of a literal stores one (<see cref="IrExpression.IsCopiedWhenStored"/>):
+/// a message that is not a literal is copied, so the field holds a message of its own.
+/// </para>
+/// </remarks>
+public sealed record IrFieldAssignment(IrFieldAccess Target, IrExpression Value, SourceSpan Span)
+    : IrStatement(Span);
+
+/// <summary>
+/// An element added to the end of a repeated value the method may change: <c>entries.append(entry);</c>
+/// (spec 14.1, 18).
+/// </summary>
+/// <param name="Collection">
+/// What the element is added to: a repeated field, reached through a chain of places as an assigned
+/// field is (<see cref="IrFieldAssignment.Target"/>), or a local holding a repeated value.
+/// </param>
+/// <param name="Value">The element, of the collection's element type.</param>
+/// <param name="NameSpan">Where <c>append</c> was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A statement rather than a call, though it is written as one. It has no value, so it can only ever
+/// stand on its own (spec 18), and nothing it could be passed to would know what to do with it. It is
+/// emitted as an assignment is, in the same three steps: the target is reached, setting every unset
+/// message it writes through, then the value is evaluated, and the element is added last.
+/// </para>
+/// <para>
+/// The value is stored as an assigned field's is (<see cref="IrExpression.IsCopiedWhenStored"/>): a
+/// message that is not a literal is copied, so the element is a message of its own.
+/// </para>
+/// <para>
+/// <c>append</c> is the language's, not a method any source declares, so it is recorded nowhere as a
+/// use of a symbol: there is no declaration for an editor to go to, and a stand-in identity would be
+/// one that answers nothing. Its span is kept here instead, for the editor that colours and describes
+/// it.
+/// </para>
+/// </remarks>
+public sealed record IrAppend(IrExpression Collection, IrExpression Value, SourceSpan NameSpan, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <summary>What an append is called, after the dot: <c>entries.append(entry)</c>.</summary>
+    public const string MethodName = "append";
+
+    /// <summary>
+    /// An append to a value of <paramref name="collection"/>'s type, written out as a method's
+    /// signature is (<see cref="IrMethodSignature.DisplayName"/>): <c>mut fn append(value: Entry) -&gt; void</c>.
+    /// </summary>
+    /// <remarks>
+    /// One spelling for every surface that shows it -- a completion's detail and a hover -- for the
+    /// reason a declared method has one. It reads as the <c>mut fn</c> it behaves as: it changes what
+    /// it is called on, and has no value to use.
+    /// </remarks>
+    public static string DisplayNameFor(RepeatedType collection)
+    {
+        ArgumentNullException.ThrowIfNull(collection);
+
+        return $"{ContextualKeywords.Mut} fn {MethodName}(value: {collection.ElementType.DisplayName}) -> "
+            + VoidType.Instance.DisplayName;
+    }
+}
+
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
 
 /// <summary>Iteration over a repeated field, in protobuf field order (spec 14).</summary>
@@ -354,7 +443,35 @@ public sealed record IrContinue(SourceSpan Span) : IrStatement(Span);
 
 public sealed record IrExpressionStatement(IrExpression Expression, SourceSpan Span) : IrStatement(Span);
 
-public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span);
+public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
+{
+    /// <summary>
+    /// Whether storing this value -- as a field, or in a local -- has to store a copy of it rather
+    /// than the value itself (spec 13.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The annotation #80 promised a backend, asked of the value rather than recorded beside it,
+    /// for the reason <see cref="IrBinary.OverflowingType"/> is: it follows from the IR, and a second
+    /// copy of the rule in each backend is two to keep in step. Storing a message gives the store a
+    /// message of its own. C++ copies on assignment whatever it is told, and a C# message is a
+    /// reference, so without a copy two fields would share one message and a change through either
+    /// would show through both.
+    /// </para>
+    /// <para>
+    /// Only a literal is exempt, because a literal is built where it is stored and nothing else can
+    /// hold it. A method's result is not: the method may have returned a field of its receiver, which
+    /// is still the receiver's.
+    /// </para>
+    /// <para>
+    /// A repeated value is copied too. No field is ever given one, since a literal takes only a list
+    /// (spec 13.2), but a local can hold one (#13), and a C# <c>RepeatedField</c> is a reference whose
+    /// elements are the messages the field holds: a change made to an element through the local would
+    /// otherwise be a change to the field. C++ copies it, elements and all, as it copies a message.
+    /// </para>
+    /// </remarks>
+    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType && this is not IrMessageLiteral;
+}
 
 /// <summary>The implicit receiver of the enclosing method.</summary>
 public sealed record IrThis(MessageType MessageType, SourceSpan Span) : IrExpression(MessageType, Span);
@@ -603,6 +720,54 @@ public sealed record IrLiteral(object? Value, PlType LiteralType, SourceSpan Spa
     : IrExpression(LiteralType, Span);
 
 /// <summary>
+/// A message built in place, <c>new Invoice { number: 5, items: [ ... ] }</c> (spec 13.2), and a
+/// test's receiver fixture, which is the same thing with its type taken from the test's target.
+/// </summary>
+/// <param name="Fields">
+/// The fields written, in the order they were written, which is the order their values are evaluated
+/// in (spec 9.3). A field left out is unset, and is not here.
+/// </param>
+/// <remarks>
+/// <para>
+/// <b>One shape for a literal and a fixture</b>, because they are one spelling of one idea and the
+/// binder builds both. A fixture was an <c>IrTestMessageValue</c> until #80 made a literal an
+/// expression, and two node kinds for one construct would have been two things for every consumer
+/// -- the walk, a position query, a hover, both backends -- to handle alike.
+/// </para>
+/// <para>
+/// A fixture's span is its <c>receiver { ... }</c> block, and a literal's runs from <c>new</c> to its
+/// closing brace.
+/// </para>
+/// </remarks>
+public sealed record IrMessageLiteral(
+    MessageType MessageType,
+    IReadOnlyList<IrFieldInitializer> Fields,
+    SourceSpan Span) : IrExpression(MessageType, Span);
+
+/// <summary>One field of a message literal, <c>name: value</c>.</summary>
+/// <param name="Value">
+/// For a repeated field, an <see cref="IrList"/> holding every element. For any other field, a value
+/// of the field's type.
+/// </param>
+/// <remarks>
+/// It spans the whole field, name through value, so a position on the name is on the field and finds
+/// the descriptor here, and a position in the value finds the value inside it.
+/// </remarks>
+public sealed record IrFieldInitializer(FieldDescriptor Field, IrExpression Value, SourceSpan Span) : IrNode(Span);
+
+/// <summary>The elements a repeated field is given, <c>[first, second]</c>, in order (spec 13.2).</summary>
+/// <remarks>
+/// <para>
+/// An expression, so that a field's value is one slot whatever the field is, but a value nowhere
+/// except as a repeated field's: the language has no list values, and the binder builds one only
+/// where a repeated field is given one. Its type is the field's, which is what lets a value of that
+/// type stand in the same slot once a field may be given a whole repeated value (spec 30).
+/// </para>
+/// </remarks>
+public sealed record IrList(RepeatedType ListType, IReadOnlyList<IrExpression> Elements, SourceSpan Span)
+    : IrExpression(ListType, Span);
+
+/// <summary>
 /// A member access whose member name has not been written yet -- <c>line.</c> with the caret sitting
 /// after the dot.
 /// </summary>
@@ -670,10 +835,14 @@ public sealed record IrUncallableInvocation(
     IReadOnlyList<IrExpression> Arguments,
     SourceSpan Span) : IrExpression(ErrorType.Instance, Span);
 
+/// <param name="Receiver">
+/// The message the method is called on, which a fixture writes the way a literal does (spec 25.3)
+/// and the binder builds as one.
+/// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
     string Name,
-    IrTestMessageValue Receiver,
+    IrMessageLiteral Receiver,
     IReadOnlyList<IrTestArgument> Arguments,
     IrTestExpectation Expectation,
     SourceSpan Span) : IrNode(Span)
@@ -707,17 +876,6 @@ public sealed record IrTest(
 }
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);
-
-public sealed record IrTestMessageValue(
-    MessageDescriptor Descriptor,
-    IReadOnlyList<IrTestFieldValue> Fields,
-    SourceSpan Span) : IrNode(Span);
-
-public sealed record IrTestFieldValue(
-    FieldDescriptor Field,
-    IrExpression? ScalarValue,
-    IrTestMessageValue? MessageValue,
-    SourceSpan Span) : IrNode(Span);
 
 public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
 

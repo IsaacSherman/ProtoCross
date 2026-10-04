@@ -109,7 +109,8 @@ each with a form that takes a list of sources.
    [`SourceTree`](src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
    so a call or a test may reach from one source into another, and `IrModule.DeclaredIn` divides the
    module back into what each source declares. Sugar ends here: a compound assignment `x += y` is bound as the
-   assignment of `x + y` to `x`, so the IR has no node for one and no backend knows it exists. It does
+   assignment of `x + y` to `x` (an `IrAssignment`, or an `IrFieldAssignment` for a field), so the IR
+   has no node for one and no backend knows it exists. It does
    **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
    continues, a name the parser never saw resolves to `ErrorType`
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
@@ -128,6 +129,22 @@ each with a form that takes a list of sources.
    and nowhere else — a parameter with no name, a second parameter of one name, and a `var` that
    collides with an enclosing one are all still in the IR and all resolve nothing, and the tree does
    not say so.
+
+   The binder also enforces the two rules that are about what a method does, not about what names
+   mean, because no backend could enforce them identically.
+   - **Presence** (spec 13.1, `PC0078`): a message field is read only where a guard proved it set. Each
+     guard's facts are carried through the method, and they end at any change that could make them
+     false: a reassigned local, an assigned field or a `oneof` sibling of one, or a mutating call or
+     append on anything holding the field.
+   - **Mutation** (spec 18): who may change what (`PC0094`–`PC0097`), and the loop rule that nothing
+     inside a `for` may change the field it traverses. This lives in
+     [Binder.Mutation.cs](src/ProtoCross.Core/Binding/Binder.Mutation.cs). It traces every change to
+     one place, a root and a chain of fields, so assignment, a `mut fn` call and an append are judged
+     by one answer and cannot come to disagree.
+
+   A message literal and a test's fixture are bound by the same code
+   ([Binder.MessageLiterals.cs](src/ProtoCross.Core/Binding/Binder.MessageLiterals.cs)), because a
+   fixture is a literal.
 8. **Result.** `CompilationResult` carries the IR *even when the file did not parse*, the syntax
    tree, the descriptors, the whole `Schema` bundle they came from, the import outcomes, the
    diagnostics, the settled config, and the search paths that were used. When the schemas could not
@@ -196,6 +213,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Who serves that, and what this client can paint | `ClassificationProvider`, `ClientLegend`, `SemanticTokenDiff` | [Hosting/ClassificationProvider.cs](src/ProtoCross.LanguageServer/Hosting/ClassificationProvider.cs), [Hosting/ClientLegend.cs](src/ProtoCross.LanguageServer/Hosting/ClientLegend.cs) |
 | Where a comment was | `Comment` | [Syntax/Comment.cs](src/ProtoCross.Core/Syntax/Comment.cs) |
 | Written or not-yet-written names | `SyntaxName` | [Syntax/SyntaxName.cs](src/ProtoCross.Core/Syntax/SyntaxName.cs) |
+| Words that are keywords in one position only (`new`, `mut`), for the parser and the colouring alike | `ContextualKeywords` | [Syntax/ContextualKeywords.cs](src/ProtoCross.Core/Syntax/ContextualKeywords.cs) |
 | What became of an import | `ImportResolution` | [ImportResolution.cs](src/ProtoCross.Core/ImportResolution.cs) |
 | Which file a schema path names | `SchemaLookup` | [Binding/SchemaLookup.cs](src/ProtoCross.Core/Binding/SchemaLookup.cs) |
 | Which roots are searched, and what they hold | `SchemaCatalog`, `SchemaCandidate` | [Binding/SchemaCatalog.cs](src/ProtoCross.Core/Binding/SchemaCatalog.cs) |
@@ -237,6 +255,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | What a bare name may mean here | `ScopeAtPosition`, `VisibleName` | [Semantics/ScopeAtPosition.cs](src/ProtoCross.Core/Semantics/ScopeAtPosition.cs) |
 | What kind of symbol it is | `SymbolKind` | [Symbols/SymbolKind.cs](src/ProtoCross.Core/Symbols/SymbolKind.cs) |
 | Emission behavior | `ArithmeticBehavior`, `ConversionBehavior` | [Ir/ArithmeticBehavior.cs](src/ProtoCross.Core/Ir/ArithmeticBehavior.cs) |
+| What a change reaches, and what a backend copies for it | `IrMutation` | [Semantics/IrMutation.cs](src/ProtoCross.Core/Semantics/IrMutation.cs) |
 | Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](src/ProtoCross.Core/Ir/NumericPolicy.cs) |
 | Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](src/ProtoCross.Core/Backend/IBackend.cs) |
 | Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](src/ProtoCross.Core/Backend/NameConventions.cs) |
@@ -542,10 +561,20 @@ what let the second layer ship by emitting different numbers rather than by chan
 mean. What the second layer costs, and why it never costs colour, is in *Serving an editor*.
 
 Completion is the same bargain and one step further out. `CompletionProvider` decides which context
-the caret is in before it asks what belongs there, and today recognizes one — inside an `import
-proto` string, found by `ImportPathContext` in the token stream, because the tree does not carry the
-path's own span and the state this is invoked in is one the parser has already recovered from. What
-is offered comes from
+the caret is in before it asks what belongs there, from the token stream
+([`CompletionSubject`](src/ProtoCross.LanguageServer/Hosting/CompletionSubject.cs)), because the state
+it is invoked in is nearly always one the parser has already recovered from. There are two contexts.
+
+**A schema name** is anywhere a name could be written: after a dot, on a bare identifier, in a type
+position, after `extend` or `new`, inside a literal's braces, or naming a fixture field. That is
+answered from a compilation kept between keystrokes. A bare name is answered from `ScopeAt`, a
+member from the receiver's type, and a literal's braces from its message's fields. After a dot on a
+repeated value at statement position, the answer is `append()`. Each list honours the `ScopeAt`
+contract, *everything offered binds*. Under `PROTOCROSS_SWEEP` the suite checks that contract by
+accepting every item offered at every caret worth asking at in the corpus, and compiling the result.
+
+**An import path** is inside an `import proto` string, found by `ImportPathContext`, because the tree
+does not carry the path's own span. What is offered comes from
 [`SchemaCatalog`](src/ProtoCross.Core/Binding/SchemaCatalog.cs), which is also where "the roots an
 import is resolved against" now lives for everyone who asks: the include paths, then the source's own
 directory, then whatever the loader adds. One directory listing per root, on demand, no index and no
@@ -612,6 +641,17 @@ rather than emitting something that quietly differs. A backend **cannot branch o
 operation is emitted comes from the behavior annotation the binder stamped on the IR node. Policy
 reaches a backend only as prose for the generated file's header.
 
+Copies and mutability come from the IR as well. `IrExpression.IsCopiedWhenStored` says that a stored
+value has to be a copy. [`IrMutation`](src/ProtoCross.Core/Semantics/IrMutation.cs) answers four
+questions: which place a node changes, whether a method changes any message, whether a loop changes
+its elements, and whether an argument is passed as a copy. C++ binds a loop element as `auto&` only
+where the body changes it, and C# clones into a local only in a method that changes a message, where
+a copy and a share could be told apart. A receiver is `T&` in C++ exactly when the signature says
+`IsMutating`, and `const T&` otherwise. Neither backend works out for itself what changes, so the
+two cannot disagree about it. Each backend writes a message literal and a test's fixture with one writer
+(`*Backend.MessageLiterals.cs`), since a fixture is a literal aimed at the test's receiver. In C# that
+writer produces an object initializer, and in C++ a lambda called where the literal is written.
+
 A backend is handed one source's part of the module, and a call in it may name a method another
 source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
 declares the part. A C++ header includes the headers of the sources it calls, after its own
@@ -635,7 +675,9 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `DescriptorCacheTests`, `SchemaDeclarationTests`, `ProcessSupervisionTests`, `CompileSupervisionTests`,
 `WorkspaceConfigurationTests`, `WorkspaceTrustTests`, `ServerStatusTests`, `LanguageServerTests`,
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
-`SemanticRefinementTests`, `SchemaCatalogTests`,
+`SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
+`LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
+`MutationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,
@@ -665,7 +707,13 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
   commit that moves that number rather than on the day it ships.
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same
-suite, with both gated switches thrown, on every pull request to `main`. It also runs the extension's
+suite, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
+every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
+required checks pass after checking the changed paths, without building or running the suites.
+A successful suite records the non-Markdown tree it tested, including the merged base, so later
+documentation updates to a pull request that includes code can reuse that validation. The record
+is separate per suite and platform; changed inputs, a missing record or an explicit rerun run the
+suite again. It also runs the extension's
 three suites on Windows, Linux and macOS, before and after a `protoc` is installed.
 
 ## Invariants that constrain a change

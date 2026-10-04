@@ -23,6 +23,11 @@ name: build and test
 # run on that pull request tested the tree the merge produces. Ordinary pushes therefore cost nothing
 # at all: the suite is what a person runs before they propose a change, and this is the same suite
 # run where the proposal is judged rather than a second opinion on every keystroke of the way there.
+#
+# Keep the required check names even for Markdown-only changes. Filtering the whole workflow would
+# leave those checks pending, so each job reads the complete diff and declines only its costly steps.
+# A successful suite also records the non-Markdown tree it tested. A later documentation update
+# to that same pull request reuses the result; missing evidence or any changed input runs the suite.
 on:
   pull_request:
     branches: [main, 'sprints/**']
@@ -68,6 +73,36 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check CI change detection
+        shell: pwsh
+        run: ./.github/workflows/changes.Tests.ps1
+
+      - name: Decide whether the suites are needed
+        id: changes
+        shell: pwsh
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        run: >
+          ./.github/workflows/changes.ps1 -Base $env:BASE_REF -Head $env:HEAD_REF
+          -PullRequest:($env:IS_PULL_REQUEST -eq 'true') -OutputPath $env:GITHUB_OUTPUT
+
+      - name: Look for successful validation of this source tree
+        id: verified
+        if: steps.changes.outputs.run_tests == 'true' && github.run_attempt == 1
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-validation/test-${{ matrix.os }}
+          key: verified-v1-test-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
+          lookup-only: true
+
+      - name: Reuse successful source validation
+        if: steps.verified.outputs.cache-hit == 'true'
+        run: Write-Output 'This non-Markdown source tree already passed this suite; reusing that validation.'
 
       # From global.json rather than a version written here, so that CI and a developer's machine
       # cannot disagree about which SDK compiled the code. A floating version is not merely
@@ -75,6 +110,7 @@ jobs:
       # warning turns a green pull request red without anybody having changed anything, on a
       # schedule this repository does not control.
       - uses: actions/setup-dotnet@v4
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           global-json-file: global.json
 
@@ -90,6 +126,7 @@ jobs:
       # does not, and the restore-keys prefix means a bump still starts from the previous cache and
       # downloads only the difference.
       - name: Cache packages
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.nuget/packages
@@ -100,6 +137,7 @@ jobs:
       # references Grpc.Tools for exactly that reason, so a restore that failed would otherwise show
       # up as several dozen tests quietly declining to run.
       - name: Restore
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: dotnet restore ProtoCross.slnx
 
       # Release, because the suite's longest tests are the compiler itself run tens of thousands of
@@ -109,9 +147,11 @@ jobs:
       # which configuration it runs under answers for both. It is also the build the VS Code
       # extension ships. A failure here reproduces locally with '-c Release' on both commands.
       - name: Build
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: dotnet build ProtoCross.slnx --no-restore --configuration Release
 
       - name: Test
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: >
           dotnet test ProtoCross.slnx --no-build --configuration Release
           --logger "trx;LogFileName=results.trx"
@@ -120,17 +160,33 @@ jobs:
       # Runs even when the tests failed, because what did not run is worth knowing either way -- and
       # on a red build it is often the explanation.
       - name: Report what did not run
-        if: always()
+        if: always() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         shell: pwsh
         run: ./.github/workflows/report.ps1 -Results artifacts/test
 
       - name: Keep the results
-        if: always()
+        if: always() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: test-results-${{ matrix.os }}
           path: artifacts/test
           if-no-files-found: warn
+
+      - name: Record successful source validation
+        if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
+        shell: pwsh
+        env:
+          SOURCE_KEY: ${{ steps.changes.outputs.source_key }}
+        run: |
+          New-Item -ItemType Directory -Force .ci-validation/test-${{ matrix.os }} | Out-Null
+          Set-Content .ci-validation/test-${{ matrix.os }}/passed $env:SOURCE_KEY
+
+      - name: Remember successful source validation
+        if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-validation/test-${{ matrix.os }}
+          key: verified-v1-test-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
 
   # The VS Code extension, on every platform it claims. The .NET job above runs the server's own suite on
   # Windows; this is where "Windows, macOS and Linux" stops being a claim, because the extension starts
@@ -155,46 +211,82 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decide whether the suites are needed
+        id: changes
+        working-directory: .
+        shell: pwsh
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
+          IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
+        run: >
+          ./.github/workflows/changes.ps1 -Base $env:BASE_REF -Head $env:HEAD_REF
+          -PullRequest:($env:IS_PULL_REQUEST -eq 'true') -OutputPath $env:GITHUB_OUTPUT
+
+      - name: Look for successful validation of this source tree
+        id: verified
+        if: steps.changes.outputs.run_tests == 'true' && github.run_attempt == 1
+        uses: actions/cache/restore@v4
+        with:
+          path: .ci-validation/vscode-${{ matrix.os }}
+          key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
+          lookup-only: true
+
+      - name: Reuse successful source validation
+        if: steps.verified.outputs.cache-hit == 'true'
+        shell: pwsh
+        working-directory: .
+        run: Write-Output 'This non-Markdown source tree already passed this suite; reusing that validation.'
 
       - uses: actions/setup-dotnet@v4
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           global-json-file: global.json
 
       - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
 
       - name: Install
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm ci
 
       - name: Check types
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm run typecheck
 
       - name: Unit tests
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm run test:unit
 
       # Publishes only the server and the compiler, which restores no Grpc.Tools -- so at this point the
       # machine has no protoc anywhere the server looks, which is the clean machine #45 asks to be tested.
       - name: Stage the server
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm run stage
 
       - name: The server under the extension's launch rules, on a machine with no protoc
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm run test:server
 
       # A protoc, got the way a user of each platform would get one, for the editor tests that need
       # schemas to load.
       - name: Install protoc (Linux)
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
       - name: Install protoc (macOS)
-        if: runner.os == 'macOS'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'macOS'
         run: brew install protobuf
 
       - name: Install protoc (Windows)
-        if: runner.os == 'Windows'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Windows'
         working-directory: .
         run: dotnet restore tests/ProtoCross.Tests/ProtoCross.Tests.csproj
 
@@ -206,26 +298,45 @@ jobs:
       # Only the install is kept. The user-data directory beside it is created by the run, and the
       # suite's claim to start from a clean profile is only true if nothing carries it into the next.
       - name: Cache VS Code for the end-to-end tests
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         uses: actions/cache@v4
         with:
           path: editors/vscode/.vscode-test/vscode-*
           key: ${{ runner.os }}-${{ runner.arch }}-vscode-${{ hashFiles('editors/vscode/test/e2e/vscode-version.json') }}
 
       - name: End-to-end tests in VS Code (Linux)
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: xvfb-run -a npm run test:e2e
 
       - name: End-to-end tests in VS Code
-        if: runner.os != 'Linux'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'Linux'
         run: npm run test:e2e
 
       - name: Package
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: npm run package
 
       - name: Keep the package
-        if: runner.os == 'Linux'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Linux'
         uses: actions/upload-artifact@v4
         with:
           name: protocross-vsix
           path: editors/vscode/dist/protocross.vsix
           if-no-files-found: error
+
+      - name: Record successful source validation
+        if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
+        shell: pwsh
+        working-directory: .
+        env:
+          SOURCE_KEY: ${{ steps.changes.outputs.source_key }}
+        run: |
+          New-Item -ItemType Directory -Force .ci-validation/vscode-${{ matrix.os }} | Out-Null
+          Set-Content .ci-validation/vscode-${{ matrix.os }}/passed $env:SOURCE_KEY
+
+      - name: Remember successful source validation
+        if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .ci-validation/vscode-${{ matrix.os }}
+          key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}

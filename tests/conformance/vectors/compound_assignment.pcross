@@ -179,7 +179,7 @@ extend CompoundCase {
 
 test CompoundCase.added "adds to the target" {
     receiver {
-        narrow = 40;
+        narrow: 40,
     }
 
     arg amount = 2;
@@ -188,7 +188,7 @@ test CompoundCase.added "adds to the target" {
 
 test CompoundCase.subtracted "subtracts from the target" {
     receiver {
-        narrow = 40;
+        narrow: 40,
     }
 
     arg amount = 42;
@@ -197,7 +197,7 @@ test CompoundCase.subtracted "subtracts from the target" {
 
 test CompoundCase.multiplied "multiplies the target" {
     receiver {
-        wide = 3;
+        wide: 3,
     }
 
     arg factor = -4;
@@ -206,8 +206,8 @@ test CompoundCase.multiplied "multiplies the target" {
 
 test CompoundCase.divided "divides the target, truncating toward zero" {
     receiver {
-        narrow = -7;
-        divisor = 2;
+        narrow: -7,
+        divisor: 2,
     }
 
     expect return -3;
@@ -215,8 +215,8 @@ test CompoundCase.divided "divides the target, truncating toward zero" {
 
 test CompoundCase.divided "a zero divisor stores the fallback" {
     receiver {
-        narrow = 7;
-        divisor = 0;
+        narrow: 7,
+        divisor: 0,
     }
 
     expect return -1;
@@ -224,8 +224,8 @@ test CompoundCase.divided "a zero divisor stores the fallback" {
 
 test CompoundCase.divided_or_failed "a zero divisor under 'on_zero fail' terminates" {
     receiver {
-        narrow = 7;
-        divisor = 0;
+        narrow: 7,
+        divisor: 0,
     }
 
     expect fail;
@@ -233,8 +233,8 @@ test CompoundCase.divided_or_failed "a zero divisor under 'on_zero fail' termina
 
 test CompoundCase.divided_or_failed "a non-zero divisor under 'on_zero fail' divides" {
     receiver {
-        narrow = 7;
-        divisor = 2;
+        narrow: 7,
+        divisor: 2,
     }
 
     expect return 3;
@@ -242,8 +242,8 @@ test CompoundCase.divided_or_failed "a non-zero divisor under 'on_zero fail' div
 
 test CompoundCase.reduced_modulo "the remainder carries the sign of the dividend" {
     receiver {
-        narrow = -7;
-        divisor = 3;
+        narrow: -7,
+        divisor: 3,
     }
 
     expect return -1;
@@ -251,8 +251,8 @@ test CompoundCase.reduced_modulo "the remainder carries the sign of the dividend
 
 test CompoundCase.reduced_modulo "a zero divisor stores the fallback" {
     receiver {
-        narrow = 7;
-        divisor = 0;
+        narrow: 7,
+        divisor: 0,
     }
 
     expect return 0;
@@ -260,7 +260,7 @@ test CompoundCase.reduced_modulo "a zero divisor stores the fallback" {
 
 test CompoundCase.halved "a non-zero literal divisor divides" {
     receiver {
-        wide = -9;
+        wide: -9,
     }
 
     expect return -4;
@@ -268,7 +268,7 @@ test CompoundCase.halved "a non-zero literal divisor divides" {
 
 test CompoundCase.divided_as_double "a floating-point division" {
     receiver {
-        real = 3.0;
+        real: 3.0,
     }
 
     arg denominator = 2.0;
@@ -277,7 +277,7 @@ test CompoundCase.divided_as_double "a floating-point division" {
 
 test CompoundCase.divided_as_double "a floating-point division by zero is an infinity" {
     receiver {
-        real = 1.0;
+        real: 1.0,
     }
 
     arg denominator = 0.0;
@@ -286,7 +286,7 @@ test CompoundCase.divided_as_double "a floating-point division by zero is an inf
 
 test CompoundCase.masked "keeps the low byte" {
     receiver {
-        wide_unsigned = 0x1234;
+        wide_unsigned: 0x1234,
     }
 
     expect return 0x34;
@@ -294,7 +294,7 @@ test CompoundCase.masked "keeps the low byte" {
 
 test CompoundCase.combined "sets the top bit" {
     receiver {
-        narrow_unsigned = 1;
+        narrow_unsigned: 1,
     }
 
     expect return 0x8000_0001;
@@ -302,7 +302,7 @@ test CompoundCase.combined "sets the top bit" {
 
 test CompoundCase.toggled "flips every bit" {
     receiver {
-        wide = 5;
+        wide: 5,
     }
 
     expect return -6;
@@ -310,8 +310,8 @@ test CompoundCase.toggled "flips every bit" {
 
 test CompoundCase.shifted_left "a count of 33 shifts an int32 by 1" {
     receiver {
-        narrow = 3;
-        count = 33;
+        narrow: 3,
+        count: 33,
     }
 
     expect return 6;
@@ -319,8 +319,8 @@ test CompoundCase.shifted_left "a count of 33 shifts an int32 by 1" {
 
 test CompoundCase.shifted_right "an int32 count of -1 shifts a uint64 by 63" {
     receiver {
-        wide_unsigned = 0x8000_0000_0000_0000;
-        count = -1;
+        wide_unsigned: 0x8000_0000_0000_0000,
+        count: -1,
     }
 
     expect return 1;
@@ -330,7 +330,7 @@ test CompoundCase.shifted_right "an int32 count of -1 shifts a uint64 by 63" {
 
 test CompoundCase.multiplied_by_a_sum "multiplies by the whole sum" {
     receiver {
-        narrow = 4;
+        narrow: 4,
     }
 
     expect return 20;
@@ -338,7 +338,7 @@ test CompoundCase.multiplied_by_a_sum "multiplies by the whole sum" {
 
 test CompoundCase.less_a_difference "subtracts the whole difference" {
     receiver {
-        wide = 10;
+        wide: 10,
     }
 
     expect return 8;
@@ -346,7 +346,7 @@ test CompoundCase.less_a_difference "subtracts the whole difference" {
 
 test CompoundCase.masked_by_a_union "masks with the whole union" {
     receiver {
-        wide = 0x100;
+        wide: 0x100,
     }
 
     expect return 0;
@@ -354,8 +354,8 @@ test CompoundCase.masked_by_a_union "masks with the whole union" {
 
 test CompoundCase.divided_by_a_sum "divides by a parenthesized sum" {
     receiver {
-        narrow = 12;
-        divisor = 2;
+        narrow: 12,
+        divisor: 2,
     }
 
     expect return 4;
@@ -363,8 +363,8 @@ test CompoundCase.divided_by_a_sum "divides by a parenthesized sum" {
 
 test CompoundCase.divided_by_a_sum "takes the fallback where the sum is zero" {
     receiver {
-        narrow = 12;
-        divisor = -1;
+        narrow: 12,
+        divisor: -1,
     }
 
     expect return -1;
@@ -374,7 +374,7 @@ test CompoundCase.divided_by_a_sum "takes the fallback where the sum is zero" {
 
 test CompoundCase.one_less_unsigned "a literal takes the target's type" {
     receiver {
-        narrow_unsigned = 0;
+        narrow_unsigned: 0,
     }
 
     expect return 4294967295;
@@ -382,7 +382,7 @@ test CompoundCase.one_less_unsigned "a literal takes the target's type" {
 
 test CompoundCase.a_float_increased "a floating-point literal takes the target's type" {
     receiver {
-        single = 1.25;
+        single: 1.25,
     }
 
     expect return 1.75;
@@ -390,7 +390,7 @@ test CompoundCase.a_float_increased "a floating-point literal takes the target's
 
 test CompoundCase.shifted_by_a_count_no_int32_can_hold "a count literal keeps its own type" {
     receiver {
-        narrow = 1;
+        narrow: 1,
     }
 
     expect return 2;
@@ -400,7 +400,7 @@ test CompoundCase.shifted_by_a_count_no_int32_can_hold "a count literal keeps it
 
 test CompoundCase.doubled "the target is its own operand" {
     receiver {
-        wide = 21;
+        wide: 21,
     }
 
     expect return 42;
@@ -408,9 +408,7 @@ test CompoundCase.doubled "the target is its own operand" {
 
 test CompoundCase.sum "accumulates across a loop" {
     receiver {
-        amounts = 1;
-        amounts = 2;
-        amounts = 39;
+        amounts: [1, 2, 39],
     }
 
     expect return 42;
@@ -423,7 +421,7 @@ test CompoundCase.sum "an empty loop leaves the target as it was" {
 
 test CompoundCase.incremented "wraps past MAX under the default policy" {
     receiver {
-        narrow = 2147483647;
+        narrow: 2147483647,
     }
 
     expect return -2147483648;

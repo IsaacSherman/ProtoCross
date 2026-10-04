@@ -11,13 +11,13 @@ The language currently includes:
 - Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
+- Message literals, `new T { field: value, … }` ([13.2](./§13-Messages.md#132-message-construction)).
 - Parenthesized expressions.
 
 Not implemented:
 
 - Top-level function calls.
 - Indexing.
-- Message literals in ordinary method bodies.
 - Bytes literals.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Each can be written today with a
   comparison, and how an intrinsic is named and found belongs with the open question of top-level
@@ -110,8 +110,9 @@ Normative Requirements:
   what it emits for the long form.
 - **The right side is one operand**, however loosely its own operators bind: `x *= a + b` is
   `x = x * (a + b)`, and `x &= a | b` is `x = x & (a | b)`.
-- The target rule is `=`'s. Only a local variable can be assigned ([18](./§18-Mutability.md#18-mutability)), and any other
-  target is `PC0034`.
+- The target rule is `=`'s: a local variable, or a field of a message the method may change
+  ([18](./§18-Mutability.md#18-mutability)). A parameter, the name a `for` binds and anything else that is neither is
+  `PC0034`, and a field of a message the method may not change is `PC0094`.
 - An integer `/=` or `%=` takes an `on_zero` clause after its divisor, as `/` and `%` do
   ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)): `x /= d on_zero 0;`. The clause binds to the division it follows,
   so a divisor with an operator of its own is parenthesized. In `x /= a + b on_zero 0` the clause
@@ -136,12 +137,33 @@ Normative Requirement:
 Current defined subset:
 
 - Method call arguments evaluate left to right.
+- A message literal's values evaluate in the order their fields are written, left to right, as a
+  call's arguments do, and a list's elements in order. The order of the schema's field numbers plays
+  no part ([13.2](./§13-Messages.md#132-message-construction)).
+- A message literal is evaluated where it is written, as any other operand is. It is never moved
+  ahead of the statement that holds it, and a literal in the right operand of `and` or `or` is
+  built only if that operand is evaluated. Its order relative to the operands beside it is
+  whatever the expression it stands in gives them.
 - Boolean `and` and `or` short-circuit left to right.
 - Assignment evaluates the right-hand side before storing the result.
+- An assignment to a field reaches its target before it evaluates its value, setting any unset
+  message on the way ([18](./§18-Mutability.md#18-mutability)), and then stores. A value that asks `has` of a link of
+  its own target therefore sees the link set. The field itself is set last, so a value that asks
+  `has` of the field, or reads another member of its `oneof`, sees it as it was before the
+  assignment.
+- An append ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)) is ordered as an assignment to a field is: it reaches its
+  target, setting any unset message on the way, then evaluates its value, and adds the element
+  last. A value that counts the elements therefore counts the ones that were there.
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a
-  local cannot fail and nothing on the right can change one, so no program can observe that order.
+  local or a field cannot fail, and nothing on the right can change either, so no program can
+  observe that order.
+- A call to a `mut fn` is never evaluated beside another operand: it stands on its own as a
+  statement, a `var`'s initializer, a local's new value or a returned value
+  ([18](./§18-Mutability.md#18-mutability)). So no operand can observe a change made by another, whichever order they are
+  evaluated in.
 
 Open Question:
 
 - Should all non-short-circuit binary operators evaluate the left operand before the right operand?
-  This only becomes observable when an operand can terminate through `on_zero fail`.
+  This only becomes observable when an operand can terminate through `on_zero fail`. A change cannot
+  make it observable, because a mutating call is never an operand.

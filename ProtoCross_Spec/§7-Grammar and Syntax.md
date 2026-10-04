@@ -12,7 +12,7 @@ import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
-method_decl       = "fn" identifier
+method_decl       = [ "mut" ] "fn" identifier
                     "(" [ parameter_list ] ")"
                     [ "->" type_ref ]
                     block;
@@ -49,9 +49,15 @@ expression_stmt   = expression ";";
 
 test_decl         = "test" qualified_name string_literal
                     "{" { receiver_fixture | test_arg | test_expectation } "}";
-receiver_fixture  = "receiver" "{" { fixture_field } "}";
+receiver_fixture  = "receiver" "{" [ field_list ] "}";
 test_arg          = "arg" identifier "=" expression ";";
 test_expectation  = "expect" ( "return" expression | "fail" ) ";";
+
+message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
+field_list        = field_init { "," field_init } [ "," ];
+field_init        = identifier ":" field_value;
+field_value       = list_value | expression;
+list_value        = "[" [ expression { "," expression } [ "," ] ] "]";
 ```
 
 Normative Requirement:
@@ -59,8 +65,21 @@ Normative Requirement:
 - The final grammar must be unambiguous.
 - Backend code generation must not depend on parser quirks or target-language parsing.
 - Semicolons are mandatory after imports, variable declarations, `return`, `break`, `continue`,
-  assignment and compound assignment statements, expression statements, scalar fixture fields, test
-  arguments, and test expectations.
+  assignment and compound assignment statements, expression statements, test arguments, and test
+  expectations.
+- The fields of a fixture or a message literal, and the elements of a list, are separated by commas,
+  and a comma after the last one is allowed ([13.2](./§13-Messages.md#132-message-construction)).
+- `new` is not a keyword. It begins a message literal only when an identifier follows it, and is an
+  identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). A message literal is a primary expression, so it may appear
+  wherever an expression may, an unparenthesized `if` or `while` condition included: the brace after
+  `new` and a type name is the literal's, and the body's is the first one after it. A list is a
+  repeated field's value only.
+- `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
+  anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
+- A semicolon between fields -- before another field or before the closing brace -- is reported as
+  one written where a comma goes, because it was the separator fixtures used before #80. Outside a
+  fixture, a semicolon anywhere else among a literal's fields ends them, and the statement the
+  literal is in: no expression contains one, so the literal's closing brace is what is missing.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order

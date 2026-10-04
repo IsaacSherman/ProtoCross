@@ -80,9 +80,9 @@ public static class SemanticTokenLegend
 
     /// <summary>The modifiers, in the order their bits refer to.</summary>
     /// <remarks>
-    /// Three of the ten are emitted; the rest are declared for the same reason the unused types are,
+    /// Four of the ten are emitted; the rest are declared for the same reason the unused types are,
     /// since a modifier added later shifts every bit above it. <see cref="Definition"/> is one of the
-    /// seven on purpose: in ProtoCross a name is declared and defined in the same breath, so emitting
+    /// six on purpose: in ProtoCross a name is declared and defined in the same breath, so emitting
     /// both bits for one event would be telling a client twice about one thing.
     /// </remarks>
     public static IReadOnlyList<string> TokenModifiers { get; } =
@@ -118,6 +118,17 @@ public static class SemanticTokenLegend
     private static readonly int ReadOnlyBit = BitOf(ReadOnly);
     private static readonly int ModificationBit = BitOf(Modification);
 
+    /// <summary>The category of a method the language defines rather than any source: <c>append</c>.</summary>
+    public static int LanguageMethodIndex => MethodIndex;
+
+    /// <summary>What else is true of a method the language defines: it is the language's own.</summary>
+    /// <remarks>
+    /// LSP's <c>defaultLibrary</c>, which is what that modifier is for: a name that is part of the
+    /// language rather than of the program, so a client can tell <c>entries.append</c> from a method an
+    /// author wrote, as it tells a built-in function from one in the file.
+    /// </remarks>
+    public static int LanguageMethodModifiers { get; } = BitOf(DefaultLibrary);
+
     /// <summary>Which category a token belongs to, or null when it is not classified.</summary>
     /// <remarks>
     /// Keywords are asked of <see cref="TokenKindExtensions.IsKeyword"/> rather than listed again
@@ -152,6 +163,18 @@ public static class SemanticTokenLegend
             _ => null,
         };
     }
+
+    /// <summary>
+    /// Which category <paramref name="token"/> belongs to where it stands, with <paramref name="next"/>
+    /// after it, or null when it is not classified.
+    /// </summary>
+    /// <remarks>
+    /// A contextual keyword is a keyword only where it begins the construct it names, and an identifier
+    /// everywhere else (<see cref="ContextualKeywords"/>). A token's kind alone cannot say which, so
+    /// this asks the one rule the parser asks.
+    /// </remarks>
+    public static int? IndexOf(Token token, Token next)
+        => ContextualKeywords.IsAKeywordHere(token, next) ? KeywordIndex : IndexOf(token.Kind);
 
     /// <summary>Which category a resolved name belongs to.</summary>
     /// <remarks>
@@ -195,13 +218,15 @@ public static class SemanticTokenLegend
     /// <c>declaration</c> and <c>modification</c> describe.
     /// </para>
     /// <para>
-    /// <c>readonly</c> is a fact about the language, not a decoration: spec 18 makes a local the only
-    /// thing a method may assign, so a parameter, a loop binding, a field and an enum constant all
-    /// genuinely are read-only. A method and a type are left out of it -- neither is a place a value
-    /// could be stored, and a bit that is true of everything conveys nothing.
+    /// <c>readonly</c> is a fact about the language, not a decoration: spec 18 never lets a method
+    /// assign a parameter, a loop binding or an enum constant, so each genuinely is read-only. A field
+    /// is not. A <c>mut fn</c> may assign its receiver's, and any method a field of a message it holds
+    /// in a local, so marking every field read-only would be false wherever that happens. A method and
+    /// a type are left out of it -- neither is a place a value could be stored, and a bit that is true
+    /// of everything conveys nothing.
     /// </para>
     /// <para>
-    /// An assignment the language refuses is still marked. <c>line.quantity = 2</c> is
+    /// An assignment the language refuses is still marked. <c>by = 2</c> on a parameter is
     /// <c>PC0034</c>, and the binder still records the write, because what the author wrote is what
     /// an editor is describing.
     /// </para>
@@ -219,8 +244,7 @@ public static class SemanticTokenLegend
     }
 
     private static bool CannotBeAssigned(SymbolKind kind)
-        => kind is SymbolKind.Parameter or SymbolKind.LoopBinding
-            or SymbolKind.Field or SymbolKind.EnumValue;
+        => kind is SymbolKind.Parameter or SymbolKind.LoopBinding or SymbolKind.EnumValue;
 
     private static int BitOf(string modifier)
     {

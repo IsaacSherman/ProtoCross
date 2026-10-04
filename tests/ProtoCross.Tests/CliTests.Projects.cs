@@ -24,8 +24,8 @@ public partial class CliTests
 
         test InvoiceItem.twice_net "a helper calls into the program" {
             receiver {
-                quantity = 2;
-                unit_price_cents = 5;
+                quantity: 2,
+                unit_price_cents: 5,
             }
 
             expect return 18;

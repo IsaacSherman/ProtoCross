@@ -59,7 +59,7 @@ public class ReferenceIndexTests
 
         test Outer.scaled "multiplies the count" {
             receiver {
-                count = 7;
+                count: 7,
             }
 
             arg factor = 2;
@@ -320,7 +320,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.scale "supplies one argument twice" {
                 receiver {
-                    quantity = 2;
+                    quantity: 2,
                 }
 
                 arg by = 3;
@@ -363,7 +363,7 @@ public class ReferenceIndexTests
     public void ATestNamesTheMethodItRunsTheFieldsItSetsAndTheParametersItSupplies()
     {
         var target = ReferenceAt(Offset("Outer.scaled \"multiplies") + "Outer.".Length);
-        var field = ReferenceAt(Offset("count = 7"));
+        var field = ReferenceAt(Offset("count: 7"));
         var argument = ReferenceAt(Offset("factor = 2"));
 
         Assert.Equal(ReferenceAt(Offset("scaled(2)")).Symbol, target.Symbol);
@@ -409,7 +409,7 @@ public class ReferenceIndexTests
 
             test protocross.examples.InvoiceItem.f "reads the quantity" {
                 receiver {
-                    quantity = 3;
+                    quantity: 3,
                 }
 
                 expect return 3;
@@ -450,7 +450,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.f "names the duplicated parameter once" {
                 receiver {
-                    quantity = 1;
+                    quantity: 1,
                 }
 
                 arg n = 1;
@@ -474,15 +474,17 @@ public class ReferenceIndexTests
 
     /// <summary>
     /// Also from review. What PC0034 refuses is the assignment, not the name on its left, and every
-    /// other resolved-but-refused case in this issue records the name anyway.
+    /// other resolved-but-refused case in this issue records the name anyway. A field of a receiver
+    /// that may not change is refused by PC0094 instead, and the same holds of it.
     /// </summary>
     [Theory]
-    [InlineData("quantity = 1;", "quantity", SymbolKind.Field)]
-    [InlineData("by = 1;", "by", SymbolKind.Parameter)]
+    [InlineData("quantity = 1;", "quantity", SymbolKind.Field, "PC0094")]
+    [InlineData("by = 1;", "by", SymbolKind.Parameter, "PC0034")]
     public void ATargetThatMayNotBeAssignedIsStillAWriteOfWhatItNames(
         string statement,
         string written,
-        SymbolKind kind)
+        SymbolKind kind,
+        string refusal)
     {
         var source =
             "import proto \"invoice.proto\";\n"
@@ -493,7 +495,7 @@ public class ReferenceIndexTests
         var result = Compile(source, TestPaths.ExampleProtoDirectory);
         var model = SemanticModel.For(result);
 
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0034");
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == refusal);
 
         var reference = At(model, source, statement, written);
 
@@ -530,7 +532,7 @@ public class ReferenceIndexTests
         var result = Compile(source, TestPaths.ExampleProtoDirectory);
         var model = SemanticModel.For(result);
 
-        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0034");
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == "PC0094");
 
         Assert.Equal(ReferenceKind.Read, At(model, source, "line.quantity = 2", "line").Kind);
         Assert.Equal(ReferenceKind.Write, At(model, source, "line.quantity = 2", "quantity").Kind);
@@ -552,7 +554,7 @@ public class ReferenceIndexTests
 
             test InvoiceItem.nope "names a method that is not there" {
                 receiver {
-                    quantity = 1;
+                    quantity: 1,
                 }
 
                 expect return 1;

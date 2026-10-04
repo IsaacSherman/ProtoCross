@@ -24,7 +24,7 @@ extend ExtensionScopeCase {
 
 test ExtensionScopeCase.extension_scope_tag "a method may take the name of an extension its receiver declares" {
     receiver {
-        held = 7;
+        held: 7,
     }
 
     expect return 7;
@@ -32,7 +32,7 @@ test ExtensionScopeCase.extension_scope_tag "a method may take the name of an ex
 
 test ExtensionScopeCase.tag_twice "a sibling calls that method rather than the extension" {
     receiver {
-        held = 7;
+        held: 7,
     }
 
     expect return 14;

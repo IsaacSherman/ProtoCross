@@ -163,12 +163,16 @@ public class CompoundAssignmentTests
         Assert.IsType(expected, found.Node);
     }
 
-    /// <summary>The target rule is the one <c>=</c> has: a local, and nothing else (spec 18).</summary>
-    [Theory]
-    [InlineData("count += 1;")]
-    [InlineData("if has inner { inner.deep += 1; }")]
-    public void OnlyALocalCanBeTheTarget(string statement)
-        => Assert.Equal("PC0034", SingleError(statement).Code);
+    /// <summary>
+    /// The target rule is the one <c>=</c> has: a local, or a field of a message the method may change,
+    /// which the receiver is only to a <c>mut fn</c> (spec 18).
+    /// </summary>
+    [Fact]
+    public void AFieldOfTheReceiverIsATargetOnlyInAMethodThatMayChangeIt()
+    {
+        Assert.Equal("PC0094", SingleError("count += 1;").Code);
+        Assert.True(CompileBody("mut fn f() { count += 1; }").Success, "a 'mut fn' may change its receiver's fields");
+    }
 
     [Fact]
     public void AParameterCannotBeTheTarget()

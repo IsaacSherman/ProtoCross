@@ -40,7 +40,8 @@ The IR preserves:
   than the construct around it. Recorded as the binder resolves, because that is the only point
   holding both the identity and the range of the name: a type reference resolves to a type and leaves
   no node behind, and the spans a node does carry are extents. A reference that did not resolve is
-  not recorded; it refers to nothing.
+  not recorded; it refers to nothing. Nor is `append`, which nothing declares
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)): the append keeps where it was written instead.
 - **What was in scope at each point of a method body**: one entry per name that entered a scope, with
   the range it can be written over and the offset it starts resolving from. Recorded where each name
   is declared, because whether a name won is decided there and nowhere else.
@@ -86,7 +87,24 @@ The IR preserves:
 - Presence checks. `IrFieldPresence` carries the field descriptor rather than a lowered boolean,
   because the two targets spell the test in unrelated ways.
 - Field access semantics.
-- Local assignment intent. A compound assignment is not a node of its own: `x += y` is the
+- **A message literal, and a test's fixture, as one node.** A literal holds the fields written, in the
+  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
+  value is a list node holding its elements. A fixture is the same node, built for the message its
+  test's target extends, so no consumer handles a fixture and a literal differently.
+- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
+  copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
+  each backend asks rather than deciding what to copy.
+- **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
+  ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
+  where it matters: what the receiver is passed as, and whether an argument is passed as a copy.
+- **What changes.** An assignment is to a local or to a field, and the two are nodes of their own.
+  The target of an assignment to a field is a chain of places rather than reads: the receiver, a
+  local, a parameter or a loop binding at its root, and a field at each link after it, none of which
+  needed a guard. An append is a node of its own too, a statement holding what it adds to -- such a
+  chain, or a local -- and the element. Which place a statement or a call changes, whether a loop changes the elements it
+  is given, and whether anything in a method changes a message are asked of the IR rather than
+  recorded beside it, so every backend has one answer to each.
+- Assignment intent. A compound assignment is not a node of its own: `x += y` is the
   assignment of `x + y` to `x`, whose operation reads the target at the target's own span. It is
   the one place two nodes share a span without one standing inside the other, and a position query
   there answers with the target, which comes first. Which form was written is the syntax tree's to
@@ -105,8 +123,9 @@ is one the next change breaks silently.
   range lies within the range of the node that holds it. So a caret's innermost node can be found by
   descending, and no node claims text belonging to something it is not part of. Two nodes may share
   one range without either standing inside the other -- one pair does, the target of a compound
-  assignment and the read of it -- which is a question for the position rules in 22.3 and not for
-  this one.
+  assignment and the read of it, and for a field each link of the chain each is reached through --
+  which is a question for the position rules in 22.3 and not for this one. Neither holds a node of
+  the other: no node is in two places.
 - **Every expression has a type, and an error type is the trace of an error.** A bind that failed
   produces a node of the error type rather than a guess or a hole, so a consumer never meets a typed
   node that is quietly wrong. Nothing else produces one: a compilation that reported no error holds

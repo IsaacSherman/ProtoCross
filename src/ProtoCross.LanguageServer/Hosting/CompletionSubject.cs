@@ -1,4 +1,6 @@
 using ProtoCross.Diagnostics;
+using ProtoCross.Ir;
+using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.Syntax;
 
 namespace ProtoCross.LanguageServer.Hosting;
@@ -86,6 +88,30 @@ internal sealed record SchemaSubject(
 {
     public override CompletionContextKind Kind => CompletionContextKind.Schema;
 
+    /// <summary>Whether the word before the name under the caret is <c>new</c>, with space between.</summary>
+    /// <remarks>
+    /// <para>
+    /// A fourth token fact, for the state the other three describe: one the tree cannot. A type name
+    /// is what makes <c>new</c> begin a literal (<see cref="ContextualKeywords"/>), so before the
+    /// first letter of it is typed, <c>new</c> is an ordinary name to the parser and there is no
+    /// literal and no type slot in the tree to find. The caret after it is where that type name is
+    /// about to go all the same.
+    /// </para>
+    /// <para>
+    /// Init-only beside the positional members, so the constructor keeps the shape it has.
+    /// </para>
+    /// </remarks>
+    public bool PrecededByNew { get; init; }
+
+    /// <summary>Whether the name under the caret is followed by <c>.append</c>, and so is what an append adds to.</summary>
+    /// <remarks>
+    /// <see cref="FollowedByDot"/> made precise for the one receiver it is not enough for. A repeated
+    /// value has one member, <c>append</c> (spec 14.1), so it may stand in front of a dot only when
+    /// that is the member taken off it. Read off the tokens for the reason the others are: a buffer
+    /// being typed may not parse. Init-only, as <see cref="PrecededByNew"/> is.
+    /// </remarks>
+    public bool FollowedByAppend { get; init; }
+
     /// <summary>Whether <paramref name="offset"/> is somewhere a schema name could be written.</summary>
     /// <remarks>
     /// False inside a comment and inside a string literal. Both are places where an identifier is not
@@ -109,7 +135,7 @@ internal sealed record SchemaSubject(
         var lexer = new Lexer(text, SourceIdentity.UnsavedName, new DiagnosticBag());
         var tokens = lexer.Tokenize();
 
-        if (lexer.Comments.Any(comment => Covers(comment.Span, offset)))
+        if (lexer.Comments.Any(comment => EditorPositions.Covers(comment.Span, offset)))
         {
             return false;
         }
@@ -121,7 +147,7 @@ internal sealed record SchemaSubject(
         // fixture written by hand had none.
         if (tokens.Any(token => token.Kind is TokenKind.StringLiteral or TokenKind.IntegerLiteral
                 or TokenKind.FloatLiteral
-            && Covers(token.Span, offset)))
+            && EditorPositions.Covers(token.Span, offset)))
         {
             return false;
         }
@@ -134,18 +160,18 @@ internal sealed record SchemaSubject(
             offset,
             start,
             end,
-            PrecededByDot: preceding is TokenKind.Dot,
-            PrecededByExtend: preceding is TokenKind.Extend,
-            PrecededByArg: preceding is TokenKind.Arg,
+            PrecededByDot: preceding?.Kind is TokenKind.Dot,
+            PrecededByExtend: preceding?.Kind is TokenKind.Extend,
+            PrecededByArg: preceding?.Kind is TokenKind.Arg,
             FollowedByDot: following is TokenKind.Dot,
-            FollowedByCall: following is TokenKind.OpenParen);
+            FollowedByCall: following is TokenKind.OpenParen)
+        {
+            PrecededByNew = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.New },
+            FollowedByAppend = BeginsAnAppend(tokens, end),
+        };
 
         return true;
     }
-
-    /// <summary>Both ends inclusive, so a caret that has just finished typing is still inside.</summary>
-    private static bool Covers(SourceSpan span, int offset)
-        => offset >= span.Start.Offset && offset <= span.End.Offset;
 
     /// <summary>The whole identifier the caret is in or beside, as a half-open range.</summary>
     /// <remarks>
@@ -202,15 +228,20 @@ internal sealed record SchemaSubject(
         return null;
     }
 
-    /// <summary>The kind of the last token that ends at or before <paramref name="start"/>.</summary>
+    /// <summary>Whether the tokens from <paramref name="end"/> on begin <c>.append</c>.</summary>
+    private static bool BeginsAnAppend(IReadOnlyList<Token> tokens, int end)
+        => tokens.Where(token => token.Kind is not TokenKind.EndOfFile && token.Span.Start.Offset >= end).Take(2).ToList()
+            is [{ Kind: TokenKind.Dot }, { Kind: TokenKind.Identifier, Text: IrAppend.MethodName }];
+
+    /// <summary>The last token that ends at or before <paramref name="start"/>.</summary>
     /// <remarks>
     /// Measured from the start of the identifier rather than from the caret, so that a caret in the
     /// middle of a name already written -- <c>line.to|tal</c>, where completion is invoked rather than
     /// triggered -- finds the dot in front of the name rather than the name itself.
     /// </remarks>
-    private static TokenKind? Preceding(IReadOnlyList<Token> tokens, int start)
+    private static Token? Preceding(IReadOnlyList<Token> tokens, int start)
     {
-        TokenKind? found = null;
+        Token? found = null;
 
         foreach (var token in tokens)
         {
@@ -219,7 +250,7 @@ internal sealed record SchemaSubject(
                 break;
             }
 
-            found = token.Kind;
+            found = token;
         }
 
         return found;

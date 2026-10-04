@@ -66,7 +66,7 @@ public class ReferenceTests
         }
 
         test Outer.scaled "doubles what it is given" {
-            receiver { count = 2; }
+            receiver { count: 2 }
             arg scale = 3;
             expect return 12;
         }

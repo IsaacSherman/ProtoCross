@@ -56,9 +56,28 @@ public static class SemanticTokenEncoder
     /// <exception cref="ArgumentNullException">Any argument is null.</exception>
     public static SemanticTokens Encode(
         string text, string name, IReadOnlyList<SymbolReference> references, ClientLegend client)
+        => Encode(text, name, references, [], client);
+
+    /// <summary>
+    /// Classifies <paramref name="text"/>, refining every identifier the binder resolved, and every
+    /// method the language defines.
+    /// </summary>
+    /// <param name="languageMethods">
+    /// Where a method the language defines was written --
+    /// <see cref="Semantics.SemanticModel.LanguageMethodNames"/>. It resolves to no symbol, so nothing
+    /// in <paramref name="references"/> refines it.
+    /// </param>
+    /// <inheritdoc cref="Encode(string, string, IReadOnlyList{SymbolReference}, ClientLegend)"/>
+    public static SemanticTokens Encode(
+        string text,
+        string name,
+        IReadOnlyList<SymbolReference> references,
+        IReadOnlyList<SourceSpan> languageMethods,
+        ClientLegend client)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(references);
+        ArgumentNullException.ThrowIfNull(languageMethods);
         ArgumentNullException.ThrowIfNull(client);
 
         var lexer = new Lexer(text, name, new DiagnosticBag());
@@ -66,18 +85,26 @@ public static class SemanticTokenEncoder
 
         var classified = new List<Classified>(tokens.Count + lexer.Comments.Count);
         var resolved = new Resolved(references);
+        var language = languageMethods.Select(method => method.Start.Offset).ToHashSet();
 
-        foreach (var token in tokens)
+        for (var index = 0; index < tokens.Count; index++)
         {
-            if (SemanticTokenLegend.IndexOf(token.Kind) is not { } type || token.Span.Length == 0)
+            var token = tokens[index];
+            var next = tokens[Math.Min(index + 1, tokens.Count - 1)];
+
+            if (SemanticTokenLegend.IndexOf(token, next) is not { } type || token.Span.Length == 0)
             {
                 continue;
             }
 
+            // A contextual keyword where it is one names nothing, so there is nothing to refine it by.
+            var isAName = token.Kind is TokenKind.Identifier && !ContextualKeywords.IsAKeywordHere(token, next);
+
             classified.Add(
-                token.Kind is TokenKind.Identifier && resolved.Covering(token.Span) is { } reference
-                    ? Refined(token.Span, type, reference, client)
-                    : Classified.From(token.Span, type));
+                !isAName ? Classified.From(token.Span, type)
+                : resolved.Covering(token.Span) is { } reference ? Refined(token.Span, type, reference, client)
+                : language.Contains(token.Span.Start.Offset) ? LanguageMethod(token.Span, type, client)
+                : Classified.From(token.Span, type));
         }
 
         foreach (var comment in lexer.Comments)
@@ -101,6 +128,13 @@ public static class SemanticTokenEncoder
             client.Category(SemanticTokenLegend.IndexOf(kind), lexical),
             client.Modifiers(SemanticTokenLegend.ModifiersOf(kind, reference.Kind)));
     }
+
+    /// <summary>One identifier naming a method the language defines.</summary>
+    private static Classified LanguageMethod(SourceSpan span, int lexical, ClientLegend client)
+        => Classified.From(
+            span,
+            client.Category(SemanticTokenLegend.LanguageMethodIndex, lexical),
+            client.Modifiers(SemanticTokenLegend.LanguageMethodModifiers));
 
     /// <summary>What the binder resolved, read once in the order the names were written.</summary>
     /// <remarks>

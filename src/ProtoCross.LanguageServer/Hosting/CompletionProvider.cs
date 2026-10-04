@@ -356,23 +356,42 @@ public sealed class CompletionProvider
             return typePosition;
         }
 
+        if (OnALiteralsNew(model, subject))
+        {
+            return [];
+        }
+
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
-        var writingAReceiver = subject.FollowedByDot || NamesAReceiver(model, subject);
+        var takenOff = MembersTakenOff(model, subject);
+        var writingAReceiver = subject.FollowedByDot || takenOff.Count > 0;
+        var appendedTo = subject.FollowedByAppend || takenOff.Contains(IrAppend.MethodName);
 
         if (subject.PrecededByDot)
         {
             return Members(
-                ReceiverAt(model, subject), result, subject, presence, writingAReceiver, asked.Document);
+                ReceiverAt(model, subject),
+                result,
+                subject,
+                presence,
+                writingAReceiver,
+                appendedTo,
+                TakenOffAsAStatement(model, subject),
+                asked.Document);
         }
 
-        if (Fixture(model, result, subject, asked.Document) is { } names)
+        if (Arguments(model, subject, asked.Document) is { } arguments)
         {
-            return names;
+            return arguments;
         }
 
-        return InScope(model, result, subject, presence, writingAReceiver, asked.Document);
+        if (LiteralFields(model, result, subject, asked.Document) is { } fields)
+        {
+            return fields;
+        }
+
+        return InScope(model, result, subject, presence, writingAReceiver, appendedTo, asked.Document);
     }
 
     /// <summary>
@@ -409,10 +428,11 @@ public sealed class CompletionProvider
     private static bool NamesAPresenceField(SemanticModel model, SchemaSubject subject)
         => model.SyntaxAt(subject.Start)?.Enclosing<HasExpression>() is { } has
             && EndsAt(has.Operand) is { } field
-            && Covers(field, subject.Start);
+            && EditorPositions.Covers(field, subject.Start);
 
     /// <summary>
-    /// Whether the caret is writing a name that something else is about to take a member off.
+    /// The member something else is about to take off the name the caret is writing, for each access
+    /// that takes one: none where the name is not a receiver.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -447,11 +467,59 @@ public sealed class CompletionProvider
     /// the state completion is usually asked in, and a buffer that has not parsed has no member
     /// access to find -- so the two are a union, each answering where the other cannot.
     /// </para>
+    /// <para>
+    /// The members rather than only whether there are any, because one of them decides what else may
+    /// stand there: a repeated value has one member, <c>append</c>, so it is a receiver of that and of
+    /// nothing else (<see cref="CanBeAReceiver"/>).
+    /// </para>
     /// </remarks>
-    private static bool NamesAReceiver(SemanticModel model, SchemaSubject subject)
+    private static IReadOnlyList<string> MembersTakenOff(SemanticModel model, SchemaSubject subject)
         => model.SyntaxAt(subject.Start) is { } location
-            && location.Path.OfType<MemberAccessExpression>().Any(access
-                => EndsAt(access.Receiver) is { } name && Covers(name, subject.Start));
+            ? [
+                .. location.Path.OfType<MemberAccessExpression>()
+                    .Where(access => EndsAt(access.Receiver) is { } name && EditorPositions.Covers(name, subject.Start))
+                    .Select(access => access.Name.Text),
+            ]
+            : [];
+
+    /// <summary>
+    /// Whether the member the caret is writing after a dot would stand as a statement of its own,
+    /// called or not called yet: <c>entries.|</c> or <c>entries.app|end(e);</c>, and not
+    /// <c>return entries.|</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asked for <c>append</c>, which has no value and so is refused anywhere else (<c>PC0095</c>):
+    /// offered inside an expression, it would be the one item in the list and certain to be wrong.
+    /// Asked of the tree, the member access whose name is at the caret and what holds it. A buffer
+    /// that built no such access is not one this can rule on, and is answered yes, so it still offers
+    /// what it offered before anything was asked.
+    /// </remarks>
+    private static bool TakenOffAsAStatement(SemanticModel model, SchemaSubject subject)
+    {
+        if (model.SyntaxAt(subject.Start) is not { } location)
+        {
+            return true;
+        }
+
+        var path = location.Path;
+        for (var index = path.Count - 1; index > 0; index--)
+        {
+            if (path[index] is not MemberAccessExpression member || !EditorPositions.Covers(member.Name.Span, subject.Start))
+            {
+                continue;
+            }
+
+            var holder = path[index - 1];
+            if (holder is InvocationExpression call && ReferenceEquals(call.Callee, member) && index > 1)
+            {
+                holder = path[index - 2];
+            }
+
+            return holder is ExpressionStatement;
+        }
+
+        return true;
+    }
 
     /// <summary>Where an expression's trailing name is written, or null when it ends in no name.</summary>
     /// <remarks>
@@ -491,7 +559,7 @@ public sealed class CompletionProvider
         SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
         if (model.SyntaxAt(subject.Start)?.Enclosing<ExtendDeclaration>() is { } extend
-            && Covers(extend.MessageName.Span, subject.Start))
+            && EditorPositions.Covers(extend.MessageName.Span, subject.Start))
         {
             return Replacing(subject, extend.MessageName.Span, document);
         }
@@ -724,12 +792,12 @@ public sealed class CompletionProvider
         // The method first, because a missing method's insertion point is the position just after
         // the dot, and a missing receiver's is just before the method -- so at 'test Outer.|' both
         // are empty ranges at nearly the same place, and only one of them is what is being written.
-        if (Covers(target.Method.Span, subject.Start))
+        if (EditorPositions.Covers(target.Method.Span, subject.Start))
         {
             return Methods(module, types, target, Replacing(subject, target.Method.Span, document), document);
         }
 
-        return Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
+        return EditorPositions.Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
             ? Receivers(module, types, result, target, Replacing(subject, target.Receiver.Span, document), document)
             : null;
     }
@@ -825,127 +893,152 @@ public sealed class CompletionProvider
     }
 
     /// <summary>
-    /// The names a <c>test</c> declaration can write: a field of the message being built, or an
-    /// argument of the method under test. Null when the caret is in neither.
+    /// The argument names a <c>test</c> can write after <c>arg</c>: the parameters of the method under
+    /// test that it has not supplied yet. Null when the caret is not on one.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Both sets are known exactly, which is what makes this worth doing at all: the author is typing
-    /// names they did not write, from a schema and a signature that are both in front of the compiler.
+    /// Known exactly, which is what makes this worth doing at all: the author is typing names they did
+    /// not write, from a signature that is in front of the compiler.
     /// </para>
     /// <para>
     /// <b>Nothing is offered until the target resolves.</b> <c>BindTest</c> returns null when it
     /// cannot, so a half-written <c>test</c> header has no <c>IrTest</c> at all -- and there is
-    /// genuinely nothing to say until the compiler knows which message and which method the fixture
-    /// is for.
-    /// </para>
-    /// <para>
-    /// A field already given a value is dropped, because a singular field written twice is
-    /// <c>PC0061</c>. A map field is dropped as everywhere else, this time because a map in a fixture
-    /// is <c>PC0060</c> rather than <c>PC0038</c> -- a different code for the same unsupported thing.
-    /// Repeated fields stay, since a repeated field may be written as many times as the author likes.
-    /// </para>
-    /// <para>
-    /// <b>Being inside a fixture is not the same as naming one of its fields</b>, and the values are
-    /// inside it too. A fixture field's value is an ordinary expression bound against an empty scope
-    /// with no implicit receiver, so a field name accepted at <c>count = tr|ue</c> writes
-    /// <c>count = count</c> and is <c>PC0037</c> -- a name that resolves nowhere, offered because the
-    /// enclosing message value was found and nothing asked whether the caret was in a name position
-    /// at all. An expression under the caret is what says it is not, and the value region then
-    /// answers the way every other expression in a test does.
+    /// genuinely nothing to say until the compiler knows which method the arguments are for.
     /// </para>
     /// </remarks>
-    private static IReadOnlyList<CompletionItem>? Fixture(
-        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+    private static IReadOnlyList<CompletionItem>? Arguments(
+        SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
-        if (model.IrAt(subject.Start) is not { } at || at.Enclosing<IrTest>() is not { } test)
+        if (!subject.PrecededByArg
+            || model.IrAt(subject.Start) is not { } at
+            || at.Enclosing<IrTest>() is not { } test
+            || at.Enclosing<IrExpression>() is not null)
         {
             return null;
         }
 
-        if (at.Enclosing<IrExpression>() is not null)
-        {
-            return null;
-        }
-
-        if (subject.PrecededByArg)
-        {
-            // The one being written does not count as written, whatever it currently reads. The
-            // caret is inside it, so it is the name the author is choosing -- and marking it spent
-            // removes it from the one list where they are deciding whether to keep it. #56 found the
-            // same thing about the import being edited, and it is the same mistake.
-            var written = test.Arguments
-                .Where(argument => !Covers(argument.Span, subject.Start))
-                .Select(argument => argument.Name)
-                .ToHashSet(StringComparer.Ordinal);
-
-            return
-            [
-                .. test.Target.Parameters
-                    .Where(parameter => !written.Contains(parameter.Name))
-                    .Select(parameter => Member(
-                        parameter.Name,
-                        CompletionItemKind.Variable,
-                        parameter.Type.DisplayName,
-                        null,
-                        "0",
-                        subject,
-                        document)),
-            ];
-        }
-
-        // Which message the caret is naming a field of, and the two ways to get it wrong are opposite.
-        // A value's span covers its fields and not the braces around them, so a caret on the blank
-        // line just inside 'items {' falls outside the nested value and would take the outer
-        // message's fields. But a caret on the word 'items' itself is inside that same field value
-        // and is naming a field of the outer message, not of the nested one. What separates them is
-        // that a field value begins at its own name: sitting there means naming it, and anywhere else
-        // inside it means being within the block it opens.
-        var holder = at.Enclosing<IrTestFieldValue>();
-
-        var level = holder is { MessageValue: { } nested } && Within(holder.Span, subject.Start)
-            ? nested
-            : at.Enclosing<IrTestMessageValue>();
-
-        if (level is null)
-        {
-            return null;
-        }
-
-        var already = level.Fields
-            .Where(field => !field.Field.IsRepeated && !Covers(field.Span, subject.Start))
-            .Select(field => field.Field.Name)
+        // The one being written does not count as written, whatever it currently reads. The caret is
+        // inside it, so it is the name the author is choosing -- and marking it spent removes it from
+        // the one list where they are deciding whether to keep it. #56 found the same thing about the
+        // import being edited, and it is the same mistake.
+        var written = test.Arguments
+            .Where(argument => !EditorPositions.Covers(argument.Span, subject.Start))
+            .Select(argument => argument.Name)
             .ToHashSet(StringComparer.Ordinal);
 
         return
         [
-            .. MessageFields.InDeclarationOrder(level.Descriptor)
-                .Where(field => !field.IsMap && !already.Contains(field.Name))
-                .Select(field => Member(
-                    field.Name,
-                    CompletionItemKind.Field,
-                    TypeFactory.FromField(field).DisplayName,
-                    Documentation(result, field),
+            .. test.Target.Parameters
+                .Where(parameter => !written.Contains(parameter.Name))
+                .Select(parameter => Member(
+                    parameter.Name,
+                    CompletionItemKind.Variable,
+                    parameter.Type.DisplayName,
+                    null,
                     "0",
                     subject,
                     document)),
         ];
     }
 
-    /// <summary>Both ends inclusive, so a caret that has just finished typing a name is still in it.</summary>
-    private static bool Covers(SourceSpan span, int offset)
-        => offset >= span.Start.Offset && offset <= span.End.Offset;
-
-    /// <summary>Strictly inside, which is what "in the block this opens" means.</summary>
+    /// <summary>
+    /// The fields a message literal can still be given, where the caret is naming one: in a literal's
+    /// braces, or a fixture's, between its fields or on one's name. Null anywhere else.
+    /// </summary>
     /// <remarks>
-    /// Neither end counts, and each is excluded for its own reason. The start is where the field's
-    /// own name is written, so a caret there is naming that field rather than filling it in. The end
-    /// is the brace that closes it, so a caret there has left the block and is back among the fields
-    /// of the message outside. Containment elsewhere is inclusive at both ends, deliberately, which is
-    /// exactly why this needs saying rather than reusing it.
+    /// <para>
+    /// The message's fields are known exactly, as a signature's parameters are. Which message is the
+    /// innermost literal around the caret, which is the binder's answer and not a guess from the text:
+    /// a fixture's message is its test target's, and a literal whose type did not resolve is bound
+    /// against the message expected where it stands.
+    /// </para>
+    /// <para>
+    /// A field already given a value is dropped, because a field written twice is <c>PC0061</c>. That
+    /// includes a repeated one, which takes all of its values in one list. A map field is dropped as
+    /// everywhere else, this time because a map in a literal is <c>PC0060</c> rather than
+    /// <c>PC0038</c> -- a different code for the same unsupported thing.
+    /// </para>
+    /// <para>
+    /// <b>Being inside a literal is not the same as naming one of its fields</b>, and the values are
+    /// inside it too. A field's value is an ordinary expression, so a field name accepted at
+    /// <c>count: tr|ue</c> writes <c>count: count</c>, a name that is no value there. Two things say the
+    /// caret is in a value: an expression innermost under it, which is any value written so far, and a
+    /// caret past the name of the field it is on, which is a value not written yet. Either way the
+    /// value answers as every other expression does, and among a list's elements that is the same.
+    /// </para>
     /// </remarks>
-    private static bool Within(SourceSpan span, int offset)
-        => offset > span.Start.Offset && offset < span.End.Offset;
+    private static IReadOnlyList<CompletionItem>? LiteralFields(
+        SemanticModel model, CompilationResult result, SchemaSubject subject, OpenDocument document)
+    {
+        if (model.IrAt(subject.Start) is not { Node: IrMessageLiteral or IrFieldInitializer } at
+            || at.Enclosing<IrMessageLiteral>() is not { } literal)
+        {
+            return null;
+        }
+
+        var syntax = model.SyntaxAt(subject.Start);
+
+        // The innermost of the three, because a literal is itself a field's value: in its braces the
+        // field around it is not the one the caret is on. On a field the caret names it only on its
+        // name, and in a literal only between its braces: before them it is on 'new' or the type, and
+        // after them it is after a value, where a position query still finds the literal because a
+        // caret that has just typed its brace is at its end.
+        var naming = syntax?.Path.LastOrDefault(node => node is FieldInitializer or MessageLiteralExpression or TestReceiverFixture) switch
+        {
+            FieldInitializer field => subject.Start <= field.Name.Span.End.Offset,
+            MessageLiteralExpression written => subject.Start > written.Type.Span.End.Offset
+                && BeforeItsClosingBrace(written.Span, subject.Start, document.Text),
+            TestReceiverFixture fixture => BeforeItsClosingBrace(fixture.Span, subject.Start, document.Text),
+            _ => false,
+        };
+
+        if (!naming)
+        {
+            return null;
+        }
+
+        // What is spent is read from the fields as written, not from the values bound: an empty list
+        // has no values at all, and a field the binder refused has none either. Either way the field is
+        // written, and the one under the caret is the one being chosen, whatever it currently reads.
+        IReadOnlyList<FieldInitializer> fieldsHere = syntax?.Path
+            .LastOrDefault(node => node is MessageLiteralExpression or TestReceiverFixture) switch
+        {
+            MessageLiteralExpression written => written.Fields,
+            TestReceiverFixture fixture => fixture.Fields,
+            _ => [],
+        };
+
+        var already = fieldsHere
+            .Where(written => !written.Name.IsMissing && !EditorPositions.Covers(written.Span, subject.Start))
+            .Select(written => written.Name.Text)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return
+        [
+            .. MessageFields.InDeclarationOrder(literal.MessageType.Descriptor)
+                .Where(candidate => !candidate.IsMap && !already.Contains(candidate.Name))
+                .Select(candidate => Member(
+                    candidate.Name,
+                    CompletionItemKind.Field,
+                    TypeFactory.FromField(candidate).DisplayName,
+                    Documentation(result, candidate),
+                    "0",
+                    subject,
+                    document)),
+        ];
+    }
+
+    /// <summary>
+    /// Whether <paramref name="offset"/> is inside a braced construct spanning <paramref name="span"/>,
+    /// rather than after the brace that closes it.
+    /// </summary>
+    /// <remarks>
+    /// One that nothing closed ends where the buffer or the next statement does, and a caret there is
+    /// still inside it: the author is typing its fields.
+    /// </remarks>
+    private static bool BeforeItsClosingBrace(SourceSpan span, int offset, string text)
+        => offset < span.End.Offset || span.Length == 0 || text[span.End.Offset - 1] != '}';
 
     /// <summary>The types that could be named where the caret is, or null when it is not a type position.</summary>
     /// <remarks>
@@ -977,18 +1070,32 @@ public sealed class CompletionProvider
             return null;
         }
 
-        if ((at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start)) is not { } reference)
+        var reference = at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start);
+
+        // A literal's type not yet begun leaves no node at all: 'new' with nothing after it is a name
+        // to the parser (SchemaSubject.PrecededByNew). It begins a literal wherever 'new' names no
+        // value. Where it does -- a field or a local named 'new' -- the word after it may be 'and'
+        // being typed, and a list of messages would be the wrong answer to that.
+        var beginningALiteral = reference is null
+            && subject.PrecededByNew
+            && !NamesAValue(model, subject, ContextualKeywords.New);
+
+        if (reference is null && !beginningALiteral)
         {
             return null;
         }
 
         var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference);
 
-        // The whole written name, dots included. A qualified type is one name rather than a chain of
-        // members, so replacing only the segment under the caret turns 'protocross.tests.Outer' into
-        // 'Duration.tests.Outer'. The parser's own idea of where the name starts and ends is used,
-        // because it is the one that decided this was a single qualified name in the first place.
-        var written = Replacing(subject, reference.Name.Span, document);
+        // A literal builds a message, so the type after 'new' is a message and nothing else: a scalar
+        // or an enum offered there is a name the binder refuses the moment it is accepted.
+        var building = beginningALiteral
+            || (at.Enclosing<MessageLiteralExpression>() is { } literal && ReferenceEquals(literal.Type, reference));
+
+        if (TypeEdit(subject, reference, document) is not { } written)
+        {
+            return [];
+        }
 
         subject = written.Subject;
 
@@ -998,15 +1105,96 @@ public sealed class CompletionProvider
             // written out again -- so a scalar added to the language is offered without this line
             // being touched, and one that is only a keyword is never offered as a type.
             .. Lexer.Keywords.Keys
-                .Where(spelling => TypeFactory.TryGetScalar(spelling) is not null
-                    || (returning && spelling == "void"))
+                .Where(spelling => !building
+                    && (TypeFactory.TryGetScalar(spelling) is not null || (returning && spelling == "void")))
                 .Order(StringComparer.Ordinal)
                 .Select(spelling => Member(
                     spelling, CompletionItemKind.Keyword, "scalar type", null, "0", subject, document)),
 
-            .. types.All.SelectMany(type => Spellings(type, types, result, subject, document)),
+            .. types.All
+                .Where(type => !building || type.IsMessage)
+                .SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
     }
+
+    /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
+    /// <remarks>
+    /// A keyword there, contextual or not, and the one place a word is that no name can replace: the
+    /// type after it would be stranded, <c>count Outer { ... }</c>. The innermost literal around the
+    /// caret is the one asked, because that is the one whose <c>new</c> a caret at its start is on, and
+    /// inside its braces the fields are offered instead (<see cref="LiteralFields"/>). The literal is
+    /// innermost there too, which is how its fields came to be offered over its own <c>new</c> until
+    /// this was asked first.
+    /// </remarks>
+    private static bool OnALiteralsNew(SemanticModel model, SchemaSubject subject)
+        => model.SyntaxAt(subject.Start)?.Enclosing<MessageLiteralExpression>() is { } literal
+            && literal.Span.Start.Offset == subject.Start;
+
+    /// <summary>Whether <paramref name="name"/> written as a bare word where the caret is would be a value.</summary>
+    /// <remarks>
+    /// Asked of the scope query, which knows the locals, the parameters and the receiver's fields the
+    /// binder would resolve a bare name against. Nowhere a value is not, in a test or outside any
+    /// method, no name is one.
+    /// </remarks>
+    private static bool NamesAValue(SemanticModel model, SchemaSubject subject, string name)
+        => model.ScopeAt(subject.Start)?.Names.Any(visible => visible.Name == name) == true;
+
+    /// <summary>What a type accepted in the slot <paramref name="reference"/> stands for replaces.</summary>
+    /// <remarks>
+    /// <para>
+    /// The whole written name, dots included. A qualified type is one name rather than a chain of
+    /// members, so replacing only the segment under the caret turns <c>protocross.tests.Outer</c> into
+    /// <c>Duration.tests.Outer</c>. The parser's own idea of where the name starts and ends is used,
+    /// because it is the one that decided this was a single qualified name in the first place.
+    /// </para>
+    /// <para>
+    /// A caret in the space before a name already written -- <c>new | Inner</c> -- is in the slot but
+    /// not in the name, and the name after it would otherwise be read as a qualifier every offer has to
+    /// end with, which none does. The edit runs from the caret through the name instead: it keeps the
+    /// caret inside the range, as a client requires, and writes the type in the name's place rather than
+    /// beside it. Only on one line, because a range may not span two.
+    /// </para>
+    /// <para>
+    /// <b>Only across blank space, and otherwise nothing at all</b>, because a declaration's slot
+    /// begins at its name and so takes in the colon. At <c>given |: int64</c> the caret is in the slot
+    /// with the colon still ahead of it: a range through the name deletes the colon along with the type,
+    /// and an empty one at the caret writes the type beside the colon -- <c>given int64: int64</c> --
+    /// which is what the qualifier reading comes to for a scalar, a keyword with no segments to read. No
+    /// range both contains that caret and keeps what lies between it and the name, so null says no type
+    /// can be written from there.
+    /// </para>
+    /// <para>
+    /// With no name written at all there is nothing to replace, and the word under the caret is the
+    /// range.
+    /// </para>
+    /// </remarks>
+    private static QualifiedName? TypeEdit(SchemaSubject subject, TypeReference? reference, OpenDocument document)
+    {
+        if (reference is null)
+        {
+            return new QualifiedName(subject, string.Empty, string.Empty);
+        }
+
+        var name = reference.Name.Span;
+
+        if (subject.Offset >= name.Start.Offset)
+        {
+            return Replacing(subject, name, document);
+        }
+
+        return OnlyBlankSpaceAhead(subject.Offset, name, document.Text)
+            ? new QualifiedName(subject with { Start = subject.Offset, End = name.End.Offset }, string.Empty, string.Empty)
+            : null;
+    }
+
+    /// <summary>
+    /// Whether only whitespace stands between <paramref name="caret"/> and the start of
+    /// <paramref name="name"/>, with both on one line, so a range from one through the other deletes
+    /// nothing but the name and is one LSP can express.
+    /// </summary>
+    private static bool OnlyBlankSpaceAhead(int caret, SourceSpan name, string text)
+        => text.AsSpan(caret, name.Start.Offset - caret).IsWhiteSpace()
+            && !text.AsSpan(caret, name.End.Offset - caret).Contains('\n');
 
     /// <summary>
     /// The type slot of a declaration the caret is standing in, or null when it is standing anywhere
@@ -1030,6 +1218,12 @@ public sealed class CompletionProvider
     /// synthetic one, so the range that gets replaced is the parser's -- an empty range at the
     /// insertion point when nothing was written, which is exactly where the text belongs.
     /// </para>
+    /// <para>
+    /// A message literal has a slot of the same shape, bounded by the <c>new</c> that begins it and
+    /// the end of the type written after it: a caret in the space between <c>new</c> and its type is
+    /// in the type too. A literal whose type has not been started is not in the tree at all, and
+    /// <c>TypesAt</c> asks <c>SchemaSubject.PrecededByNew</c> for that one.
+    /// </para>
     /// </remarks>
     private static TypeReference? TypeSlotAt(SyntaxLocation at, int offset)
     {
@@ -1038,9 +1232,17 @@ public sealed class CompletionProvider
             return Slot(parameter.Name, parameter.Type, offset);
         }
 
-        return at.Enclosing<VariableDeclarationStatement>() is { } local
-            ? Slot(local.Name, local.DeclaredType, offset)
-            : null;
+        if (at.Enclosing<VariableDeclarationStatement>() is { } local
+            && Slot(local.Name, local.DeclaredType, offset) is { } declared)
+        {
+            return declared;
+        }
+
+        return at.Enclosing<MessageLiteralExpression>() is { } literal
+            && offset > literal.Span.Start.Offset + ContextualKeywords.New.Length
+            && offset <= literal.Type.Span.End.Offset
+                ? literal.Type
+                : null;
     }
 
     /// <inheritdoc cref="TypeSlotAt"/>
@@ -1107,6 +1309,7 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
+        bool appendedTo,
         OpenDocument document)
     {
         if (model.ScopeAt(subject.Start) is not { } scope)
@@ -1164,7 +1367,7 @@ public sealed class CompletionProvider
         return
         [
             .. scope.Names
-                .Where(visible => !writingAReceiver || visible.Type is MessageType)
+                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, appendedTo, result.Module))
                 .Select(visible => Member(
                     visible.Name,
                     visible.Symbol.Kind is SymbolKind.Field
@@ -1260,7 +1463,7 @@ public sealed class CompletionProvider
     /// <summary>The type whose members may be written after the caret's dot, or null when there is none.</summary>
     /// <remarks>
     /// <para>
-    /// Four shapes, and the first is the one that matters. <see cref="IrMissingMemberAccess"/> is what
+    /// Five shapes, and the first is the one that matters. <see cref="IrMissingMemberAccess"/> is what
     /// the binder leaves where a member name has not been written yet -- <c>line.</c> with the caret
     /// after the dot, which is the state completion is triggered in -- and it exists precisely so the
     /// receiver's type survives a binding that otherwise failed. Everything else about that
@@ -1269,11 +1472,11 @@ public sealed class CompletionProvider
     /// <para>
     /// The others are accesses that did resolve, so that invoking completion on a name already
     /// written offers its siblings rather than nothing. A field access, a presence test and a method
-    /// call each keep the receiver they resolved against; an enum constant keeps no receiver because
-    /// it never had one, and its own type is what the name before the dot named. A presence test is
-    /// in that list because <c>has inner.stamp</c> is a member access like any other and reads
-    /// nothing like one in the IR: it binds to its own node, so a list of the node kinds that carry a
-    /// receiver is a list that can be, and was, incomplete.
+    /// call each keep the receiver they resolved against, and an append keeps what it adds to; an enum
+    /// constant keeps no receiver because it never had one, and its own type is what the name before
+    /// the dot named. A presence test is in that list because <c>has inner.stamp</c> is a member
+    /// access like any other and reads nothing like one in the IR: it binds to its own node, so a list
+    /// of the node kinds that carry a receiver is a list that can be, and was, incomplete.
     /// </para>
     /// <para>
     /// <b>An enum-typed receiver is the one case where knowing the type is not enough.</b> Constants
@@ -1308,18 +1511,54 @@ public sealed class CompletionProvider
             return constant.EnumType;
         }
 
-        var receiver = at.Enclosing<IrMissingMemberAccess>()?.Receiver
-            ?? at.Enclosing<IrFieldAccess>()?.Receiver
-            ?? at.Enclosing<IrFieldPresence>()?.Receiver
-            ?? at.Enclosing<IrMethodCall>()?.Receiver;
+        // The innermost of the five, since they nest: in 'new T { flag: has x.flag }.y' the presence
+        // test is inside the access of 'y', and taking the nearest access first would offer T's fields
+        // after 'x.'.
+        var receiver = at.Path
+            .LastOrDefault(node => node is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend) switch
+            {
+                IrMissingMemberAccess awaiting => awaiting.Receiver,
+                IrFieldAccess access => access.Receiver,
+                IrFieldPresence presence => presence.Receiver,
+                IrMethodCall call => call.Receiver,
+                IrAppend append => append.Collection,
+                _ => null,
+            };
 
         return receiver switch
         {
-            { Type: MessageType } => receiver.Type,
+            { Type: MessageType or RepeatedType } => receiver.Type,
             IrLiteral { Value: null, Type: EnumPlType } => receiver.Type,
             _ => null,
         };
     }
+
+    /// <summary>
+    /// Whether a value of <paramref name="type"/> may stand where a member is taken off it: a message,
+    /// which has fields and methods, or, where the member is <c>append</c>, a value that has one -- a
+    /// repeated value, whose one member it is (spec 14.1), or a message declaring a method of that name.
+    /// </summary>
+    /// <param name="appendedTo">Whether the member taken off it is <c>append</c>.</param>
+    /// <remarks>
+    /// <para>
+    /// The one answer to which names may stand where a receiver goes, for a bare name and a member
+    /// alike, so the two cannot disagree about whether <c>entries</c> in <c>entries.append(e)</c> is
+    /// one. A repeated value before any other member would be offered only to be refused, as
+    /// <c>order.lines.quantity</c> is. An enum is not here: its constants are reached through its
+    /// name, never through a value.
+    /// </para>
+    /// <para>
+    /// Before <c>.append</c> the member is known, and so is what has it. Before any other, a message is
+    /// offered whether or not it has the member, which is what has always been offered there: asking
+    /// is a question about each message's fields and methods that nothing has needed until now.
+    /// </para>
+    /// </remarks>
+    private static bool CanBeAReceiver(PlType type, bool appendedTo, IrModule? module)
+        => appendedTo
+            ? type is RepeatedType
+                || (type is MessageType message
+                    && module?.MethodsOn(message.Descriptor.FullName).Any(method => method.Name == IrAppend.MethodName) == true)
+            : type is MessageType;
 
     /// <summary>What may be written after a dot on a value of this type.</summary>
     /// <remarks>
@@ -1332,10 +1571,11 @@ public sealed class CompletionProvider
     /// <c>PC0040</c>.
     /// </para>
     /// <para>
-    /// A repeated field offers nothing, which is the whole answer rather than an omission: there is no
-    /// member access into a repetition, only <c>for x in ...</c>, so offering the element type's
-    /// members would offer names that cannot be written where the caret is. An unknown receiver
-    /// offers nothing for the same reason -- returning a wrong list is worse than returning none.
+    /// A repeated value offers its one method, <c>append</c>, and nothing of its element type's, which
+    /// is the whole answer rather than an omission: there is no member access into a repetition, only
+    /// <c>for x in ...</c>, so offering the element type's members would offer names that cannot be
+    /// written where the caret is. An unknown receiver offers nothing for the same reason -- returning
+    /// a wrong list is worse than returning none.
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem> Members(
@@ -1344,6 +1584,8 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
+        bool appendedTo,
+        bool aStatement,
         OpenDocument document)
         => receiver switch
         {
@@ -1351,14 +1593,14 @@ public sealed class CompletionProvider
             [
                 // What the caret's name is used for constrains this exactly as it constrains a bare
                 // name. A member something else takes a member off is itself a receiver, so only a
-                // singular message field can go there -- 'inner.weight.seconds' asks an int64 for a
+                // field with members can go there -- 'inner.weight.seconds' asks an int64 for a
                 // member it cannot have. And parentheses already written mean a call, which a field
                 // can never be: 'other.count()' is PC0044, an unknown method, rather than a field
                 // read with punctuation after it.
                 .. MessageFields.InDeclarationOrder(message.Descriptor)
                     .Where(field => !field.IsMap
                         && !subject.FollowedByCall
-                        && (!writingAReceiver || TypeFactory.FromField(field) is MessageType))
+                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo, result.Module)))
                     .Select(field => Member(
                         field.Name,
                         CompletionItemKind.Field,
@@ -1382,6 +1624,20 @@ public sealed class CompletionProvider
                         subject,
                         document))
                     : [],
+            ],
+
+            // An append has no value, so it is offered only where it stands as a statement, which is
+            // never a receiver or the operand of 'has' (spec 14.1).
+            RepeatedType repeated when aStatement =>
+            [
+                Member(
+                    subject.FollowedByCall ? IrAppend.MethodName : IrAppend.MethodName + "()",
+                    CompletionItemKind.Method,
+                    IrAppend.DisplayNameFor(repeated),
+                    null,
+                    rank: "1",
+                    subject,
+                    document),
             ],
 
             // A constant has no members of its own and is not callable, so where a receiver or a call
