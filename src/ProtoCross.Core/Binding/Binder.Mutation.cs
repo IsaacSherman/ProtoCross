@@ -433,16 +433,22 @@ public sealed partial class Binder
     {
         foreach (var (expression, mayBeOne) in ExpressionsOf(statement))
         {
-            var valueless = IrWalk.DescendantsAndSelf(expression)
-                .OfType<IrValuelessCall>()
-                .Select(refused => refused.Call)
-                .ToHashSet(ReferenceEqualityComparer.Instance);
+            // Gathered only once a mutating call turns up, since a call with no value exists only in a
+            // method that is already wrong, and every statement of every method passes through here.
+            HashSet<object?>? valueless = null;
 
             foreach (var call in IrWalk.DescendantsAndSelf(expression).OfType<IrMethodCall>())
             {
-                if (!call.Target.IsMutating
-                    || (mayBeOne && ReferenceEquals(call, expression))
-                    || valueless.Contains(call))
+                if (!call.Target.IsMutating || (mayBeOne && ReferenceEquals(call, expression)))
+                {
+                    continue;
+                }
+
+                valueless ??= IrWalk.DescendantsAndSelf(expression)
+                    .OfType<IrValuelessCall>()
+                    .Select(refused => refused.Call)
+                    .ToHashSet(ReferenceEqualityComparer.Instance);
+                if (valueless.Contains(call))
                 {
                     continue;
                 }
@@ -507,13 +513,14 @@ public sealed partial class Binder
     /// </para>
     /// <para>
     /// The expression is still bound, for the names in it and for whatever else is wrong with it. A
-    /// value that failed to bind has said why, and is not told as well that it is not a call.
+    /// value that failed to bind has said why, and a statement whose semicolon is missing is one still
+    /// being typed, which the parser has reported. Neither is told as well that it is not a call.
     /// </para>
     /// </remarks>
     private IrExpressionStatement RefuseExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
     {
         var value = BindExpression(statement.Expression, scope, context, null);
-        if (value.Type is not ErrorType)
+        if (value.Type is not ErrorType && statement.IsTerminated)
         {
             _diagnostics.Report(
                 DiagnosticCodes.ExpressionStatementIsNotACall,

@@ -34,14 +34,15 @@ public class ValuelessCallTests
         }
         """;
 
+    private static string Source(string method) => Prelude + "extend Outer {\n" + Callees + "\n" + method + "\n}";
+
     private static CompilationResult CompileMethod(string method)
-        => Compilation.Compile(
-            TestPaths.WriteTempScript(Prelude + "extend Outer {\n" + Callees + "\n" + method + "\n}"),
-            [TestPaths.FixtureProtoDirectory]);
+        => Compilation.Compile(TestPaths.WriteTempScript(Source(method)), [TestPaths.FixtureProtoDirectory]);
 
     /// <summary>A mutating method returning <c>int64</c>, whose body is <paramref name="body"/>.</summary>
-    private static CompilationResult CompileBody(string body)
-        => CompileMethod("mut fn f() -> int64 {\n" + body + "\n}");
+    private static string Body(string body) => "mut fn f() -> int64 {\n" + body + "\n}";
+
+    private static CompilationResult CompileBody(string body) => CompileMethod(Body(body));
 
     private static string Describe(CompilationResult result)
         => string.Join("\n", result.Diagnostics.Select(d => d.ToString()));
@@ -140,6 +141,24 @@ public class ValuelessCallTests
         var refused = Assert.Single(IrWalk.DescendantsAndSelf(result.Module!).OfType<IrValuelessCall>());
         Assert.Equal("nothing", refused.Call.Target.Name);
         Assert.True(refused.Type is ErrorType, "the refused value must be an error, so nothing holding it reports it again");
+    }
+
+    /// <summary>
+    /// What the wrapper is for: a position on the method's name still finds the call, inside the
+    /// refused value, so hover, go-to-definition and signature help keep working where it was written.
+    /// </summary>
+    [Fact]
+    public void APositionOnTheRefusedCallStillFindsTheCall()
+    {
+        var source = Source(Body("var x = takes(nothing()); return 0;"));
+        var model = SemanticModel.For(
+            Compilation.Compile(TestPaths.WriteTempScript(source), [TestPaths.FixtureProtoDirectory]));
+
+        var found = model.IrAt(source.IndexOf("takes(nothing", StringComparison.Ordinal) + "takes(".Length + 1);
+
+        Assert.NotNull(found);
+        Assert.Equal("nothing", found.Enclosing<IrMethodCall>()?.Target.Name);
+        Assert.NotNull(found.Enclosing<IrValuelessCall>());
     }
 
     [Fact]

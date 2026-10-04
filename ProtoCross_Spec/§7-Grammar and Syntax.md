@@ -86,7 +86,8 @@ Normative Requirement:
   statement. Such a statement is nearly always a slip, `total + 1;` written for `total += 1;`, and it
   is refused rather than dropped, because it is not always free of effects: `count / divisor;` can end
   the program under `on_zero fail` ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). An expression that failed to bind has already said why,
-  and is not told as well that it is not a call.
+  and a statement whose semicolon is missing is one still being typed, which the parser has
+  reported. Neither is told as well that it is not a call.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order

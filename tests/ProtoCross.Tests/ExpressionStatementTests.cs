@@ -95,6 +95,19 @@ public class ExpressionStatementTests
     public void AValueThatFailedToBindIsNotAlsoToldItIsNotACall()
         => Assert.Equal(DiagnosticCodes.UnknownName.Code, SingleError(CompileStatement("no_such_thing;")).Code);
 
+    /// <summary>
+    /// <c>count</c> with nothing after it is <c>count += 1;</c> being typed. The parser has said the
+    /// semicolon is missing, and saying as well that a bare name is not a call reports the one
+    /// unfinished statement twice, on every keystroke until it is finished.
+    /// </summary>
+    [Fact]
+    public void AStatementStillBeingTypedIsReportedOnlyAsUnfinished()
+    {
+        var error = SingleError(CompileStatement("count"));
+
+        Assert.Equal(DiagnosticCodes.UnexpectedToken.Code, error.Code);
+    }
+
     // ------- what is said
 
     [Fact]
