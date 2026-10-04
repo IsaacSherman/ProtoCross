@@ -835,6 +835,31 @@ public sealed record IrUncallableInvocation(
     IReadOnlyList<IrExpression> Arguments,
     SourceSpan Span) : IrExpression(ErrorType.Instance, Span);
 
+/// <summary>
+/// A call to a method that returns nothing, written where a value is expected (spec 16.2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// The call resolved, so it is kept whole, as a wrong-typed argument's is: the receiver, the method
+/// and the arguments are what go-to-definition, signature help and completion ask about, and a
+/// call written in the wrong place is still a call. What is wrong is the value it was taken for, and
+/// this node is that value, typed as an error.
+/// </para>
+/// <para>
+/// The error type is why it exists. Left as the call, typed <c>void</c>, the value went on to whatever
+/// held it: two of them compared equal under <c>==</c>'s same-type rule, and a <c>var</c> took
+/// <c>void</c> as its type, and both backends emitted code their own compilers refuse. Every
+/// consumer that met it would have had to ask about <c>void</c> for itself, and one that forgot
+/// would let it through again. As an error, every consumer already stops at it and reports nothing
+/// further, so the one diagnostic is the one the call's position earned.
+/// </para>
+/// <para>
+/// No backend handles this, for the reason <see cref="IrMissingMemberAccess"/> gives: one exists
+/// only when a diagnostic was reported, and no backend is handed a module that has one.
+/// </para>
+/// </remarks>
+public sealed record IrValuelessCall(IrMethodCall Call) : IrExpression(ErrorType.Instance, Call.Span);
+
 /// <param name="Receiver">
 /// The message the method is called on, which a fixture writes the way a literal does (spec 25.3)
 /// and the binder builds as one.

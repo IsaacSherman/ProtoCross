@@ -126,17 +126,16 @@ C++, from the same source, with nothing in either generated file that looks wron
 | Receiver, parameters, locals | Always present. | Always present; never guarded. The only way to obtain a message value is the receiver, a parameter, a loop binding, or a guarded field read, and all four are present by construction. | Always present. | `--` | 13.1 |
 | Map field | Supported. | Unsupported: `PC0038` on access, `PC0060` in a test fixture. | Unsupported. | `--` | 14.2 |
 | `oneof` | A `FooCase` enum plus per-case accessors. | *Not yet pinned.* `has` covers a oneof member's presence, but nothing addresses the case discriminator, and no vector covers a oneof at all. | *Not yet pinned.* | `--` | 8.4 |
-| Message equality | Field-wise `Equals`. | *Not yet pinned.* `==` on two message values is not supported. | *Not yet pinned.* | `--` | 13.3 |
+| Message equality | `Equals` compares field by field, and `==` compares references, because protoc overrides only `Equals`. `Timestamp` overloads `==` and compares by value. `RepeatedField<T>` is the same. | **Compile error (`PC0098`)** on two messages or two repeated values, until 13.3 decides what makes two equal. Every scalar and enum keeps `==`. See [Departures](#departures-from-c). | Nothing: the comparison is refused. Protobuf C++ declares no `==` for a message or a repeated field, so it never built. | `--` | 9.2, 13.3 |
 
 ## Departures from C#
 
-Four rows above do not take C#'s answer. Each is deliberate.
+Five rows above do not take C#'s answer. Each is deliberate.
 
 **No implicit numeric conversions.** C# widens freely -- `int` to `long`, `int` to `float`, and so
 on. ProtoCross has none, and requires `x as int64` instead. This is what makes the overflow rule
 well-defined: the width a result wraps to is never the product of a promotion the author did not
-write. It is also the only one of these four departures that makes ProtoCross stricter than C# at no
-runtime cost.
+write. It makes ProtoCross stricter than C# at no runtime cost, as the two refusals below do.
 
 **Integer division by zero is not an exception.** C#'s answer is `DivideByZeroException`, and
 ProtoCross has no exceptions to inherit it into. More to the point, C# is the only one of the three
@@ -157,6 +156,13 @@ a runtime check in every backend.
 described as the C# behavior, but a C# author only gets it by writing `checked` or by setting
 `CheckForOverflowUnderflow` in the project file. Unmodified C# wraps, so wrapping is what ProtoCross
 adopts. `Checked` is available, but as a mode the project selects rather than as the baseline.
+
+**Two messages have no `==`.** C#'s `==` on a message compares references, which nobody writing
+`a == b` about two messages means. It also makes a freshly built literal unequal to everything, and
+`Timestamp` is the one exception, comparing by value. C++ has no `==` to emulate it with. Equality
+the compiler wrote field by field would choose which fields count, on messages the author does not
+own. So the comparison is refused until spec 13.3 decides, and the author compares the fields that
+matter.
 
 ## Adding a row
 

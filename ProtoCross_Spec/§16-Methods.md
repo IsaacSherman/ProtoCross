@@ -46,6 +46,12 @@ Normative Requirements:
 - Methods have either one return value or no return value. Multiple return values are not supported.
 - A non-void method must return a value on every path that can reach the end of the body.
 - A void method may use `return;`.
+- **A call to a void method has no value.** It may stand as a statement of its own, and anywhere a
+  value is expected it is `PC0100`: an operand, either side of `==`, a `var` initializer, an
+  argument, or a receiver. That is the call's one diagnostic, so whatever holds it reports nothing
+  further about it, and a call to a `mut fn` that returns nothing is not also told it is inside an
+  expression ([18](./§18-Mutability.md#18-mutability)). `return nothing();` in a void method is `PC0031`
+  alone, because that method returns no value at all.
 - Parameters are not assignable, and a message passed as one cannot be changed through it
   ([18](./§18-Mutability.md#18-mutability)).
 

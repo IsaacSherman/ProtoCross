@@ -48,6 +48,10 @@ Normative Requirements:
 - Assignment is a statement only, and so is a compound assignment.
 - On integer operands, `%` follows the same `on_zero` rule as integer `/`. On floating-point
   operands it is the truncated remainder of [10.2](./§10-Numeric%20Semantics.md#102-division), which cannot fail and takes no clause.
+- A comparison takes two operands of one type (`PC0048`), and is a `bool`. `<`, `<=`, `>` and `>=`
+  compare numbers only (`PC0049`). `==` and `!=` compare any scalar or enum, but not two messages
+  or two repeated values (`PC0098`), until [13.3](./§13-Messages.md#133-equality) says what makes
+  two of those equal.
 
 **Decided: the C-family precedence order.**
 

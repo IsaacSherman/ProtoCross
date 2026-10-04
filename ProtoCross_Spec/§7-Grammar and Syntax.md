@@ -45,7 +45,7 @@ assignment_stmt   = expression "=" expression ";";
 compound_stmt     = expression compound_op expression
                     [ "on_zero" ( expression | "fail" ) ] ";";
 compound_op       = "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=";
-expression_stmt   = expression ";";
+expression_stmt   = expression ";";                                  (* a call; see below *)
 
 test_decl         = "test" qualified_name string_literal
                     "{" { receiver_fixture | test_arg | test_expectation } "}";
@@ -80,6 +80,14 @@ Normative Requirement:
   one written where a comma goes, because it was the separator fixtures used before #80. Outside a
   fixture, a semicolon anywhere else among a literal's fields ends them, and the statement the
   literal is in: no expression contains one, so the literal's closing brace is what is missing.
+- **An expression statement is a call**: a method call, an `append` included
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), or one written in parentheses. Any other expression standing as a statement is
+  `PC0099`, a message literal included, and its help says to assign the value or delete the
+  statement. Such a statement is nearly always a slip, `total + 1;` written for `total += 1;`, and it
+  is refused rather than dropped, because it is not always free of effects: `count / divisor;` can end
+  the program under `on_zero fail` ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). An expression that failed to bind has already said why,
+  and a statement whose semicolon is missing is one still being typed, which the parser has
+  reported. Neither is told as well that it is not a call.
 - Top-level helper functions are not implemented.
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order
