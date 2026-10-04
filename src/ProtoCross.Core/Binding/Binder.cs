@@ -1320,7 +1320,11 @@ public sealed partial class Binder
             return new IrReturn(null, statement.Span);
         }
 
-        var value = BindExpression(statement.Value, scope, context, context.ReturnType);
+        // A method that returns nothing refuses any value, which is said below, so a call written as
+        // the value is bound as a statement's would be rather than told it has no value as well.
+        var value = context.ReturnType is VoidType && statement.Value is InvocationExpression invocation
+            ? BindInvocation(invocation, scope, context)
+            : BindExpression(statement.Value, scope, context, context.ReturnType);
 
         if (context.ReturnType is VoidType)
         {
@@ -1692,7 +1696,7 @@ public sealed partial class Binder
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
-            InvocationExpression invocation => BindInvocation(invocation, scope, context),
+            InvocationExpression invocation => BindCallValue(invocation, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
@@ -2134,6 +2138,42 @@ public sealed partial class Binder
             $"'{messageType.Descriptor.FullName}' has no field named '{member.Name}'.",
             member.Span);
         return new IrLiteral(null, ErrorType.Instance, member.Span);
+    }
+
+    /// <summary>
+    /// Binds a call written where its value is used, which a call to a method that returns nothing
+    /// does not have (spec 16.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every expression is bound for its value except the one a statement is made of, so this is the
+    /// one place the rule needs saying. A call standing as a statement of its own is bound by
+    /// <see cref="BindInvocation"/> directly, and is the one place a method that returns nothing can
+    /// be called.
+    /// </para>
+    /// <para>
+    /// Asked here rather than of each consumer, because a consumer only noticed when it had a reason
+    /// of its own to. Most did, since <c>void</c> matches nothing they expect, but two did not:
+    /// <c>==</c> found two <c>void</c>s of one type, and a <c>var</c> took <c>void</c> as its type.
+    /// Both compiled, and neither backend could build what was emitted. A consumer added later would
+    /// have to remember too.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindCallValue(InvocationExpression invocation, Scope scope, MethodContext context)
+    {
+        var bound = BindInvocation(invocation, scope, context);
+        if (bound is not IrMethodCall { Type: VoidType } call)
+        {
+            return bound;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.CallHasNoValue,
+            $"'{call.Target.Name}' returns nothing, so a call to it has no value to use.",
+            invocation.Span,
+            $"Call it as a statement of its own, '{call.Target.Name}(…);', or declare what "
+            + $"'{call.Target.Name}' returns (spec 16.2).");
+        return new IrValuelessCall(call);
     }
 
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>

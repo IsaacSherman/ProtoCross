@@ -523,6 +523,21 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor OperandsHaveNoEquality =
         new("PC0098", DiagnosticSeverity.Error, "operands have no equality");
 
+    // ------------------------------------------------------- statements and calls
+
+    /// <summary>
+    /// An expression written as a statement that is not a call, whose value would be thrown away
+    /// (spec 7.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ExpressionStatementIsNotACall =
+        new("PC0099", DiagnosticSeverity.Error, "expression statement is not a call");
+
+    /// <summary>
+    /// A call to a method that returns nothing, written where a value is expected (spec 16.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallHasNoValue =
+        new("PC0100", DiagnosticSeverity.Error, "call has no value");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
