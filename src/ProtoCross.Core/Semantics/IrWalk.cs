@@ -133,6 +133,7 @@ public static class IrWalk
                 ? [receiver, .. call.Arguments]
                 : [.. call.Arguments],
             IrMissingMemberAccess awaiting => [awaiting.Receiver],
+            IrValuelessCall valueless => [valueless.Call],
             IrBinary binary => [binary.Left, binary.Right],
             IrIntegerDivision division => division.OnZero is { } onZero
                 ? [division.Left, division.Right, onZero]

@@ -423,14 +423,32 @@ public sealed partial class Binder
     /// Asked of each statement's own expressions, after it is bound. A statement inside a branch or a
     /// loop body is bound, and asked, on its own.
     /// </para>
+    /// <para>
+    /// A call that returns nothing, wherever it stands but a statement of its own, has already been
+    /// told it has no value (<c>PC0100</c>). Using it where a value goes is the one mistake, and being
+    /// inside an expression is that same mistake told a second time.
+    /// </para>
     /// </remarks>
     private void ReportMutatingCallsInsideExpressions(IrStatement statement)
     {
         foreach (var (expression, mayBeOne) in ExpressionsOf(statement))
         {
+            // Gathered only once a mutating call turns up, since a call with no value exists only in a
+            // method that is already wrong, and every statement of every method passes through here.
+            HashSet<object?>? valueless = null;
+
             foreach (var call in IrWalk.DescendantsAndSelf(expression).OfType<IrMethodCall>())
             {
                 if (!call.Target.IsMutating || (mayBeOne && ReferenceEquals(call, expression)))
+                {
+                    continue;
+                }
+
+                valueless ??= IrWalk.DescendantsAndSelf(expression)
+                    .OfType<IrValuelessCall>()
+                    .Select(refused => refused.Call)
+                    .ToHashSet(ReferenceEqualityComparer.Instance);
+                if (valueless.Contains(call))
                 {
                     continue;
                 }
@@ -465,12 +483,55 @@ public sealed partial class Binder
 
     // ------- append
 
-    /// <summary>Binds an expression written as a statement, which is where an append is written (spec 14.1).</summary>
+    /// <summary>
+    /// Binds an expression written as a statement, which has to be a call (spec 7.1), and is where an
+    /// append is written (spec 14.1).
+    /// </summary>
     private IrStatement BindExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
-        => statement.Expression is InvocationExpression invocation
-            && AppendCallee(invocation, scope, context) is { } callee
-                ? BindAppend(invocation, callee, statement.Span, scope, context)
-                : new IrExpressionStatement(BindExpression(statement.Expression, scope, context, null), statement.Span);
+    {
+        if (statement.Expression is not InvocationExpression invocation)
+        {
+            return RefuseExpressionStatement(statement, scope, context);
+        }
+
+        return AppendCallee(invocation, scope, context) is { } callee
+            ? BindAppend(invocation, callee, statement.Span, scope, context)
+            : new IrExpressionStatement(BindInvocation(invocation, scope, context), statement.Span);
+    }
+
+    /// <summary>
+    /// Reports a statement that is an expression but not a call, whose value would be computed and
+    /// thrown away (spec 7.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nearly always a slip: <c>total + 1;</c> written for <c>total += 1;</c>. It is not always free of
+    /// effects, since <c>count / divisor;</c> can end the program under <c>on_zero fail</c>, so it is
+    /// refused rather than dropped, which would also have changed what the program did. The backends
+    /// had disagreed about it too: C# accepts only a call or an object creation as a statement, so
+    /// the generated project did not build, while C++ evaluated the value and discarded it.
+    /// </para>
+    /// <para>
+    /// The expression is still bound, for the names in it and for whatever else is wrong with it. A
+    /// value that failed to bind has said why, and a statement whose semicolon is missing is one still
+    /// being typed, which the parser has reported. Neither is told as well that it is not a call.
+    /// </para>
+    /// </remarks>
+    private IrExpressionStatement RefuseExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
+    {
+        var value = BindExpression(statement.Expression, scope, context, null);
+        if (value.Type is not ErrorType && statement.IsTerminated)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.ExpressionStatementIsNotACall,
+                "Only a call can stand as a statement, and this computes a value nothing uses.",
+                statement.Expression.Span,
+                "To change something, assign it: 'x = …;' or 'x += …;'. To keep the value, store it: "
+                + "'var x = …;'. Otherwise delete the statement (spec 7.1).");
+        }
+
+        return new IrExpressionStatement(value, statement.Span);
+    }
 
     /// <summary>
     /// The callee of <paramref name="invocation"/> when it appends to a place, <c>place.append</c>, or

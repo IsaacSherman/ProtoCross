@@ -956,8 +956,8 @@ public sealed partial class Binder
                 // Refused whatever the value is, because what is missing is not a value but a meaning
                 // for '=='. The value is still bound, for the names in it, and not checked against the
                 // return type: a second diagnostic would be about a comparison that cannot be made.
-                var comparesMessages = signature.ReturnType is MessageType;
-                if (comparesMessages)
+                var cannotCompare = !HasEquality(signature.ReturnType);
+                if (cannotCompare)
                 {
                     _diagnostics.Report(
                         DiagnosticCodes.MessageReturnCannotBeExpected,
@@ -969,7 +969,7 @@ public sealed partial class Binder
 
                 var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);
                 if (signature.ReturnType is not VoidType
-                    && !comparesMessages
+                    && !cannotCompare
                     && value.Type is not ErrorType
                     && !TypesMatch(signature.ReturnType, value.Type))
                 {
@@ -1320,7 +1320,11 @@ public sealed partial class Binder
             return new IrReturn(null, statement.Span);
         }
 
-        var value = BindExpression(statement.Value, scope, context, context.ReturnType);
+        // A method that returns nothing refuses any value, which is said below, so a call written as
+        // the value is bound as a statement's would be rather than told it has no value as well.
+        var value = context.ReturnType is VoidType && statement.Value is InvocationExpression invocation
+            ? BindInvocation(invocation, scope, context)
+            : BindExpression(statement.Value, scope, context, context.ReturnType);
 
         if (context.ReturnType is VoidType)
         {
@@ -1692,7 +1696,7 @@ public sealed partial class Binder
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
-            InvocationExpression invocation => BindInvocation(invocation, scope, context),
+            InvocationExpression invocation => BindCallValue(invocation, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
@@ -2134,6 +2138,42 @@ public sealed partial class Binder
             $"'{messageType.Descriptor.FullName}' has no field named '{member.Name}'.",
             member.Span);
         return new IrLiteral(null, ErrorType.Instance, member.Span);
+    }
+
+    /// <summary>
+    /// Binds a call written where its value is used, which a call to a method that returns nothing
+    /// does not have (spec 16.2).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Every expression is bound for its value except the one a statement is made of, so this is the
+    /// one place the rule needs saying. A call standing as a statement of its own is bound by
+    /// <see cref="BindInvocation"/> directly, and is the one place a method that returns nothing can
+    /// be called.
+    /// </para>
+    /// <para>
+    /// Asked here rather than of each consumer, because a consumer only noticed when it had a reason
+    /// of its own to. Most did, since <c>void</c> matches nothing they expect, but two did not:
+    /// <c>==</c> found two <c>void</c>s of one type, and a <c>var</c> took <c>void</c> as its type.
+    /// Both compiled, and neither backend could build what was emitted. A consumer added later would
+    /// have to remember too.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindCallValue(InvocationExpression invocation, Scope scope, MethodContext context)
+    {
+        var bound = BindInvocation(invocation, scope, context);
+        if (bound is not IrMethodCall { Type: VoidType } call)
+        {
+            return bound;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.CallHasNoValue,
+            $"'{call.Target.Name}' returns nothing, so a call to it has no value to use.",
+            invocation.Span,
+            $"Call it as a statement of its own, '{call.Target.Name}(…);', or declare what "
+            + $"'{call.Target.Name}' returns (spec 16.2).");
+        return new IrValuelessCall(call);
     }
 
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
@@ -2642,6 +2682,11 @@ public sealed partial class Binder
                     binary.Span);
             }
 
+            if (!ordered && !HasEquality(left.Type))
+            {
+                ReportUndefinedEquality(binary, symbol, left.Type);
+            }
+
             return new IrBinary(op, left, right, ScalarType.BoolType, ArithmeticBehavior.Wrap, binary.Span);
         }
 
@@ -2686,6 +2731,52 @@ public sealed partial class Binder
 
         return new IrBinary(
             op, left, right, resultType, _policy.ResolveArithmetic(op, resultType), binary.Span);
+    }
+
+    /// <summary>
+    /// Whether <c>==</c> means anything for two values of this type. It does not for a message or a
+    /// repeated value until spec 13.3 says what makes two of them equal.
+    /// </summary>
+    /// <remarks>
+    /// Both places that compare two values ask this one question: an operator, and an
+    /// <c>expect return</c> (spec 25.3). When 13.3 decides, they change together, so neither states
+    /// the rule for itself.
+    /// </remarks>
+    private static bool HasEquality(PlType type) => type is not (MessageType or RepeatedType);
+
+    /// <summary>
+    /// Reports <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing
+    /// until spec 13.3 says what makes two of them equal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The backends had already given it two meanings. C# compares references, because protoc's
+    /// classes override <c>Equals</c> but not <c>==</c>, and neither does <c>RepeatedField</c>; so a
+    /// message built by a literal equals nothing, an equal one included, while a <c>Timestamp</c>,
+    /// which does overload <c>==</c>, compares by value. C++ declares no <c>==</c> for either, and the
+    /// comparison does not build.
+    /// </para>
+    /// <para>
+    /// It is refused rather than given a meaning. Equality the compiler wrote field by field would
+    /// compare fields the author may not count, an identifier or a timestamp, on a message the author
+    /// does not own, so the help points at the comparison only the author can write. Accepting it
+    /// later breaks nothing, where taking a meaning back would. The result is still a <c>bool</c>, as
+    /// an unordered <c>&lt;</c>'s is, so the expression around it reports nothing further.
+    /// </para>
+    /// </remarks>
+    private void ReportUndefinedEquality(BinaryExpression binary, string symbol, PlType operandType)
+    {
+        var isMessage = operandType is MessageType;
+        _diagnostics.Report(
+            DiagnosticCodes.OperandsHaveNoEquality,
+            $"Cannot apply '{symbol}' to two '{operandType.DisplayName}' values: what makes two "
+            + (isMessage ? "messages" : "repeated values") + " equal is not defined.",
+            binary.Span,
+            isMessage
+                ? "Compare the fields that decide it here, or declare a method that compares them "
+                  + "and call that (spec 13.3)."
+                : "Compare what matters about the elements instead, such as a count or a total "
+                  + "taken in a loop (spec 13.3).");
     }
 
     /// <summary>

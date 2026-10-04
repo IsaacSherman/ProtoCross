@@ -142,10 +142,11 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: maps, `switch`, `Result` types, asking which member of a `oneof` is set, and the
-Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read, tested with
-`has` and assigned, and assigning one unsets the others. The compiler refuses what it does not
-implement, such as a map field, rather than emitting something whose semantics differ from the spec.
+Not implemented: maps, `switch`, `Result` types, `==` between two messages, asking which member of a
+`oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can
+be read, tested with `has` and assigned, and assigning one unsets the others. The compiler refuses
+what it does not implement, such as a map field, rather than emitting something whose semantics
+differ from the spec.
 
 ### Building
 

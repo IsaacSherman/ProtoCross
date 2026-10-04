@@ -60,7 +60,8 @@ This section should be maintained as the authoritative list of open decisions.
   ([13.2](./§13-Messages.md#132-message-construction), [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). ~~Whether a repeated field may be given a whole repeated value,
   `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
   ([13.2](./§13-Messages.md#132-message-construction)).
-- Message equality semantics.
+- Message equality semantics. Until they are decided, `==` and `!=` refuse two messages and two
+  repeated values ([13.3](./§13-Messages.md#133-equality)).
 - ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
   the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; an
   element is appended with `place.append(value);`, to a field or to a local holding a repeated value;

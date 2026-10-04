@@ -191,7 +191,23 @@ public sealed record CompoundAssignmentStatement(
     SourceSpan Span,
     OnZeroClause? OnZero = null) : Statement(Span);
 
-public sealed record ExpressionStatement(Expression Expression, SourceSpan Span) : Statement(Span);
+public sealed record ExpressionStatement(Expression Expression, SourceSpan Span) : Statement(Span)
+{
+    /// <summary>Whether the semicolon that ends the statement was written, rather than found missing.</summary>
+    /// <remarks>
+    /// <para>
+    /// A statement nothing ended is one still being typed: <c>total</c>, on its way to
+    /// <c>total += 1;</c>, is an expression statement until the operator arrives. The parser has said
+    /// the semicolon is missing, and the binder does not say as well that a bare name is not a call
+    /// (spec 7.1), because that is the same unfinished statement reported twice on every keystroke.
+    /// </para>
+    /// <para>
+    /// Init-only and true by default, as <see cref="BlockStatement.IsClosed"/> is, so every existing
+    /// construction stays valid. A parser is the only thing that can have found the semicolon missing.
+    /// </para>
+    /// </remarks>
+    public bool IsTerminated { get; init; } = true;
+}
 
 public abstract record Expression(SourceSpan Span) : SyntaxNode(Span);
 

@@ -85,8 +85,10 @@ internal static class CompiledCorpus
     /// <summary>
     /// A file with several distinct mistakes in it: a member name never written, a parameter list
     /// that was abandoned, a call to a method that is not there, and a call through something that
-    /// could never be one -- the last two being the shapes that put an
-    /// <see cref="Ir.IrUncallableInvocation"/> in the tree with each of its two halves.
+    /// could never be one -- those two being the shapes that put an
+    /// <see cref="Ir.IrUncallableInvocation"/> in the tree with each of its two halves -- and a call
+    /// to a method that returns nothing, taken as a value, which puts an
+    /// <see cref="Ir.IrValuelessCall"/> there.
     /// </summary>
     public const string BrokenText =
         """
@@ -99,6 +101,10 @@ internal static class CompiledCorpus
 
                 return items.
             }
+
+            fn done() { }
+
+            fn k() -> int64 { var x = done(); return 0; }
 
             fn g( -> int64 { return nosuchmethod(1, 2); }
 

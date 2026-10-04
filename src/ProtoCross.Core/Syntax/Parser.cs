@@ -1261,8 +1261,8 @@ public sealed class Parser
             return ParseCompoundAssignment(start, expression, ToBinaryOperator(compound));
         }
 
-        var end = Expect(TokenKind.Semicolon).Span;
-        return new ExpressionStatement(expression, Spanning(start, end));
+        var terminated = TryExpect(TokenKind.Semicolon, out var semicolon);
+        return new ExpressionStatement(expression, Spanning(start, semicolon.Span)) { IsTerminated = terminated };
     }
 
     /// <summary>Parses the rest of <c>x op= y;</c>, from the operator on (spec 9.2).</summary>
