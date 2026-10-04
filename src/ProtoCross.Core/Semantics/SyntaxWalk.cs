@@ -71,6 +71,7 @@ public static class SyntaxWalk
             OnZeroClause { Fallback: { } fallback } => [fallback],
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
+            EnumMembershipExpression membership => [membership.Value, membership.EnumType],
             CastExpression cast => cast.OnUnknown is { } onUnknown
                 ? [cast.Operand, cast.TargetType, onUnknown]
                 : [cast.Operand, cast.TargetType],

@@ -15,9 +15,10 @@ public sealed partial class CppBackend
     /// <remarks>
     /// <para>
     /// Generated code names a type wherever it declares one: a parameter, a return value, a local, the
-    /// message a literal builds, an enum value it spells, or the enum a number is converted to. Every such type must be declared by a
-    /// header the file has included. A type reached only through a field accessor needs nothing,
-    /// because it belongs to a schema the field's own schema imports.
+    /// message a literal builds, an enum value it spells, the enum a number is converted to, or the
+    /// enum whose names it asks about. Every such type must be declared by a header the file has
+    /// included. A type reached only through a field accessor needs nothing, because it belongs to a
+    /// schema the field's own schema imports.
     /// </para>
     /// <para>
     /// Only the schemas not already declared, because each protoc header includes the header of every
@@ -48,6 +49,7 @@ public sealed partial class CppBackend
                 IrMessageLiteral literal => [literal.MessageType],
                 IrEnumValue value => [value.EnumType],
                 IrNumberToEnum conversion => [conversion.EnumType],
+                IrEnumMembership membership => [membership.EnumType],
                 _ => Array.Empty<PlType>(),
             })
             .SelectMany(SchemasOf);

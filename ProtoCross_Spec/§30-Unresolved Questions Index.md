@@ -56,7 +56,8 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Enum unknown-value behavior, and whether an enum converts to or from an integer.~~ Decided: an
   enum converts to and from `int32` with `as`. A number the enum does not name is kept by an open
   enum, with a note, and ends the program for a closed one, with a warning, unless an `on_unknown`
-  clause says otherwise ([12.1](./§12-Enums.md#121-an-enums-number)).
+  clause says otherwise ([12.1](./§12-Enums.md#121-an-enums-number)). `value in Enum` asks whether a value has a name
+  ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)).
 - ~~Message construction support.~~ Decided: a literal, `new T { field: value, … }`, which is an
   expression wherever one may be written and is how a fixture's fields are written too; its values
   evaluate in the order written, and storing a message that is not a literal stores a copy

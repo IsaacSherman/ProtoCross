@@ -1701,6 +1701,7 @@ public sealed partial class Binder
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
             CastExpression cast => BindCast(cast, scope, context),
+            EnumMembershipExpression membership => BindEnumMembership(membership, scope, context),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),

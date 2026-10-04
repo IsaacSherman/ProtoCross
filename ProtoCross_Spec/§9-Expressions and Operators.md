@@ -34,6 +34,7 @@ and or not
 && || !
 &  |  ^  ~  <<  >>
 has
+in
 =
 +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 ```
@@ -41,6 +42,10 @@ has
 `has` is a prefix operator on a field, producing `bool` ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). It sits at the same precedence as
 `not`, and unlike every other operator its operand is a field rather than a value -- reading the
 value is exactly what it must not do.
+
+`in` asks whether an enum value is one its enum names, `status in OrderStatus`, producing `bool`
+([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)). Its right side is a type rather than a value, and it binds as a relational
+operator does.
 
 Normative Requirements:
 
@@ -64,7 +69,7 @@ From the tightest binding to the loosest. Every binary operator is left-associat
 | `*` `/` `%` | Multiplicative |
 | `+` `-` | Additive |
 | `<<` `>>` | Shift |
-| `<` `<=` `>` `>=` | Relational |
+| `<` `<=` `>` `>=` `in` | Relational |
 | `==` `!=` | Equality |
 | `&` | Bitwise and |
 | `^` | Bitwise exclusive or |

@@ -931,6 +931,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumToNumber number => $"static_cast<::std::int32_t>({Expression(number.Operand, placement)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement),
+
+        // protoc's _IsValid takes an int, which an enum declared over int converts to.
+        IrEnumMembership membership
+            => $"{QualifiedEnumName(membership.EnumType.Descriptor)}_IsValid({Expression(membership.Value, placement)})",
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),

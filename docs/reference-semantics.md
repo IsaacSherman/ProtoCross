@@ -106,6 +106,7 @@ was written by the author as `x as int64`.
 | Enum to integer | A cast to any integer type. | `status as int32`, and to no other type: `int32` is protobuf's enum width. | `static_cast<std::int32_t>(status)`. | `--` | 12.1 |
 | Integer to enum, a number the enum names | A cast from any integer type. | `n as Status`, from an `int32` only. An integer literal converted to an enum is an `int32`. | `static_cast<Status>(n)`. | `--` | 12.1 |
 | Integer to enum, a number the enum does not name | Stored as it is: a C# enum holds any value of its underlying type. | An `on_unknown` clause says: a fallback value, or `fail`. With none, an open enum keeps the number, with a note (`PC5000`), and a closed enum terminates, exit code 70, with a warning (`PC0102`). See [Departures](#departures-from-c). | Kept by the cast, since protoc declares every enum over `int`. A fallback or a failure asks protoc's `_IsValid`. A closed enum's setter asserts in a debug build that the number is named, which is why the default never makes one. | `--` | 12.1 |
+| Whether an enum value has a name | `Enum.IsDefined`. | `value in Enum`, a `bool`. The value must be of the enum named; a number is converted first. | protoc's `Enum_IsValid(value)`, which holds the same values. | `--` | 12.2 |
 
 ## Presence and unset fields
 

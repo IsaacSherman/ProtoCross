@@ -59,7 +59,8 @@ Open Questions:
 - Should enum exhaustiveness be checked? proto3 enums are open -- a field may legally hold a number
   with no declared value -- so no switch over one is exhaustive at runtime regardless of the schema.
 - ~~Should unknown enum values be representable?~~ Decided: yes. An open enum keeps a number it
-  does not name, and a conversion or a fixture can make one ([12.1](#121-an-enums-number)).
+  does not name, a conversion or a fixture can make one ([12.1](#121-an-enums-number)), and `in` asks whether
+  a value has a name ([12.2](#122-whether-a-value-has-a-name)).
 - ~~Should an enum be convertible to or from an integer?~~ Decided: to and from `int32`, with `as`
   ([12.1](#121-an-enums-number)).
 
@@ -144,3 +145,37 @@ required on every conversion, as `on_zero` is on every integer division, was con
 rejected: most conversions are of numbers the author already trusts, and a clause written on all of
 them says nothing about any. The note and the warning say what the default is, where a reader cannot
 otherwise see it.
+
+### 12.2 Whether a Value Has a Name
+
+**Decided: `value in Enum` asks whether a value is one its enum names.**
+
+A value can hold a number its enum does not name: an open enum's field keeps one when a message is
+parsed, and a conversion keeps one when nothing says otherwise ([12.1](#121-an-enums-number)). Such a value
+equals none of the names, so no comparison can tell it apart from them, and `in` is what asks.
+
+```protocross
+extend Order {
+    fn status_code_or_zero() -> int32 {
+        if not (status in OrderStatus) {
+            return 0;
+        }
+
+        return status as int32;
+    }
+}
+```
+
+Normative Requirements:
+
+- `value in Enum` is a `bool`: true where the value is one of the numbers the enum declares, aliases
+  included. It binds as `<` does ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so `not` needs parentheses around it, as it does around a
+  comparison.
+- The right side is a type, which must be an enum (`PC0104`), and the value must be of that enum
+  (`PC0105`). A number is converted first, `n as Status in Status`, which is the question that can
+  be asked of it, and the help says so. The type in the test is the type of the thing tested, so a
+  reader can check one against the other on the line.
+- `in` is already reserved, as the word a `for` loop is written with. A `for` reads its own `in`
+  before its collection, so a test inside the collection or the body is a test.
+- Whether a value is named is asked of what protoc generated, as a conversion's fallback is
+  ([12.1](#121-an-enums-number)): `Enum.IsDefined` in C#, and the enum's `_IsValid` in C++.

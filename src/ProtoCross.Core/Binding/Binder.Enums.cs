@@ -9,9 +9,10 @@ public sealed partial class Binder
 {
     // --- an enum's number ---
     //
-    // 'status as int32' and 'n as OrderStatus' (spec 12). An enum's number is an int32, as protobuf's
-    // is, so each direction has exactly one other type. Coming in, a number may be one the enum does
-    // not name, and what becomes of it is decided here and stamped on the node.
+    // 'status as int32' and 'n as OrderStatus' (spec 12.1). An enum's number is an int32, as
+    // protobuf's is, so each direction has exactly one other type. Coming in, a number may be one the
+    // enum does not name, and what becomes of it is decided here and stamped on the node. Whether a
+    // value is one its enum names, 'status in OrderStatus', is asked here too (spec 12.2).
 
     /// <summary>Binds <c>status as int32</c>, an enum's number.</summary>
     private IrExpression BindEnumToNumber(CastExpression cast, IrExpression operand, EnumPlType source, PlType target)
@@ -171,6 +172,49 @@ public sealed partial class Binder
     /// </summary>
     private static string ExampleValueOf(CastExpression cast, EnumPlType target)
         => $"{cast.TargetType.Name.Text}.{target.Descriptor.Values[0].Name}";
+
+    /// <summary>Binds <c>status in OrderStatus</c>, whether a value is one its enum names (spec 12.2).</summary>
+    /// <remarks>
+    /// The value has to be of the enum named, rather than of any enum or any number. The test is one
+    /// a reader can check against the line it is on: the type in it is the type of the thing asked
+    /// about. A number is converted first, <c>n as Level in Level</c>, which says what it is asking.
+    /// </remarks>
+    private IrExpression BindEnumMembership(EnumMembershipExpression membership, Scope scope, MethodContext context)
+    {
+        var value = BindExpression(membership.Value, scope, context, null);
+        var named = ResolveTypeReference(membership.EnumType);
+
+        if (value.Type is ErrorType || named is ErrorType)
+        {
+            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+        }
+
+        if (named is not EnumPlType enumType)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MembershipNeedsAnEnum,
+                $"'{named.DisplayName}' is not an enum, so it has no names for 'in' to look among.",
+                membership.EnumType.Span,
+                "'in' asks whether a value is one its enum names, as in 'status in OrderStatus' (spec 12.2).");
+            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+        }
+
+        if (!TypesMatch(enumType, value.Type))
+        {
+            var written = membership.EnumType.Name.Text;
+
+            _diagnostics.Report(
+                DiagnosticCodes.MembershipTypeMismatch,
+                $"A '{value.Type.DisplayName}' is not a value of '{enumType.DisplayName}', so 'in' cannot look for it among its names.",
+                membership.Value.Span,
+                value.Type is ScalarType { Kind: ScalarKind.Int32 }
+                    ? $"Ask about the value the number makes: 'x as {written} in {written}' (spec 12.2)."
+                    : "'in' asks about a value of the enum it names (spec 12.2).");
+            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+        }
+
+        return new IrEnumMembership(value, enumType, membership.Span);
+    }
 
     /// <summary>
     /// Reports an <c>on_unknown</c> clause on a conversion whose target is not an enum, and binds its

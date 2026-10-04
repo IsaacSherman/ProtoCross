@@ -581,6 +581,8 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrConversion conversion => EmitConversion(conversion, placement, receiverName),
         IrEnumToNumber number => $"((int){Expression(number.Operand, placement, receiverName)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement, receiverName),
+        IrEnumMembership membership
+            => $"{CSharpRuntime.EnumsTypeName}.IsNamed({Expression(membership.Value, placement, receiverName)})",
         IrEnumValue enumValue => "global::"
             + NameConventions.GetCSharpTypeName(enumValue.EnumType.Descriptor)
             + "." + NameConventions.GetCSharpValueName(enumValue.Value),

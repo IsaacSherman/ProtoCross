@@ -10,7 +10,7 @@
 //
 // C# stores any int in an enum and C++ any int in an enum declared over int, so a kept number must
 // come back out unchanged in both. A fixture writes one through the same conversion, which is how a
-// test reaches a value no schema names.
+// test reaches a value no schema names, and `in` asks whether a value has a name.
 
 import proto "enum_numbers.proto";
 
@@ -56,6 +56,24 @@ extend EnumNumberCase {
     // A closed enum with nothing written: a number it does not name ends the program.
     fn stored_shape() -> NumberedShape {
         return number as NumberedShape;
+    }
+
+    fn fruit_is_named() -> bool {
+        return fruit in NumberedFruit;
+    }
+
+    fn shape_is_named() -> bool {
+        return shape in NumberedShape;
+    }
+
+    // A kept number asked about before it is used, which is what 'in' is for.
+    fn fruit_or_minus_one(n: int32) -> int32 {
+        var fruit_now: NumberedFruit = n as NumberedFruit;
+        if not (fruit_now in NumberedFruit) {
+            return -1;
+        }
+
+        return fruit_now as int32;
     }
 }
 
@@ -205,4 +223,46 @@ test EnumNumberCase.stored_shape "a closed enum ends the program on a number it 
     }
 
     expect fail;
+}
+
+test EnumNumberCase.fruit_is_named "a named value is in its enum" {
+    receiver {
+        fruit: NumberedFruit.NUMBERED_FRUIT_PEAR,
+    }
+
+    expect return true;
+}
+
+test EnumNumberCase.fruit_is_named "a number no value names is not in its enum" {
+    receiver {
+        fruit: 9 as NumberedFruit,
+    }
+
+    expect return false;
+}
+
+test EnumNumberCase.shape_is_named "a closed enum's value is in its enum" {
+    receiver {
+        shape: NumberedShape.NUMBERED_SHAPE_SQUARE,
+    }
+
+    expect return true;
+}
+
+test EnumNumberCase.fruit_or_minus_one "a named number is used" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    expect return 1;
+}
+
+test EnumNumberCase.fruit_or_minus_one "a number no value names is caught by 'in'" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return -1;
 }

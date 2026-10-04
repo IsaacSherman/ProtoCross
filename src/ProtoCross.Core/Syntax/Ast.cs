@@ -311,6 +311,18 @@ public sealed record CastExpression(
     OnUnknownClause? OnUnknown = null) : Expression(Span);
 
 /// <summary>
+/// Whether an enum value is one its enum names, <c>status in OrderStatus</c> (spec 12.2).
+/// </summary>
+/// <remarks>
+/// Not a <see cref="BinaryExpression"/>, because its right side is a type rather than a value: it
+/// asks about the names a type declares, and a value written there would be a different question.
+/// </remarks>
+public sealed record EnumMembershipExpression(
+    Expression Value,
+    TypeReference EnumType,
+    SourceSpan Span) : Expression(Span);
+
+/// <summary>
 /// The <c>on_unknown</c> clause of a conversion to an enum: either a value to use instead of a
 /// number the enum does not name, or <c>fail</c>, which terminates deterministically (spec 12).
 /// </summary>

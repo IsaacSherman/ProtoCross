@@ -746,6 +746,15 @@ public sealed record IrNumberToEnum(
     IrExpression? Fallback,
     SourceSpan Span) : IrExpression(EnumType, Span);
 
+/// <summary>Whether an enum value is one its enum names, <c>status in OrderStatus</c> (spec 12.2).</summary>
+/// <remarks>
+/// The enum is carried rather than read off the value's type at emission, because it is what C++ asks:
+/// protoc's <c>_IsValid</c> is a function of the enum, and the include it needs comes from here as
+/// well.
+/// </remarks>
+public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, SourceSpan Span)
+    : IrExpression(ScalarType.BoolType, Span);
+
 /// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
 /// <remarks>
 /// <para>

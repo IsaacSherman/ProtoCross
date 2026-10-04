@@ -558,6 +558,14 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor OnUnknownTypeMismatch =
         new("PC0103", DiagnosticSeverity.Error, "on_unknown fallback type mismatch");
 
+    /// <summary><c>in</c> naming a type that is not an enum, which has no names to look in (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipNeedsAnEnum =
+        new("PC0104", DiagnosticSeverity.Error, "'in' needs an enum");
+
+    /// <summary><c>in</c> asked of a value that is not of the enum it names (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipTypeMismatch =
+        new("PC0105", DiagnosticSeverity.Error, "value is not of the enum");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
