@@ -16,6 +16,12 @@ enum EditionsClosed {
   EDITIONS_CLOSED_ONE = 1;
 }
 
+// A closed enum's field and an open one's, for what reading each is told (spec 21.4).
+message EditionsHolder {
+  EditionsClosed closed = 1;
+  EditionsDefault open = 2;
+}
+
 // Nested enums, to be found where they are declared however deep they are.
 message EditionsScope {
   enum Inner {

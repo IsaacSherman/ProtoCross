@@ -9,6 +9,10 @@ A backend is conforming if it:
 - Rejects unsupported ProtoCross features at compile time.
 - Does not silently change numeric, presence, collection, or error semantics.
 
+What a protobuf runtime hands a method after parsing is the runtime's, not the backend's. Two
+runtimes that parse one closed enum field differently are a boundary the language documents
+([21.4](./§21-Interoperability%20With%20Protobuf.md#214-enum-fields-after-parsing)), and a backend emitting the same read for each is conforming.
+
 ### 23.1 Backend Feature Matrix
 
 Status as of the first working compiler. "No" means the backend rejects the feature at compile

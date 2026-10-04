@@ -30,7 +30,7 @@ Severities:
 - A **warning** says something is probably not what the author meant, and the compilation goes on.
 - A **note** (`Information`) says something true about the code that a reader cannot see in it and
   may not have meant, where nothing is wrong: that a conversion keeps a number its enum does not name
-  ([12.1](./§12-Enums.md#121-an-enums-number)). It never fails anything, and its code is in its own range, so a
+  ([12.1](./§12-Enums.md#121-an-enums-number)), or that a field can read differently in C# and C++ ([21.4](./§21-Interoperability%20With%20Protobuf.md#214-enum-fields-after-parsing)). It never fails anything, and its code is in its own range, so a
   reader can tell how much a code matters from its number.
 
 Code ranges:

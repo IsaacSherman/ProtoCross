@@ -1863,6 +1863,11 @@ public sealed partial class Binder
             }
         }
 
+        if (EnumOpenness.IsClosedInCpp(field))
+        {
+            ReportClosedEnumRead(field, span);
+        }
+
         return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
     }
 

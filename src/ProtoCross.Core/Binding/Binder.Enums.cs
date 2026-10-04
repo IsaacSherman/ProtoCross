@@ -239,6 +239,31 @@ public sealed partial class Binder
     }
 
     /// <summary>
+    /// Notes a read of a field C++ parses as a closed enum, which C# parses as an open one (spec 21.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The owner's decision on #166: ProtoCross follows each protobuf runtime's representation of an
+    /// enum field after parsing, and does not try to reconcile them. From the same bytes, C# keeps a
+    /// number the enum does not name and C++ sets it aside with the unknown fields, so a method can
+    /// answer differently in the two. That is a boundary the language documents, not a mistake in
+    /// the method, so it is a note and has no help: there is nothing to change on the line.
+    /// </para>
+    /// <para>
+    /// On the read, and on every one, because a parsed message is the only way such a number reaches a
+    /// closed enum in C#, and a read is where the two runtimes' answers part. A write, a <c>has</c>
+    /// test and a conversion are not reads of a parsed number, and are not noted.
+    /// </para>
+    /// </remarks>
+    private void ReportClosedEnumRead(FieldDescriptor field, SourceSpan span)
+        => _diagnostics.Report(
+            DiagnosticCodes.ClosedEnumReadsDifferByRuntime,
+            $"C++ parses '{field.Name}' as a closed enum field and C# as an open one, so a parsed number "
+            + $"'{field.EnumType.FullName}' does not name is kept by C# and set aside with the unknown "
+            + "fields by C++, and this read can differ between them.",
+            span);
+
+    /// <summary>
     /// Reports an <c>on_unknown</c> clause on a conversion whose target is not an enum, and binds its
     /// fallback anyway, so a name inside it is still found and still checked.
     /// </summary>

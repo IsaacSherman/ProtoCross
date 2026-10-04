@@ -40,9 +40,8 @@ public static class EnumOpenness
     {
         ArgumentNullException.ThrowIfNull(descriptor);
 
-        var schema = Schemas.GetValue(descriptor.File, file => file.ToProto());
+        var schema = SchemaOf(descriptor.File);
 
-        // An empty syntax is proto2, as protoc writes it.
         return schema.Syntax switch
         {
             "proto3" => false,
@@ -50,6 +49,34 @@ public static class EnumOpenness
             _ => true,
         };
     }
+
+    /// <summary>
+    /// Whether protobuf's C++ runtime parses <paramref name="field"/> as a closed enum field, setting a
+    /// number its enum does not name aside with the message's unknown fields (spec 21.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// C++ decides by field rather than by enum. A field a proto2 file declares is closed even where
+    /// its enum, declared in a proto3 file, is open, which protobuf calls a legacy closed enum. C#
+    /// reads every enum field as open, so this is the field a C# method and a C++ method can read
+    /// differently from the same bytes.
+    /// </para>
+    /// <para>
+    /// Editions' <c>legacy_closed_enum</c> C++ feature, which can say the same of a field in an editions
+    /// file, is not read. It is an extension of the feature set the runtime this compiler links does
+    /// not register, it exists to migrate proto2 files, and spec 21.4 records the omission.
+    /// </para>
+    /// </remarks>
+    public static bool IsClosedInCpp(FieldDescriptor field)
+    {
+        ArgumentNullException.ThrowIfNull(field);
+
+        return field.FieldType == FieldType.Enum
+            && (IsClosed(field.EnumType) || SchemaOf(field.File).Syntax is not ("proto3" or "editions"));
+    }
+
+    /// <summary>A schema's own description of itself, where an empty syntax is proto2, as protoc writes it.</summary>
+    private static FileDescriptorProto SchemaOf(FileDescriptor file) => Schemas.GetValue(file, schema => schema.ToProto());
 
     /// <summary>
     /// The <c>enum_type</c> feature <paramref name="schema"/> states for <paramref name="descriptor"/>,

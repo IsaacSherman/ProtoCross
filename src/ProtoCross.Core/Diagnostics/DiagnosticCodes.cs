@@ -656,4 +656,11 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor UnnamedNumberIsKept =
         new("PC5000", DiagnosticSeverity.Information, "unnamed number is kept");
+
+    /// <summary>
+    /// A read of a field C++ parses as a closed enum and C# as an open one, which the two can read
+    /// differently from the same bytes (spec 21.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ClosedEnumReadsDifferByRuntime =
+        new("PC5001", DiagnosticSeverity.Information, "closed enum reads differ by runtime");
 }

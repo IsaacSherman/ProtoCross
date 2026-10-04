@@ -2,6 +2,8 @@ syntax = "proto2";
 
 package protocross.tests.openness;
 
+import "fixtures.proto";
+
 // Every proto2 enum is closed (spec 12), whatever it declares. Its values start at 1, as a closed
 // enum's may, so zero is a number it does not name.
 enum Proto2Status {
@@ -13,4 +15,8 @@ message Proto2Holder {
   optional Proto2Status status = 1;
   optional int32 number = 2;
   repeated Proto2Status statuses = 3;
+
+  // A proto3 enum, open where it is declared, which C++ still parses as closed in a proto2 file's
+  // field: a legacy closed enum (spec 21.4).
+  optional protocross.tests.TopLevelStatus open_status = 4;
 }
