@@ -206,6 +206,7 @@ public sealed partial class Binder
         }
 
         _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
+        _configuredFallbacks = ResolveConfiguredFallbacks();
 
         var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
 

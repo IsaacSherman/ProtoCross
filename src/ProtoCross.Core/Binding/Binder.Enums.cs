@@ -1,3 +1,5 @@
+using Google.Protobuf.Reflection;
+using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Syntax;
@@ -27,8 +29,8 @@ public sealed partial class Binder
             $"Cannot convert '{source.DisplayName}' to '{target.DisplayName}'.",
             cast.Span,
             target is ScalarType { IsNumeric: true }
-                ? $"An enum converts only to 'int32', the width of its number (spec 12). Convert that: 'x as int32 as {target.DisplayName}'."
-                : "An enum converts only to 'int32', the width of its number (spec 12).");
+                ? $"An enum converts only to 'int32', the width of its number (spec 12.1). Convert that: 'x as int32 as {target.DisplayName}'."
+                : "An enum converts only to 'int32', the width of its number (spec 12.1).");
         return new IrLiteral(null, ErrorType.Instance, cast.Span);
     }
 
@@ -60,7 +62,7 @@ public sealed partial class Binder
             operand = BindIntegerLiteral(written, cast.Operand.Span, ScalarType.Int32Type);
         }
 
-        var (onUnnamed, fallback) = BindOnUnknown(cast, target, scope, context);
+        var onUnnamed = BindOnUnknown(cast, target, scope, context);
 
         if (operand.Type is ErrorType)
         {
@@ -74,41 +76,59 @@ public sealed partial class Binder
                 $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
                 cast.Span,
                 operand.Type is ScalarType { IsInteger: true } or EnumPlType
-                    ? $"Only an 'int32' converts to an enum, the width of its number (spec 12). Convert to that first: 'x as int32 as {cast.TargetType.Name.Text}'."
-                    : "Only an 'int32' converts to an enum, the width of its number (spec 12).");
+                    ? $"Only an 'int32' converts to an enum, the width of its number (spec 12.1). Convert to that first: 'x as int32 as {cast.TargetType.Name.Text}'."
+                    : "Only an 'int32' converts to an enum, the width of its number (spec 12.1).");
             return new IrLiteral(null, ErrorType.Instance, cast.Span);
         }
 
-        if (cast.OnUnknown is null)
+        if (onUnnamed.Source is UnnamedNumberSource.Default)
         {
             ReportUnstatedOnUnknown(cast, target);
         }
 
-        return new IrNumberToEnum(operand, target, onUnnamed, fallback, cast.Span);
+        return new IrNumberToEnum(
+            operand,
+            target,
+            onUnnamed.Behavior,
+            onUnnamed.Source,
+            onUnnamed.Fallback,
+            onUnnamed.ConfiguredFallback,
+            cast.Span);
     }
+
+    /// <summary>What a conversion to an enum makes of a number the enum does not name, and who said so.</summary>
+    private readonly record struct OnUnnamed(
+        UnnamedNumberBehavior Behavior,
+        UnnamedNumberSource Source,
+        IrExpression? Fallback = null,
+        EnumValueDescriptor? ConfiguredFallback = null);
 
     /// <summary>
     /// What a conversion to <paramref name="target"/> makes of a number it does not name: what the
-    /// clause says, or, where there is none, what protobuf does with one.
+    /// clause says, or else what the project's configuration says, or else what protobuf does with
+    /// one.
     /// </summary>
     /// <remarks>
     /// The default follows protobuf rather than choosing for it. An open enum keeps such a number when
     /// a message is parsed, so the conversion keeps it as well. A closed one refuses it, and a value
     /// protobuf cannot hold is not a value the conversion should invent, so it ends the program.
     /// </remarks>
-    private (UnnamedNumberBehavior OnUnnamed, IrExpression? Fallback) BindOnUnknown(
-        CastExpression cast,
-        EnumPlType target,
-        Scope scope,
-        MethodContext context)
+    private OnUnnamed BindOnUnknown(CastExpression cast, EnumPlType target, Scope scope, MethodContext context)
     {
         switch (cast.OnUnknown)
         {
+            case null when _configuredFallbacks.TryGetValue(target.Descriptor, out var configured):
+                return configured is { } value
+                    ? new(UnnamedNumberBehavior.Fallback, UnnamedNumberSource.Configuration, ConfiguredFallback: value)
+                    : new(UnnamedNumberBehavior.Fail, UnnamedNumberSource.Configuration);
+
             case null:
-                return (target.IsClosed ? UnnamedNumberBehavior.Fail : UnnamedNumberBehavior.Keep, null);
+                return new(
+                    target.IsClosed ? UnnamedNumberBehavior.Fail : UnnamedNumberBehavior.Keep,
+                    UnnamedNumberSource.Default);
 
             case { IsFail: true }:
-                return (UnnamedNumberBehavior.Fail, null);
+                return new(UnnamedNumberBehavior.Fail, UnnamedNumberSource.Clause);
         }
 
         var clause = cast.OnUnknown;
@@ -124,12 +144,12 @@ public sealed partial class Binder
                 $"Write one of its values, such as '{ExampleValueOf(cast, target)}'.");
         }
 
-        return (UnnamedNumberBehavior.Fallback, fallback);
+        return new(UnnamedNumberBehavior.Fallback, UnnamedNumberSource.Clause, fallback);
     }
 
     /// <summary>
-    /// Says what a conversion with no clause does with a number its enum does not name: keeps it, as
-    /// a note, or ends the program, as a warning.
+    /// Says what a conversion does with a number its enum does not name where neither the conversion
+    /// nor the project says: keeps it, as a note, or ends the program, as a warning.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -154,7 +174,8 @@ public sealed partial class Binder
                 $"'{target.DisplayName}' is closed, and nothing says what becomes of a number it does "
                 + "not name, so one ends the program.",
                 cast.Span,
-                $"Write 'on_unknown fail' to say so, or 'on_unknown {example}' to use a value instead (spec 12).");
+                $"Write 'on_unknown fail' to say so, or 'on_unknown {example}' to use a value instead. "
+                + $"<Enums> in {ProjectConfig.FileName} says it once for every conversion (spec 12.1).");
             return;
         }
 
@@ -163,7 +184,8 @@ public sealed partial class Binder
             $"'{target.DisplayName}' is open, so a number it does not name is kept, as a value equal to "
             + "none of its names.",
             cast.Span,
-            $"Write 'on_unknown {example}' to use a value instead, or 'on_unknown fail' to end the program (spec 12).");
+            $"Write 'on_unknown {example}' to use a value instead, or 'on_unknown fail' to end the program. "
+            + $"<Enums> in {ProjectConfig.FileName} says it once for every conversion (spec 12.1).");
     }
 
     /// <summary>
@@ -236,11 +258,118 @@ public sealed partial class Binder
             $"'on_unknown' says what becomes of a number an enum does not name, and '{target.DisplayName}' "
             + "is not an enum.",
             clause.Span,
-            "Delete the clause (spec 12).");
+            "Delete the clause (spec 12.1).");
 
         if (clause.Fallback is { } fallback)
         {
             BindExpression(fallback, scope, context, null);
         }
+    }
+
+    // --- what the project says about an enum's numbers ---
+
+    /// <summary>
+    /// What <c>protocross.config.xml</c> says a conversion to each enum makes of a number the enum
+    /// does not name: the value to use, or null for <c>fail</c> (spec 10.4, 12.1).
+    /// </summary>
+    /// <remarks>
+    /// Resolved once, before anything is bound, against every schema the compilation loaded, so each
+    /// setting is checked whether or not anything converts to its enum, and a problem with one is
+    /// reported once rather than at each conversion.
+    /// </remarks>
+    private Dictionary<EnumDescriptor, EnumValueDescriptor?> _configuredFallbacks = [];
+
+    /// <summary>Resolves the configuration's <c>&lt;UnknownFallback&gt;</c> settings to enums and values.</summary>
+    /// <remarks>
+    /// <para>
+    /// A setting naming no enum this compilation loaded is passed over in silence. Every source under
+    /// a configuration file shares it, and each imports its own schemas, so a setting about an enum
+    /// one source never sees is not a mistake in the file. A setting naming a message, an ambiguous
+    /// name, a value its enum does not declare, or an enum another setting already named is a
+    /// mistake wherever it is read, and is reported at the setting.
+    /// </para>
+    /// <para>
+    /// Simple names resolve as a type position resolves them, among every enum and message, so a
+    /// setting means what the same name written in a conversion would.
+    /// </para>
+    /// </remarks>
+    private Dictionary<EnumDescriptor, EnumValueDescriptor?> ResolveConfiguredFallbacks()
+    {
+        var resolved = new Dictionary<EnumDescriptor, EnumValueDescriptor?>();
+
+        foreach (var setting in _config.EnumFallbacks)
+        {
+            if (ConfiguredEnum(setting) is not { } descriptor)
+            {
+                continue;
+            }
+
+            if (resolved.ContainsKey(descriptor))
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.DuplicateConfigurationSetting,
+                    $"'Enums/UnknownFallback' is stated more than once for '{descriptor.FullName}'.",
+                    setting.TypeSpan,
+                    "Two answers to one question is not a configuration, it is a coin toss. Keep one.");
+                continue;
+            }
+
+            if (setting.IsFail)
+            {
+                resolved.Add(descriptor, null);
+                continue;
+            }
+
+            if (descriptor.FindValueByName(setting.Value) is not { } value)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.InvalidEnumFallback,
+                    $"'{descriptor.FullName}' has no value named '{setting.Value}'.",
+                    setting.ValueSpan,
+                    $"Write one of its names as the schema spells it, such as {descriptor.Values[0].Name}, "
+                    + $"or {EnumUnknownFallback.Fail}.");
+                continue;
+            }
+
+            resolved.Add(descriptor, value);
+        }
+
+        return resolved;
+    }
+
+    /// <summary>The enum a setting names, or null where it names none this compilation loaded.</summary>
+    private EnumDescriptor? ConfiguredEnum(EnumUnknownFallback setting)
+    {
+        if (_types.FindEnum(setting.Type) is { } byFullName)
+        {
+            return byFullName;
+        }
+
+        var enums = _types.EnumsNamed(setting.Type);
+        var messages = _types.MessagesNamed(setting.Type);
+
+        if (_types.FindMessage(setting.Type) is not null || (enums.Count == 0 && messages.Count > 0))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{setting.Type}' is a message, and only an enum has numbers without names.",
+                setting.TypeSpan,
+                "Name an enum.");
+            return null;
+        }
+
+        if (_types.IsAmbiguousAsATypeName(setting.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{setting.Type}' matches more than one type: "
+                + string.Join(", ", enums.Select(e => e.FullName).Concat(messages.Select(m => m.FullName)).Order(StringComparer.Ordinal))
+                + ".",
+                setting.TypeSpan,
+                "Qualify the name with its protobuf package.");
+            return null;
+        }
+
+        return enums is [var only] ? only : null;
     }
 }

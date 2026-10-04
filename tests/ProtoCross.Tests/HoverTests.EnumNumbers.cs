@@ -1,3 +1,4 @@
+using ProtoCross.LanguageServer.Hosting;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -20,6 +21,35 @@ public partial class HoverTests
             expected,
             await ValidExpressionCardAsync("protocross.tests.TopLevelStatus", expression, "as TopLevelStatus"),
             StringComparison.Ordinal);
+
+    /// <summary>
+    /// Where the project's configuration says what a number becomes, nothing on the line shows it, so
+    /// the card says the value and whose answer it is (spec 10.4).
+    /// </summary>
+    [Theory]
+    [InlineData("TOP_LEVEL_STATUS_OK", "becomes `TOP_LEVEL_STATUS_OK`, as `protocross.config.xml` states")]
+    [InlineData("fail", "terminates the program, exit code 70, as `protocross.config.xml` states")]
+    public async Task AConversionTheProjectSpeaksForSaysSo(string value, string expected)
+    {
+        const string text =
+            "import proto \"fixtures.proto\";\n"
+            + "extend Outer { fn f() -> TopLevelStatus { return small_count as TopLevelStatus; } }";
+        var (documents, uri) = EditorFixture.Open(text);
+
+        File.WriteAllText(
+            Path.Combine(uri.Directory!, "protocross.config.xml"),
+            $"<ProtoCross><Enums><UnknownFallback Type=\"TopLevelStatus\">{value}</UnknownFallback></Enums></ProtoCross>");
+
+        var provider = new HoverProvider(documents, EditorFixture.Configuration(), EditorFixture.Loaders());
+        var asked = provider.Read(EditorFixture.Ask(uri, text, EditorFixture.At(text, "as TopLevelStatus")));
+
+        Assert.NotNull(asked);
+
+        var card = await provider.AnswerAsync(asked!, CancellationToken.None);
+
+        Assert.NotNull(card);
+        Assert.Contains(expected, card!.Contents.Value, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// An enum's number is exactly its number, so no policy governs it and the card claims none:

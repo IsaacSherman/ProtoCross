@@ -105,13 +105,18 @@ Normative Requirements:
     `as` after it converts the whole conversion: `n as Level on_unknown Level.LOW as int32` is a
     number again.
   - `on_unknown` on a conversion to anything but an enum is `PC0101`. Its fallback is still checked.
-- With no clause, a conversion does what protobuf does with such a number:
+- With no clause, a conversion does what the project's `protocross.config.xml` says for its enum, in
+  an `<UnknownFallback>` ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)): one of its values, or `fail`. Nothing more is reported, since
+  the project has said it. A clause on the conversion still decides over the file.
+- With neither, a conversion does what protobuf does with such a number:
   - An **open** enum keeps it, and the conversion carries `PC5000`, a note saying so. Converted back,
     the number is the one it was, in every backend.
   - A **closed** enum ends the program, as `on_unknown fail` would, and the conversion is `PC0102`, a
     warning that nothing says so. Protobuf will not hold such a number in a closed enum's field, and
     C++ asserts as much in a debug build, so a conversion that made one would invent a value the
     schema rules out.
+  - Either one's help writes the clause out with one of the enum's values, and names `<Enums>` as
+    the place to say it once for the project.
 - A proto2 enum is closed and a proto3 enum is open. An editions enum is closed where its
   `enum_type` feature says `CLOSED`, stated on the enum or else on its file. protoc accepts the
   feature nowhere between the two, and every edition so far defaults to open.

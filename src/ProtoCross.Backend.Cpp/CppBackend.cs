@@ -1387,13 +1387,22 @@ public sealed partial class CppBackend : ITestProjectScaffold
         {
             UnnamedNumberBehavior.Keep => value,
             UnnamedNumberBehavior.Fallback =>
-                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {Expression(conversion.Fallback!, placement)})",
+                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {FallbackOf(conversion, placement)})",
             UnnamedNumberBehavior.Fail =>
                 $"{RuntimeNamespace}::named_or_fail({value}, {isNamed}, {FormatString(conversion.EnumType.DisplayName)})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
     }
+
+    /// <summary>
+    /// The value a conversion to an enum falls back to: the one its clause wrote, or the one the
+    /// project's configuration names (spec 12.1).
+    /// </summary>
+    private static string FallbackOf(IrNumberToEnum conversion, Placement placement)
+        => conversion.Fallback is { } written
+            ? Expression(written, placement)
+            : QualifiedEnumValueName(conversion.ConfiguredFallback!);
 
     private static string EmitLiteral(IrLiteral literal) => literal.Value switch
     {

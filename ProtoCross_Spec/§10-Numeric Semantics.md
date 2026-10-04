@@ -325,6 +325,10 @@ wants is a property of the project rather than of the language. Those answers li
   <Presence>
     <UnsetMessageRead>RequireGuard</UnsetMessageRead><!-- RequireGuard (13.1) -->
   </Presence>
+  <Enums>
+    <!-- One per enum: a value name, or fail (12.1) -->
+    <UnknownFallback Type="shop.OrderStatus">ORDER_STATUS_UNSPECIFIED</UnknownFallback>
+  </Enums>
 </ProtoCross>
 ```
 
@@ -350,6 +354,16 @@ Normative Requirements:
   no file of its own is not reported, since it states nothing.
 - A setting absent from the file takes its default. A file absent entirely is the same as a file
   stating nothing.
+- `<Enums>` holds one `<UnknownFallback>` per enum it speaks for, saying what a conversion to that
+  enum with no `on_unknown` clause makes of a number the enum does not name: one of the enum's value
+  names, as the schema spells it, or `fail` ([12.1](./§12-Enums.md#121-an-enums-number)). `Type` names the enum by its full name or an
+  unambiguous simple name, resolved as a type position resolves it. The file is read before any
+  schema is, so a setting with no `Type`, no value or another attribute is `PC2014` when the file is
+  read, and one naming an enum twice in the same spelling is `PC2004`. Whether the enum and the value
+  exist is asked of the schemas each compilation loads: a message, an ambiguous name, a value the
+  enum does not declare, or one enum named twice in two spellings is `PC2014` or `PC2004` there,
+  reported at the setting. A setting naming an enum the compilation did not load is passed over,
+  because every source under the file shares it and each imports schemas of its own.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value
   (`PC2002`), a malformed file (`PC2003`), or a setting stated twice (`PC2004`) is an error, and the
   compilation stops. A file declaring a document type is malformed: the file has no use for one, and
@@ -365,7 +379,8 @@ Normative Requirements:
   here and reproduced everywhere else.
 - **Every generated file states the policy it was produced under, in its header.** The settings that
   shape the emitted code are named there, so a reader can tell why the code in front of them does
-  what it does without re-running the compiler to find out. Every backend states the same facts
+  what it does without re-running the compiler to find out. Each `<UnknownFallback>` is a line of its
+  own, as the file states it, so a project that states none has the header it always had. Every backend states the same facts
   about the same build, and no path is included: an absolute path would make otherwise identical
   output differ between machines.
 - **A host that explains an operation states the policy governing it, and states it nowhere else.**

@@ -641,6 +641,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ProjectNameIsNotANamespace =
         new("PC2013", DiagnosticSeverity.Error, "project name is not a namespace");
 
+    /// <summary>
+    /// An <c>&lt;UnknownFallback&gt;</c> in <c>protocross.config.xml</c> that does not name one enum and
+    /// one of its values, or <c>fail</c> (spec 10.4, 12.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidEnumFallback =
+        new("PC2014", DiagnosticSeverity.Error, "invalid enum fallback");
+
     // ------------------------------------------------------- informational notes
 
     /// <summary>
