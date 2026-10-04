@@ -1234,12 +1234,20 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// <remarks>
     /// <para>
     /// A question about the emitted C++ rather than about the IR, so it follows what the emitter
-    /// writes. The four node kinds here become literals and operators; everything else becomes a
-    /// call or a member access, and neither is a constant expression. Integer arithmetic is the case
-    /// worth naming: it looks constant and is not, because it routes through
+    /// writes. The node kinds here become literals, operators, casts and enum constants; everything
+    /// else becomes a call or a member access, and neither is a constant expression. Integer
+    /// arithmetic is the case worth naming: it looks constant and is not, because it routes through
     /// <c>protocross_runtime.h</c>, so <c>(2 - 2) as double</c> is a divisor the front end cannot
     /// work out. Counting it as constant anyway costs an inlined call that was not needed, which is
     /// the direction this predicate is allowed to be wrong in.
+    /// </para>
+    /// <para>
+    /// An enum constant is a constant expression, and so is a cast to or from an enum, so
+    /// <c>Level.LEVEL_ZERO as int32 as double</c> and <c>0 as Level as int32 as double</c> are zeros the
+    /// front end works out, and a division by either is refused by MSVC as <c>C2124</c> unless it goes
+    /// through <c>std::divides</c>. A conversion to an enum that falls back or fails is a call to the
+    /// runtime instead, and is counted as constant anyway when its number is, in the direction this is
+    /// allowed to be wrong in.
     /// </para>
     /// <para>
     /// A reference to a local is deliberately absent. MSVC does fold through a <c>const</c> local,
@@ -1253,6 +1261,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrUnary unary => IsConstantExpression(unary.Operand),
         IrBinary binary => IsConstantExpression(binary.Left) && IsConstantExpression(binary.Right),
         IrConversion conversion => IsConstantExpression(conversion.Operand),
+        IrEnumValue => true,
+        IrEnumToNumber number => IsConstantExpression(number.Operand),
+        IrNumberToEnum conversion => IsConstantExpression(conversion.Operand),
         _ => false,
     };
 
