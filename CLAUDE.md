@@ -198,7 +198,10 @@ longer does.
 **Markdown-only changes skip the build and test suites.** Documentation and workflow notes are checked
 locally, together with any test that reads them, and are never the reason to mark a pull request
 ready or to rerun a check. When the owner asks to merge, mark it ready as usual: the required checks
-then pass after checking the changed paths. Any change beyond Markdown still runs the full suites.
+then pass after checking the changed paths. A documentation update to a pull request that includes
+code reuses successful validation of the same non-Markdown tree, including the merged base, per
+suite and platform. Changed inputs or a missing successful record run the suites; an explicit
+workflow rerun runs them again. Documentation still has to pass any test that reads it locally.
 
 **Rebase onto the base; never merge the base into a branch.** A rebase replays each commit, so a
 conflict is resolved inside an ordinary commit that the pull request's diff shows. A merge buries the

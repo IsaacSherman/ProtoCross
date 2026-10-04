@@ -194,8 +194,11 @@ is nothing, and the cost of proposing a change is one run of the same suite you 
 
 When every changed file is Markdown, the required checks pass after checking the changed paths,
 without building or running the suites. This applies to both pull requests and pushes to `main`;
-any code, build input or workflow change still runs the full suite. Documentation and any tests that
-read it are checked locally before merging.
+a documentation-only update to a pull request that includes code reuses each suite's successful
+validation of the same non-Markdown tree. The record includes code, build inputs, workflows and the
+merged base, and is separate for each suite and platform. A changed tree or a missing record runs
+the suite; a failed run never records success. Rerunning a workflow explicitly runs the suites again.
+Documentation and any tests that read it are checked locally before merging.
 
 A run that skips a gated test fails, rather than passing quickly. A switch that quietly stayed shut
 produces a green build indistinguishable from a thorough one, which is the failure this arrangement

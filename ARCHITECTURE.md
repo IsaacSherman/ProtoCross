@@ -710,7 +710,10 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 suite, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
 every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
 required checks pass after checking the changed paths, without building or running the suites.
-For changes beyond Markdown it also runs the extension's
+A successful suite records the non-Markdown tree it tested, including the merged base, so later
+documentation updates to a pull request that includes code can reuse that validation. The record
+is separate per suite and platform; changed inputs, a missing record or an explicit rerun run the
+suite again. It also runs the extension's
 three suites on Windows, Linux and macOS, before and after a `protoc` is installed.
 
 ## Invariants that constrain a change
