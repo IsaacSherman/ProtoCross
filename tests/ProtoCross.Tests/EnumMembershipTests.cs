@@ -1,6 +1,7 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 using Xunit;
 
@@ -74,6 +75,23 @@ public class EnumMembershipTests
         Assert.Empty(result.Diagnostics);
         Assert.Single(IrWalk.DescendantsAndSelf(result.Module!).OfType<IrForEach>());
         SingleMembership(result);
+    }
+
+    /// <summary>
+    /// A loop binding typed as a call, which completion can produce, leaves its header's <c>in</c> to
+    /// the loop's recovery. Read as a test of the call's broken parentheses, the collection's name
+    /// became a type and the rest of the header a call, reported as one nobody wrote.
+    /// </summary>
+    [Fact]
+    public void AnInAfterSomethingThatDidNotParseIsNotATest()
+    {
+        var result = CompileOuter(
+            "fn f() -> int64 { var n: int64 = 0; for helper() in nested_values.values { n += 1; } return n; }");
+
+        Assert.DoesNotContain(
+            SyntaxWalk.DescendantsAndSelf(result.SyntaxTree!),
+            node => node is EnumMembershipExpression);
+        Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.ExpressionIsNotCallable.Code);
     }
 
     // ------- what it refuses

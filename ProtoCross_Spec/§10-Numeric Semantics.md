@@ -356,7 +356,9 @@ Normative Requirements:
   stating nothing.
 - `<Enums>` holds one `<UnknownFallback>` per enum it speaks for, saying what a conversion to that
   enum with no `on_unknown` clause makes of a number the enum does not name: one of the enum's value
-  names, as the schema spells it, or `fail` ([12.1](./§12-Enums.md#121-an-enums-number)). `Type` names the enum by its full name or an
+  names, as the schema spells it, or `fail` ([12.1](./§12-Enums.md#121-an-enums-number)). `fail` always means the program ends, so a value
+  named `fail` can be chosen only by a clause, `on_unknown E.fail`. Each name has to be a protobuf name,
+  dotted for the enum, because it is written into every generated file's header. `Type` names the enum by its full name or an
   unambiguous simple name, resolved as a type position resolves it. The file is read before any
   schema is, so a setting with no `Type`, no value or another attribute is `PC2014` when the file is
   read, and one naming an enum twice in the same spelling is `PC2004`. Whether the enum and the value

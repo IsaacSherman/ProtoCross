@@ -403,6 +403,16 @@ public sealed record ProjectConfig(
 
         var type = named.Value.Trim();
 
+        if (!IsProtobufName(type, qualified: true))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{type}' is not the name of an enum.",
+                file.Span(named),
+                "Write its full name, such as shop.Flower, or its simple name, such as Flower.");
+            return false;
+        }
+
         if (value.Length == 0)
         {
             diagnostics.Report(
@@ -410,6 +420,16 @@ public sealed record ProjectConfig(
                 $"<UnknownFallback Type=\"{type}\"> does not say what a number the enum does not name becomes.",
                 file.Span(setting),
                 $"Write one of the enum's value names, or {EnumUnknownFallback.Fail}.");
+            return false;
+        }
+
+        if (value != EnumUnknownFallback.Fail && !IsProtobufName(value, qualified: false))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{value}' is not the name of a value.",
+                file.Span(setting),
+                $"Write one of the enum's value names as the schema spells it, or {EnumUnknownFallback.Fail}.");
             return false;
         }
 
@@ -430,6 +450,23 @@ public sealed record ProjectConfig(
             file.Span(named),
             written is null ? file.Span(setting) : file.SpanOfText(written)));
         return true;
+    }
+
+    /// <summary>Whether <paramref name="text"/> is a protobuf name, or, if qualified, several joined by dots.</summary>
+    /// <remarks>
+    /// Asked of the file because only the binder can say whether a name names anything, and a setting
+    /// about an enum a compilation never loads is never asked there. Its text still goes into every
+    /// generated file's header, where a line break, which an XML character reference can write,
+    /// would end the comment and leave the rest of the setting as code.
+    /// </remarks>
+    private static bool IsProtobufName(string text, bool qualified)
+    {
+        var parts = text.Split('.');
+
+        return (qualified || parts.Length == 1)
+            && parts.All(part => part.Length > 0
+                && (char.IsAsciiLetter(part[0]) || part[0] == '_')
+                && part.All(character => char.IsAsciiLetterOrDigit(character) || character == '_'));
     }
 
     private static readonly string[] KnownSections = ["Arithmetic", "Presence", "Enums"];

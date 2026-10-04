@@ -54,7 +54,7 @@ test_arg          = "arg" identifier "=" expression ";";
 test_expectation  = "expect" ( "return" expression | "fail" ) ";";
 
 conversion        = expression "as" type_ref                       (* an expression *)
-                    [ "on_unknown" ( expression | "fail" ) ];
+                    [ "on_unknown" ( postfix_expr | "fail" ) ];      (* begins with a name *)
 membership        = expression "in" type_ref;                      (* an expression *)
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];

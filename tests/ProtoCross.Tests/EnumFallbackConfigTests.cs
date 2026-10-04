@@ -77,6 +77,10 @@ public class EnumFallbackConfigTests
     [InlineData("<UnknownFallback Type=\" \">TOP_LEVEL_STATUS_OK</UnknownFallback>")]
     [InlineData("<UnknownFallback Type=\"TopLevelStatus\"></UnknownFallback>")]
     [InlineData("<UnknownFallback Type=\"TopLevelStatus\" Value=\"TOP_LEVEL_STATUS_OK\"/>")]
+    [InlineData("<UnknownFallback Type=\"shop..Flower\">PETUNIA</UnknownFallback>")]
+    [InlineData("<UnknownFallback Type=\"Top Level\">PETUNIA</UnknownFallback>")]
+    [InlineData("<UnknownFallback Type=\"TopLevelStatus\">TOP LEVEL</UnknownFallback>")]
+    [InlineData("<UnknownFallback Type=\"TopLevelStatus\">a.b</UnknownFallback>")]
     public void ASettingThatIsNotAnEnumAndAValueIsRefusedAndTheFileWithIt(string setting)
     {
         var (config, diagnostics) = Load(setting);
@@ -105,6 +109,22 @@ public class EnumFallbackConfigTests
         var error = Assert.Single(diagnostics);
         Assert.Equal(DiagnosticCodes.UnknownConfigurationElement.Code, error.Code);
         Assert.Contains("UnknownFallback", error.Help, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A name goes into every generated file's header as written, so a line break written as a
+    /// character reference, which XML keeps where it would turn a literal one into a space, is refused
+    /// before it can end a comment early. The enum need not be one any compilation loads.
+    /// </summary>
+    [Theory]
+    [InlineData("<UnknownFallback Type=\"elsewhere.Flower&#10;int x;\">PETUNIA</UnknownFallback>")]
+    [InlineData("<UnknownFallback Type=\"elsewhere.Flower\">PETUNIA&#10;int x;</UnknownFallback>")]
+    public void ALineBreakInANameIsRefusedBeforeItReachesAHeader(string setting)
+    {
+        var (config, diagnostics) = Load(setting);
+
+        Assert.Null(config);
+        Assert.Equal(DiagnosticCodes.InvalidEnumFallback.Code, Assert.Single(diagnostics).Code);
     }
 
     /// <summary>
@@ -216,9 +236,10 @@ public class EnumFallbackConfigTests
     [InlineData("<UnknownFallback Type=\"TopLevelStatus\">TOP_LEVEL_STATUS_SOMETIMES</UnknownFallback>")]
     [InlineData("<UnknownFallback Type=\"TopLevelStatus\">top_level_status_ok</UnknownFallback>")]
     [InlineData("<UnknownFallback Type=\"Outer\">fail</UnknownFallback>")]
+    [InlineData("<UnknownFallback Type=\"Kind\">fail</UnknownFallback>")]
     public void ASettingThatResolvesToNoEnumAndValueIsRefusedInTheFile(string setting)
     {
-        var result = CompileUnder(setting, ConvertsStatus);
+        var result = CompileUnder(setting, "import proto \"ambiguous_enums.proto\";\n" + ConvertsStatus);
 
         var error = Assert.Single(result.Diagnostics, d => d.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCodes.InvalidEnumFallback.Code, error.Code);

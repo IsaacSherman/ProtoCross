@@ -129,6 +129,18 @@ public class EnumNumberTests
         Assert.Equal(DiagnosticCodes.LiteralOutOfRangeForItsType.Code, error.Code);
     }
 
+    /// <summary>
+    /// With no clause, an out-of-range literal is still only out of range: it is not also told what
+    /// becomes of a number its enum does not name, since it names no number any enum can have.
+    /// </summary>
+    [Fact]
+    public void ALiteralNoInt32HoldsIsNotAlsoToldWhatAnUnnamedNumberBecomes()
+    {
+        var result = CompileOuter("fn f() -> TopLevelStatus { return 3000000000 as TopLevelStatus; }");
+
+        Assert.Equal(DiagnosticCodes.LiteralOutOfRangeForItsType.Code, Assert.Single(result.Diagnostics).Code);
+    }
+
     /// <summary>A conversion's operand still keeps its natural type wherever the target is not an enum.</summary>
     [Fact]
     public void ALiteralConvertedToANumberStillWraps()

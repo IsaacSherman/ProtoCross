@@ -1526,6 +1526,16 @@ public sealed class Parser
                 return left;
             }
 
+            // An 'in' after something that did not parse is the 'in' of a for header whose binding
+            // was mistyped, as in 'for x() in items', rather than a test of a value nobody wrote.
+            // Read as a test, it would take the collection's name for a type and turn the rest of the
+            // header into a call, reported as one, so it ends the expression as it did before 'in'
+            // was an operator.
+            if (Current.Kind == TokenKind.In && left is ErrorExpression)
+            {
+                return left;
+            }
+
             var operatorToken = Advance();
 
             if (operatorToken.Kind == TokenKind.In)

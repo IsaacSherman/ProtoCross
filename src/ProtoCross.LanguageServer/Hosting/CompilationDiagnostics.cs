@@ -85,9 +85,16 @@ public static class CompilationDiagnostics
 
         var protoc = result.SchemaFailure is { Output.Count: > 0 } failure ? failure.Output : null;
         var sources = SourcesSeenFrom.Of(result, owner);
+        var configuration = ConfigurationFileOf(result);
 
         foreach (var diagnostic in result.Diagnostics)
         {
+            if (configuration is { } file && IsPositionedIn(file, diagnostic.Span))
+            {
+                contribution.Add(file, mapper.Map(diagnostic, file.Text));
+                continue;
+            }
+
             if (!sources.Owns(diagnostic.Span))
             {
                 continue;
@@ -114,6 +121,27 @@ public static class CompilationDiagnostics
 
         return contribution;
     }
+
+    /// <summary>The configuration file a compilation ran under, where it has one with a path.</summary>
+    /// <remarks>
+    /// <para>
+    /// The binder checks a project's <c>&lt;UnknownFallback&gt;</c> settings against the schemas, which
+    /// only a compilation has, and reports what is wrong with one at the setting (spec 10.4). Filed
+    /// under the document as everything else a compilation says is, a problem on line 4 of the
+    /// configuration would be a squiggle on line 4 of a source that says something else entirely,
+    /// which is what spec 26.1 rules out. So it goes to the configuration file, at its place there, as
+    /// the problems found reading the file already do through the scheduler.
+    /// </para>
+    /// <para>
+    /// Told apart by the name spans carry, which for a configuration file is its file name. No source
+    /// can share it, since a source is a <c>.pcross</c>.
+    /// </para>
+    /// </remarks>
+    private static DocumentUri? ConfigurationFileOf(CompilationResult result)
+        => result.Config.Path is { } path && DocumentUri.TryParse(path, out var uri) ? uri : null;
+
+    private static bool IsPositionedIn(DocumentUri file, ProtoCross.Diagnostics.SourceSpan span)
+        => !span.IsNone && string.Equals(Path.GetFileName(file.Path), span.File, StringComparison.Ordinal);
 
     /// <summary>A compilation's sources, told apart into the one a document is and the others.</summary>
     /// <param name="Owner">The name the document's spans carry, or null when the compilation never parsed it.</param>

@@ -634,41 +634,23 @@ public sealed partial class Binder
             return scalar;
         }
 
-        // A fully qualified name is unambiguous by construction, so it is tried before any
-        // simple-name lookup that could report a false ambiguity.
-        if (Visible.FindMessage(name) is { } messageByFullName)
+        // The rule is the index's, so that completion, the configuration and this agree about what a
+        // type name names.
+        switch (Visible.ResolveTypeName(name))
         {
-            return NamedMessage(messageByFullName);
-        }
+            case SchemaMessageName message:
+                return NamedMessage(message.Descriptor);
 
-        if (Visible.FindEnum(name) is { } enumByFullName)
-        {
-            return NamedEnum(enumByFullName);
+            case SchemaEnumName enumType:
+                return NamedEnum(enumType.Descriptor);
         }
-
-        var messages = Visible.MessagesNamed(name);
-        var enums = Visible.EnumsNamed(name);
 
         // Asked of the index rather than counted here, because completion has to predict exactly this
         // and a second count is a second rule. The index names it for the position it governs.
         if (Visible.IsAmbiguousAsATypeName(name))
         {
-            // Messages and enums share one type name space here, so a name matching one of each is
-            // just as ambiguous as a name matching two enums.
-            var fullNames = messages.Select(m => m.FullName).Concat(enums.Select(e => e.FullName));
-
-            ReportAmbiguousTypeName(name, reference.Span, fullNames);
+            ReportAmbiguousTypeName(name, reference.Span, Visible.FullNamesOfTypesNamed(name));
             return ErrorType.Instance;
-        }
-
-        if (messages is [var onlyMessage])
-        {
-            return NamedMessage(onlyMessage);
-        }
-
-        if (enums is [var onlyEnum])
-        {
-            return NamedEnum(onlyEnum);
         }
 
         if (ReportIfOnlyTestSchemasDeclare(

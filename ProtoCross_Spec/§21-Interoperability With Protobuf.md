@@ -159,7 +159,8 @@ name. The runtimes do not agree on which enums that is. Protobuf's C# runtime tr
 open, in every release. Its C++ runtime honors a closed enum, and also treats a field a proto2 file
 declares as closed when its enum is a proto3 one. So from the same bytes, a closed enum field
 holding a number its enum does not name reads as that number in C#, and C++ sets the number aside
-with the message's unknown fields and reads the field as unset.
+with the message's unknown fields: a singular field reads as unset, and a repeated one reads without
+that element.
 
 ProtoCross does not try to reconcile the two. Doing so would mean parsing differently from the
 runtime a consumer's own code parses with, which is a larger divergence than this one. It is not

@@ -60,6 +60,13 @@ public sealed partial class Binder
         if (IntegerLiteralOf(cast.Operand) is { } written && operand.Type is not ErrorType)
         {
             operand = BindIntegerLiteral(written, cast.Operand.Span, ScalarType.Int32Type);
+
+            // Reported just now, and naming no value any enum can have, so the conversion has nothing
+            // more to say about it: not what becomes of a number it does not name, either.
+            if (!FitsIn(written.Value, ScalarType.Int32Type))
+            {
+                operand = new IrLiteral(null, ErrorType.Instance, cast.Operand.Span);
+            }
         }
 
         var onUnnamed = BindOnUnknown(cast, target, scope, context);
@@ -193,7 +200,10 @@ public sealed partial class Binder
     /// conversion wrote its type with, so that pasting it resolves to the same enum.
     /// </summary>
     private static string ExampleValueOf(CastExpression cast, EnumPlType target)
-        => $"{cast.TargetType.Name.Text}.{target.Descriptor.Values[0].Name}";
+        => $"{cast.TargetType.Name.Text}.{ExampleValueName(target.Descriptor)}";
+
+    /// <summary>The value of <paramref name="descriptor"/> a help line shows: the first it declares.</summary>
+    private static string ExampleValueName(EnumDescriptor descriptor) => descriptor.Values[0].Name;
 
     /// <summary>Binds <c>status in OrderStatus</c>, whether a value is one its enum names (spec 12.2).</summary>
     /// <remarks>
@@ -351,7 +361,7 @@ public sealed partial class Binder
                     DiagnosticCodes.InvalidEnumFallback,
                     $"'{descriptor.FullName}' has no value named '{setting.Value}'.",
                     setting.ValueSpan,
-                    $"Write one of its names as the schema spells it, such as {descriptor.Values[0].Name}, "
+                    $"Write one of its names as the schema spells it, such as {ExampleValueName(descriptor)}, "
                     + $"or {EnumUnknownFallback.Fail}.");
                 continue;
             }
@@ -363,38 +373,35 @@ public sealed partial class Binder
     }
 
     /// <summary>The enum a setting names, or null where it names none this compilation loaded.</summary>
+    /// <remarks>
+    /// Resolved by the rule a type position uses, so a setting names what the same text written in a
+    /// conversion would.
+    /// </remarks>
     private EnumDescriptor? ConfiguredEnum(EnumUnknownFallback setting)
     {
-        if (_types.FindEnum(setting.Type) is { } byFullName)
+        switch (_types.ResolveTypeName(setting.Type))
         {
-            return byFullName;
-        }
+            case SchemaEnumName named:
+                return named.Descriptor;
 
-        var enums = _types.EnumsNamed(setting.Type);
-        var messages = _types.MessagesNamed(setting.Type);
-
-        if (_types.FindMessage(setting.Type) is not null || (enums.Count == 0 && messages.Count > 0))
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.InvalidEnumFallback,
-                $"'{setting.Type}' is a message, and only an enum has numbers without names.",
-                setting.TypeSpan,
-                "Name an enum.");
-            return null;
+            case SchemaMessageName:
+                _diagnostics.Report(
+                    DiagnosticCodes.InvalidEnumFallback,
+                    $"'{setting.Type}' is a message, and only an enum has numbers without names.",
+                    setting.TypeSpan,
+                    "Name an enum.");
+                return null;
         }
 
         if (_types.IsAmbiguousAsATypeName(setting.Type))
         {
             _diagnostics.Report(
                 DiagnosticCodes.InvalidEnumFallback,
-                $"'{setting.Type}' matches more than one type: "
-                + string.Join(", ", enums.Select(e => e.FullName).Concat(messages.Select(m => m.FullName)).Order(StringComparer.Ordinal))
-                + ".",
+                $"'{setting.Type}' matches more than one type: {string.Join(", ", _types.FullNamesOfTypesNamed(setting.Type))}.",
                 setting.TypeSpan,
                 "Qualify the name with its protobuf package.");
-            return null;
         }
 
-        return enums is [var only] ? only : null;
+        return null;
     }
 }
