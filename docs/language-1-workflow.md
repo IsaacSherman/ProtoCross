@@ -15,21 +15,22 @@ the table on #108. A sprint branch is cut from `main`, each issue branches off i
 into it by pull request, and the sprint then goes to `main` as one pull request, the way
 `epics/language-server-N` did.
 
-The current sprint branch is **`sprints/language-1-3`**. This line is the only record of that, so
+The current sprint branch is **`sprints/language-1-4`**. This line is the only record of that, so
 moving to the next sprint means editing it here. `sprints/language-1-1` carried sprint 1 — #10,
 #65, #105, #28 and the catch-up half of #107 — and reached `main` as #129. `sprints/language-1-2`
-carried the multi-file sprint — #69, #127, #27, #106 and #29 — and reached `main` as #150. Sprint 3
-is construction and then mutation: #151, #80, #81 and #13, in that order, with the plan and its
-decisions in the comments on #108 and on each issue.
+carried the multi-file sprint — #69, #127, #27, #106 and #29 — and reached `main` as #150.
+`sprints/language-1-3` carried construction and then mutation — #151, #80, #81, #13 and #153 — and
+reached `main` as #165. Sprint 4 is the rest of the core language: #158, #159, #166, #6 and #11, in
+that order, with the plan and its decisions in the comments on #108 and on each issue.
 
 ```bash
-git checkout sprints/language-1-3 && git pull && git checkout -b issue-151-reassigned-presence
+git checkout sprints/language-1-4 && git pull && git checkout -b issue-158-message-equality
 ```
 
 Issue pull requests use the sprint branch as their base, never `main`:
 
 ```bash
-gh pr create --draft --base sprints/language-1-3 --title "..." --body-file pr-body.md
+gh pr create --draft --base sprints/language-1-4 --title "..." --body-file pr-body.md
 ```
 
 They land one at a time. A ruleset on `sprints/**` requires a pull request, the CI checks, and a
@@ -45,10 +46,10 @@ as the sprints are: **`0.<sprint>.<pull request>`**. The server inside the packa
 number, because `npm run stage` publishes it with the extension's version, so a status report names
 one version for both.
 
-- **Every pull request into a sprint branch increments the third digit.** Sprint 3 began at `0.3.1`,
-  so the next issue pull request into `sprints/language-1-3` makes it `0.3.2`.
+- **Every pull request into a sprint branch increments the third digit.** Sprint 4 began at `0.4.0`,
+  so its first issue pull request into `sprints/language-1-4` makes it `0.4.1`.
 - **The pull request that takes a sprint to `main` increments the second digit and resets the third**,
-  so sprint 3 reaches `main` as `0.4.0`, and sprint 4's first issue pull request makes it `0.4.1`.
+  so sprint 4 reaches `main` as `0.5.0`, and sprint 5's first issue pull request makes it `0.5.1`.
 
 Bump it with `npm version <next> --no-git-tag-version` in `editors/vscode`, which changes both
 `package.json` and `package-lock.json`, and commit it with the pull request it belongs to. Because
@@ -120,5 +121,5 @@ issue over, name what to try in the extension alongside the short list of what d
 ## What is not different
 
 The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, and the
-byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-3` in
+byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-4` in
 place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.`
