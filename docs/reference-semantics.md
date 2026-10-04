@@ -102,7 +102,10 @@ was written by the author as `x as int64`.
 | Negative integer literal | No negative literals, only negations, except that a `-` directly before `2147483648`, or before `9223372036854775808L`, is read as the MIN constant it spells. | A `-` written directly on an integer literal is part of it, range-checked as the negative value, so int32 MIN and int64 MIN are literals. One `-` only: in `-(-5)` the outer one is arithmetic. | No negative literals at all, and no exception for MIN: `2147483648` is not an `int`. Emitted parenthesized, so that it stays one expression under a negation or a cast, and each MIN as `(-MAX - 1)`, the way `<climits>` spells it. | `--` | 10.3 |
 | Floating-point literal rounding | Rounded once from the decimal to the literal's type. | Rounded once from the exact decimal to the type the literal adopts; a `float` literal never passes through `double`. Too large for that type is `PC0084`, not an infinity. | A literal's value is the nearest representable value, or an adjacent one, at the implementation's choice. Emitted as the shortest spelling that reads back as the rounded value, which MSVC, GCC and Clang each read back exactly. | `--` | 6.6, 10.3 |
 | Infinity and NaN literals | None; `double.PositiveInfinity` and `double.NaN` are constants. `double.NaN` has its sign bit set. | `__INF` and `__NAN`, adopting `float` or `double`; `-__INF` is negative infinity. Which NaN is unspecified, and nothing in the language can tell two apart. | None; emitted as `std::numeric_limits<T>::infinity()` and `quiet_NaN()`, whose NaN has its sign bit clear. | `--` | 6.6 |
-| Non-numeric conversion | Many are legal (`int` to `char`, boxing, user-defined). | `PC0075`. Both source and target must be a numeric scalar. `bool`, `string`, `bytes`, messages, and enums are all rejected, which keeps the open enum questions separate rather than answering them by accident. | Never emitted. | `--` | 10.3, 12 |
+| Non-numeric conversion | Many are legal (`int` to `char`, boxing, user-defined). | `PC0075`. Both source and target must be a numeric scalar, except that an enum converts to and from `int32`. `bool`, `string`, `bytes` and messages are all rejected. | Never emitted. | `--` | 10.3, 12.1 |
+| Enum to integer | A cast to any integer type. | `status as int32`, and to no other type: `int32` is protobuf's enum width. | `static_cast<std::int32_t>(status)`. | `--` | 12.1 |
+| Integer to enum, a number the enum names | A cast from any integer type. | `n as Status`, from an `int32` only. An integer literal converted to an enum is an `int32`. | `static_cast<Status>(n)`. | `--` | 12.1 |
+| Integer to enum, a number the enum does not name | Stored as it is: a C# enum holds any value of its underlying type. | An `on_unknown` clause says: a fallback value, or `fail`. With none, an open enum keeps the number, with a note (`PC5000`), and a closed enum terminates, exit code 70, with a warning (`PC0102`). See [Departures](#departures-from-c). | Kept by the cast, since protoc declares every enum over `int`. A fallback or a failure asks protoc's `_IsValid`. A closed enum's setter asserts in a debug build that the number is named, which is why the default never makes one. | `--` | 12.1 |
 
 ## Presence and unset fields
 
@@ -130,7 +133,7 @@ C++, from the same source, with nothing in either generated file that looks wron
 
 ## Departures from C#
 
-Five rows above do not take C#'s answer. Each is deliberate.
+Six rows above do not take C#'s answer. Each is deliberate.
 
 **No implicit numeric conversions.** C# widens freely -- `int` to `long`, `int` to `float`, and so
 on. ProtoCross has none, and requires `x as int64` instead. This is what makes the overflow rule
@@ -163,6 +166,13 @@ adopts. `Checked` is available, but as a mode the project selects rather than as
 the compiler wrote field by field would choose which fields count, on messages the author does not
 own. So the comparison is refused until spec 13.3 decides, and the author compares the fields that
 matter.
+
+**A closed enum is not given a number it does not name.** C# stores any `int` in any enum, closed or
+not, because its protobuf runtime treats every enum as open. ProtoCross follows protobuf's own rule
+instead: a closed enum's field cannot hold such a number, and C++ asserts as much, so a conversion
+with nothing to say about one ends the program rather than inventing a value the schema rules out.
+An `on_unknown` clause says otherwise wherever that is wanted, and an open enum keeps the number as C#
+does.
 
 ## Adding a row
 

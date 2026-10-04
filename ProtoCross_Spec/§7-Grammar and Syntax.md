@@ -53,6 +53,8 @@ receiver_fixture  = "receiver" "{" [ field_list ] "}";
 test_arg          = "arg" identifier "=" expression ";";
 test_expectation  = "expect" ( "return" expression | "fail" ) ";";
 
+conversion        = expression "as" type_ref                       (* an expression *)
+                    [ "on_unknown" ( expression | "fail" ) ];
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
@@ -76,6 +78,10 @@ Normative Requirement:
   repeated field's value only.
 - `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
+- `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
+  it, and is an identifier anywhere else. The clause belongs to the one conversion it follows, and
+  its fallback is a postfix expression, so a conversion after it converts the whole conversion
+  ([6.4](./§6-Lexical%20Structure.md#64-keywords), [12.1](./§12-Enums.md#121-an-enums-number)).
 - A semicolon between fields -- before another field or before the closing brace -- is reported as
   one written where a comma goes, because it was the separator fixtures used before #80. Outside a
   fixture, a semicolon anywhere else among a literal's fields ends them, and the statement the

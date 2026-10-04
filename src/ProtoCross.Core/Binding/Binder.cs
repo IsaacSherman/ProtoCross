@@ -1709,7 +1709,8 @@ public sealed partial class Binder
     /// <summary>
     /// Binds an explicit conversion, <c>x as int64</c> (spec 10.3). This is the only way to change
     /// the width or signedness of a value, and the reason mixed-width arithmetic is expressible at
-    /// all.
+    /// all. A conversion with an enum on either side is an enum's number (spec 12), and is bound in
+    /// <c>Binder.Enums.cs</c>.
     /// </summary>
     /// <remarks>
     /// The operand is bound with no expected type. The cast already states the target, so the
@@ -1723,11 +1724,23 @@ public sealed partial class Binder
         var operand = BindExpression(cast.Operand, scope, context, null);
         var target = ResolveTypeReference(cast.TargetType);
 
+        if (target is EnumPlType enumType)
+        {
+            return BindNumberToEnum(cast, operand, enumType, scope, context);
+        }
+
+        ReportStrayOnUnknown(cast, target, scope, context);
+
         // ResolveTypeReference has already reported an unknown or ambiguous target, and a failed
         // operand has already reported whatever went wrong there.
         if (operand.Type is ErrorType || target is ErrorType)
         {
             return new IrLiteral(null, ErrorType.Instance, cast.Span);
+        }
+
+        if (operand.Type is EnumPlType enumOperand)
+        {
+            return BindEnumToNumber(cast, operand, enumOperand, target);
         }
 
         if (operand.Type is not ScalarType { IsNumeric: true } source

@@ -929,6 +929,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrIntegerDivision division => EmitIntegerDivision(division, placement),
         IrUnary unary => EmitUnary(unary, placement),
         IrConversion conversion => EmitConversion(conversion, placement),
+        IrEnumToNumber number => $"static_cast<::std::int32_t>({Expression(number.Operand, placement)})",
+        IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement),
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),
@@ -1360,6 +1362,32 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 + $"(static_cast<double>({operand}))",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.Kind, "Unhandled conversion kind."),
+        };
+    }
+
+    /// <summary>Emits an enum value made from a number (spec 12).</summary>
+    /// <remarks>
+    /// protoc declares every C++ enum with <c>int</c> as its underlying type, so a cast holds any
+    /// number, and keeping one needs nothing more. A fallback and a failure ask protoc's
+    /// <c>_IsValid</c> whether the schema names the number, passed to the runtime by address. That
+    /// answer is the one the generated code would give, rather than a list of numbers this backend
+    /// wrote out and could get wrong.
+    /// </remarks>
+    private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement)
+    {
+        var enumType = QualifiedEnumName(conversion.EnumType.Descriptor);
+        var value = $"static_cast<{enumType}>({Expression(conversion.Operand, placement)})";
+        var isNamed = $"&{enumType}_IsValid";
+
+        return conversion.OnUnnamed switch
+        {
+            UnnamedNumberBehavior.Keep => value,
+            UnnamedNumberBehavior.Fallback =>
+                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {Expression(conversion.Fallback!, placement)})",
+            UnnamedNumberBehavior.Fail =>
+                $"{RuntimeNamespace}::named_or_fail({value}, {isNamed}, {FormatString(conversion.EnumType.DisplayName)})",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
     }
 

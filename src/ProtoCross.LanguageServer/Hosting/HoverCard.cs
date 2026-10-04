@@ -296,8 +296,31 @@ internal static class HoverCard
             case IrConversion conversion:
                 yield return Conversion(conversion);
                 break;
+
+            case IrNumberToEnum conversion:
+                yield return OnUnnamed(conversion);
+                break;
         }
     }
+
+    /// <summary>What this conversion makes of a number its enum does not name (spec 12).</summary>
+    /// <remarks>
+    /// Said whether or not a clause is written, because the default is the part a reader cannot see:
+    /// the same <c>n as Level</c> keeps the number for an open enum and ends the program for a closed
+    /// one. An enum's number going the other way, <c>status as int32</c>, has nothing to say beyond its
+    /// type, which is exactly what it is.
+    /// </remarks>
+    private static string OnUnnamed(IrNumberToEnum conversion) => conversion.OnUnnamed switch
+    {
+        UnnamedNumberBehavior.Keep => "A number the enum does not name is kept, as a value equal to none "
+            + "of its names (spec 12).",
+        UnnamedNumberBehavior.Fallback => "A number the enum does not name yields the declared `on_unknown` "
+            + "value (spec 12).",
+        UnnamedNumberBehavior.Fail => "A number the enum does not name terminates the program, exit code 70 "
+            + "(spec 12).",
+        _ => throw new ArgumentOutOfRangeException(
+            nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
+    };
 
     /// <remarks>
     /// Spelt out here rather than shared with <see cref="ProjectConfig.DescribeForHeader"/>, which

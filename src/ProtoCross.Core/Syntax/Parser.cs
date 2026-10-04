@@ -1608,18 +1608,67 @@ public sealed class Parser
         {
             var asToken = Advance();
             var target = ParseTypeReference();
+            var onUnknown = ParseOnUnknownClause(out var fallbackHeight);
 
-            if (!TryReachHeight(height + 1, asToken.Span))
+            var wrapped = Math.Max(height, fallbackHeight) + 1;
+            if (!TryReachHeight(wrapped, asToken.Span))
             {
                 height = 1;
                 return AbandonTallExpression(expression.Span);
             }
 
-            height++;
-            expression = new CastExpression(expression, target, Spanning(expression.Span, target.Span));
+            height = wrapped;
+            expression = new CastExpression(
+                expression,
+                target,
+                Spanning(expression.Span, onUnknown?.Span ?? target.Span),
+                onUnknown);
         }
 
         return expression;
+    }
+
+    /// <summary>
+    /// Parses the <c>on_unknown &lt;fallback&gt;</c> suffix a conversion to an enum may carry
+    /// (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Parsed after any conversion, whatever its type, because whether a type names an enum is a
+    /// question for the binder. That is also where a clause on a numeric conversion is refused.
+    /// </para>
+    /// <para>
+    /// The fallback is a postfix expression, since it begins with a name
+    /// (<see cref="ContextualKeywords.BeginsAnOnUnknownClause"/>). So an <c>as</c> after it converts
+    /// the whole conversion, not the fallback:
+    /// <c>n as Level on_unknown Level.LOW as int32</c> converts to an enum and back. That is the
+    /// reverse of <c>on_zero</c>, whose fallback is parsed at unary precedence. Here the clause is
+    /// inside a chain of conversions, and the chain should go on reading left to right.
+    /// </para>
+    /// </remarks>
+    /// <param name="fallbackHeight">
+    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// <c>on_unknown fail</c>.
+    /// </param>
+    private OnUnknownClause? ParseOnUnknownClause(out int fallbackHeight)
+    {
+        fallbackHeight = 0;
+
+        if (!ContextualKeywords.BeginsAnOnUnknownClause(Current, Peek(1)))
+        {
+            return null;
+        }
+
+        var onUnknownToken = Advance();
+
+        if (Current.Kind == TokenKind.Fail)
+        {
+            var failToken = Advance();
+            return new OnUnknownClause(null, Spanning(onUnknownToken.Span, failToken.Span));
+        }
+
+        var fallback = ParsePostfixExpression(out fallbackHeight);
+        return new OnUnknownClause(fallback, Spanning(onUnknownToken.Span, fallback.Span));
     }
 
     private Expression ParsePrefixExpression(out int height)

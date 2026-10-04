@@ -15,7 +15,7 @@ public sealed partial class CppBackend
     /// <remarks>
     /// <para>
     /// Generated code names a type wherever it declares one: a parameter, a return value, a local, the
-    /// message a literal builds, or an enum value it spells. Every such type must be declared by a
+    /// message a literal builds, an enum value it spells, or the enum a number is converted to. Every such type must be declared by a
     /// header the file has included. A type reached only through a field accessor needs nothing,
     /// because it belongs to a schema the field's own schema imports.
     /// </para>
@@ -47,6 +47,7 @@ public sealed partial class CppBackend
                 IrVariableDeclaration declaration => [declaration.Local.Type],
                 IrMessageLiteral literal => [literal.MessageType],
                 IrEnumValue value => [value.EnumType],
+                IrNumberToEnum conversion => [conversion.EnumType],
                 _ => Array.Empty<PlType>(),
             })
             .SelectMany(SchemasOf);

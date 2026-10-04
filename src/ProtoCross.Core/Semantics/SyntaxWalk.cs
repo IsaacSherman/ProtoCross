@@ -71,7 +71,10 @@ public static class SyntaxWalk
             OnZeroClause { Fallback: { } fallback } => [fallback],
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
-            CastExpression cast => [cast.Operand, cast.TargetType],
+            CastExpression cast => cast.OnUnknown is { } onUnknown
+                ? [cast.Operand, cast.TargetType, onUnknown]
+                : [cast.Operand, cast.TargetType],
+            OnUnknownClause { Fallback: { } fallback } => [fallback],
             MessageLiteralExpression literal => [literal.Type, .. literal.Fields],
             ListExpression list => [.. list.Elements],
 

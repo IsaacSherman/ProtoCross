@@ -115,6 +115,10 @@ Implemented:
 - Typed IR carrying resolved types, source locations, and per-operation arithmetic behavior
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
+- An enum's number, `status as int32`, and an enum from a number, `n as OrderStatus`. A number the
+  enum does not name is kept by an open enum and ends the program for a closed one, unless the
+  conversion says otherwise with `on_unknown OrderStatus.UNSPECIFIED` or `on_unknown fail`. The spec
+  has the rules in section 12.1.
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,

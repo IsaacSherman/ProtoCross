@@ -579,6 +579,8 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
         IrUnary unary => EmitUnary(unary, placement, receiverName),
         IrConversion conversion => EmitConversion(conversion, placement, receiverName),
+        IrEnumToNumber number => $"((int){Expression(number.Operand, placement, receiverName)})",
+        IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement, receiverName),
         IrEnumValue enumValue => "global::"
             + NameConventions.GetCSharpTypeName(enumValue.EnumType.Descriptor)
             + "." + NameConventions.GetCSharpValueName(enumValue.Value),
@@ -863,6 +865,29 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 $"{CSharpRuntime.TypeName}.{FloatToIntegerHelper(conversion.TargetType)}((double){operand})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.Kind, "Unhandled conversion kind."),
+        };
+    }
+
+    /// <summary>Emits an enum value made from a number (spec 12).</summary>
+    /// <remarks>
+    /// C# stores any <c>int</c> in an enum, so keeping a number needs only the cast. A fallback and a
+    /// failure go through the runtime, which asks <c>Enum.IsDefined</c> whether the schema names the
+    /// number. protoc's C# enum declares exactly the values the schema does, aliases included, so the
+    /// answer is the one C++'s <c>_IsValid</c> gives.
+    /// </remarks>
+    private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement, string receiverName)
+    {
+        var value = $"(({TypeName(conversion.EnumType)}){Expression(conversion.Operand, placement, receiverName)})";
+
+        return conversion.OnUnnamed switch
+        {
+            UnnamedNumberBehavior.Keep => value,
+            UnnamedNumberBehavior.Fallback =>
+                $"{CSharpRuntime.EnumsTypeName}.NamedOr({value}, {Expression(conversion.Fallback!, placement, receiverName)})",
+            UnnamedNumberBehavior.Fail =>
+                $"{CSharpRuntime.EnumsTypeName}.NamedOrFail({value}, {FormatString(conversion.EnumType.DisplayName)})",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
     }
 

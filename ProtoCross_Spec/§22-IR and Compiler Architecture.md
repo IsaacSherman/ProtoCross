@@ -110,6 +110,11 @@ The IR preserves:
   there answers with the target, which comes first. Which form was written is the syntax tree's to
   say.
 - Terminal-failure behavior for `on_zero fail`.
+- **An enum's number.** A conversion between an enum and its `int32` is a node of its own in each
+  direction rather than a numeric conversion, since no conversion policy governs it. One to an enum
+  carries what it makes of a number the enum does not name: keep it, a fallback, or fail. That is
+  stamped by the binder, the default included, so a backend never asks whether an enum is closed
+  ([12.1](./§12-Enums.md#121-an-enums-number)).
 - Evaluation order.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
   diagnostics.

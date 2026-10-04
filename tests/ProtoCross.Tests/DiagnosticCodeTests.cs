@@ -43,6 +43,7 @@ public class DiagnosticCodeTests
         new("the C++ backend", 1101, 1199, nameof(DiagnosticCodes)),
         new("the driver, the configuration file and the project file", 2001, 2099, nameof(DiagnosticCodes)),
         new("host configuration", 2100, 2199, nameof(HostDiagnosticCodes)),
+        new("informational notes", 5000, 5999, nameof(DiagnosticCodes)),
     ];
 
     /// <summary>One row of spec 26's range table.</summary>
@@ -197,6 +198,17 @@ public class DiagnosticCodeTests
                 !missing.Any(),
                 $"the codes {layer.Owner} raises skip {string.Join(", ", missing)}");
         });
+
+    /// <summary>
+    /// A note is numbered from <c>PC5000</c>, and nothing else is: the range says how much a code
+    /// matters before its severity is looked up.
+    /// </summary>
+    [Fact]
+    public void EveryNoteAndNothingElseIsInTheInformationalRange()
+        => Assert.All(Descriptors, entry => Assert.True(
+            (entry.Descriptor.Severity == DiagnosticSeverity.Information) == (Number(entry.Descriptor) >= 5000),
+            $"{entry.Descriptor.Code} is {entry.Descriptor.Severity}, so it belongs "
+                + (entry.Descriptor.Severity == DiagnosticSeverity.Information ? "at PC5000 or above" : "below PC5000")));
 
     /// <summary>Every code the specification or the documentation names is one that exists.</summary>
     /// <remarks>

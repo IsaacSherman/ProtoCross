@@ -247,9 +247,9 @@ extend Order {
   `double`, so `3000000000 as int32` is a narrowing conversion that wraps rather than a literal
   reported as out of range.
 - Both the source and the target must be numeric scalar types: the four integer types, `float`, and
-  `double`. Anything else is `PC0075`, including `bool`, `string`, `bytes`, messages, and enums.
-  Whether an enum can convert to or from an integer is left open in 12, and proto3's open enums make
-  the reverse direction a question of its own.
+  `double`. Anything else is `PC0075`, including `bool`, `string`, `bytes` and messages. The one
+  exception is an enum, which converts to and from `int32` under [12.1](./§12-Enums.md#121-an-enums-number)'s rules rather than this
+  section's, and to and from nothing else.
 - A conversion to the type a value already has is permitted and produces the value unchanged. It
   states nothing new, but it is not an error either.
 

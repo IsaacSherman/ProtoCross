@@ -140,6 +140,10 @@ public static class IrWalk
                 : [division.Left, division.Right],
             IrUnary unary => [unary.Operand],
             IrConversion conversion => [conversion.Operand],
+            IrEnumToNumber conversion => [conversion.Operand],
+            IrNumberToEnum conversion => conversion.Fallback is { } fallback
+                ? [conversion.Operand, fallback]
+                : [conversion.Operand],
             IrMessageLiteral literal => [.. literal.Fields],
             IrFieldInitializer field => [field.Value],
             IrList list => [.. list.Elements],

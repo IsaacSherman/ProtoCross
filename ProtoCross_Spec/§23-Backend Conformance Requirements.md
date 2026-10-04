@@ -35,6 +35,7 @@ time rather than emitting something whose semantics differ.
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |
 | Enum types and values | Yes | Yes | — | Named per 12; both targets re-spell values differently. |
+| An enum's number (`as int32`, `as Enum`) | Yes | Yes | — | A cast in both. `on_unknown`, and a closed enum's default, ask `Enum.IsDefined` in C# and protoc's `_IsValid` in C++, and fail with exit code 70 as `on_zero fail` does ([12.1](./§12-Enums.md#121-an-enums-number)). |
 | Conditionals and `while` | Yes | Yes | — | `if` / `else if` / `else`, `while`, `break`, `continue` ([15](./§15-Control%20Flow.md#15-control-flow)). |
 | Field presence (`has`) | Yes | Yes | — | `x != null` or `HasX` in C#; `has_x()` in C++ ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). |
 | Unset message-field guard | Yes | Yes | — | Compile-time (`PC0078`), so neither backend emits a runtime check ([13.1](./§13-Messages.md#131-field-access)). |

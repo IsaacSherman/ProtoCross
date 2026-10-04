@@ -1,0 +1,38 @@
+edition = "2023";
+
+package protocross.tests.openness.editions;
+
+// An editions enum is closed where the enum_type feature says so (spec 12.1). protoc accepts the
+// feature on an enum and on a file, and on nothing between them, so a nested enum takes what its
+// file says unless it says otherwise itself. This file says nothing, so every enum here that says
+// nothing is open, as the edition's default makes it.
+enum EditionsDefault {
+  EDITIONS_DEFAULT_ZERO = 0;
+}
+
+enum EditionsClosed {
+  option features.enum_type = CLOSED;
+
+  EDITIONS_CLOSED_ONE = 1;
+}
+
+// Nested enums, to be found where they are declared however deep they are.
+message EditionsScope {
+  enum Inner {
+    option features.enum_type = CLOSED;
+
+    INNER_ONE = 1;
+  }
+
+  message Deeper {
+    enum Deepest {
+      option features.enum_type = CLOSED;
+
+      DEEPEST_ONE = 1;
+    }
+
+    enum Unstated {
+      UNSTATED_ZERO = 0;
+    }
+  }
+}

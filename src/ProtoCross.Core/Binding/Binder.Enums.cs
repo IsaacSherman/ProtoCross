@@ -1,0 +1,202 @@
+using ProtoCross.Diagnostics;
+using ProtoCross.Ir;
+using ProtoCross.Syntax;
+using ProtoCross.Types;
+
+namespace ProtoCross.Binding;
+
+public sealed partial class Binder
+{
+    // --- an enum's number ---
+    //
+    // 'status as int32' and 'n as OrderStatus' (spec 12). An enum's number is an int32, as protobuf's
+    // is, so each direction has exactly one other type. Coming in, a number may be one the enum does
+    // not name, and what becomes of it is decided here and stamped on the node.
+
+    /// <summary>Binds <c>status as int32</c>, an enum's number.</summary>
+    private IrExpression BindEnumToNumber(CastExpression cast, IrExpression operand, EnumPlType source, PlType target)
+    {
+        if (target is ScalarType { Kind: ScalarKind.Int32 })
+        {
+            return new IrEnumToNumber(operand, cast.Span);
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.InvalidConversion,
+            $"Cannot convert '{source.DisplayName}' to '{target.DisplayName}'.",
+            cast.Span,
+            target is ScalarType { IsNumeric: true }
+                ? $"An enum converts only to 'int32', the width of its number (spec 12). Convert that: 'x as int32 as {target.DisplayName}'."
+                : "An enum converts only to 'int32', the width of its number (spec 12).");
+        return new IrLiteral(null, ErrorType.Instance, cast.Span);
+    }
+
+    /// <summary>Binds <c>n as OrderStatus</c>, an enum value made from a number.</summary>
+    /// <remarks>
+    /// <para>
+    /// A literal converted to an enum takes <c>int32</c>, the type of the number it names, so
+    /// <c>7 as OrderStatus</c> needs no conversion in between. Spec 10.3 keeps a converted literal
+    /// in its natural type so that <c>3000000000 as int32</c> wraps. A conversion to an enum has no
+    /// wrapping to keep, and a literal too large for <c>int32</c> names no value any enum can have.
+    /// It is rebound only once it has bound on its own, which reports nothing for a literal that
+    /// fits <c>int64</c> or <c>uint64</c>. So rebinding cannot report one literal twice.
+    /// </para>
+    /// <para>
+    /// The clause is bound before the operand is checked, so a fallback is resolved and its names are
+    /// used even where the operand is wrong. Hover and go-to-definition keep working inside it while
+    /// the operand is still being fixed.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindNumberToEnum(
+        CastExpression cast,
+        IrExpression operand,
+        EnumPlType target,
+        Scope scope,
+        MethodContext context)
+    {
+        if (IntegerLiteralOf(cast.Operand) is { } written && operand.Type is not ErrorType)
+        {
+            operand = BindIntegerLiteral(written, cast.Operand.Span, ScalarType.Int32Type);
+        }
+
+        var (onUnnamed, fallback) = BindOnUnknown(cast, target, scope, context);
+
+        if (operand.Type is ErrorType)
+        {
+            return new IrLiteral(null, ErrorType.Instance, cast.Span);
+        }
+
+        if (operand.Type is not ScalarType { Kind: ScalarKind.Int32 })
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidConversion,
+                $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
+                cast.Span,
+                operand.Type is ScalarType { IsInteger: true } or EnumPlType
+                    ? $"Only an 'int32' converts to an enum, the width of its number (spec 12). Convert to that first: 'x as int32 as {cast.TargetType.Name.Text}'."
+                    : "Only an 'int32' converts to an enum, the width of its number (spec 12).");
+            return new IrLiteral(null, ErrorType.Instance, cast.Span);
+        }
+
+        if (cast.OnUnknown is null)
+        {
+            ReportUnstatedOnUnknown(cast, target);
+        }
+
+        return new IrNumberToEnum(operand, target, onUnnamed, fallback, cast.Span);
+    }
+
+    /// <summary>
+    /// What a conversion to <paramref name="target"/> makes of a number it does not name: what the
+    /// clause says, or, where there is none, what protobuf does with one.
+    /// </summary>
+    /// <remarks>
+    /// The default follows protobuf rather than choosing for it. An open enum keeps such a number when
+    /// a message is parsed, so the conversion keeps it as well. A closed one refuses it, and a value
+    /// protobuf cannot hold is not a value the conversion should invent, so it ends the program.
+    /// </remarks>
+    private (UnnamedNumberBehavior OnUnnamed, IrExpression? Fallback) BindOnUnknown(
+        CastExpression cast,
+        EnumPlType target,
+        Scope scope,
+        MethodContext context)
+    {
+        switch (cast.OnUnknown)
+        {
+            case null:
+                return (target.IsClosed ? UnnamedNumberBehavior.Fail : UnnamedNumberBehavior.Keep, null);
+
+            case { IsFail: true }:
+                return (UnnamedNumberBehavior.Fail, null);
+        }
+
+        var clause = cast.OnUnknown;
+        var fallback = BindExpression(clause.Fallback!, scope, context, target);
+
+        if (fallback.Type is not ErrorType && !TypesMatch(target, fallback.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.OnUnknownTypeMismatch,
+                $"The fallback has type '{fallback.Type.DisplayName}' but the conversion produces "
+                + $"'{target.DisplayName}'.",
+                clause.Span,
+                $"Write one of its values, such as '{ExampleValueOf(cast, target)}'.");
+        }
+
+        return (UnnamedNumberBehavior.Fallback, fallback);
+    }
+
+    /// <summary>
+    /// Says what a conversion with no clause does with a number its enum does not name: keeps it, as
+    /// a note, or ends the program, as a warning.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each is reported because each is easy not to know. An open enum's conversion silently produces
+    /// a value equal to none of the names a reader can see. A closed enum's silently becomes a way for
+    /// the method to end the program. Neither is wrong, so neither is an error.
+    /// </para>
+    /// <para>
+    /// The closed case is the warning because a closed enum is the one where protobuf has already
+    /// decided such a number cannot be held. Code that makes one anyway should say what it wants
+    /// instead, and its help names the clause that does.
+    /// </para>
+    /// </remarks>
+    private void ReportUnstatedOnUnknown(CastExpression cast, EnumPlType target)
+    {
+        var example = ExampleValueOf(cast, target);
+
+        if (target.IsClosed)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.ClosedEnumConversionHasNoFallback,
+                $"'{target.DisplayName}' is closed, and nothing says what becomes of a number it does "
+                + "not name, so one ends the program.",
+                cast.Span,
+                $"Write 'on_unknown fail' to say so, or 'on_unknown {example}' to use a value instead (spec 12).");
+            return;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.UnnamedNumberIsKept,
+            $"'{target.DisplayName}' is open, so a number it does not name is kept, as a value equal to "
+            + "none of its names.",
+            cast.Span,
+            $"Write 'on_unknown {example}' to use a value instead, or 'on_unknown fail' to end the program (spec 12).");
+    }
+
+    /// <summary>
+    /// A value of <paramref name="target"/> for a help line to show, spelled through the name the
+    /// conversion wrote its type with, so that pasting it resolves to the same enum.
+    /// </summary>
+    private static string ExampleValueOf(CastExpression cast, EnumPlType target)
+        => $"{cast.TargetType.Name.Text}.{target.Descriptor.Values[0].Name}";
+
+    /// <summary>
+    /// Reports an <c>on_unknown</c> clause on a conversion whose target is not an enum, and binds its
+    /// fallback anyway, so a name inside it is still found and still checked.
+    /// </summary>
+    /// <remarks>
+    /// Not reported where the target failed to resolve. That has been reported already, and the type
+    /// the author meant may well have been an enum.
+    /// </remarks>
+    private void ReportStrayOnUnknown(CastExpression cast, PlType target, Scope scope, MethodContext context)
+    {
+        if (cast.OnUnknown is not { } clause || target is ErrorType)
+        {
+            return;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.OnUnknownOutsideEnumConversion,
+            $"'on_unknown' says what becomes of a number an enum does not name, and '{target.DisplayName}' "
+            + "is not an enum.",
+            clause.Span,
+            "Delete the clause (spec 12).");
+
+        if (clause.Fallback is { } fallback)
+        {
+            BindExpression(fallback, scope, context, null);
+        }
+    }
+}

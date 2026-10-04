@@ -24,6 +24,15 @@ message
 optional help text
 ```
 
+Severities:
+
+- An **error** fails the compilation, and nothing is generated.
+- A **warning** says something is probably not what the author meant, and the compilation goes on.
+- A **note** (`Information`) says something true about the code that a reader cannot see in it and
+  may not have meant, where nothing is wrong: that a conversion keeps a number its enum does not name
+  ([12.1](./§12-Enums.md#121-an-enums-number)). It never fails anything, and its code is in its own range, so a
+  reader can tell how much a code matters from its number.
+
 Code ranges:
 
 | Range | Owner |
@@ -33,6 +42,7 @@ Code ranges:
 | `PC1101`–`PC1199` | The C++ backend |
 | `PC2001`–`PC2099` | The driver, the configuration file ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) and the project file ([5.4](./§5-Source%20Organization.md#54-projects)) |
 | `PC2100`–`PC2199` | Host configuration: settings, scopes, and precedence ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)) |
+| `PC5000`–`PC5999` | Notes, from any part of the compiler; nothing else is numbered here |
 
 A configuration or project diagnostic names its file -- `protocross.config.xml`, or the `.pcproj` --
 and the line and column inside it, rather than a position in a `.pcross` source. A host-configuration diagnostic has no file and no
@@ -57,10 +67,11 @@ do with a diagnostic that is nowhere -- are decisions about published output jus
 
 Normative Requirements:
 
-- **Severity is mapped, not invented.** The compiler has `Warning` and `Error`; a host publishes
-  exactly those two. Nothing is promoted to an informational or hint level, because that would be a
-  host asserting a distinction the language does not draw. Adding a third severity is a change to the
-  compiler.
+- **Severity is mapped, not invented.** The compiler has `Error`, `Warning` and `Information`, and a
+  host publishes each as the level of the same name. Nothing is promoted or demoted, and nothing is
+  published as a hint, because that would be a host asserting a distinction the language does not
+  draw. `Information` was added to the compiler for its notes, rather than chosen by a host for
+  diagnostics the compiler calls warnings.
 - **The code, the title, the message and the help text all survive.** Help is not dropped and not run
   into the message where the client can show it separately: several diagnostics put the only
   actionable instruction there. It is also carried structurally, so a later quick-fix feature reads

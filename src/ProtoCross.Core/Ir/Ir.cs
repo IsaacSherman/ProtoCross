@@ -700,6 +700,52 @@ public enum ConversionKind
     FloatToInteger,
 }
 
+/// <summary>The number behind an enum value, <c>status as int32</c> (spec 12).</summary>
+/// <remarks>
+/// Not an <see cref="IrConversion"/>. That node carries a <see cref="ConversionBehavior"/>, the
+/// policy for a value the target cannot hold, and every enum number is an <c>int32</c>, so this has
+/// no such value and no policy to carry. A hover that read a behavior off it would tell the reader the
+/// number wraps.
+/// </remarks>
+public sealed record IrEnumToNumber(IrExpression Operand, SourceSpan Span)
+    : IrExpression(ScalarType.Int32Type, Span);
+
+/// <summary>What a conversion to an enum makes of a number the enum does not name (spec 12).</summary>
+public enum UnnamedNumberBehavior
+{
+    /// <summary>
+    /// Keep the number, a value that equals none of the enum's names. The default for an open enum,
+    /// where protobuf keeps such a number too.
+    /// </summary>
+    Keep,
+
+    /// <summary>Produce the declared fallback value instead.</summary>
+    Fallback,
+
+    /// <summary>
+    /// Terminate the program deterministically, as <c>on_zero fail</c> does. The default for a
+    /// closed enum, which protobuf does not let hold such a number.
+    /// </summary>
+    Fail,
+}
+
+/// <summary>An enum value made from a number, <c>n as OrderStatus</c> (spec 12).</summary>
+/// <remarks>
+/// Apart from <see cref="IrConversion"/> for the reason <see cref="IrEnumToNumber"/> is, and because
+/// a number may lack a name. What happens then is decided by the binder and stamped here, so a
+/// backend emits the behavior it is handed and never works out for itself whether an enum is closed.
+/// </remarks>
+/// <param name="Fallback">
+/// The declared fallback value. Non-null exactly when <paramref name="OnUnnamed"/> is
+/// <see cref="UnnamedNumberBehavior.Fallback"/>.
+/// </param>
+public sealed record IrNumberToEnum(
+    IrExpression Operand,
+    EnumPlType EnumType,
+    UnnamedNumberBehavior OnUnnamed,
+    IrExpression? Fallback,
+    SourceSpan Span) : IrExpression(EnumType, Span);
+
 /// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
 /// <remarks>
 /// <para>

@@ -1,0 +1,28 @@
+edition = "2023";
+
+package protocross.conformance;
+
+// enum_numbers.pcross -- an enum's number, and numbers no value names.
+//
+// An edition rather than proto3 so that one schema can hold an open enum beside a closed one. The
+// edition's default makes NumberedFruit open, and NumberedShape says it is closed, so whatever the
+// two conversions do differently is down to that one feature. NumberedShape's values start at 1, as a
+// closed enum's may, which leaves zero as a number it does not name.
+enum NumberedFruit {
+  NUMBERED_FRUIT_UNSPECIFIED = 0;
+  NUMBERED_FRUIT_APPLE = 1;
+  NUMBERED_FRUIT_PEAR = 5;
+}
+
+enum NumberedShape {
+  option features.enum_type = CLOSED;
+
+  NUMBERED_SHAPE_CIRCLE = 1;
+  NUMBERED_SHAPE_SQUARE = 2;
+}
+
+message EnumNumberCase {
+  NumberedFruit fruit = 1;
+  NumberedShape shape = 2;
+  int32 number = 3;
+}

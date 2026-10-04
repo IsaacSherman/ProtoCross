@@ -53,7 +53,10 @@ This section should be maintained as the authoritative list of open decisions.
   Whether there is a `bytes` literal remains open ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - String indexing and comparison semantics.
 - ~~How protobuf enum values are referenced.~~ Decided: `EnumType.VALUE_NAME` ([12](./§12-Enums.md#12-enums)).
-- Enum unknown-value behavior, and whether an enum converts to or from an integer.
+- ~~Enum unknown-value behavior, and whether an enum converts to or from an integer.~~ Decided: an
+  enum converts to and from `int32` with `as`. A number the enum does not name is kept by an open
+  enum, with a note, and ends the program for a closed one, with a warning, unless an `on_unknown`
+  clause says otherwise ([12.1](./§12-Enums.md#121-an-enums-number)).
 - ~~Message construction support.~~ Decided: a literal, `new T { field: value, … }`, which is an
   expression wherever one may be written and is how a fixture's fields are written too; its values
   evaluate in the order written, and storing a message that is not a literal stores a copy
