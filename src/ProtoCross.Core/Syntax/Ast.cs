@@ -296,13 +296,41 @@ public sealed record HasExpression(
     SourceSpan Span) : Expression(Span);
 
 /// <summary>
-/// An explicit numeric conversion, <c>x as int64</c> (spec 10.3). ProtoCross applies no implicit
-/// numeric conversions, so this is the only way an expression changes width or signedness.
+/// An explicit conversion, <c>x as int64</c> (spec 10.3), or between an enum and its number,
+/// <c>n as OrderStatus</c> (spec 12). ProtoCross applies no implicit conversions, so this is the
+/// only way an expression changes its type.
 /// </summary>
+/// <param name="OnUnknown">
+/// What a conversion to an enum makes of a number the enum does not name, or null where nothing
+/// is written.
+/// </param>
 public sealed record CastExpression(
     Expression Operand,
     TypeReference TargetType,
+    SourceSpan Span,
+    OnUnknownClause? OnUnknown = null) : Expression(Span);
+
+/// <summary>
+/// Whether an enum value is one its enum names, <c>status in OrderStatus</c> (spec 12.2).
+/// </summary>
+/// <remarks>
+/// Not a <see cref="BinaryExpression"/>, because its right side is a type rather than a value: it
+/// asks about the names a type declares, and a value written there would be a different question.
+/// </remarks>
+public sealed record EnumMembershipExpression(
+    Expression Value,
+    TypeReference EnumType,
     SourceSpan Span) : Expression(Span);
+
+/// <summary>
+/// The <c>on_unknown</c> clause of a conversion to an enum: either a value to use instead of a
+/// number the enum does not name, or <c>fail</c>, which terminates deterministically (spec 12).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    public bool IsFail => Fallback is null;
+}
 
 /// <summary>
 /// An integer literal as written: its magnitude, in any of the spellings spec 6.6 allows.

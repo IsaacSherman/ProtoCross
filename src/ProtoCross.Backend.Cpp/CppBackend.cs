@@ -929,6 +929,12 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrIntegerDivision division => EmitIntegerDivision(division, placement),
         IrUnary unary => EmitUnary(unary, placement),
         IrConversion conversion => EmitConversion(conversion, placement),
+        IrEnumToNumber number => $"static_cast<::std::int32_t>({Expression(number.Operand, placement)})",
+        IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement),
+
+        // protoc's _IsValid takes an int, which an enum declared over int converts to.
+        IrEnumMembership membership
+            => $"{QualifiedEnumName(membership.EnumType.Descriptor)}_IsValid({Expression(membership.Value, placement)})",
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),
@@ -1228,12 +1234,20 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// <remarks>
     /// <para>
     /// A question about the emitted C++ rather than about the IR, so it follows what the emitter
-    /// writes. The four node kinds here become literals and operators; everything else becomes a
-    /// call or a member access, and neither is a constant expression. Integer arithmetic is the case
-    /// worth naming: it looks constant and is not, because it routes through
+    /// writes. The node kinds here become literals, operators, casts and enum constants; everything
+    /// else becomes a call or a member access, and neither is a constant expression. Integer
+    /// arithmetic is the case worth naming: it looks constant and is not, because it routes through
     /// <c>protocross_runtime.h</c>, so <c>(2 - 2) as double</c> is a divisor the front end cannot
     /// work out. Counting it as constant anyway costs an inlined call that was not needed, which is
     /// the direction this predicate is allowed to be wrong in.
+    /// </para>
+    /// <para>
+    /// An enum constant is a constant expression, and so is a cast to or from an enum, so
+    /// <c>Level.LEVEL_ZERO as int32 as double</c> and <c>0 as Level as int32 as double</c> are zeros the
+    /// front end works out, and a division by either is refused by MSVC as <c>C2124</c> unless it goes
+    /// through <c>std::divides</c>. A conversion to an enum that falls back or fails is a call to the
+    /// runtime instead, and is counted as constant anyway when its number is, in the direction this is
+    /// allowed to be wrong in.
     /// </para>
     /// <para>
     /// A reference to a local is deliberately absent. MSVC does fold through a <c>const</c> local,
@@ -1247,6 +1261,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrUnary unary => IsConstantExpression(unary.Operand),
         IrBinary binary => IsConstantExpression(binary.Left) && IsConstantExpression(binary.Right),
         IrConversion conversion => IsConstantExpression(conversion.Operand),
+        IrEnumValue => true,
+        IrEnumToNumber number => IsConstantExpression(number.Operand),
+        IrNumberToEnum conversion => IsConstantExpression(conversion.Operand),
         _ => false,
     };
 
@@ -1362,6 +1379,41 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 nameof(conversion), conversion.Kind, "Unhandled conversion kind."),
         };
     }
+
+    /// <summary>Emits an enum value made from a number (spec 12).</summary>
+    /// <remarks>
+    /// protoc declares every C++ enum with <c>int</c> as its underlying type, so a cast holds any
+    /// number, and keeping one needs nothing more. A fallback and a failure ask protoc's
+    /// <c>_IsValid</c> whether the schema names the number, passed to the runtime by address. That
+    /// answer is the one the generated code would give, rather than a list of numbers this backend
+    /// wrote out and could get wrong.
+    /// </remarks>
+    private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement)
+    {
+        var enumType = QualifiedEnumName(conversion.EnumType.Descriptor);
+        var value = $"static_cast<{enumType}>({Expression(conversion.Operand, placement)})";
+        var isNamed = $"&{enumType}_IsValid";
+
+        return conversion.OnUnnamed switch
+        {
+            UnnamedNumberBehavior.Keep => value,
+            UnnamedNumberBehavior.Fallback =>
+                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {FallbackOf(conversion, placement)})",
+            UnnamedNumberBehavior.Fail =>
+                $"{RuntimeNamespace}::named_or_fail({value}, {isNamed}, {FormatString(conversion.EnumType.DisplayName)})",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
+        };
+    }
+
+    /// <summary>
+    /// The value a conversion to an enum falls back to: the one its clause wrote, or the one the
+    /// project's configuration names (spec 12.1).
+    /// </summary>
+    private static string FallbackOf(IrNumberToEnum conversion, Placement placement)
+        => conversion.Fallback is { } written
+            ? Expression(written, placement)
+            : QualifiedEnumValueName(conversion.ConfiguredFallback!);
 
     private static string EmitLiteral(IrLiteral literal) => literal.Value switch
     {

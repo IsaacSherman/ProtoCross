@@ -9,6 +9,10 @@ A backend is conforming if it:
 - Rejects unsupported ProtoCross features at compile time.
 - Does not silently change numeric, presence, collection, or error semantics.
 
+What a protobuf runtime hands a method after parsing is the runtime's, not the backend's. Two
+runtimes that parse one closed enum field differently are a boundary the language documents
+([21.4](./§21-Interoperability%20With%20Protobuf.md#214-enum-fields-after-parsing)), and a backend emitting the same read for each is conforming.
+
 ### 23.1 Backend Feature Matrix
 
 Status as of the first working compiler. "No" means the backend rejects the feature at compile
@@ -35,6 +39,8 @@ time rather than emitting something whose semantics differ.
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |
 | Enum types and values | Yes | Yes | — | Named per 12; both targets re-spell values differently. |
+| An enum's number (`as int32`, `as Enum`) | Yes | Yes | — | A cast in both. `on_unknown`, and a closed enum's default, ask `Enum.IsDefined` in C# and protoc's `_IsValid` in C++, and fail with exit code 70 as `on_zero fail` does ([12.1](./§12-Enums.md#121-an-enums-number)). |
+| Whether a value has a name (`in`) | Yes | Yes | — | `Enum.IsDefined` in C#; protoc's `_IsValid` in C++ ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)). |
 | Conditionals and `while` | Yes | Yes | — | `if` / `else if` / `else`, `while`, `break`, `continue` ([15](./§15-Control%20Flow.md#15-control-flow)). |
 | Field presence (`has`) | Yes | Yes | — | `x != null` or `HasX` in C#; `has_x()` in C++ ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). |
 | Unset message-field guard | Yes | Yes | — | Compile-time (`PC0078`), so neither backend emits a runtime check ([13.1](./§13-Messages.md#131-field-access)). |

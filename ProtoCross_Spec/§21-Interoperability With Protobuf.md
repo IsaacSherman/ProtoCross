@@ -147,3 +147,35 @@ Open Question:
 
 - Whether a future edition could change a rule this specification states, and how the compiler would
   notice. Nothing here reads edition-specific features other than through `HasPresence`.
+
+### 21.4 Enum Fields After Parsing
+
+**Decided: ProtoCross follows the host protobuf runtime's representation of enum fields after
+deserialization. For schemas whose declared enum openness is not honored by a target runtime,
+observable behavior may therefore differ between targets.**
+
+A closed enum ([12.1](./§12-Enums.md#121-an-enums-number)) is one protobuf does not let a field hold a number the enum does not
+name. The runtimes do not agree on which enums that is. Protobuf's C# runtime treats every enum as
+open, in every release. Its C++ runtime honors a closed enum, and also treats a field a proto2 file
+declares as closed when its enum is a proto3 one. So from the same bytes, a closed enum field
+holding a number its enum does not name reads as that number in C#, and C++ sets the number aside
+with the message's unknown fields: a singular field reads as unset, and a repeated one reads without
+that element.
+
+ProtoCross does not try to reconcile the two. Doing so would mean parsing differently from the
+runtime a consumer's own code parses with, which is a larger divergence than this one. It is not
+beyond the language's scope either: it is a boundary the language defines and documents, and a
+backend's obligation to preserve ProtoCross semantics begins with what its runtime hands a method
+([23](./§23-Backend%20Conformance%20Requirements.md#23-backend-conformance-requirements)).
+
+Normative Requirements:
+
+- A read of a field C++ parses as closed, singular or repeated, carries `PC5001`, a note that the
+  read can differ between targets. It has no help, because nothing on the line changes it. A write,
+  a `has` test and a conversion are not reads of a parsed number, and carry nothing.
+- A field C++ parses as closed is one whose enum is closed, or one a proto2 file declares. Editions'
+  `legacy_closed_enum` C++ feature, which can make an editions file's field closed too, is not read:
+  the runtime this compiler links does not register it, and it exists to migrate proto2 files.
+- `on_unknown`, a project's `<UnknownFallback>`, and `in` behave as they do anywhere else
+  ([12.1](./§12-Enums.md#121-an-enums-number), [12.2](./§12-Enums.md#122-whether-a-value-has-a-name)). In C#, `in` can find such a field holds a number with no name;
+  in C++ it never does.

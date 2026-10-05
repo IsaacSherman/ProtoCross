@@ -700,6 +700,90 @@ public enum ConversionKind
     FloatToInteger,
 }
 
+/// <summary>The number behind an enum value, <c>status as int32</c> (spec 12).</summary>
+/// <remarks>
+/// Not an <see cref="IrConversion"/>. That node carries a <see cref="ConversionBehavior"/>, the
+/// policy for a value the target cannot hold, and every enum number is an <c>int32</c>, so this has
+/// no such value and no policy to carry. A hover that read a behavior off it would tell the reader the
+/// number wraps.
+/// </remarks>
+public sealed record IrEnumToNumber(IrExpression Operand, SourceSpan Span)
+    : IrExpression(ScalarType.Int32Type, Span);
+
+/// <summary>What a conversion to an enum makes of a number the enum does not name (spec 12).</summary>
+public enum UnnamedNumberBehavior
+{
+    /// <summary>
+    /// Keep the number, a value that equals none of the enum's names. The default for an open enum,
+    /// where protobuf keeps such a number too.
+    /// </summary>
+    Keep,
+
+    /// <summary>Produce the declared fallback value instead.</summary>
+    Fallback,
+
+    /// <summary>
+    /// Terminate the program deterministically, as <c>on_zero fail</c> does. The default for a
+    /// closed enum, which protobuf does not let hold such a number.
+    /// </summary>
+    Fail,
+}
+
+/// <summary>Who said what a conversion to an enum makes of a number the enum does not name (spec 12.1).</summary>
+/// <remarks>
+/// Carried so that a host explaining the conversion can say whose answer it is: the line, the
+/// project's <c>protocross.config.xml</c>, or protobuf's own rule for the enum. Spec 10.4 asks a host
+/// to state the policy that governs an operation, and these are three different answers to whether
+/// one does.
+/// </remarks>
+public enum UnnamedNumberSource
+{
+    /// <summary>An <c>on_unknown</c> clause written on the conversion.</summary>
+    Clause,
+
+    /// <summary>An <c>&lt;UnknownFallback&gt;</c> for the enum in <c>protocross.config.xml</c>.</summary>
+    Configuration,
+
+    /// <summary>Nothing said, so what protobuf does with the enum: keep for an open one, fail for a closed one.</summary>
+    Default,
+}
+
+/// <summary>An enum value made from a number, <c>n as OrderStatus</c> (spec 12.1).</summary>
+/// <remarks>
+/// Apart from <see cref="IrConversion"/> for the reason <see cref="IrEnumToNumber"/> is, and because
+/// a number may lack a name. What happens then is decided by the binder and stamped here, so a
+/// backend emits the behavior it is handed and never works out for itself whether an enum is closed,
+/// or what the project's configuration says about it.
+/// </remarks>
+/// <param name="Fallback">
+/// The fallback a clause wrote. Non-null exactly when <paramref name="OnUnnamed"/> is
+/// <see cref="UnnamedNumberBehavior.Fallback"/> and <paramref name="Source"/> is
+/// <see cref="UnnamedNumberSource.Clause"/>.
+/// </param>
+/// <param name="ConfiguredFallback">
+/// The fallback the configuration names. Non-null exactly when <paramref name="OnUnnamed"/> is
+/// <see cref="UnnamedNumberBehavior.Fallback"/> and <paramref name="Source"/> is
+/// <see cref="UnnamedNumberSource.Configuration"/>. A value rather than a node, because nothing in the
+/// source wrote it, so there is nowhere for a node of it to be.
+/// </param>
+public sealed record IrNumberToEnum(
+    IrExpression Operand,
+    EnumPlType EnumType,
+    UnnamedNumberBehavior OnUnnamed,
+    UnnamedNumberSource Source,
+    IrExpression? Fallback,
+    EnumValueDescriptor? ConfiguredFallback,
+    SourceSpan Span) : IrExpression(EnumType, Span);
+
+/// <summary>Whether an enum value is one its enum names, <c>status in OrderStatus</c> (spec 12.2).</summary>
+/// <remarks>
+/// The enum is carried rather than read off the value's type at emission, because it is what C++ asks:
+/// protoc's <c>_IsValid</c> is a function of the enum, and the include it needs comes from here as
+/// well.
+/// </remarks>
+public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, SourceSpan Span)
+    : IrExpression(ScalarType.BoolType, Span);
+
 /// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
 /// <remarks>
 /// <para>

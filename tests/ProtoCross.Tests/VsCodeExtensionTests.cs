@@ -289,15 +289,15 @@ public class VsCodeExtensionTests
 
     /// <summary>
     /// Every list of reserved words the grammar holds is spec 6.4's, no more and no fewer: the one it
-    /// colours as keywords, and the one after which <c>new</c> stays a name.
+    /// colours as keywords, and the ones after which <c>new</c> and <c>on_unknown</c> stay names.
     /// </summary>
     /// <remarks>
     /// The sweep above already fails for a keyword the grammar misses, if a source in the repository uses
     /// it. This one also fails for a keyword nobody has written yet, and for a word the grammar colours as
-    /// a keyword that the lexer reads as a name. The contextual <c>new</c> rule has to spell the list a
-    /// second time, because a TextMate pattern cannot refer to another's, and this is what keeps the two
-    /// copies from drifting apart. The contextual <c>mut</c> rule spells no list: it names only the
-    /// <c>fn</c> after it, which has to be a keyword the lexer reserves.
+    /// a keyword that the lexer reads as a name. The contextual <c>new</c> and <c>on_unknown</c> rules
+    /// each spell the list again, because a TextMate pattern cannot refer to another's, and this is what
+    /// keeps the three copies from drifting apart. The contextual <c>mut</c> rule spells no list: it
+    /// names only the <c>fn</c> after it, which has to be a keyword the lexer reserves.
     /// </remarks>
     [Fact]
     public void TheGrammarsKeywordsAreTheLexersKeywords()
@@ -308,14 +308,14 @@ public class VsCodeExtensionTests
             .Select(pattern => pattern.GetProperty("match").GetString()!)
             .ToList();
 
-        Assert.Equal(3, patterns.Count);
+        Assert.Equal(4, patterns.Count);
 
         var lists = patterns
             .Select(pattern => Regex.Match(pattern, @"\(\?:([a-z0-9_|]+)\)"))
             .Where(list => list.Success)
             .ToList();
 
-        Assert.Equal(2, lists.Count);
+        Assert.Equal(3, lists.Count);
 
         foreach (var list in lists)
         {

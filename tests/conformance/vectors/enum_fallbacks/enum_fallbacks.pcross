@@ -1,0 +1,61 @@
+// Conformance vectors for <Enums> in protocross.config.xml (spec 10.4, 12.1).
+//
+// The configuration beside this file says that a number ConfiguredFruit does not name becomes PLUM,
+// and that one ConfiguredShape does not name ends the program. Neither conversion below says so
+// itself, so every answer here is the project's, and a clause written on the line still wins over it.
+
+import proto "enum_fallbacks.proto";
+
+extend EnumFallbackCase {
+    fn fruit() -> ConfiguredFruit {
+        return number as ConfiguredFruit;
+    }
+
+    fn shape() -> ConfiguredShape {
+        return number as ConfiguredShape;
+    }
+
+    fn fruit_by_clause() -> ConfiguredFruit {
+        return number as ConfiguredFruit on_unknown ConfiguredFruit.CONFIGURED_FRUIT_UNSPECIFIED;
+    }
+}
+
+test EnumFallbackCase.fruit "a named number is its value" {
+    receiver {
+        number: 1,
+    }
+
+    expect return ConfiguredFruit.CONFIGURED_FRUIT_APPLE;
+}
+
+test EnumFallbackCase.fruit "a number with no name becomes the configured value" {
+    receiver {
+        number: 42,
+    }
+
+    expect return ConfiguredFruit.CONFIGURED_FRUIT_PLUM;
+}
+
+test EnumFallbackCase.shape "a named number is its value under a configured fail" {
+    receiver {
+        number: 2,
+    }
+
+    expect return ConfiguredShape.CONFIGURED_SHAPE_SQUARE;
+}
+
+test EnumFallbackCase.shape "a number with no name ends the program as configured" {
+    receiver {
+        number: 0,
+    }
+
+    expect fail;
+}
+
+test EnumFallbackCase.fruit_by_clause "a clause on the line wins over the configuration" {
+    receiver {
+        number: 42,
+    }
+
+    expect return ConfiguredFruit.CONFIGURED_FRUIT_UNSPECIFIED;
+}

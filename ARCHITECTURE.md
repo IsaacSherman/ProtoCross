@@ -257,6 +257,8 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Emission behavior | `ArithmeticBehavior`, `ConversionBehavior` | [Ir/ArithmeticBehavior.cs](src/ProtoCross.Core/Ir/ArithmeticBehavior.cs) |
 | What a change reaches, and what a backend copies for it | `IrMutation` | [Semantics/IrMutation.cs](src/ProtoCross.Core/Semantics/IrMutation.cs) |
 | Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](src/ProtoCross.Core/Ir/NumericPolicy.cs) |
+| What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](src/ProtoCross.Core/Ir/Ir.cs) |
+| Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](src/ProtoCross.Core/Types/EnumOpenness.cs) |
 | Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](src/ProtoCross.Core/Backend/IBackend.cs) |
 | Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](src/ProtoCross.Core/Backend/NameConventions.cs) |
 

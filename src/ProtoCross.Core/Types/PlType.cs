@@ -77,6 +77,9 @@ public sealed record MessageType(MessageDescriptor Descriptor) : PlType
 public sealed record EnumPlType(EnumDescriptor Descriptor) : PlType
 {
     public override string DisplayName => Descriptor.FullName;
+
+    /// <inheritdoc cref="EnumOpenness.IsClosed"/>
+    public bool IsClosed => EnumOpenness.IsClosed(Descriptor);
 }
 
 /// <summary>A protobuf repeated field. Iterable with <c>for</c>, per spec 14.</summary>

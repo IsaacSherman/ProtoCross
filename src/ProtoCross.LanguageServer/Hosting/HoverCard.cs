@@ -296,8 +296,42 @@ internal static class HoverCard
             case IrConversion conversion:
                 yield return Conversion(conversion);
                 break;
+
+            case IrNumberToEnum conversion:
+                yield return OnUnnamed(conversion);
+                break;
         }
     }
+
+    /// <summary>What this conversion makes of a number its enum does not name, and who says so (spec 12.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// Said whether or not a clause is written, because the default is the part a reader cannot see:
+    /// the same <c>n as Level</c> keeps the number for an open enum and ends the program for a closed
+    /// one. An enum's number going the other way, <c>status as int32</c>, has nothing to say beyond its
+    /// type, which is exactly what it is.
+    /// </para>
+    /// <para>
+    /// Where the answer comes from <c>protocross.config.xml</c>, the card says so, as spec 10.4 asks of
+    /// any operation a project's policy governs. Nothing on the line shows it.
+    /// </para>
+    /// </remarks>
+    private static string OnUnnamed(IrNumberToEnum conversion)
+        => "A number the enum does not name " + (conversion.OnUnnamed, conversion.Source) switch
+        {
+            (UnnamedNumberBehavior.Keep, _) => "is kept, as a value equal to none of its names (spec 12.1).",
+            (UnnamedNumberBehavior.Fallback, UnnamedNumberSource.Configuration) =>
+                $"becomes `{conversion.ConfiguredFallback!.Name}`, as `{ProjectConfig.FileName}` states "
+                    + "(spec 10.4, 12.1).",
+            (UnnamedNumberBehavior.Fallback, _) => "yields the declared `on_unknown` value (spec 12.1).",
+            (UnnamedNumberBehavior.Fail, UnnamedNumberSource.Configuration) =>
+                $"terminates the program, exit code 70, as `{ProjectConfig.FileName}` states (spec 10.4, 12.1).",
+            (UnnamedNumberBehavior.Fail, UnnamedNumberSource.Default) =>
+                "terminates the program, exit code 70, because the enum is closed (spec 12.1).",
+            (UnnamedNumberBehavior.Fail, _) => "terminates the program, exit code 70 (spec 12.1).",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
+        };
 
     /// <remarks>
     /// Spelt out here rather than shared with <see cref="ProjectConfig.DescribeForHeader"/>, which

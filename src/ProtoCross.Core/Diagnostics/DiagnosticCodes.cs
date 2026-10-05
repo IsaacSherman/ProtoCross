@@ -538,6 +538,34 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor CallHasNoValue =
         new("PC0100", DiagnosticSeverity.Error, "call has no value");
 
+    // ------------------------------------------------------- an enum's number
+
+    /// <summary>
+    /// An <c>on_unknown</c> clause on a conversion whose target is not an enum, where no number can
+    /// lack a name (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnUnknownOutsideEnumConversion =
+        new("PC0101", DiagnosticSeverity.Error, "'on_unknown' outside a conversion to an enum");
+
+    /// <summary>
+    /// A conversion to a closed enum that says nothing about a number the enum does not name, which
+    /// therefore ends the program (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ClosedEnumConversionHasNoFallback =
+        new("PC0102", DiagnosticSeverity.Warning, "closed enum conversion has no fallback");
+
+    /// <summary>An <c>on_unknown</c> fallback that is not a value of the enum converted to (spec 12).</summary>
+    public static readonly DiagnosticDescriptor OnUnknownTypeMismatch =
+        new("PC0103", DiagnosticSeverity.Error, "on_unknown fallback type mismatch");
+
+    /// <summary><c>in</c> naming a type that is not an enum, which has no names to look in (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipNeedsAnEnum =
+        new("PC0104", DiagnosticSeverity.Error, "'in' needs an enum");
+
+    /// <summary><c>in</c> asked of a value that is not of the enum it names (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipTypeMismatch =
+        new("PC0105", DiagnosticSeverity.Error, "value is not of the enum");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
@@ -612,4 +640,27 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor ProjectNameIsNotANamespace =
         new("PC2013", DiagnosticSeverity.Error, "project name is not a namespace");
+
+    /// <summary>
+    /// An <c>&lt;UnknownFallback&gt;</c> in <c>protocross.config.xml</c> that does not name one enum and
+    /// one of its values, or <c>fail</c> (spec 10.4, 12.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidEnumFallback =
+        new("PC2014", DiagnosticSeverity.Error, "invalid enum fallback");
+
+    // ------------------------------------------------------- informational notes
+
+    /// <summary>
+    /// A conversion to an open enum that keeps a number the enum does not name, as nothing says
+    /// otherwise (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor UnnamedNumberIsKept =
+        new("PC5000", DiagnosticSeverity.Information, "unnamed number is kept");
+
+    /// <summary>
+    /// A read of a field C++ parses as a closed enum and C# as an open one, which the two can read
+    /// differently from the same bytes (spec 21.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ClosedEnumReadsDifferByRuntime =
+        new("PC5001", DiagnosticSeverity.Information, "closed enum reads differ by runtime");
 }

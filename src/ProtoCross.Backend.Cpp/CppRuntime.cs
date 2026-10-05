@@ -95,6 +95,11 @@ public static class CppRuntime
             }
 
             EmitNarrowToFloatHelper(writer);
+
+            writer.WriteLine("// --- enums (12) ---");
+            writer.WriteLine();
+
+            EmitEnumHelpers(writer);
         }
 
         writer.WriteLine();
@@ -668,6 +673,57 @@ public static class CppRuntime
     /// atexit handlers, and reports the exit code chosen here rather than a signal.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Emits what a conversion to an enum makes of a number the enum does not name: a fallback, or
+    /// termination (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Templates over the enum, given protoc's <c>_IsValid</c> for it by address, so one helper serves
+    /// every enum and the call site is the only thing that names one. The value is taken already cast
+    /// to the enum, which protoc declares with <c>int</c> beneath it, so any number survives the cast.
+    /// </para>
+    /// <para>
+    /// The failure writes the line the C# runtime writes, naming the enum by its protobuf name, since
+    /// protoc gives the two targets different names for it.
+    /// </para>
+    /// </remarks>
+    private static void EmitEnumHelpers(SourceWriter writer)
+    {
+        writer.WriteLine("// Reached from an 'on_unknown fail' clause, and from a conversion to a closed enum");
+        writer.WriteLine("// that states no fallback.");
+        using (writer.Block("[[noreturn]] inline void fail_unnamed(const char* enum_name, ::std::int32_t number)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(enum_name, stderr);");
+            writer.WriteLine("::std::fprintf(stderr, \" has no value numbered %ld\\n\", static_cast<long>(number));");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename E>");
+        using (writer.Block("inline E named_or(E value, bool (*is_named)(int), E fallback)"))
+        {
+            writer.WriteLine("return is_named(static_cast<int>(value)) ? value : fallback;");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename E>");
+        using (writer.Block("inline E named_or_fail(E value, bool (*is_named)(int), const char* enum_name)"))
+        {
+            using (writer.Block("if (!is_named(static_cast<int>(value)))"))
+            {
+                writer.WriteLine("fail_unnamed(enum_name, static_cast<::std::int32_t>(value));");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return value;");
+        }
+
+        writer.WriteLine();
+    }
+
     private static void EmitFailHelper(SourceWriter writer)
     {
         writer.WriteLine("// Reached only from an 'on_zero fail' clause, where the author declared that");

@@ -206,6 +206,7 @@ public sealed partial class Binder
         }
 
         _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
+        _configuredFallbacks = ResolveConfiguredFallbacks();
 
         var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
 
@@ -633,41 +634,23 @@ public sealed partial class Binder
             return scalar;
         }
 
-        // A fully qualified name is unambiguous by construction, so it is tried before any
-        // simple-name lookup that could report a false ambiguity.
-        if (Visible.FindMessage(name) is { } messageByFullName)
+        // The rule is the index's, so that completion, the configuration and this agree about what a
+        // type name names.
+        switch (Visible.ResolveTypeName(name))
         {
-            return NamedMessage(messageByFullName);
-        }
+            case SchemaMessageName message:
+                return NamedMessage(message.Descriptor);
 
-        if (Visible.FindEnum(name) is { } enumByFullName)
-        {
-            return NamedEnum(enumByFullName);
+            case SchemaEnumName enumType:
+                return NamedEnum(enumType.Descriptor);
         }
-
-        var messages = Visible.MessagesNamed(name);
-        var enums = Visible.EnumsNamed(name);
 
         // Asked of the index rather than counted here, because completion has to predict exactly this
         // and a second count is a second rule. The index names it for the position it governs.
         if (Visible.IsAmbiguousAsATypeName(name))
         {
-            // Messages and enums share one type name space here, so a name matching one of each is
-            // just as ambiguous as a name matching two enums.
-            var fullNames = messages.Select(m => m.FullName).Concat(enums.Select(e => e.FullName));
-
-            ReportAmbiguousTypeName(name, reference.Span, fullNames);
+            ReportAmbiguousTypeName(name, reference.Span, Visible.FullNamesOfTypesNamed(name));
             return ErrorType.Instance;
-        }
-
-        if (messages is [var onlyMessage])
-        {
-            return NamedMessage(onlyMessage);
-        }
-
-        if (enums is [var onlyEnum])
-        {
-            return NamedEnum(onlyEnum);
         }
 
         if (ReportIfOnlyTestSchemasDeclare(
@@ -1701,6 +1684,7 @@ public sealed partial class Binder
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
             CastExpression cast => BindCast(cast, scope, context),
+            EnumMembershipExpression membership => BindEnumMembership(membership, scope, context),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
@@ -1709,7 +1693,8 @@ public sealed partial class Binder
     /// <summary>
     /// Binds an explicit conversion, <c>x as int64</c> (spec 10.3). This is the only way to change
     /// the width or signedness of a value, and the reason mixed-width arithmetic is expressible at
-    /// all.
+    /// all. A conversion with an enum on either side is an enum's number (spec 12), and is bound in
+    /// <c>Binder.Enums.cs</c>.
     /// </summary>
     /// <remarks>
     /// The operand is bound with no expected type. The cast already states the target, so the
@@ -1723,11 +1708,23 @@ public sealed partial class Binder
         var operand = BindExpression(cast.Operand, scope, context, null);
         var target = ResolveTypeReference(cast.TargetType);
 
+        if (target is EnumPlType enumType)
+        {
+            return BindNumberToEnum(cast, operand, enumType, scope, context);
+        }
+
+        ReportStrayOnUnknown(cast, target, scope, context);
+
         // ResolveTypeReference has already reported an unknown or ambiguous target, and a failed
         // operand has already reported whatever went wrong there.
         if (operand.Type is ErrorType || target is ErrorType)
         {
             return new IrLiteral(null, ErrorType.Instance, cast.Span);
+        }
+
+        if (operand.Type is EnumPlType enumOperand)
+        {
+            return BindEnumToNumber(cast, operand, enumOperand, target);
         }
 
         if (operand.Type is not ScalarType { IsNumeric: true } source
@@ -1846,6 +1843,11 @@ public sealed partial class Binder
                     $"Guard it: 'if has {field.Name} {{ ... }}', or return early with "
                     + $"'if not has {field.Name} {{ ... }}' (spec 13.1).");
             }
+        }
+
+        if (EnumOpenness.IsClosedInCpp(field))
+        {
+            ReportClosedEnumRead(field, span);
         }
 
         return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);

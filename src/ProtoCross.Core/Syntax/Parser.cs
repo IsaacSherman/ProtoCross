@@ -1431,6 +1431,7 @@ public sealed class Parser
 
     /// <summary>Binding power for infix operators; higher binds tighter (spec 9.2).</summary>
     /// <remarks>
+    /// <para>
     /// The C-family order, which is C#'s and C++'s, so an expression means what a reader of either
     /// target already takes it to mean, and a backend can emit it without regrouping. The price is
     /// the one C pays: a comparison binds tighter than <c>&amp;</c>, <c>^</c> and <c>|</c>, so
@@ -1439,13 +1440,18 @@ public sealed class Parser
     /// and the binder's help for it says to parenthesize. Rust's order, with the bitwise operators
     /// above the comparisons, was the alternative, and would have made the same expression mean one
     /// thing here and another in both targets.
+    /// </para>
+    /// <para>
+    /// <c>in</c> asks whether an enum value has a name (spec 12.2), and binds as a comparison does,
+    /// which is what it is: <c>status in Level == wanted</c> compares its answer.
+    /// </para>
     /// </remarks>
     private static int GetBinaryPrecedence(TokenKind kind) => kind switch
     {
         TokenKind.Star or TokenKind.Slash or TokenKind.Percent => 9,
         TokenKind.Plus or TokenKind.Minus => 8,
         TokenKind.LessLess or TokenKind.GreaterGreater => 7,
-        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals => 6,
+        TokenKind.Less or TokenKind.LessEquals or TokenKind.Greater or TokenKind.GreaterEquals or TokenKind.In => 6,
         TokenKind.EqualsEquals or TokenKind.BangEquals => 5,
         TokenKind.Ampersand => 4,
         TokenKind.Caret => 3,
@@ -1520,7 +1526,32 @@ public sealed class Parser
                 return left;
             }
 
+            // An 'in' after something that did not parse is the 'in' of a for header whose binding
+            // was mistyped, as in 'for x() in items', rather than a test of a value nobody wrote.
+            // Read as a test, it would take the collection's name for a type and turn the rest of the
+            // header into a call, reported as one, so it ends the expression as it did before 'in'
+            // was an operator.
+            if (Current.Kind == TokenKind.In && left is ErrorExpression)
+            {
+                return left;
+            }
+
             var operatorToken = Advance();
+
+            if (operatorToken.Kind == TokenKind.In)
+            {
+                var enumType = ParseTypeReference();
+
+                if (!TryReachHeight(height + 1, operatorToken.Span))
+                {
+                    height = 1;
+                    return AbandonTallExpression(left.Span);
+                }
+
+                height++;
+                left = new EnumMembershipExpression(left, enumType, Spanning(left.Span, enumType.Span));
+                continue;
+            }
 
             // All binary operators are left-associative, so the right operand must bind strictly
             // tighter to be absorbed into this level.
@@ -1608,18 +1639,67 @@ public sealed class Parser
         {
             var asToken = Advance();
             var target = ParseTypeReference();
+            var onUnknown = ParseOnUnknownClause(out var fallbackHeight);
 
-            if (!TryReachHeight(height + 1, asToken.Span))
+            var wrapped = Math.Max(height, fallbackHeight) + 1;
+            if (!TryReachHeight(wrapped, asToken.Span))
             {
                 height = 1;
                 return AbandonTallExpression(expression.Span);
             }
 
-            height++;
-            expression = new CastExpression(expression, target, Spanning(expression.Span, target.Span));
+            height = wrapped;
+            expression = new CastExpression(
+                expression,
+                target,
+                Spanning(expression.Span, onUnknown?.Span ?? target.Span),
+                onUnknown);
         }
 
         return expression;
+    }
+
+    /// <summary>
+    /// Parses the <c>on_unknown &lt;fallback&gt;</c> suffix a conversion to an enum may carry
+    /// (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Parsed after any conversion, whatever its type, because whether a type names an enum is a
+    /// question for the binder. That is also where a clause on a numeric conversion is refused.
+    /// </para>
+    /// <para>
+    /// The fallback is a postfix expression, since it begins with a name
+    /// (<see cref="ContextualKeywords.BeginsAnOnUnknownClause"/>). So an <c>as</c> after it converts
+    /// the whole conversion, not the fallback:
+    /// <c>n as Level on_unknown Level.LOW as int32</c> converts to an enum and back. That is the
+    /// reverse of <c>on_zero</c>, whose fallback is parsed at unary precedence. Here the clause is
+    /// inside a chain of conversions, and the chain should go on reading left to right.
+    /// </para>
+    /// </remarks>
+    /// <param name="fallbackHeight">
+    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// <c>on_unknown fail</c>.
+    /// </param>
+    private OnUnknownClause? ParseOnUnknownClause(out int fallbackHeight)
+    {
+        fallbackHeight = 0;
+
+        if (!ContextualKeywords.BeginsAnOnUnknownClause(Current, Peek(1)))
+        {
+            return null;
+        }
+
+        var onUnknownToken = Advance();
+
+        if (Current.Kind == TokenKind.Fail)
+        {
+            var failToken = Advance();
+            return new OnUnknownClause(null, Spanning(onUnknownToken.Span, failToken.Span));
+        }
+
+        var fallback = ParsePostfixExpression(out fallbackHeight);
+        return new OnUnknownClause(fallback, Spanning(onUnknownToken.Span, fallback.Span));
     }
 
     private Expression ParsePrefixExpression(out int height)

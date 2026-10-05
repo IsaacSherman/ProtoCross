@@ -115,6 +115,12 @@ Implemented:
 - Typed IR carrying resolved types, source locations, and per-operation arithmetic behavior
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
+- An enum's number, `status as int32`, and an enum from a number, `n as OrderStatus`. A number the
+  enum does not name is kept by an open enum and ends the program for a closed one, unless the
+  conversion says otherwise with `on_unknown OrderStatus.UNSPECIFIED` or `on_unknown fail`, or the
+  project says it once for the enum in `protocross.config.xml`.
+  `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
+  and 12.2.
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
@@ -131,7 +137,7 @@ Implemented:
   list or an append. A local holds a copy of the message or repeated value it is given, so changing
   the local never changes what it was copied from, in either backend.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
-  integer overflow
+  integer overflow, and what each enum's unnamed numbers become
 - C# backend (extension methods) and C++ backend (header-only free functions)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
@@ -279,6 +285,10 @@ project's with a warning.
   <Presence>
     <UnsetMessageRead>RequireGuard</UnsetMessageRead>
   </Presence>
+  <Enums>
+    <!-- What a number an enum does not name becomes: a value name, or fail -->
+    <UnknownFallback Type="shop.OrderStatus">ORDER_STATUS_UNSPECIFIED</UnknownFallback>
+  </Enums>
 </ProtoCross>
 ```
 
@@ -289,7 +299,7 @@ Three of those settings have exactly one legal value today. They are listed anyw
 language-dependent contract is readable in one file rather than spread between a specification and
 a set of defaults nobody wrote down.
 
-**The file wins.** Every setting also has a command-line flag, for trying something without
+**The file wins.** Overflow also has a command-line flag, for trying something without
 committing to it, but a flag that contradicts the file is refused rather than quietly applied:
 
 ```

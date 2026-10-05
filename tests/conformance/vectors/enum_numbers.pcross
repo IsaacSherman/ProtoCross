@@ -1,0 +1,268 @@
+// Conformance vectors for an enum's number, and for numbers no value names (spec 12).
+//
+// An enum converts to its number, an int32, and an int32 converts to an enum. A number the enum
+// does not name is where the two backends could part ways, so every way of meeting one is here:
+//
+// - kept, which is what an open enum does with nothing written;
+// - replaced by an `on_unknown` fallback;
+// - refused with `on_unknown fail`;
+// - refused by default, which is what a closed enum does.
+//
+// C# stores any int in an enum and C++ any int in an enum declared over int, so a kept number must
+// come back out unchanged in both. A fixture writes one through the same conversion, which is how a
+// test reaches a value no schema names, and `in` asks whether a value has a name.
+
+import proto "enum_numbers.proto";
+
+extend EnumNumberCase {
+    fn fruit_number() -> int32 {
+        return fruit as int32;
+    }
+
+    fn fruit_of(n: int32) -> NumberedFruit {
+        return n as NumberedFruit;
+    }
+
+    // Converted in and straight back out, so the number itself is what the test compares.
+    fn kept_number(n: int32) -> int32 {
+        return n as NumberedFruit as int32;
+    }
+
+    fn is_apple(n: int32) -> bool {
+        return n as NumberedFruit == NumberedFruit.NUMBERED_FRUIT_APPLE;
+    }
+
+    fn pear_by_number() -> bool {
+        return 5 as NumberedFruit == NumberedFruit.NUMBERED_FRUIT_PEAR;
+    }
+
+    fn fruit_or_pear(n: int32) -> NumberedFruit {
+        return n as NumberedFruit on_unknown NumberedFruit.NUMBERED_FRUIT_PEAR;
+    }
+
+    // The fallback is a field, not a named value.
+    fn fruit_or_mine(n: int32) -> NumberedFruit {
+        return n as NumberedFruit on_unknown fruit;
+    }
+
+    fn fruit_or_fail(n: int32) -> NumberedFruit {
+        return n as NumberedFruit on_unknown fail;
+    }
+
+    fn shape_or_circle(n: int32) -> NumberedShape {
+        return n as NumberedShape on_unknown NumberedShape.NUMBERED_SHAPE_CIRCLE;
+    }
+
+    // A closed enum with nothing written: a number it does not name ends the program.
+    fn stored_shape() -> NumberedShape {
+        return number as NumberedShape;
+    }
+
+    fn fruit_is_named() -> bool {
+        return fruit in NumberedFruit;
+    }
+
+    fn shape_is_named() -> bool {
+        return shape in NumberedShape;
+    }
+
+    // A kept number asked about before it is used, which is what 'in' is for.
+    fn fruit_or_minus_one(n: int32) -> int32 {
+        var fruit_now: NumberedFruit = n as NumberedFruit;
+        if not (fruit_now in NumberedFruit) {
+            return -1;
+        }
+
+        return fruit_now as int32;
+    }
+}
+
+test EnumNumberCase.fruit_number "an enum value converts to its number" {
+    receiver {
+        fruit: NumberedFruit.NUMBERED_FRUIT_PEAR,
+    }
+
+    expect return 5;
+}
+
+test EnumNumberCase.fruit_number "a fixture writes a number no value names" {
+    receiver {
+        fruit: 9 as NumberedFruit,
+    }
+
+    expect return 9;
+}
+
+test EnumNumberCase.fruit_of "a named number converts to its value" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    expect return NumberedFruit.NUMBERED_FRUIT_APPLE;
+}
+
+test EnumNumberCase.fruit_of "a number no value names is kept and compares equal to itself" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return 42 as NumberedFruit;
+}
+
+test EnumNumberCase.kept_number "a kept number comes back out unchanged" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return 42;
+}
+
+test EnumNumberCase.kept_number "a kept negative number comes back out unchanged" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = -3;
+    expect return -3;
+}
+
+test EnumNumberCase.is_apple "a kept number equals none of the names" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return false;
+}
+
+test EnumNumberCase.is_apple "a named number equals its name" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    expect return true;
+}
+
+test EnumNumberCase.pear_by_number "a literal converts to the value it numbers" {
+    receiver {
+        number: 0,
+    }
+
+    expect return true;
+}
+
+test EnumNumberCase.fruit_or_pear "a number no value names takes the fallback" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return NumberedFruit.NUMBERED_FRUIT_PEAR;
+}
+
+test EnumNumberCase.fruit_or_pear "a named number ignores the fallback" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    expect return NumberedFruit.NUMBERED_FRUIT_APPLE;
+}
+
+test EnumNumberCase.fruit_or_mine "a fallback read from a field" {
+    receiver {
+        fruit: NumberedFruit.NUMBERED_FRUIT_APPLE,
+    }
+
+    arg n = 42;
+    expect return NumberedFruit.NUMBERED_FRUIT_APPLE;
+}
+
+test EnumNumberCase.fruit_or_fail "a named number passes a fail clause" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 5;
+    expect return NumberedFruit.NUMBERED_FRUIT_PEAR;
+}
+
+test EnumNumberCase.fruit_or_fail "a number no value names ends the program under a fail clause" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect fail;
+}
+
+test EnumNumberCase.shape_or_circle "a closed enum takes its fallback" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 7;
+    expect return NumberedShape.NUMBERED_SHAPE_CIRCLE;
+}
+
+test EnumNumberCase.stored_shape "a closed enum converts a number it names" {
+    receiver {
+        number: 2,
+    }
+
+    expect return NumberedShape.NUMBERED_SHAPE_SQUARE;
+}
+
+test EnumNumberCase.stored_shape "a closed enum ends the program on a number it does not name" {
+    receiver {
+        number: 0,
+    }
+
+    expect fail;
+}
+
+test EnumNumberCase.fruit_is_named "a named value is in its enum" {
+    receiver {
+        fruit: NumberedFruit.NUMBERED_FRUIT_PEAR,
+    }
+
+    expect return true;
+}
+
+test EnumNumberCase.fruit_is_named "a number no value names is not in its enum" {
+    receiver {
+        fruit: 9 as NumberedFruit,
+    }
+
+    expect return false;
+}
+
+test EnumNumberCase.shape_is_named "a closed enum's value is in its enum" {
+    receiver {
+        shape: NumberedShape.NUMBERED_SHAPE_SQUARE,
+    }
+
+    expect return true;
+}
+
+test EnumNumberCase.fruit_or_minus_one "a named number is used" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    expect return 1;
+}
+
+test EnumNumberCase.fruit_or_minus_one "a number no value names is caught by 'in'" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    expect return -1;
+}

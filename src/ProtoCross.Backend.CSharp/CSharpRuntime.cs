@@ -100,9 +100,80 @@ public static class CSharpRuntime
                     EmitFloatToInteger(writer, target);
                 }
             }
+
+            writer.WriteLine();
+            EmitEnums(writer);
         }
 
         return writer.ToString();
+    }
+
+    /// <summary>The class <see cref="EmitEnums"/> declares, as generated code names it.</summary>
+    public const string EnumsTypeName = "global::ProtoCross.Runtime.ProtoCrossEnums";
+
+    /// <summary>
+    /// Emits whether a number is one an enum names, and what a conversion to an enum makes of one that
+    /// is not (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A class of its own rather than more members of the arithmetic one, which says what it is for in
+    /// its name. Generic over the enum, constrained to <see cref="Enum"/>, so one member serves every
+    /// enum a module converts to and the cast at the call site is the only thing that names it.
+    /// </para>
+    /// <para>
+    /// The failure names the enum by its protobuf name, passed in by the call site, rather than by
+    /// <see cref="Type.Name"/>. The C++ runtime writes the same line, and protoc gives the two targets
+    /// different names for the same enum.
+    /// </para>
+    /// </remarks>
+    private static void EmitEnums(SourceWriter writer)
+    {
+        writer.WriteLine("/// <summary>");
+        writer.WriteLine("/// Enum operations whose ProtoCross semantics C# does not already provide: whether a");
+        writer.WriteLine("/// number is one the schema names, and what a conversion to an enum makes of one that");
+        writer.WriteLine("/// is not.");
+        writer.WriteLine("/// </summary>");
+        using (writer.Block("internal static class ProtoCrossEnums"))
+        {
+            writer.WriteLine("/// <summary>Whether the schema names the number <paramref name=\"value\"/> holds.</summary>");
+            writer.WriteLine("public static bool IsNamed<T>(T value)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                writer.WriteLine("return global::System.Enum.IsDefined(typeof(T), value);");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value, or the fallback where the schema does not name it.</summary>");
+            writer.WriteLine("public static T NamedOr<T>(T value, T fallback)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                writer.WriteLine("return IsNamed(value) ? value : fallback;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>");
+            writer.WriteLine("/// The value, or termination where the schema does not name it. Reached from an");
+            writer.WriteLine("/// 'on_unknown fail' clause, and from a conversion to a closed enum that states no");
+            writer.WriteLine("/// fallback.");
+            writer.WriteLine("/// </summary>");
+            writer.WriteLine("public static T NamedOrFail<T>(T value, string enumName)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                using (writer.Block("if (!IsNamed(value))"))
+                {
+                    writer.WriteLine("var number = ((global::System.IConvertible)value).ToInt32(global::System.Globalization.CultureInfo.InvariantCulture);");
+                    writer.WriteLine(
+                        $"global::System.Console.Error.WriteLine(\"{FailMarker}\" + enumName + \" has no value numbered \" "
+                        + "+ number.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
+                    writer.WriteLine("global::System.Console.Error.Flush();");
+                    writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return value;");
+            }
+        }
     }
 
     private static readonly (string Type, bool IsSigned)[] IntegerTypes =

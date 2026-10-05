@@ -115,6 +115,8 @@ Contextual keywords:
   word takes a name away from every schema that uses it.
 - `mut` is not reserved. It marks a method that may change its receiver ([18](./§18-Mutability.md#18-mutability)) where `fn`
   follows it, and is an identifier everywhere else, for the same reason.
+- `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail` or a name
+  follows it, and is an identifier everywhere else, for the same reason.
 
 Open Question:
 

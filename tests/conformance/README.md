@@ -65,7 +65,8 @@ To pin behavior under a non-default language policy, put the vector in a subdire
 `protocross.config.xml`. Config discovery walks up from the source file and stops at the nearest
 match, so the file governs that directory and nothing else -- which means the corpus exercises real
 discovery rather than a hook that exists only for tests. `vectors/checked/` and
-`vectors/saturating/` are the two that do this today. Vectors compiled under different policies
+`vectors/saturating/` do this for overflow, and `vectors/enum_fallbacks/` for what an enum's unnamed
+numbers become. Vectors compiled under different policies
 still build into the one C# assembly and the one C++ link, because both generated runtime files
 carry every policy and are therefore identical whichever one was selected.
 
