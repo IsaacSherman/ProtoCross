@@ -1326,11 +1326,11 @@ public sealed class CompletionProvider
 
         // Between the arms of a switch only another arm can begin, so a name, a call or a statement
         // keyword accepted there is one the parser steps over without reading.
-        if (BetweenArms(model, subject.Start))
+        if (ArmsThatCanBeginAt(model, subject.Start) is { } arms)
         {
             return
             [
-                .. ArmStarters.Select(keyword => Member(
+                .. arms.Select(keyword => Member(
                     keyword, CompletionItemKind.Keyword, "keyword", null, rank: "8", subject, document)),
             ];
         }
@@ -1434,7 +1434,7 @@ public sealed class CompletionProvider
     /// <c>break</c> and <c>continue</c> are narrower again -- statements, and only inside a loop, or
     /// for <c>break</c> an arm of a switch. Offering them elsewhere offers something the parser takes
     /// and the binder then refuses. Between the arms of a switch none of this applies, and only an arm
-    /// can begin (<see cref="BetweenArms"/>).
+    /// can begin (<see cref="ArmsThatCanBeginAt"/>).
     /// </para>
     /// <para>
     /// Written out here rather than derived, because the parser publishes no list of what may start a
@@ -1495,11 +1495,18 @@ public sealed class CompletionProvider
     private static bool JustPastAClosedSwitch(Statement statement, int offset)
         => statement is SwitchStatement { IsClosed: true } && statement.Span.End.Offset == offset;
 
-    /// <summary>What may begin between the arms of a switch: another arm, and nothing else.</summary>
-    private static readonly IReadOnlyList<string> ArmStarters = ["case", "default"];
-
-    /// <summary>Whether <paramref name="offset"/> is inside a switch's braces and inside none of its arms.</summary>
+    /// <summary>
+    /// The arms that may begin at <paramref name="offset"/>, or null where it is not inside a switch's
+    /// braces and between its arms.
+    /// </summary>
     /// <remarks>
+    /// <para>
+    /// Only an arm may stand between two arms, and not every arm (spec 15.3): the default comes last
+    /// and there is one, so a <c>case</c> is offered only before any default, and a <c>default</c> only
+    /// where the switch has none and no arm follows. Anything else is <c>PC0110</c> the moment it is
+    /// accepted. Where neither fits the list is empty rather than null, which says that nothing can
+    /// begin there, not that the question does not apply.
+    /// </para>
     /// <para>
     /// Asked of the arms' ranges rather than of the innermost node, because the innermost node gets
     /// the one position that matters wrong. A caret just after an arm's closing brace is at the end of
@@ -1511,17 +1518,29 @@ public sealed class CompletionProvider
     /// because that is the point the author is typing at.
     /// </para>
     /// </remarks>
-    private static bool BetweenArms(SemanticModel model, int offset)
+    private static IReadOnlyList<string>? ArmsThatCanBeginAt(SemanticModel model, int offset)
     {
         if (model.SyntaxAt(offset)?.Enclosing<SwitchStatement>() is not { } choice)
         {
-            return false;
+            return null;
         }
 
         var insideBraces = offset > choice.Subject.Span.End.Offset
             && (offset < choice.Span.End.Offset || !choice.IsClosed);
 
-        return insideBraces && !choice.Arms.Any(arm => IsInside(arm, offset));
+        if (!insideBraces || choice.Arms.Any(arm => IsInside(arm, offset)))
+        {
+            return null;
+        }
+
+        var afterTheDefault = choice.Arms.Any(arm => arm.IsDefault && arm.Span.End.Offset <= offset);
+        var lastArm = !choice.Arms.Any(arm => arm.Span.Start.Offset >= offset);
+
+        return
+        [
+            .. afterTheDefault ? [] : new[] { "case" },
+            .. lastArm && !choice.Arms.Any(arm => arm.IsDefault) ? new[] { "default" } : [],
+        ];
     }
 
     private static bool IsInside(SwitchArm arm, int offset)

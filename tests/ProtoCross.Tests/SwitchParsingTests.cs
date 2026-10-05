@@ -184,6 +184,48 @@ public class SwitchParsingTests
         Assert.IsType<ReturnStatement>(Assert.Single(block.Statements));
     }
 
+    /// <summary>
+    /// An arm whose values are still being typed has no body yet. It is given an empty one, rather than
+    /// reading on to the switch's brace and taking that as its own, and what follows the switch is still
+    /// what follows it.
+    /// </summary>
+    [Theory]
+    [InlineData("case Kind.")]
+    [InlineData("case")]
+    [InlineData("case 1,")]
+    [InlineData("default")]
+    public void AnArmWithNoBodyYetLeavesTheSwitchItsBrace(string arm)
+    {
+        var statements = ParseBody($"switch kind {{\n{arm}\n}}\nreturn 2;", out _);
+
+        var choice = Assert.IsType<SwitchStatement>(statements[0]);
+        Assert.True(choice.IsClosed, "the switch's own brace was written and must stay the switch's");
+        var body = Assert.Single(choice.Arms).Body;
+        Assert.False(body.IsClosed);
+        Assert.True(body.Span.IsEmpty, "a body nobody wrote must span the empty point where it would go");
+        Assert.IsType<ReturnStatement>(statements[1]);
+    }
+
+    /// <summary>
+    /// An arm whose closing brace is not typed yet ends at the next arm, which is reported as the brace
+    /// it is missing rather than read as a statement of the arm before it.
+    /// </summary>
+    [Fact]
+    public void AnArmWithNoClosingBraceEndsAtTheNextArm()
+    {
+        var statements = ParseBody(
+            "switch kind {\ncase 1 {\na();\ncase 2 { b(); }\n}\nreturn 2;",
+            out var diagnostics);
+
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Contains("found case", diagnostic.Message, StringComparison.Ordinal);
+        var choice = Assert.IsType<SwitchStatement>(statements[0]);
+        Assert.Equal(2, choice.Arms.Count);
+        Assert.False(choice.Arms[0].Body.IsClosed);
+        Assert.True(choice.IsClosed);
+        Assert.IsType<ReturnStatement>(statements[1]);
+    }
+
     [Fact]
     public void ASwitchTheFileEndsInsideIsNotClosed()
     {

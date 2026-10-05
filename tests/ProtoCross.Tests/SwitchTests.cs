@@ -21,14 +21,11 @@ namespace ProtoCross.Tests;
 /// </remarks>
 public class SwitchTests
 {
-    private static readonly string ConformanceProtoDirectory =
-        Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "protos");
-
     private static string Source(string methods)
         => "import proto \"switch_statement.proto\";\nextend SwitchCase {\n" + methods + "\n}";
 
     private static CompilationResult Compile(string methods)
-        => Compilation.Compile(TestPaths.WriteTempScript(Source(methods)), [ConformanceProtoDirectory]);
+        => Compilation.Compile(TestPaths.WriteTempScript(Source(methods)), [TestPaths.ConformanceProtoDirectory]);
 
     /// <summary><paramref name="statements"/> as the body of a method returning nothing.</summary>
     private static CompilationResult CompileBody(string statements) => Compile("fn f() {\n" + statements + "\n}");
@@ -76,7 +73,7 @@ public class SwitchTests
     [InlineData("1.5", "double")]
     public void NothingElseCanBeSwitchedOn(string subject, string type)
     {
-        const string arms = "default { }";
+        const string arms = "case 1 { }";
         var result = CompileSwitch(subject, arms);
 
         var error = SingleError(result);
@@ -229,11 +226,60 @@ public class SwitchTests
     [Fact]
     public void ASecondDefaultIsReportedOnceAtTheFirst()
     {
-        const string methods = "fn f() {\nswitch large {\ndefault { }\ndefault { }\n}\n}";
+        const string methods = "fn f() {\nswitch large {\ncase 1 { }\ndefault { }\ndefault { }\n}\n}";
         var error = SingleError(Compile(methods));
 
         Assert.Equal(DiagnosticCodes.DefaultArmIsNotLast.Code, error.Code);
         Assert.Equal(Source(methods).IndexOf("default", StringComparison.Ordinal), error.Span.Start.Offset);
+    }
+
+    // ------- a switch that chooses nothing
+
+    /// <summary>
+    /// With no case the value decides nothing, and neither target writes such a switch quietly, so it
+    /// is refused, at the word that begins it.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("default { }")]
+    public void ASwitchListsACase(string arms)
+    {
+        var methods = $"fn f() {{\nswitch large {{\n{arms}\n}}\n}}";
+        var error = SingleError(Compile(methods));
+
+        Assert.Equal(DiagnosticCodes.SwitchListsNoCase.Code, error.Code);
+        Assert.Equal("switch", TextAt(methods, error.Span));
+    }
+
+    /// <summary>
+    /// A value built from literals and enum values alone runs one arm every time, arithmetic on them
+    /// included, since C# folds that too.
+    /// </summary>
+    [Theory]
+    [InlineData("large", "7")]
+    [InlineData("large", "2 * 3")]
+    [InlineData("small", "-(4 as int32)")]
+    [InlineData("season", "SwitchSeason.SWITCH_SEASON_SPRING")]
+    [InlineData("season", "7 as SwitchSeason")]
+    public void ASwitchOnAConstantIsRefused(string like, string subject)
+    {
+        var arm = like == "season" ? "case SwitchSeason.SWITCH_SEASON_SUMMER { }" : "case 1 { }";
+        var error = SingleError(CompileSwitch(subject, arm));
+
+        Assert.Equal(DiagnosticCodes.SubjectIsAConstant.Code, error.Code);
+    }
+
+    /// <summary>Anything read at run time makes the subject a value, however much arithmetic is around it.</summary>
+    [Theory]
+    [InlineData("large * 2 + 1")]
+    [InlineData("temperature_of(season) + 1")]
+    public void ASubjectThatReadsAnythingIsNotAConstant(string subject)
+    {
+        var result = Compile(
+            "fn temperature_of(s: SwitchSeason) -> int64 { return 1; }\n"
+            + $"fn f() {{ switch {subject} {{ case 1 {{ }} }} }}");
+
+        Assert.Empty(result.Diagnostics);
     }
 
     // ------- break and continue
@@ -311,7 +357,7 @@ public class SwitchTests
     public void AMutatingCallIsNotASubject()
     {
         var result = Compile(
-            "mut fn bumped() -> int64 { large += 1; return large; }\nmut fn f() { switch bumped() { } }");
+            "mut fn bumped() -> int64 { large += 1; return large; }\nmut fn f() { switch bumped() { case 1 { } } }");
 
         Assert.Equal(DiagnosticCodes.MutatingCallInsideAnExpression.Code, SingleError(result).Code);
     }

@@ -7,16 +7,14 @@ namespace ProtoCross.Tests;
 /// <summary>A schema name spelled like a reserved word, which no source can write.</summary>
 /// <remarks>
 /// protobuf reserves none of spec 6.4's words, so a schema may declare a field called <c>default</c>,
-/// which <c>switch</c> made a reserved word (spec 15.3). Nothing offering names to be written may
-/// offer one of these, because the lexer reads it as the keyword wherever it is written. Completion's
+/// which <c>switch</c> made a reserved word (spec 15.3), or one called <c>__INF</c>, which is a literal
+/// (spec 6.3). Nothing offering names to be written may offer one of these, because the lexer reads
+/// it as the keyword or the literal wherever it is written. Completion's
 /// answer is swept over the corpus under <c>PROTOCROSS_SWEEP</c>, which is where this was found; these
 /// pin the rule and the query completion borrows it from.
 /// </remarks>
 public class ReservedNameTests
 {
-    private static readonly string ConformanceProtoDirectory =
-        Path.Combine(TestPaths.RepositoryRoot, "tests", "conformance", "protos");
-
     [Theory]
     [InlineData("default", false)]
     [InlineData("switch", false)]
@@ -24,7 +22,10 @@ public class ReservedNameTests
     [InlineData("default_instance", true)]
     [InlineData("union", true)]
     [InlineData("protocross.conformance.namespace.private", true)]
-    public void ANameCanBeWrittenUnlessAPartOfItIsReserved(string name, bool writable)
+    [InlineData("__INF", false)]
+    [InlineData("__NAN", false)]
+    [InlineData("__inf", true)]
+    public void ANameCanBeWrittenOnlyWhereEveryPartLexesAsAName(string name, bool writable)
         => Assert.Equal(writable, Lexer.CanBeWritten(name));
 
     /// <summary>
@@ -45,7 +46,7 @@ public class ReservedNameTests
             }
             """;
 
-        var result = Compilation.Compile(TestPaths.WriteTempScript(source), [ConformanceProtoDirectory]);
+        var result = Compilation.Compile(TestPaths.WriteTempScript(source), [TestPaths.ConformanceProtoDirectory]);
         var scope = SemanticModel.For(result).ScopeAt(source.IndexOf("class;", StringComparison.Ordinal));
 
         Assert.NotNull(scope);

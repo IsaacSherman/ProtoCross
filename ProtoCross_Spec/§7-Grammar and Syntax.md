@@ -85,8 +85,10 @@ Normative Requirement:
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
 - A switch's subject is ended by the brace that opens its arms, as an `if` condition is by its body's,
   and a case's values by the brace that opens the arm. Only an arm may stand between two arms:
-  anything else there is reported once and stepped over, braces and all, to the next arm. A `case`
-  or `default` arm with no switch around it is reported, and its body read as a block
+  anything else there is reported once and stepped over, braces and all, to the next arm. An arm
+  whose brace is missing has an empty body, and inside an arm the next `case` or `default` ends it,
+  so an arm still being typed never takes the switch's closing brace for its own. A `case` or
+  `default` arm with no switch around it is reported, and its body read as a block
   ([15.3](./§15-Control%20Flow.md#153-switch)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
   it, and is an identifier anywhere else. The clause belongs to the one conversion it follows, and

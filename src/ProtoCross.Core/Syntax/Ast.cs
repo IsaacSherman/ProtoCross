@@ -176,7 +176,11 @@ public sealed record WhileStatement(
 /// the arms for the same reason (see <see cref="Parser"/>). A default arm out of place is still an arm
 /// here, in the place it was written, so that the binder can say where it should have gone.
 /// </remarks>
+/// <param name="Keyword">
+/// Where <c>switch</c> was written, which is what a diagnostic about the switch as a whole points at.
+/// </param>
 public sealed record SwitchStatement(
+    SourceSpan Keyword,
     Expression Subject,
     IReadOnlyList<SwitchArm> Arms,
     SourceSpan Span) : Statement(Span)

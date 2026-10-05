@@ -1,5 +1,6 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
 
@@ -33,7 +34,33 @@ public sealed partial class Binder
             .ToList();
 
         ReportDefaultsBeforeTheLastArm(statement);
+        ReportIfNoArmIsACase(statement);
         return new IrSwitch(subject, arms, statement.Span);
+    }
+
+    /// <summary>Reports a switch that lists no case, whose value therefore decides nothing.</summary>
+    /// <remarks>
+    /// Refused rather than allowed, on the owner's decision. With no arms it does nothing, and with only
+    /// a default it is that arm's block written a longer way. Either one is nearly always a switch
+    /// still being written, and neither target can write one quietly: C# warns that an empty switch is
+    /// empty (CS1522), and MSVC that a switch with a default has no case (C4065). Reported at the
+    /// keyword, since what is missing has nowhere else to be pointed at.
+    /// </remarks>
+    private void ReportIfNoArmIsACase(SwitchStatement statement)
+    {
+        if (statement.Arms.Any(arm => !arm.IsDefault))
+        {
+            return;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.SwitchListsNoCase,
+            statement.Arms.Count == 0
+                ? "This switch has no arms, so it does nothing whatever the value."
+                : "This switch lists no case, so its default arm runs whatever the value.",
+            statement.Keyword,
+            "Add a 'case' for the values the switch chooses between, or write the statements without "
+            + "the switch (spec 15.3).");
     }
 
     /// <summary>Binds what a switch chooses by, which has to be an integer or an enum.</summary>
@@ -41,7 +68,12 @@ public sealed partial class Binder
     {
         var bound = BindExpression(subject, scope, context, null);
 
-        if (bound.Type is not ErrorType && !CanBeSwitchedOn(bound.Type))
+        if (bound.Type is ErrorType)
+        {
+            return bound;
+        }
+
+        if (!CanBeSwitchedOn(bound.Type))
         {
             _diagnostics.Report(
                 DiagnosticCodes.SubjectCannotBeSwitchedOn,
@@ -49,9 +81,37 @@ public sealed partial class Binder
                 subject.Span,
                 "Choose by anything else with 'if' and 'else if' (spec 15.3).");
         }
+        else if (IsConstant(bound))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.SubjectIsAConstant,
+                "This switch is on a value known before the method runs, so it runs the same arm "
+                + "every time.",
+                subject.Span,
+                "Switch on a field, a parameter or a local, or write the statements of the arm that runs "
+                + "without the switch (spec 15.3).");
+        }
 
         return bound;
     }
+
+    /// <summary>Whether <paramref name="value"/> is built from literals and enum values alone.</summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the leaves, so arithmetic on constants is a constant too: <c>2 * 3</c> is as fixed as
+    /// <c>6</c>, and C# folds both. A read of anything -- the receiver, a parameter, a local, a field
+    /// through one of them -- is a leaf that is not a constant, and so is a call, whose receiver is one.
+    /// </para>
+    /// <para>
+    /// Refused on the owner's decision. Such a switch runs one arm every time, and C# says so: it
+    /// folds the subject and warns that every other arm, and anything after one that returns, cannot
+    /// be reached (CS0162), which a build with warnings as errors refuses.
+    /// </para>
+    /// </remarks>
+    private static bool IsConstant(IrExpression value)
+        => IrWalk.DescendantsAndSelf(value)
+            .Where(node => IrWalk.ChildrenOf(node).Count == 0)
+            .All(leaf => leaf is IrLiteral or IrEnumValue);
 
     /// <summary>Whether a value of <paramref name="type"/> can be switched on: an integer or an enum.</summary>
     /// <remarks>

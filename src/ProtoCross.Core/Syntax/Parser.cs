@@ -55,6 +55,14 @@ public sealed class Parser
     /// </remarks>
     private bool _inFixture;
 
+    /// <summary>How many arms of a switch the statement being read is inside.</summary>
+    /// <remarks>
+    /// Inside one, a block ends at the next <c>case</c> or <c>default</c> as well as at its brace (see
+    /// <see cref="ParseArmBody"/>). Neither word can begin a statement, so meeting one there means a
+    /// closing brace has not been typed yet, and the arm it begins belongs to the switch.
+    /// </remarks>
+    private int _armDepth;
+
     public Parser(IReadOnlyList<Token> tokens, string file, DiagnosticBag diagnostics)
     {
         _tokens = tokens;
@@ -1006,7 +1014,7 @@ public sealed class Parser
         {
             var statements = new List<Statement>();
 
-            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+            while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !EndsAnArm())
             {
                 var before = _position;
                 statements.Add(ParseStatement());
@@ -1247,7 +1255,7 @@ public sealed class Parser
     /// </remarks>
     private Statement ParseSwitchStatement()
     {
-        var start = Expect(TokenKind.Switch).Span;
+        var keyword = Expect(TokenKind.Switch).Span;
         var subject = ParseExpression();
         Expect(TokenKind.OpenBrace);
 
@@ -1268,19 +1276,57 @@ public sealed class Parser
         }
 
         var closed = TryExpect(TokenKind.CloseBrace, out var end);
-        return new SwitchStatement(subject, arms, Spanning(start, end.Span)) { IsClosed = closed };
+        return new SwitchStatement(keyword, subject, arms, Spanning(keyword, end.Span)) { IsClosed = closed };
     }
 
     private bool StartsAnArm() => Current.Kind is TokenKind.Case or TokenKind.Default;
+
+    /// <summary>Whether a block being read inside an arm has met the arm after it.</summary>
+    private bool EndsAnArm() => _armDepth > 0 && StartsAnArm();
 
     /// <summary>Parses one arm, from its <c>case</c> or <c>default</c> through its body's closing brace.</summary>
     private SwitchArm ParseSwitchArm()
     {
         var keyword = Current.Span;
         var values = Match(TokenKind.Default) ? [] : ParseCaseValues();
-        var body = ParseBlock();
+        var body = ParseArmBody();
 
         return new SwitchArm(keyword, values, body, Spanning(keyword, body.Span));
+    }
+
+    /// <summary>Parses an arm's braced body, or stands an empty one in where its brace is missing.</summary>
+    /// <remarks>
+    /// <para>
+    /// Without its opening brace an arm's body is not read at all. A block missing that brace reads on
+    /// to the first closing one, which is the switch's own: the arm would take it, the switch would take
+    /// the method's, and everything after would be read inside the wrong construct. Every arm is in
+    /// that state while its values are being typed. The empty body stands where the brace would go, as
+    /// anything not written does (spec 22.2).
+    /// </para>
+    /// <para>
+    /// Inside the body, the next <c>case</c> or <c>default</c> ends it, for the same reason at the other
+    /// end: an arm whose closing brace has not been typed yet would otherwise take the arms after it for
+    /// statements, and the switch's brace for its own.
+    /// </para>
+    /// </remarks>
+    private BlockStatement ParseArmBody()
+    {
+        if (Current.Kind != TokenKind.OpenBrace)
+        {
+            var insertionPoint = InsertionPointAfterPreviousToken();
+            ReportUnexpectedToken(TokenKind.OpenBrace.Describe());
+            return new BlockStatement([], insertionPoint) { IsClosed = false };
+        }
+
+        _armDepth++;
+        try
+        {
+            return ParseBlock();
+        }
+        finally
+        {
+            _armDepth--;
+        }
     }
 
     /// <summary>Parses <c>case</c> and the comma-separated values after it, up to the arm's body.</summary>
@@ -1302,13 +1348,15 @@ public sealed class Parser
     /// <remarks>
     /// A value is any expression here, and the binder says which ones a case may list, since only it
     /// can tell an enum value from a field read. A missing one is caught first, because an expression
-    /// that finds a brace consumes it as the token it could not use, and that brace is the arm's body.
-    /// The error stands at the empty point where the value would go, which is also what keeps
+    /// that finds a token it cannot use consumes it, and every token that can follow a missing value
+    /// belongs to something else: the arm's brace, the switch's, or the next arm's keyword. The error
+    /// stands at the empty point where the value would go, which is also what keeps
     /// <see cref="SwitchArm.Values"/> from being empty for anything but the default arm.
     /// </remarks>
     private Expression ParseCaseValue()
     {
-        if (Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma))
+        if (Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma or TokenKind.CloseBrace
+            or TokenKind.EndOfFile or TokenKind.Case or TokenKind.Default))
         {
             return ParseExpression();
         }

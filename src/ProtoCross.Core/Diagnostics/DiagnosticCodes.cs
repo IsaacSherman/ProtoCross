@@ -598,6 +598,20 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor DefaultArmIsNotLast =
         new("PC0110", DiagnosticSeverity.Error, "default arm is not last");
 
+    /// <summary>
+    /// A <c>switch</c> with no <c>case</c> arm, which runs the same statements whatever its value
+    /// (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SwitchListsNoCase =
+        new("PC0111", DiagnosticSeverity.Error, "switch lists no case");
+
+    /// <summary>
+    /// A <c>switch</c> on a value built from literals and enum values alone, which runs the same arm
+    /// every time (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SubjectIsAConstant =
+        new("PC0112", DiagnosticSeverity.Error, "switch on a constant");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

@@ -20,21 +20,22 @@ public sealed class Lexer
     public static IReadOnlyDictionary<string, TokenKind> Keywords => KeywordKinds;
 
     /// <summary>
-    /// Whether <paramref name="name"/> can be written in a source: no part of it, between dots, is a
-    /// reserved word.
+    /// Whether <paramref name="name"/> can be written in a source: every part of it, between dots,
+    /// lexes as an identifier.
     /// </summary>
     /// <remarks>
-    /// protobuf reserves none of spec 6.4's words, so a schema can declare a field, an enum value, a
-    /// type or a package spelled like one, and no source can then write it, because the lexer reads
-    /// the word as the keyword wherever it stands. Reserving <c>default</c> for <c>switch</c> made that
-    /// ordinary. Anything that offers a schema's names to be written asks this, rather than offering a
-    /// name the parser will refuse.
+    /// protobuf reserves none of spec 6.4's words, and neither of the two literals spelled like a name,
+    /// so a schema can declare a field, an enum value, a type or a package spelled like one. No source
+    /// can then write it, because the lexer reads the word as the keyword or the literal wherever it
+    /// stands. Reserving <c>default</c> for <c>switch</c> made that ordinary. Anything that offers a
+    /// schema's names to be written asks this, rather than offering a name the parser will refuse, and
+    /// it is answered by the classification the lexer itself makes.
     /// </remarks>
     public static bool CanBeWritten(string name)
     {
         ArgumentNullException.ThrowIfNull(name);
 
-        return !name.Split('.').Any(KeywordKinds.ContainsKey);
+        return name.Split('.').All(part => Classify(part).Kind == TokenKind.Identifier);
     }
 
     private static readonly Dictionary<string, TokenKind> KeywordKinds = new(StringComparer.Ordinal)
@@ -291,18 +292,21 @@ public sealed class Lexer
         var text = _text[start.._position];
         var span = SourceSpan.SingleLine(_file, start, line, column, text.Length);
 
-        // __INF and __NAN are spelled like names and are literals. Deciding that here, rather than in
-        // the parser, is what makes one a number everywhere a token is asked what it is -- to the
-        // parser, to an editor colouring source, and to anything that asks whether a caret is inside a
-        // literal.
-        if (NumericLiteralSpelling.NamedValue(text) is { } named)
-        {
-            return new Token(TokenKind.FloatLiteral, text, span, named);
-        }
-
-        var kind = KeywordKinds.TryGetValue(text, out var keyword) ? keyword : TokenKind.Identifier;
-        return new Token(kind, text, span);
+        var (kind, value) = Classify(text);
+        return new Token(kind, text, span, value);
     }
+
+    /// <summary>What a word lexes as: a literal spelled like a name, a keyword, or an identifier.</summary>
+    /// <remarks>
+    /// __INF and __NAN are spelled like names and are literals. Deciding that here, rather than in the
+    /// parser, is what makes one a number everywhere a token is asked what it is -- to the parser, to
+    /// an editor colouring source, and to anything that asks whether a caret is inside a literal, or
+    /// whether a schema's name can be written (<see cref="CanBeWritten"/>).
+    /// </remarks>
+    private static (TokenKind Kind, object? Value) Classify(string word)
+        => NumericLiteralSpelling.NamedValue(word) is { } named
+            ? (TokenKind.FloatLiteral, named)
+            : (KeywordKinds.TryGetValue(word, out var keyword) ? keyword : TokenKind.Identifier, null);
 
     /// <summary>
     /// Lexes a numeric literal (spec 6.6): decimal digits with an optional fraction and exponent, or
