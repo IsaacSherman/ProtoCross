@@ -1543,8 +1543,15 @@ public sealed class CompletionProvider
         ];
     }
 
+    /// <summary>Whether <paramref name="offset"/> is inside <paramref name="arm"/>.</summary>
+    /// <remarks>
+    /// Its end counts only where nothing closed it, since that is where its author is typing. Past its
+    /// end it never does: an arm missing its brace ends at the next arm, and every caret after it is
+    /// in that arm or between the two.
+    /// </remarks>
     private static bool IsInside(SwitchArm arm, int offset)
-        => arm.Span.Start.Offset < offset && (offset < arm.Span.End.Offset || !arm.Body.IsClosed);
+        => arm.Span.Start.Offset < offset
+            && (offset < arm.Span.End.Offset || (offset == arm.Span.End.Offset && !arm.Body.IsClosed));
 
     private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false"];
 

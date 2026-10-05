@@ -192,6 +192,18 @@ public sealed record SwitchStatement(
     /// begin, and one after a closing brace is past it, where any statement can.
     /// </remarks>
     public bool IsClosed { get; init; } = true;
+
+    /// <summary>
+    /// Whether the parser read the switch as written up to its closing brace: its opening brace was
+    /// there, and everything between the braces was an arm.
+    /// </summary>
+    /// <remarks>
+    /// A switch missing its opening brace, or holding anything but arms, is one still being written:
+    /// the author is typing what the parser could not read yet. The parser has said so, and the binder
+    /// does not say as well that the switch lists no case, as it says nothing more about a statement
+    /// whose semicolon is missing. Whether the closing brace was found is <see cref="IsClosed"/>.
+    /// </remarks>
+    public bool IsWellFormed { get; init; } = true;
 }
 
 /// <summary>One arm of a <c>switch</c>: <c>case A, B { ... }</c>, or <c>default { ... }</c>.</summary>

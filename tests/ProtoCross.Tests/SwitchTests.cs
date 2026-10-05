@@ -252,6 +252,24 @@ public class SwitchTests
     }
 
     /// <summary>
+    /// A switch the parser found unfinished is one still being typed, and the parser's report is the
+    /// only one it gets.
+    /// </summary>
+    [Theory]
+    [InlineData("import proto \"switch_statement.proto\";\nextend SwitchCase {\nfn f() {\nswitch large {\n")]
+    [InlineData("import proto \"switch_statement.proto\";\nextend SwitchCase {\nfn f() {\nswitch large {\nstray\n}\n}\n}")]
+    [InlineData("import proto \"switch_statement.proto\";\nextend SwitchCase {\nfn f() {\nswitch large\n}\n}\n")]
+    public void ASwitchStillBeingTypedIsNotToldItListsNoCase(string source)
+    {
+        var result = Compilation.Compile(TestPaths.WriteTempScript(source), [TestPaths.ConformanceProtoDirectory]);
+
+        Assert.NotEmpty(result.Diagnostics);
+        Assert.DoesNotContain(
+            result.Diagnostics,
+            diagnostic => diagnostic.Code == DiagnosticCodes.SwitchListsNoCase.Code);
+    }
+
+    /// <summary>
     /// A value built from literals and enum values alone runs one arm every time, arithmetic on them
     /// included, since C# folds that too.
     /// </summary>

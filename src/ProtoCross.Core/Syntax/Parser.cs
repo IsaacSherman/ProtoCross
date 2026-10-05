@@ -1027,7 +1027,11 @@ public sealed class Parser
             }
 
             var closed = TryExpect(TokenKind.CloseBrace, out var end);
-            return new BlockStatement(statements, Spanning(start, end.Span)) { IsClosed = closed };
+
+            // A block the next arm ended stops after the last token it read, where its brace would go,
+            // and short of the keyword, which is the next arm's (spec 22.2).
+            var last = closed || !EndsAnArm() ? end.Span : InsertionPointAfterPreviousToken();
+            return new BlockStatement(statements, Spanning(start, last)) { IsClosed = closed };
         }
         finally
         {
@@ -1257,7 +1261,7 @@ public sealed class Parser
     {
         var keyword = Expect(TokenKind.Switch).Span;
         var subject = ParseExpression();
-        Expect(TokenKind.OpenBrace);
+        var wellFormed = TryExpect(TokenKind.OpenBrace, out _);
 
         var arms = new List<SwitchArm>();
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
@@ -1273,10 +1277,15 @@ public sealed class Parser
                 "A switch holds only its arms: 'case A, B { ... }' for the values it lists, and "
                 + "'default { ... }' for every other value.");
             SkipToNextArm();
+            wellFormed = false;
         }
 
         var closed = TryExpect(TokenKind.CloseBrace, out var end);
-        return new SwitchStatement(keyword, subject, arms, Spanning(keyword, end.Span)) { IsClosed = closed };
+        return new SwitchStatement(keyword, subject, arms, Spanning(keyword, end.Span))
+        {
+            IsClosed = closed,
+            IsWellFormed = wellFormed,
+        };
     }
 
     private bool StartsAnArm() => Current.Kind is TokenKind.Case or TokenKind.Default;

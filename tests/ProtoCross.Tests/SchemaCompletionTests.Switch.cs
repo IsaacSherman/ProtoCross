@@ -73,6 +73,31 @@ public partial class SchemaCompletionTests
         Assert.Equal(arms.Split(' '), offered.Order(StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// An arm whose brace is missing ends at the next arm, so it says nothing about a caret after that
+    /// one: between the last arm and the switch's brace an arm can still begin.
+    /// </summary>
+    [Fact]
+    public async Task AnUnclosedArmDoesNotReachPastTheArmAfterIt()
+    {
+        const string body =
+            "extend Outer {\n"
+            + "    fn f() -> int64 {\n"
+            + "        switch status {\n"
+            + "            case TopLevelStatus.TOP_LEVEL_STATUS_OK {\n"
+            + "                count;\n"
+            + "            case TopLevelStatus.OTHER_RESULT {\n"
+            + "            }\n"
+            + "        }\n"
+            + "        return 1;\n"
+            + "    }\n"
+            + "}\n";
+
+        var offered = Labels(await OfferedAsync(body, "OTHER_RESULT {\n            }\n"));
+
+        Assert.Equal(["case", "default"], offered.Order(StringComparer.Ordinal));
+    }
+
     /// <summary>After the default arm nothing can begin: another case or another default is PC0110.</summary>
     [Fact]
     public async Task AfterTheDefaultArmNothingIsOffered()

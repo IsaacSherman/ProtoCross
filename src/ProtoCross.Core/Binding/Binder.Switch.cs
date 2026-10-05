@@ -44,11 +44,14 @@ public sealed partial class Binder
     /// a default it is that arm's block written a longer way. Either one is nearly always a switch
     /// still being written, and neither target can write one quietly: C# warns that an empty switch is
     /// empty (CS1522), and MSVC that a switch with a default has no case (C4065). Reported at the
-    /// keyword, since what is missing has nowhere else to be pointed at.
+    /// keyword, since what is missing has nowhere else to be pointed at. A switch the parser found
+    /// unfinished -- missing a brace, or holding something it stepped over -- is one still being typed,
+    /// and has been reported already.
     /// </remarks>
     private void ReportIfNoArmIsACase(SwitchStatement statement)
     {
-        if (statement.Arms.Any(arm => !arm.IsDefault))
+        var unfinished = !statement.IsClosed || !statement.IsWellFormed;
+        if (unfinished || statement.Arms.Any(arm => !arm.IsDefault))
         {
             return;
         }

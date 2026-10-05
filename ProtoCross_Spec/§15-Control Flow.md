@@ -89,7 +89,9 @@ Normative Requirements:
 - The subject is not a constant. A value built from literals and enum values alone, arithmetic on
   them included, runs the same arm every time, and is PC0112.
 - A switch lists at least one `case`. One with no arms, or with only a default arm, decides nothing
-  by its value, and is PC0111.
+  by its value, and is PC0111. A switch the parser found unfinished, missing a brace or holding
+  something that is not an arm, is one still being typed: the parser has reported it, and it is not
+  told as well that it lists no case.
 - Every arm is braced. A `case` lists one or more values separated by commas, and runs for any of
   them. The `default` arm lists none, and runs for every value no `case` lists. Nothing falls from
   one arm into the next, so no `break` is needed to end an arm, and each arm is a block with a scope

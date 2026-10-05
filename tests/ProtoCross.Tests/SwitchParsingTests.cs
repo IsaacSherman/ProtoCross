@@ -224,7 +224,19 @@ public class SwitchParsingTests
         Assert.False(choice.Arms[0].Body.IsClosed);
         Assert.True(choice.IsClosed);
         Assert.IsType<ReturnStatement>(statements[1]);
+
+        // Short of the next arm's keyword, so the two arms do not overlap (spec 22.2).
+        Assert.True(
+            choice.Arms[0].Span.End.Offset <= choice.Arms[1].Span.Start.Offset,
+            "an arm the next one ended must stop before the next one begins");
     }
+
+    [Theory]
+    [InlineData("switch kind { case 1 { } }", true)]
+    [InlineData("switch kind { stray case 1 { } }", false)]
+    [InlineData("switch kind case 1 { } }", false)]
+    public void ASwitchSaysWhetherItWasReadAsWritten(string body, bool wellFormed)
+        => Assert.Equal(wellFormed, ParseSwitch(body, out _).IsWellFormed);
 
     [Fact]
     public void ASwitchTheFileEndsInsideIsNotClosed()
