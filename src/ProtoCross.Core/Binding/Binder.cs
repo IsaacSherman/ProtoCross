@@ -723,7 +723,7 @@ public sealed partial class Binder
         var context = new MethodContext(receiver, signature.ReturnType) { Method = signature };
         var body = BindBlock(method.Body, scope, context);
 
-        if (signature.ReturnType is not VoidType && !NeverFallsThrough(body))
+        if (signature.ReturnType is not VoidType && !IrFlow.NeverFallsThrough(body))
         {
             _diagnostics.Report(
                 DiagnosticCodes.MissingReturnStatement,
@@ -970,49 +970,6 @@ public sealed partial class Binder
         }
     }
 
-    /// <summary>
-    /// All-paths-return analysis. A method that declares a return type is well formed when control
-    /// cannot reach the end of its body, so this asks the inverse question: after this statement
-    /// runs, can the statement following it run?
-    /// </summary>
-    /// <remarks>
-    /// <c>break</c> and <c>continue</c> do not return a value, but they do stop the enclosing block
-    /// from falling through, which is what this predicate measures. A method body ending in a stray
-    /// <c>break</c> therefore escapes PC0027 -- but PC0072 has already rejected it.
-    /// </remarks>
-    private static bool NeverFallsThrough(IrStatement statement) => statement switch
-    {
-        IrReturn or IrBreak or IrContinue => true,
-
-        // Anything after a terminator in the same block is unreachable, so its position does not
-        // matter: the block as a whole cannot fall through.
-        IrBlock block => block.Statements.Any(NeverFallsThrough),
-
-        IrIf ifStatement => ifStatement.Else is not null
-            && NeverFallsThrough(ifStatement.Then)
-            && NeverFallsThrough(ifStatement.Else),
-
-        // A loop with a real condition may run zero times, and 'for' iterates a repeated field that
-        // may be empty, so neither terminates the flow. 'while true' does: the only way out is a
-        // 'break', or a 'return' that this predicate credits at the enclosing level anyway.
-        IrWhile { Condition: IrLiteral { Value: true } } loop => !ContainsBreak(loop.Body),
-
-        _ => false,
-    };
-
-    /// <summary>
-    /// Whether a <c>break</c> would exit the loop whose body is <paramref name="statement"/>.
-    /// Nested loops are not searched: a <c>break</c> inside one binds to that loop, not to this one.
-    /// </summary>
-    private static bool ContainsBreak(IrStatement statement) => statement switch
-    {
-        IrBreak => true,
-        IrBlock block => block.Statements.Any(ContainsBreak),
-        IrIf ifStatement => ContainsBreak(ifStatement.Then)
-            || (ifStatement.Else is not null && ContainsBreak(ifStatement.Else)),
-        _ => false,
-    };
-
     private IrBlock BindBlock(BlockStatement block, Scope parent, MethodContext context)
     {
         var scope = new Scope(parent, LastVisibleOffsetIn(block));
@@ -1042,7 +999,7 @@ public sealed partial class Binder
     /// </summary>
     /// <remarks>
     /// Only an <c>if</c> adds anything, and only when one of its branches cannot complete normally.
-    /// <see cref="NeverFallsThrough"/> is the same predicate the all-paths-return check uses, which
+    /// <see cref="IrFlow.NeverFallsThrough"/> is the same predicate the all-paths-return check uses, which
     /// is what makes the early-return guard work without a second reachability analysis.
     /// </remarks>
     private static IReadOnlySet<string> Advance(IReadOnlySet<string> before, IrStatement statement)
@@ -1054,12 +1011,12 @@ public sealed partial class Binder
 
         var (whenTrue, whenFalse) = PresenceFacts(conditional.Condition);
 
-        if (NeverFallsThrough(conditional.Then))
+        if (IrFlow.NeverFallsThrough(conditional.Then))
         {
             before = Union(before, whenFalse);
         }
 
-        if (conditional.Else is not null && NeverFallsThrough(conditional.Else))
+        if (conditional.Else is not null && IrFlow.NeverFallsThrough(conditional.Else))
         {
             before = Union(before, whenTrue);
         }
@@ -1217,6 +1174,7 @@ public sealed partial class Binder
         BreakStatement breakStatement => BindBreak(breakStatement, context),
         ContinueStatement continueStatement => BindContinue(continueStatement, context),
         ForInStatement forIn => BindForIn(forIn, scope, context),
+        SwitchStatement choice => BindSwitch(choice, scope, context),
         AssignmentStatement assignment => BindAssignment(assignment, scope, context),
         CompoundAssignmentStatement assignment => BindCompoundAssignment(assignment, scope, context),
         ExpressionStatement expression => BindExpressionStatement(expression, scope, context),
@@ -1460,13 +1418,17 @@ public sealed partial class Binder
         return bound;
     }
 
+    /// <remarks>
+    /// A <c>break</c> leaves the innermost loop or <c>switch</c> around it, whichever is nearer (spec
+    /// 15.2). Which one it leaves is the IR's shape to say, so only whether there is one is asked here.
+    /// </remarks>
     private IrStatement BindBreak(BreakStatement statement, MethodContext context)
     {
-        if (context.LoopDepth == 0)
+        if (context.LoopDepth == 0 && !context.InsideASwitch)
         {
             _diagnostics.Report(
                 DiagnosticCodes.BreakOutsideALoop,
-                "'break' can only appear inside a 'for' or 'while' loop.",
+                "'break' can only appear inside a 'for' or 'while' loop, or an arm of a 'switch'.",
                 statement.Span);
         }
 
@@ -1477,10 +1439,12 @@ public sealed partial class Binder
     {
         if (context.LoopDepth == 0)
         {
+            // Said only inside a switch, where 'continue' is the word a C reader reaches for.
             _diagnostics.Report(
                 DiagnosticCodes.ContinueOutsideALoop,
                 "'continue' can only appear inside a 'for' or 'while' loop.",
-                statement.Span);
+                statement.Span,
+                context.InsideASwitch ? "A switch has no next pass to continue to. 'break' leaves it." : null);
         }
 
         return new IrContinue(statement.Span);
@@ -3183,6 +3147,13 @@ public sealed partial class Binder
 
         /// <summary>The repeated fields the <c>for</c> loops around the statement traverse, outermost first.</summary>
         public IReadOnlyList<Traversal> Traversing { get; init; } = [];
+
+        /// <summary>Whether the statement is inside an arm of a <c>switch</c>, which a <c>break</c> may leave (spec 15.2).</summary>
+        /// <remarks>
+        /// A flag beside <see cref="LoopDepth"/> rather than folded into it, because <c>continue</c>
+        /// asks about loops alone: a switch has no next pass to continue to.
+        /// </remarks>
+        public bool InsideASwitch { get; init; }
     }
 
     private static readonly IReadOnlySet<string> EmptyPresence =

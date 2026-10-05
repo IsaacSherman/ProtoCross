@@ -783,6 +783,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 break;
             }
 
+            case IrSwitch choice:
+                EmitSwitch(writer, choice, placement);
+                break;
+
             case IrBreak:
                 writer.WriteLine("break;");
                 break;
@@ -903,6 +907,57 @@ public sealed partial class CppBackend : ITestProjectScaffold
             }
 
             return;
+        }
+    }
+
+    /// <summary>Emits a switch as C++'s own, with one braced section for each arm.</summary>
+    /// <remarks>
+    /// <para>
+    /// The values an arm lists are its section's labels, and the arm's statements are braced inside
+    /// it, which C++ needs as well before a section may declare a local. A section ends in
+    /// <c>break;</c> wherever its arm can reach its end (<see cref="IrFlow"/>), because C++ would fall
+    /// into the next section there. Where the arm cannot, the C# backend must not write one, and the
+    /// two are written alike so that one rule describes both. A <c>break</c> the author wrote in an arm
+    /// leaves the switch in C++, as it does in ProtoCross (spec 15.2), and a <c>continue</c> continues
+    /// the loop around it in both.
+    /// </para>
+    /// <para>
+    /// A switch with no default arm is given one that does nothing, which is what a switch matching
+    /// nothing does anyway. protoc gives every C++ enum two sentinel values beside the ones the schema
+    /// declares, so a switch over an enum that lists every declared value still leaves those two
+    /// unlisted, and <c>-Wswitch</c>, part of <c>-Wall</c>, warns about it: a consumer building with
+    /// warnings as errors could not build the output. It is written for an integer switch too, so that
+    /// one shape describes every switch.
+    /// </para>
+    /// </remarks>
+    private static void EmitSwitch(SourceWriter writer, IrSwitch choice, Placement placement)
+    {
+        using var scope = writer.Block($"switch ({Expression(choice.Subject, placement)})");
+
+        foreach (var arm in choice.Arms)
+        {
+            var labels = arm.IsDefault
+                ? ["default:"]
+                : arm.Values.Select(value => $"case {Expression(value, placement)}:").ToList();
+
+            foreach (var label in labels.SkipLast(1))
+            {
+                writer.WriteLine(label);
+            }
+
+            using var section = writer.Block(labels[^1]);
+            EmitStatements(writer, arm.Body.Statements, placement);
+
+            if (!IrFlow.NeverFallsThrough(arm.Body))
+            {
+                writer.WriteLine("break;");
+            }
+        }
+
+        if (!choice.HasDefault)
+        {
+            using var section = writer.Block("default:");
+            writer.WriteLine("break;");
         }
     }
 

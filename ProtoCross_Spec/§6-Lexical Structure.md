@@ -74,6 +74,7 @@ break
 bytes
 case
 continue
+default
 double
 else
 enum
@@ -118,10 +119,13 @@ Contextual keywords:
 - `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail` or a name
   follows it, and is an identifier everywhere else, for the same reason.
 
+`switch`, `case` and `default` spell a switch ([15.3](./§15-Control%20Flow.md#153-switch)). `default` was reserved with it, and a schema
+field or package component named `default` can no longer be written, which was accepted as the cost
+of reading as every C-family reader expects.
+
 Open Question:
 
-- `case`, `enum`, `message`, and `switch` are reserved by the lexer but do not yet have source
-  syntax.
+- `enum` and `message` are reserved by the lexer but do not yet have source syntax.
 
 ### 6.5 Source Classification
 

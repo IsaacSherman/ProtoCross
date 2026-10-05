@@ -1017,7 +1017,9 @@ public sealed class CompletionProvider
         return
         [
             .. MessageFields.InDeclarationOrder(literal.MessageType.Descriptor)
-                .Where(candidate => !candidate.IsMap && !already.Contains(candidate.Name))
+                .Where(candidate => !candidate.IsMap
+                    && !already.Contains(candidate.Name)
+                    && Lexer.CanBeWritten(candidate.Name))
                 .Select(candidate => Member(
                     candidate.Name,
                     CompletionItemKind.Field,
@@ -1261,10 +1263,15 @@ public sealed class CompletionProvider
         var kind = type.IsMessage ? CompletionItemKind.Class : CompletionItemKind.Enum;
         var documentation = Documentation(result, type);
 
-        if (!types.IsAmbiguousAsATypeName(type.SimpleName))
+        if (!types.IsAmbiguousAsATypeName(type.SimpleName) && Lexer.CanBeWritten(type.SimpleName))
         {
             yield return Member(
                 type.SimpleName, kind, type.FullName, documentation, "1", subject, document);
+        }
+
+        if (!Lexer.CanBeWritten(type.FullName))
+        {
+            yield break;
         }
 
         yield return Member(type.FullName, kind, type.FullName, documentation, "2", subject, document)
@@ -1315,6 +1322,17 @@ public sealed class CompletionProvider
         if (model.ScopeAt(subject.Start) is not { } scope)
         {
             return [];
+        }
+
+        // Between the arms of a switch only another arm can begin, so a name, a call or a statement
+        // keyword accepted there is one the parser steps over without reading.
+        if (BetweenArms(model, subject.Start))
+        {
+            return
+            [
+                .. ArmStarters.Select(keyword => Member(
+                    keyword, CompletionItemKind.Keyword, "keyword", null, rank: "8", subject, document)),
+            ];
         }
 
         // The operand of 'has' is a field or it is PC0080, so everything else this would otherwise
@@ -1413,8 +1431,10 @@ public sealed class CompletionProvider
     /// since a statement may be an expression.
     /// </para>
     /// <para>
-    /// <c>break</c> and <c>continue</c> are narrower again -- statements, and only inside a loop.
-    /// Offering them elsewhere offers something the parser takes and the binder then refuses.
+    /// <c>break</c> and <c>continue</c> are narrower again -- statements, and only inside a loop, or
+    /// for <c>break</c> an arm of a switch. Offering them elsewhere offers something the parser takes
+    /// and the binder then refuses. Between the arms of a switch none of this applies, and only an arm
+    /// can begin (<see cref="BetweenArms"/>).
     /// </para>
     /// <para>
     /// Written out here rather than derived, because the parser publishes no list of what may start a
@@ -1435,10 +1455,15 @@ public sealed class CompletionProvider
         // an operator keyword offered there replaces 'var' and swallows the name after it.
         var starting = at?.Enclosing<Statement>() is not { } statement
             || statement is BlockStatement
-            || statement.Span.Start.Offset == subject.Start;
+            || statement.Span.Start.Offset == subject.Start
+            || JustPastAClosedSwitch(statement, subject.Start);
 
         var inLoop = at is not null
             && at.Ancestors.Any(node => node is ForInStatement or WhileStatement);
+
+        // A 'break' leaves an arm as it leaves a loop, and a 'continue' has nothing to continue in a
+        // switch that no loop holds (spec 15.2).
+        var inArm = at is not null && at.Ancestors.Any(node => node is SwitchArm);
 
         // Exclusive rather than nested. Where a statement begins, the caret is in front of whatever
         // is already written, and an operator keyword accepted there swallows the next name as its
@@ -1446,7 +1471,7 @@ public sealed class CompletionProvider
         // PC0041. Where an expression is being written the caret is on a name and replaces it, so the
         // operators are the ones that fit and a statement keyword is the one that cannot.
         var keywords = starting
-            ? inLoop ? StatementStarters.Concat(LoopOnly) : StatementStarters
+            ? [.. StatementStarters, .. inLoop || inArm ? LoopOrArmOnly : [], .. inLoop ? LoopOnly : []]
             : ExpressionStarters;
 
         return keywords.Select(keyword => Member(
@@ -1454,9 +1479,53 @@ public sealed class CompletionProvider
     }
 
     private static readonly IReadOnlyList<string> StatementStarters =
-        ["var", "return", "if", "while", "for"];
+        ["var", "return", "if", "while", "for", "switch"];
 
-    private static readonly IReadOnlyList<string> LoopOnly = ["break", "continue"];
+    private static readonly IReadOnlyList<string> LoopOrArmOnly = ["break"];
+
+    private static readonly IReadOnlyList<string> LoopOnly = ["continue"];
+
+    /// <summary>Whether <paramref name="offset"/> is just past the brace that closes a switch.</summary>
+    /// <remarks>
+    /// Position queries count the end of a range as inside it, so a caret there is found on the
+    /// switch. After an <c>if</c> or a loop the same caret is found on the block whose brace it
+    /// follows, which is already a place a statement starts. A switch's closing brace is its own and
+    /// not a block's, so it is asked about here.
+    /// </remarks>
+    private static bool JustPastAClosedSwitch(Statement statement, int offset)
+        => statement is SwitchStatement { IsClosed: true } && statement.Span.End.Offset == offset;
+
+    /// <summary>What may begin between the arms of a switch: another arm, and nothing else.</summary>
+    private static readonly IReadOnlyList<string> ArmStarters = ["case", "default"];
+
+    /// <summary>Whether <paramref name="offset"/> is inside a switch's braces and inside none of its arms.</summary>
+    /// <remarks>
+    /// <para>
+    /// Asked of the arms' ranges rather than of the innermost node, because the innermost node gets
+    /// the one position that matters wrong. A caret just after an arm's closing brace is at the end of
+    /// the arm's body, which position queries count as inside it, so a statement keyword would be
+    /// offered there. It would also be wrong, landing between two arms.
+    /// </para>
+    /// <para>
+    /// The end of an arm or a switch that nothing closed is still inside it, as it is for a block,
+    /// because that is the point the author is typing at.
+    /// </para>
+    /// </remarks>
+    private static bool BetweenArms(SemanticModel model, int offset)
+    {
+        if (model.SyntaxAt(offset)?.Enclosing<SwitchStatement>() is not { } choice)
+        {
+            return false;
+        }
+
+        var insideBraces = offset > choice.Subject.Span.End.Offset
+            && (offset < choice.Span.End.Offset || !choice.IsClosed);
+
+        return insideBraces && !choice.Arms.Any(arm => IsInside(arm, offset));
+    }
+
+    private static bool IsInside(SwitchArm arm, int offset)
+        => arm.Span.Start.Offset < offset && (offset < arm.Span.End.Offset || !arm.Body.IsClosed);
 
     private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false"];
 
@@ -1599,6 +1668,7 @@ public sealed class CompletionProvider
                 // read with punctuation after it.
                 .. MessageFields.InDeclarationOrder(message.Descriptor)
                     .Where(field => !field.IsMap
+                        && Lexer.CanBeWritten(field.Name)
                         && !subject.FollowedByCall
                         && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo, result.Module)))
                     .Select(field => Member(
@@ -1645,14 +1715,16 @@ public sealed class CompletionProvider
             // written before the dot is settled by ReceiverAt, which is where the reason is.
             EnumPlType enumeration when !writingAReceiver && !subject.FollowedByCall =>
             [
-                .. enumeration.Descriptor.Values.Select(value => Member(
-                    value.Name,
-                    CompletionItemKind.EnumMember,
-                    enumeration.Descriptor.FullName,
-                    Documentation(result, value),
-                    rank: "0",
-                    subject,
-                    document)),
+                .. enumeration.Descriptor.Values
+                    .Where(value => Lexer.CanBeWritten(value.Name))
+                    .Select(value => Member(
+                        value.Name,
+                        CompletionItemKind.EnumMember,
+                        enumeration.Descriptor.FullName,
+                        Documentation(result, value),
+                        rank: "0",
+                        subject,
+                        document)),
             ],
 
             _ => [],

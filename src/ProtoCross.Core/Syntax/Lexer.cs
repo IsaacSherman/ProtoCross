@@ -19,6 +19,24 @@ public sealed class Lexer
     /// </remarks>
     public static IReadOnlyDictionary<string, TokenKind> Keywords => KeywordKinds;
 
+    /// <summary>
+    /// Whether <paramref name="name"/> can be written in a source: no part of it, between dots, is a
+    /// reserved word.
+    /// </summary>
+    /// <remarks>
+    /// protobuf reserves none of spec 6.4's words, so a schema can declare a field, an enum value, a
+    /// type or a package spelled like one, and no source can then write it, because the lexer reads
+    /// the word as the keyword wherever it stands. Reserving <c>default</c> for <c>switch</c> made that
+    /// ordinary. Anything that offers a schema's names to be written asks this, rather than offering a
+    /// name the parser will refuse.
+    /// </remarks>
+    public static bool CanBeWritten(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        return !name.Split('.').Any(KeywordKinds.ContainsKey);
+    }
+
     private static readonly Dictionary<string, TokenKind> KeywordKinds = new(StringComparer.Ordinal)
     {
         ["and"] = TokenKind.And,
@@ -29,6 +47,7 @@ public sealed class Lexer
         ["bytes"] = TokenKind.Bytes,
         ["case"] = TokenKind.Case,
         ["continue"] = TokenKind.Continue,
+        ["default"] = TokenKind.Default,
         ["double"] = TokenKind.Double,
         ["else"] = TokenKind.Else,
         ["enum"] = TokenKind.Enum,

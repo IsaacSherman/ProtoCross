@@ -114,6 +114,10 @@ Implemented:
 - Name resolution and type checking against real descriptors, including enum types and values
 - Typed IR carrying resolved types, source locations, and per-operation arithmetic behavior
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
+- `switch` on an integer or an enum. Its arms are braced, `case A, B { ... }`, none falls into the
+  next, and `default { ... }` is optional and comes last. A case lists literals and enum values, each
+  number once. A `break` in an arm leaves the switch, never the loop around it. The spec has the
+  rules in section 15.3, and `default` is now a reserved word.
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
 - An enum's number, `status as int32`, and an enum from a number, `n as OrderStatus`. A number the
   enum does not name is kept by an open enum and ends the program for a closed one, unless the
@@ -148,7 +152,7 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: maps, `switch`, `Result` types, `==` between two messages, asking which member of a
+Not implemented: maps, `Result` types, `==` between two messages, asking which member of a
 `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can
 be read, tested with `has` and assigned, and assigning one unsets the others. The compiler refuses
 what it does not implement, such as a map field, rather than emitting something whose semantics

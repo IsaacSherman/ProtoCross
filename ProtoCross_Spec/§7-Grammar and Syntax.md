@@ -27,6 +27,7 @@ statement         = var_decl
                   | if_stmt
                   | while_stmt
                   | for_in_stmt
+                  | switch_stmt
                   | break_stmt
                   | continue_stmt
                   | block
@@ -39,6 +40,9 @@ return_stmt       = "return" [ expression ] ";";
 if_stmt           = "if" expression block [ "else" ( if_stmt | block ) ];
 while_stmt        = "while" expression block;
 for_in_stmt       = "for" identifier "in" expression block;
+switch_stmt       = "switch" expression "{" { switch_arm } "}";
+switch_arm        = "case" expression { "," expression } block
+                  | "default" block;
 break_stmt        = "break" ";";
 continue_stmt     = "continue" ";";
 assignment_stmt   = expression "=" expression ";";
@@ -79,6 +83,11 @@ Normative Requirement:
   repeated field's value only.
 - `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
+- A switch's subject is ended by the brace that opens its arms, as an `if` condition is by its body's,
+  and a case's values by the brace that opens the arm. Only an arm may stand between two arms:
+  anything else there is reported once and stepped over, braces and all, to the next arm. A `case`
+  or `default` arm with no switch around it is reported, and its body read as a block
+  ([15.3](./§15-Control%20Flow.md#153-switch)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
   it, and is an identifier anywhere else. The clause belongs to the one conversion it follows, and
   its fallback is a postfix expression, so a conversion after it converts the whole conversion

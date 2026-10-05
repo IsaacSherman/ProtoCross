@@ -20,6 +20,7 @@ public enum TokenKind
     Bytes,
     Case,
     Continue,
+    Default,
     Double,
     Else,
     Enum,

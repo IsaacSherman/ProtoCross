@@ -515,6 +515,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 break;
             }
 
+            case IrSwitch choice:
+                EmitSwitch(writer, choice, body);
+                break;
+
             case IrBreak:
                 writer.WriteLine("break;");
                 break;
@@ -563,6 +567,46 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             }
 
             return;
+        }
+    }
+
+    /// <summary>Emits a switch as C#'s own, with one braced section for each arm.</summary>
+    /// <remarks>
+    /// <para>
+    /// The values an arm lists are its section's labels, and the arm's statements are braced inside
+    /// it, so a local one arm declares is not in scope in the next, as it is not in ProtoCross.
+    /// </para>
+    /// <para>
+    /// C# refuses a section whose end can be reached, and a build with warnings as errors refuses a
+    /// <c>break</c> that cannot be, so a section ends in <c>break;</c> exactly where its arm can reach
+    /// its end. That is asked of <see cref="IrFlow"/>, the predicate the missing-return check uses,
+    /// rather than worked out here. A <c>break</c> the author wrote in an arm leaves the switch in C#,
+    /// which is what it does in ProtoCross (spec 15.2), and a <c>continue</c> continues the loop around
+    /// the switch in both, so both are written as they are anywhere else.
+    /// </para>
+    /// </remarks>
+    private static void EmitSwitch(SourceWriter writer, IrSwitch choice, Body body)
+    {
+        using var scope = writer.Block($"switch ({Expression(choice.Subject, body.Placement)})");
+
+        foreach (var arm in choice.Arms)
+        {
+            var labels = arm.IsDefault
+                ? ["default:"]
+                : arm.Values.Select(value => $"case {Expression(value, body.Placement)}:").ToList();
+
+            foreach (var label in labels.SkipLast(1))
+            {
+                writer.WriteLine(label);
+            }
+
+            using var section = writer.Block(labels[^1]);
+            EmitStatements(writer, arm.Body.Statements, body);
+
+            if (!IrFlow.NeverFallsThrough(arm.Body))
+            {
+                writer.WriteLine("break;");
+            }
         }
     }
 

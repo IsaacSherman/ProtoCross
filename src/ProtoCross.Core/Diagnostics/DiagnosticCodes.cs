@@ -361,9 +361,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ConditionMustBeBool =
         new("PC0071", DiagnosticSeverity.Error, "condition must be bool");
 
-    /// <summary>A <c>break</c> with no enclosing loop (spec 15.2).</summary>
+    /// <summary>A <c>break</c> with no enclosing loop or <c>switch</c> to leave (spec 15.2).</summary>
+    /// <remarks>
+    /// Named for the rule it reported before a <c>switch</c> could hold one (#6), and kept, since the
+    /// name is what other code reaches it by. The title says what it means now.
+    /// </remarks>
     public static readonly DiagnosticDescriptor BreakOutsideALoop =
-        new("PC0072", DiagnosticSeverity.Error, "'break' outside a loop");
+        new("PC0072", DiagnosticSeverity.Error, "'break' outside a loop or switch");
 
     /// <summary>A <c>continue</c> with no enclosing loop (spec 15.2).</summary>
     public static readonly DiagnosticDescriptor ContinueOutsideALoop =
@@ -565,6 +569,34 @@ public static class DiagnosticCodes
     /// <summary><c>in</c> asked of a value that is not of the enum it names (spec 12.2).</summary>
     public static readonly DiagnosticDescriptor MembershipTypeMismatch =
         new("PC0105", DiagnosticSeverity.Error, "value is not of the enum");
+
+    // ------------------------------------------------------- switch
+
+    /// <summary>A <c>switch</c> on a value that is neither an integer nor an enum (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor SubjectCannotBeSwitchedOn =
+        new("PC0106", DiagnosticSeverity.Error, "value cannot be switched on");
+
+    /// <summary>
+    /// A <c>case</c> listing something other than an integer literal or an enum value, which it cannot
+    /// compare by number before the method runs (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CaseValueIsNotAConstant =
+        new("PC0107", DiagnosticSeverity.Error, "case value is not a constant");
+
+    /// <summary>A <c>case</c> value of a type other than the one switched on (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor CaseValueTypeMismatch =
+        new("PC0108", DiagnosticSeverity.Error, "case value type mismatch");
+
+    /// <summary>
+    /// A number one <c>switch</c> lists twice, written the same way or as two names an enum gives it
+    /// (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CaseValueListedTwice =
+        new("PC0109", DiagnosticSeverity.Error, "case value listed twice");
+
+    /// <summary>A <c>default</c> arm with another arm after it, a second default included (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor DefaultArmIsNotLast =
+        new("PC0110", DiagnosticSeverity.Error, "default arm is not last");
 
     // ------------------------------------------------------- the configuration file
 

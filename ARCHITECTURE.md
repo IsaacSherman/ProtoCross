@@ -256,6 +256,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | What kind of symbol it is | `SymbolKind` | [Symbols/SymbolKind.cs](src/ProtoCross.Core/Symbols/SymbolKind.cs) |
 | Emission behavior | `ArithmeticBehavior`, `ConversionBehavior` | [Ir/ArithmeticBehavior.cs](src/ProtoCross.Core/Ir/ArithmeticBehavior.cs) |
 | What a change reaches, and what a backend copies for it | `IrMutation` | [Semantics/IrMutation.cs](src/ProtoCross.Core/Semantics/IrMutation.cs) |
+| Whether control can reach the end of a statement | `IrFlow` | [Semantics/IrFlow.cs](src/ProtoCross.Core/Semantics/IrFlow.cs) |
 | Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](src/ProtoCross.Core/Ir/NumericPolicy.cs) |
 | What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](src/ProtoCross.Core/Ir/Ir.cs) |
 | Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](src/ProtoCross.Core/Types/EnumOpenness.cs) |
@@ -650,7 +651,11 @@ its elements, and whether an argument is passed as a copy. C++ binds a loop elem
 where the body changes it, and C# clones into a local only in a method that changes a message, where
 a copy and a share could be told apart. A receiver is `T&` in C++ exactly when the signature says
 `IsMutating`, and `const T&` otherwise. Neither backend works out for itself what changes, so the
-two cannot disagree about it. Each backend writes a message literal and a test's fixture with one writer
+two cannot disagree about it. Reachability is asked the same way. Each backend writes a `switch` as
+the target's own, and an arm's section ends in `break;` exactly where
+[`IrFlow`](src/ProtoCross.Core/Semantics/IrFlow.cs) says the arm can reach its end. That is the
+predicate the binder's missing-return check uses, moved out of the binder so that the binder and
+both backends ask one question. Each backend writes a message literal and a test's fixture with one writer
 (`*Backend.MessageLiterals.cs`), since a fixture is a literal aimed at the test's receiver. In C# that
 writer produces an object initializer, and in C++ a lambda called where the literal is written.
 

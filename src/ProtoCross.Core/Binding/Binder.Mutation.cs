@@ -477,6 +477,7 @@ public sealed partial class Binder
             IrAppend append => [(append.Collection, false), (append.Value, false)],
             IrIf branch => [(branch.Condition, false)],
             IrWhile loop => [(loop.Condition, false)],
+            IrSwitch choice => [(choice.Subject, false)],
             IrForEach loop => [(loop.Collection, false)],
             _ => [],
         };

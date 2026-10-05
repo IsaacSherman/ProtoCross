@@ -124,6 +124,8 @@ public static class IrWalk
                 ? [branch.Condition, branch.Then, otherwise]
                 : [branch.Condition, branch.Then],
             IrWhile loop => [loop.Condition, loop.Body],
+            IrSwitch choice => [choice.Subject, .. choice.Arms],
+            IrSwitchArm arm => [.. arm.Values, arm.Body],
             IrExpressionStatement statement => [statement.Expression],
 
             IrFieldAccess field => [field.Receiver],

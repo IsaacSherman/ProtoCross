@@ -52,12 +52,14 @@ derivable from the other:
   protoc also emits a `static constexpr` member on the containing class, but the namespace-scope
   constant is the one every enum has.
 - protobuf C++ enums additionally carry `_INT_MIN_SENTINEL_DO_NOT_USE_` values that are not part of
-  the schema and must never be emitted. They will matter again for `switch`.
+  the schema and must never be emitted. They are why a C++ switch with no default arm is given one
+  ([15.3](./§15-Control%20Flow.md#153-switch)).
 
 Open Questions:
 
-- Should enum exhaustiveness be checked? proto3 enums are open -- a field may legally hold a number
-  with no declared value -- so no switch over one is exhaustive at runtime regardless of the schema.
+- ~~Should enum exhaustiveness be checked?~~ Decided: no. proto3 enums are open, so no switch over
+  one is exhaustive however many names it lists. A switch need not list every name, and its default
+  arm is optional ([15.3](./§15-Control%20Flow.md#153-switch)).
 - ~~Should unknown enum values be representable?~~ Decided: yes. An open enum keeps a number it
   does not name, a conversion or a fixture can make one ([12.1](#121-an-enums-number)), and `in` asks whether
   a value has a name ([12.2](#122-whether-a-value-has-a-name)).

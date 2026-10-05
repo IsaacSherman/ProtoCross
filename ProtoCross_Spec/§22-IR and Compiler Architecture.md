@@ -117,6 +117,12 @@ The IR preserves:
   ([12.1](./§12-Enums.md#121-an-enums-number)). A test of whether a value has a name carries the enum it asks about
   ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)).
 - Evaluation order.
+- **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
+  constants it lists, of the subject's type, and its block, and the default arm is the one listing
+  none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the
+  shape of the tree around it. Whether an arm can reach its end, where a target writes its own
+  `break`, is asked of the IR rather than recorded beside it. It is the question the missing-return
+  check asks, so the two cannot disagree.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
   diagnostics.
 

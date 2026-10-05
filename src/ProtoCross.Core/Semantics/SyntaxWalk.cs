@@ -57,6 +57,8 @@ public static class SyntaxWalk
                 ? [branch.Condition, branch.Then, otherwise]
                 : [branch.Condition, branch.Then],
             WhileStatement loop => [loop.Condition, loop.Body],
+            SwitchStatement choice => [choice.Subject, .. choice.Arms],
+            SwitchArm arm => [.. arm.Values, arm.Body],
             AssignmentStatement assignment => [assignment.Target, assignment.Value],
             CompoundAssignmentStatement assignment => assignment.OnZero is { } onZero
                 ? [assignment.Target, assignment.Value, onZero]

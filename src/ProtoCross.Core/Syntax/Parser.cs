@@ -1080,6 +1080,8 @@ public sealed class Parser
             TokenKind.Break => ParseBreakStatement(),
             TokenKind.Continue => ParseContinueStatement(),
             TokenKind.For => ParseForInStatement(),
+            TokenKind.Switch => ParseSwitchStatement(),
+            TokenKind.Case or TokenKind.Default => ParseArmOutsideASwitch(),
             TokenKind.OpenBrace => ParseBlock(),
             _ => ParseExpressionOrAssignmentStatement(),
         };
@@ -1228,6 +1230,126 @@ public sealed class Parser
         var body = ParseBlock();
 
         return new WhileStatement(condition, body, Spanning(start, body.Span));
+    }
+
+    /// <summary>Parses <c>switch &lt;subject&gt; { arms }</c> (spec 15.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// The subject is unparenthesized and ends at the brace that opens the arms, for the reason an
+    /// <c>if</c> condition ends at its body's (see <see cref="ParseIfStatement"/>).
+    /// </para>
+    /// <para>
+    /// Anything between the arms that is not one is reported once and stepped over to the next arm,
+    /// braces and all, rather than read as statements. A statement there belongs to no arm, so it would
+    /// run under no value, and reading a block's closing brace as the switch's would end the switch
+    /// early and take the arms after it for statements of the enclosing block.
+    /// </para>
+    /// </remarks>
+    private Statement ParseSwitchStatement()
+    {
+        var start = Expect(TokenKind.Switch).Span;
+        var subject = ParseExpression();
+        Expect(TokenKind.OpenBrace);
+
+        var arms = new List<SwitchArm>();
+        while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        {
+            if (StartsAnArm())
+            {
+                arms.Add(ParseSwitchArm());
+                continue;
+            }
+
+            ReportUnexpectedToken(
+                "'case' or 'default'",
+                "A switch holds only its arms: 'case A, B { ... }' for the values it lists, and "
+                + "'default { ... }' for every other value.");
+            SkipToNextArm();
+        }
+
+        var closed = TryExpect(TokenKind.CloseBrace, out var end);
+        return new SwitchStatement(subject, arms, Spanning(start, end.Span)) { IsClosed = closed };
+    }
+
+    private bool StartsAnArm() => Current.Kind is TokenKind.Case or TokenKind.Default;
+
+    /// <summary>Parses one arm, from its <c>case</c> or <c>default</c> through its body's closing brace.</summary>
+    private SwitchArm ParseSwitchArm()
+    {
+        var keyword = Current.Span;
+        var values = Match(TokenKind.Default) ? [] : ParseCaseValues();
+        var body = ParseBlock();
+
+        return new SwitchArm(keyword, values, body, Spanning(keyword, body.Span));
+    }
+
+    /// <summary>Parses <c>case</c> and the comma-separated values after it, up to the arm's body.</summary>
+    private List<Expression> ParseCaseValues()
+    {
+        Expect(TokenKind.Case);
+
+        var values = new List<Expression>();
+        do
+        {
+            values.Add(ParseCaseValue());
+        }
+        while (Match(TokenKind.Comma));
+
+        return values;
+    }
+
+    /// <summary>Parses one value a <c>case</c> lists, or stands an error in for one that is missing.</summary>
+    /// <remarks>
+    /// A value is any expression here, and the binder says which ones a case may list, since only it
+    /// can tell an enum value from a field read. A missing one is caught first, because an expression
+    /// that finds a brace consumes it as the token it could not use, and that brace is the arm's body.
+    /// The error stands at the empty point where the value would go, which is also what keeps
+    /// <see cref="SwitchArm.Values"/> from being empty for anything but the default arm.
+    /// </remarks>
+    private Expression ParseCaseValue()
+    {
+        if (Current.Kind is not (TokenKind.OpenBrace or TokenKind.Comma))
+        {
+            return ParseExpression();
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.ExpectedExpression,
+            $"Expected a value for the case but found {Current.Kind.Describe()}.",
+            Current.Span,
+            "A case lists the values it runs for: 'case Status.SHIPPED, Status.DELIVERED { ... }'.");
+        return new ErrorExpression(InsertionPointAfterPreviousToken());
+    }
+
+    /// <summary>Steps over whatever stands between two arms, stopping at the next arm or the switch's end.</summary>
+    private void SkipToNextArm()
+    {
+        while (!StartsAnArm() && Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
+        {
+            if (Match(TokenKind.OpenBrace))
+            {
+                TrySkipBalancedBlock(out _);
+                continue;
+            }
+
+            Advance();
+        }
+    }
+
+    /// <summary>Reads an arm written where no switch holds it, and keeps its body as a block.</summary>
+    /// <remarks>
+    /// Reported once, at its <c>case</c> or <c>default</c>. The body is kept rather than skipped,
+    /// because what is inside it is ordinary code whose names should still bind and still answer an
+    /// editor. What the arm lists is dropped, since there is nothing it could be compared with.
+    /// </remarks>
+    private Statement ParseArmOutsideASwitch()
+    {
+        ReportUnexpectedToken(
+            "a statement",
+            $"'{Current.Kind.Describe()}' begins an arm of a switch: "
+            + "'switch value { case A { ... } default { ... } }'.");
+
+        return ParseSwitchArm().Body;
     }
 
     private Statement ParseBreakStatement()
@@ -1414,6 +1536,7 @@ public sealed class Parser
     private static bool BeginsAStatementOrDeclaration(TokenKind kind) => kind is
         TokenKind.Var or TokenKind.Return or TokenKind.If or TokenKind.Else or TokenKind.While
         or TokenKind.For or TokenKind.Break or TokenKind.Continue
+        or TokenKind.Switch or TokenKind.Case or TokenKind.Default
         or TokenKind.Import or TokenKind.Extend or TokenKind.Fn or TokenKind.Test
         or TokenKind.Receiver or TokenKind.Arg or TokenKind.Expect;
 
