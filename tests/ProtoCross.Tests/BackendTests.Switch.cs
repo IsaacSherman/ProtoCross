@@ -98,6 +98,42 @@ public partial class BackendTests
     }
 
     /// <summary>
+    /// C# decides <c>if true</c> before the method runs and finds the arm's end unreachable where
+    /// IrFlow does not, so the arm's closing <c>break;</c> is written with CS0162 suspended around it.
+    /// An arm with no such condition is written plainly, and C++, which does not warn, never is.
+    /// </summary>
+    [Fact]
+    public void OnlyACSharpArmWithAConstantConditionHasItsBreakGuarded()
+    {
+        const string methods =
+            """
+            fn f() -> int64 {
+                var total: int64 = 0;
+                switch large {
+                    case 1 {
+                        if true {
+                            return 1;
+                        }
+                    }
+                    case 2 {
+                        total = 2;
+                    }
+                }
+                return total;
+            }
+            """;
+
+        var csharp = Squashed(SwitchCSharp(methods));
+        Assert.Contains(
+            "case 1L: { if (true) { return 1L; } #pragma warning disable CS0162",
+            csharp,
+            StringComparison.Ordinal);
+        Assert.Contains("case 2L: { total = 2L; break; }", csharp, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(csharp, "#pragma warning disable CS0162"));
+        Assert.DoesNotContain("#pragma", SwitchCpp(methods), StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// protoc gives a C++ enum two sentinel values beyond the schema's, so a switch over one with no
     /// default trips <c>-Wswitch</c> however many values it lists. C++ is given a default that does
     /// nothing, which is what matching nothing does anyway. C# has no such warning and gets nothing.

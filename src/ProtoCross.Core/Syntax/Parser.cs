@@ -1261,9 +1261,10 @@ public sealed class Parser
     {
         var keyword = Expect(TokenKind.Switch).Span;
         var subject = ParseExpression();
-        var wellFormed = TryExpect(TokenKind.OpenBrace, out _);
+        SourceSpan? openBrace = TryExpect(TokenKind.OpenBrace, out var brace) ? brace.Span : null;
 
         var arms = new List<SwitchArm>();
+        var onlyArms = true;
         while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile))
         {
             if (StartsAnArm())
@@ -1277,14 +1278,15 @@ public sealed class Parser
                 "A switch holds only its arms: 'case A, B { ... }' for the values it lists, and "
                 + "'default { ... }' for every other value.");
             SkipToNextArm();
-            wellFormed = false;
+            onlyArms = false;
         }
 
         var closed = TryExpect(TokenKind.CloseBrace, out var end);
         return new SwitchStatement(keyword, subject, arms, Spanning(keyword, end.Span))
         {
             IsClosed = closed,
-            IsWellFormed = wellFormed,
+            OpenBrace = openBrace,
+            HoldsOnlyArms = onlyArms,
         };
     }
 

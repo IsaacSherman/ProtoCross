@@ -1514,8 +1514,11 @@ public sealed class CompletionProvider
     /// offered there. It would also be wrong, landing between two arms.
     /// </para>
     /// <para>
-    /// The end of an arm or a switch that nothing closed is still inside it, as it is for a block,
-    /// because that is the point the author is typing at.
+    /// The braces are the switch's own, recorded where the parser read them, rather than the end of
+    /// the subject: the space before the opening brace is still the subject's, and a switch whose
+    /// brace has not been typed has nowhere an arm could begin. The end of an arm or a switch that
+    /// nothing closed is still inside it, as it is for a block, because that is the point the author
+    /// is typing at.
     /// </para>
     /// </remarks>
     private static IReadOnlyList<string>? ArmsThatCanBeginAt(SemanticModel model, int offset)
@@ -1525,7 +1528,8 @@ public sealed class CompletionProvider
             return null;
         }
 
-        var insideBraces = offset > choice.Subject.Span.End.Offset
+        var insideBraces = choice.OpenBrace is { } opened
+            && offset >= opened.End.Offset
             && (offset < choice.Span.End.Offset || !choice.IsClosed);
 
         if (!insideBraces || choice.Arms.Any(arm => IsInside(arm, offset)))

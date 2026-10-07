@@ -193,6 +193,17 @@ public sealed record SwitchStatement(
     /// </remarks>
     public bool IsClosed { get; init; } = true;
 
+    /// <summary>Where the brace that opens the arms was written, or null where it is missing.</summary>
+    /// <remarks>
+    /// Arms begin after it, and nowhere before it. The subject's end is not that place: a caret in the
+    /// space between the subject and the brace is in neither, and one after a subject with no brace yet
+    /// is still writing the subject.
+    /// </remarks>
+    public SourceSpan? OpenBrace { get; init; }
+
+    /// <summary>Whether everything between the braces was an arm, so the parser stepped over nothing.</summary>
+    public bool HoldsOnlyArms { get; init; } = true;
+
     /// <summary>
     /// Whether the parser read the switch as written up to its closing brace: its opening brace was
     /// there, and everything between the braces was an arm.
@@ -203,7 +214,7 @@ public sealed record SwitchStatement(
     /// does not say as well that the switch lists no case, as it says nothing more about a statement
     /// whose semicolon is missing. Whether the closing brace was found is <see cref="IsClosed"/>.
     /// </remarks>
-    public bool IsWellFormed { get; init; } = true;
+    public bool IsWellFormed => OpenBrace is not null && HoldsOnlyArms;
 }
 
 /// <summary>One arm of a <c>switch</c>: <c>case A, B { ... }</c>, or <c>default { ... }</c>.</summary>

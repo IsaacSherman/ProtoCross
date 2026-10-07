@@ -133,6 +133,11 @@ ProtoCross does:
   section there. C# refuses a section whose end can be reached, and a build with warnings as errors
   refuses a `break` that cannot be reached. Whether an arm can reach its end is asked of the IR
   ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)), the question the missing-return check asks.
+- C# decides a condition built from constants before the method runs, which ProtoCross's own
+  reachability does not, so in `case 1 { if true { return 1; } }` C# finds the arm's end unreachable
+  and warns about the `break;` (CS0162). Where an arm holds a branch or loop whose condition is
+  built from literals and enum values alone, C# writes that `break;` with CS0162 suspended around
+  it. Leaving the `break;` out instead would be an error wherever C# does not fold the condition.
 - A `break` or `continue` the author wrote is written as it stands. In both targets a `break` in a
   switch leaves the switch, and a `continue` there continues the loop around it, so neither needs
   rewriting.

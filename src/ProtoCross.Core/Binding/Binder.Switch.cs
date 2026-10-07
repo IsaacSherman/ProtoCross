@@ -66,7 +66,12 @@ public sealed partial class Binder
             + "the switch (spec 15.3).");
     }
 
-    /// <summary>Binds what a switch chooses by, which has to be an integer or an enum.</summary>
+    /// <summary>Binds what a switch chooses by, which has to be an integer or an enum, and not a constant.</summary>
+    /// <remarks>
+    /// A constant is refused on the owner's decision. Such a switch runs one arm every time, and C#
+    /// says so: it folds the subject and warns that every other arm, and anything after one that
+    /// returns, cannot be reached (CS0162), which a build with warnings as errors refuses.
+    /// </remarks>
     private IrExpression BindSwitchSubject(Expression subject, Scope scope, MethodContext context)
     {
         var bound = BindExpression(subject, scope, context, null);
@@ -84,7 +89,7 @@ public sealed partial class Binder
                 subject.Span,
                 "Choose by anything else with 'if' and 'else if' (spec 15.3).");
         }
-        else if (IsConstant(bound))
+        else if (IrConstants.IsConstant(bound))
         {
             _diagnostics.Report(
                 DiagnosticCodes.SubjectIsAConstant,
@@ -97,24 +102,6 @@ public sealed partial class Binder
 
         return bound;
     }
-
-    /// <summary>Whether <paramref name="value"/> is built from literals and enum values alone.</summary>
-    /// <remarks>
-    /// <para>
-    /// Asked of the leaves, so arithmetic on constants is a constant too: <c>2 * 3</c> is as fixed as
-    /// <c>6</c>, and C# folds both. A read of anything -- the receiver, a parameter, a local, a field
-    /// through one of them -- is a leaf that is not a constant, and so is a call, whose receiver is one.
-    /// </para>
-    /// <para>
-    /// Refused on the owner's decision. Such a switch runs one arm every time, and C# says so: it
-    /// folds the subject and warns that every other arm, and anything after one that returns, cannot
-    /// be reached (CS0162), which a build with warnings as errors refuses.
-    /// </para>
-    /// </remarks>
-    private static bool IsConstant(IrExpression value)
-        => IrWalk.DescendantsAndSelf(value)
-            .Where(node => IrWalk.ChildrenOf(node).Count == 0)
-            .All(leaf => leaf is IrLiteral or IrEnumValue);
 
     /// <summary>Whether a value of <paramref name="type"/> can be switched on: an integer or an enum.</summary>
     /// <remarks>

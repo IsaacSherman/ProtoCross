@@ -231,6 +231,18 @@ public class SwitchParsingTests
             "an arm the next one ended must stop before the next one begins");
     }
 
+    /// <summary>Arms begin after the brace, so where it was written, or that it was not, is kept.</summary>
+    [Fact]
+    public void ASwitchRemembersWhereItsOpeningBraceWas()
+    {
+        const string body = "switch kind  { case 1 { } }";
+
+        var opened = ParseSwitch(body, out _).OpenBrace;
+        Assert.NotNull(opened);
+        Assert.Equal("{", TextAt(body, opened.Value));
+        Assert.Null(ParseSwitch("switch kind case 1 { } }", out _).OpenBrace);
+    }
+
     [Theory]
     [InlineData("switch kind { case 1 { } }", true)]
     [InlineData("switch kind { stray case 1 { } }", false)]

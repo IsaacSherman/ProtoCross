@@ -157,6 +157,30 @@ extend SwitchCase {
         }
     }
 
+    // An arm a constant condition ends. C# decides each condition before the method runs and finds
+    // the arm's end unreachable, where ProtoCross's own reachability does not look at conditions.
+    fn ended_by_a_constant(n: int64) -> int64 {
+        switch n {
+            case 1 {
+                if true {
+                    return 1;
+                }
+            }
+            case 2 {
+                if true {
+                    break;
+                }
+            }
+            case 3 {
+                while 1 == 1 {
+                    return 3;
+                }
+            }
+        }
+
+        return 0;
+    }
+
     // A break in an inner switch leaves that switch alone.
     fn nested(n: int64) -> int64 {
         var result: int64 = 0;
@@ -417,6 +441,33 @@ test SwitchCase.steps_to_ten "a return in an arm leaves the loop" {
 
     arg start = 10;
     expect return 0;
+}
+
+test SwitchCase.ended_by_a_constant "if true returns from the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 1;
+    expect return 1;
+}
+
+test SwitchCase.ended_by_a_constant "if true breaks out of the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 2;
+    expect return 0;
+}
+
+test SwitchCase.ended_by_a_constant "a loop on a constant returns from the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 3;
+    expect return 3;
 }
 
 test SwitchCase.nested "a break in an inner switch leaves that switch alone" {

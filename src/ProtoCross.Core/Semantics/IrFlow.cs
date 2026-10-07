@@ -16,8 +16,13 @@ namespace ProtoCross.Semantics;
 /// <para>
 /// It is the answer C# gives for every statement ProtoCross emits, constant conditions apart: like C#
 /// it knows <c>while true</c> runs until a <c>break</c> leaves it, and unlike C# it does not know that
-/// <c>if true</c> always takes its branch. The language performs no termination analysis beyond that
-/// (spec 15.2).
+/// <c>if true</c> always takes its branch, or that <c>while 1 == 1</c> is <c>while true</c>. The
+/// language performs no termination analysis beyond that (spec 15.2). Folding constants here was
+/// rejected: it would change which methods need a return, and wherever this folded something C# does
+/// not, a section C# can leave would lose its <c>break</c>, which C# refuses outright. So this answer
+/// never calls an end unreachable that C# can reach, and C# may call one unreachable that this
+/// cannot. The C# backend accounts for that where it writes a <c>break</c>
+/// (<see cref="IrConstants.HasAConstantCondition"/>).
 /// </para>
 /// </remarks>
 public static class IrFlow
