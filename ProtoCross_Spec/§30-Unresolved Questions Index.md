@@ -74,7 +74,10 @@ This section should be maintained as the authoritative list of open decisions.
 - Map support and map iteration order.
 - Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
   and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
-- Switch support.
+- ~~Switch support.~~ Decided: a statement over an integer or an enum, with braced arms listing
+  constants that never fall into the next, and an optional `default` arm written last. A `break`
+  leaves the innermost switch or loop, and no switch is checked for exhaustiveness
+  ([15.3](./§15-Control%20Flow.md#153-switch), [15.2](./§15-Control%20Flow.md#152-loops)).
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 - ~~Receiver mutation and possible const/mut method split.~~ Decided: a method declared `mut fn` may
   change its receiver, every other method is read-only, and nothing may change a parameter

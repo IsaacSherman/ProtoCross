@@ -435,7 +435,48 @@ public sealed record IrIf(IrExpression Condition, IrBlock Then, IrStatement? Els
 /// </summary>
 public sealed record IrWhile(IrExpression Condition, IrBlock Body, SourceSpan Span) : IrStatement(Span);
 
-/// <summary>Exits the innermost enclosing loop.</summary>
+/// <summary>
+/// A <c>switch</c> (spec 15.3): an integer or an enum, compared with the values each arm lists, in the
+/// order the arms were written.
+/// </summary>
+/// <param name="Subject">What is switched on, evaluated once, before any arm is chosen.</param>
+/// <param name="Arms">
+/// Every arm as written. At most one is the default, and it is the last, once the binder has
+/// accepted the switch. No two arms list the same number, so at most one arm runs.
+/// </param>
+/// <remarks>
+/// A switch that matches nothing runs nothing: there is no default arm unless one was written, and a
+/// backend that needs one to keep a target compiler quiet adds one that does nothing.
+/// </remarks>
+public sealed record IrSwitch(IrExpression Subject, IReadOnlyList<IrSwitchArm> Arms, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <summary>Whether a <c>default</c> arm was written.</summary>
+    /// <remarks>
+    /// A flag rather than the arm itself, because a property holding a node is read as a child of
+    /// this one, and the arm is already one of <see cref="Arms"/>.
+    /// </remarks>
+    public bool HasDefault => Arms.Any(arm => arm.IsDefault);
+}
+
+/// <summary>One arm of an <see cref="IrSwitch"/>: the values it runs for, and what it runs.</summary>
+/// <param name="Values">
+/// The values a <c>case</c> lists, each a constant of the subject's type: an integer literal, or a
+/// value of the subject's enum. None for the <c>default</c> arm.
+/// </param>
+/// <remarks>
+/// A node rather than a pair inside the switch, because it has a range of its own that a position
+/// query lands in, between the values and the body. Nothing falls from one arm into the next, so a
+/// <c>break</c> inside one leaves the switch, as it leaves a loop (spec 15.2).
+/// </remarks>
+public sealed record IrSwitchArm(IReadOnlyList<IrExpression> Values, IrBlock Body, SourceSpan Span)
+    : IrNode(Span)
+{
+    /// <summary>Whether this is the <c>default</c> arm, which runs when no <c>case</c> lists the value.</summary>
+    public bool IsDefault => Values.Count == 0;
+}
+
+/// <summary>Leaves the innermost enclosing loop or <c>switch</c> (spec 15.2).</summary>
 public sealed record IrBreak(SourceSpan Span) : IrStatement(Span);
 
 /// <summary>Advances the innermost enclosing loop to its next iteration.</summary>

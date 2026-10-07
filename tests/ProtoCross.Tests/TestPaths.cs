@@ -17,6 +17,10 @@ internal static class TestPaths
     public static string FixtureProtoDirectory
         => Path.Combine(RepositoryRoot, "tests", "ProtoCross.Tests", "protos");
 
+    /// <summary>The conformance corpus's schemas, one named after each vector.</summary>
+    public static string ConformanceProtoDirectory
+        => Path.Combine(RepositoryRoot, "tests", "conformance", "protos");
+
     /// <summary>
     /// The repository's central package versions. Copied into generated smoke projects so they
     /// resolve the same versions as the repository instead of hardcoding their own.

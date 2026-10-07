@@ -515,6 +515,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 break;
             }
 
+            case IrSwitch choice:
+                EmitSwitch(writer, choice, body);
+                break;
+
             case IrBreak:
                 writer.WriteLine("break;");
                 break;
@@ -564,6 +568,69 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
             return;
         }
+    }
+
+    /// <summary>Emits a switch as C#'s own, with one braced section for each arm.</summary>
+    /// <remarks>
+    /// <para>
+    /// The values an arm lists are its section's labels, and the arm's statements are braced inside
+    /// it, so a local one arm declares is not in scope in the next, as it is not in ProtoCross.
+    /// </para>
+    /// <para>
+    /// C# refuses a section whose end can be reached, and a build with warnings as errors refuses a
+    /// <c>break</c> that cannot be, so a section ends in <c>break;</c> exactly where its arm can reach
+    /// its end. That is asked of <see cref="IrFlow"/>, the predicate the missing-return check uses,
+    /// rather than worked out here. A <c>break</c> the author wrote in an arm leaves the switch in C#,
+    /// which is what it does in ProtoCross (spec 15.2), and a <c>continue</c> continues the loop around
+    /// the switch in both, so both are written as they are anywhere else.
+    /// </para>
+    /// <para>
+    /// C# decides a condition built from constants before the method runs, and IrFlow does not, so
+    /// in <c>case 1 { if true { return 1; } }</c> C# finds the arm's end unreachable where IrFlow does
+    /// not. The <c>break;</c> it needs everywhere else is then one C# warns about (CS0162). Where an
+    /// arm holds such a condition, that one line is written with the warning suspended around it. It
+    /// is not left out instead, because the condition may be one C# does not fold, and a section C#
+    /// can leave without a <c>break</c> is an error rather than a warning. Every other arm is written
+    /// as it was.
+    /// </para>
+    /// </remarks>
+    private static void EmitSwitch(SourceWriter writer, IrSwitch choice, Body body)
+    {
+        using var scope = writer.Block($"switch ({Expression(choice.Subject, body.Placement)})");
+
+        foreach (var arm in choice.Arms)
+        {
+            var labels = arm.IsDefault
+                ? ["default:"]
+                : arm.Values.Select(value => $"case {Expression(value, body.Placement)}:").ToList();
+
+            foreach (var label in labels.SkipLast(1))
+            {
+                writer.WriteLine(label);
+            }
+
+            using var section = writer.Block(labels[^1]);
+            EmitStatements(writer, arm.Body.Statements, body);
+
+            if (!IrFlow.NeverFallsThrough(arm.Body))
+            {
+                EmitSectionBreak(writer, arm);
+            }
+        }
+    }
+
+    /// <summary>The <c>break;</c> that ends a section, guarded where C# may find it unreachable.</summary>
+    private static void EmitSectionBreak(SourceWriter writer, IrSwitchArm arm)
+    {
+        if (!IrConstants.HasAConstantCondition(arm.Body))
+        {
+            writer.WriteLine("break;");
+            return;
+        }
+
+        writer.WriteLine("#pragma warning disable CS0162 // A constant condition above may end the arm first.");
+        writer.WriteLine("break;");
+        writer.WriteLine("#pragma warning restore CS0162");
     }
 
     private static string Expression(

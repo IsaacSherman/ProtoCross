@@ -167,6 +167,80 @@ public sealed record WhileStatement(
     BlockStatement Body,
     SourceSpan Span) : Statement(Span);
 
+/// <summary>
+/// A <c>switch</c> (spec 15.3): an integer or an enum, and the arms it chooses between in the order
+/// they were written.
+/// </summary>
+/// <remarks>
+/// The subject is unparenthesized, as an <c>if</c> condition is, and is ended by the brace that opens
+/// the arms for the same reason (see <see cref="Parser"/>). A default arm out of place is still an arm
+/// here, in the place it was written, so that the binder can say where it should have gone.
+/// </remarks>
+/// <param name="Keyword">
+/// Where <c>switch</c> was written, which is what a diagnostic about the switch as a whole points at.
+/// </param>
+public sealed record SwitchStatement(
+    SourceSpan Keyword,
+    Expression Subject,
+    IReadOnlyList<SwitchArm> Arms,
+    SourceSpan Span) : Statement(Span)
+{
+    /// <summary>Whether the parser found the brace that closes the arms.</summary>
+    /// <remarks>
+    /// What <see cref="BlockStatement.IsClosed"/> is to a block, and for the same reason: a caret at
+    /// the end of a switch nothing closed is still between its arms, where only another arm can
+    /// begin, and one after a closing brace is past it, where any statement can.
+    /// </remarks>
+    public bool IsClosed { get; init; } = true;
+
+    /// <summary>Where the brace that opens the arms was written, or null where it is missing.</summary>
+    /// <remarks>
+    /// Arms begin after it, and nowhere before it. The subject's end is not that place: a caret in the
+    /// space between the subject and the brace is in neither, and one after a subject with no brace yet
+    /// is still writing the subject.
+    /// </remarks>
+    public SourceSpan? OpenBrace { get; init; }
+
+    /// <summary>Whether everything between the braces was an arm, so the parser stepped over nothing.</summary>
+    public bool HoldsOnlyArms { get; init; } = true;
+
+    /// <summary>
+    /// Whether the parser read the switch as written up to its closing brace: its opening brace was
+    /// there, and everything between the braces was an arm.
+    /// </summary>
+    /// <remarks>
+    /// A switch missing its opening brace, or holding anything but arms, is one still being written:
+    /// the author is typing what the parser could not read yet. The parser has said so, and the binder
+    /// does not say as well that the switch lists no case, as it says nothing more about a statement
+    /// whose semicolon is missing. Whether the closing brace was found is <see cref="IsClosed"/>.
+    /// </remarks>
+    public bool IsWellFormed => OpenBrace is not null && HoldsOnlyArms;
+}
+
+/// <summary>One arm of a <c>switch</c>: <c>case A, B { ... }</c>, or <c>default { ... }</c>.</summary>
+/// <param name="Keyword">
+/// Where its <c>case</c> or <c>default</c> was written, which is what a diagnostic about the arm as a
+/// whole points at rather than underlining all of it.
+/// </param>
+/// <param name="Values">
+/// The values a <c>case</c> lists, in order, or none for the <c>default</c> arm. A <c>case</c> always
+/// lists at least one: where the parser found none it holds an <see cref="ErrorExpression"/> at the
+/// point the value would go, so an arm listing nothing is the default arm and nothing else.
+/// </param>
+/// <remarks>
+/// Every arm is braced and none falls into the next (spec 15.3), so an arm is a list and a block
+/// rather than a run of labels and the statements after them.
+/// </remarks>
+public sealed record SwitchArm(
+    SourceSpan Keyword,
+    IReadOnlyList<Expression> Values,
+    BlockStatement Body,
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>Whether this is the <c>default</c> arm, which runs when no <c>case</c> lists the value.</summary>
+    public bool IsDefault => Values.Count == 0;
+}
+
 public sealed record BreakStatement(SourceSpan Span) : Statement(Span);
 
 public sealed record ContinueStatement(SourceSpan Span) : Statement(Span);

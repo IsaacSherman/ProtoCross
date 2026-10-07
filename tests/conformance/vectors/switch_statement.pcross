@@ -1,0 +1,640 @@
+// Conformance vectors for switch (spec 15.3).
+//
+// A switch runs the one arm that lists its value, or the default arm, or nothing at all. Every arm is
+// braced and none falls into the next. A break inside an arm leaves the switch and never the loop
+// around it, and a continue there continues that loop. Both backends write the target's own switch,
+// so these are the places C# and C++ could each go their own way:
+//
+// - a break in an arm, inside a loop and outside one;
+// - a continue in an arm;
+// - an arm that returns, and a switch that returns from every arm;
+// - a number the enum does not name, with a default arm and without one;
+// - an enum that gives one number two names;
+// - each integer width at its edges.
+
+import proto "switch_statement.proto";
+
+extend SwitchCase {
+    // Several values in one arm, and a default. Every arm returns, so nothing is needed after it.
+    fn temperature() -> int64 {
+        switch season {
+            case SwitchSeason.SWITCH_SEASON_SUMMER {
+                return 30;
+            }
+            case SwitchSeason.SWITCH_SEASON_SPRING, SwitchSeason.SWITCH_SEASON_AUTUMN {
+                return 15;
+            }
+            default {
+                return 0;
+            }
+        }
+    }
+
+    // No default arm: a value no arm lists runs nothing, and the method goes on past the switch.
+    fn winter_bonus() -> int64 {
+        var bonus: int64 = 1;
+
+        switch season {
+            case SwitchSeason.SWITCH_SEASON_WINTER {
+                bonus = 10;
+            }
+        }
+
+        return bonus;
+    }
+
+    // An arm that lists values and does nothing, so they are kept from the default.
+    fn outside_the_warm_seasons() -> bool {
+        var outside: bool = false;
+
+        switch season {
+            case SwitchSeason.SWITCH_SEASON_SPRING, SwitchSeason.SWITCH_SEASON_SUMMER {
+            }
+            default {
+                outside = true;
+            }
+        }
+
+        return outside;
+    }
+
+    // A number no value names is listed by no case, so it runs the default.
+    fn season_number_unless_winter() -> int32 {
+        switch season {
+            case SwitchSeason.SWITCH_SEASON_WINTER {
+                return -1;
+            }
+            default {
+                return season as int32;
+            }
+        }
+    }
+
+    // A case listing one name matches a value set by the other name for its number.
+    fn must_stop() -> bool {
+        switch signal {
+            case SwitchSignal.SWITCH_SIGNAL_HALT {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // A break in an arm leaves the switch, and the loop goes on: every number is still counted. A
+    // break that left the loop would stop at the first zero.
+    fn counted_past_breaks() -> int64 {
+        var count: int64 = 0;
+
+        for n in numbers {
+            switch n {
+                case 0 {
+                    break;
+                }
+                default {
+                    count += 100;
+                }
+            }
+
+            count += 1;
+        }
+
+        return count;
+    }
+
+    // A break part way through an arm skips the rest of the arm, and nothing after the switch.
+    fn arm_left_early(limit: int64) -> int64 {
+        var total: int64 = 0;
+
+        switch small {
+            case 1 {
+                total = 1;
+                if limit < 5 {
+                    break;
+                }
+
+                total = 2;
+            }
+        }
+
+        return total + 100;
+    }
+
+    // A continue in an arm continues the loop around the switch, skipping the rest of that pass.
+    fn summed_skipping_sevens() -> int64 {
+        var sum: int64 = 0;
+
+        for n in numbers {
+            switch n {
+                case 7 {
+                    continue;
+                }
+            }
+
+            sum += n;
+        }
+
+        return sum;
+    }
+
+    // 'while true' left only by a return in an arm. The default's break leaves the switch, not the
+    // loop, so the loop never ends any other way and the method needs no return after it.
+    fn steps_to_ten(start: int64) -> int64 {
+        var value: int64 = start;
+        var steps: int64 = 0;
+
+        while true {
+            switch value {
+                case 10 {
+                    return steps;
+                }
+                default {
+                    value += 1;
+                    steps += 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // An arm a constant condition ends. C# decides each condition before the method runs and finds
+    // the arm's end unreachable, where ProtoCross's own reachability does not look at conditions.
+    fn ended_by_a_constant(n: int64) -> int64 {
+        switch n {
+            case 1 {
+                if true {
+                    return 1;
+                }
+            }
+            case 2 {
+                if true {
+                    break;
+                }
+            }
+            case 3 {
+                while 1 == 1 {
+                    return 3;
+                }
+            }
+        }
+
+        return 0;
+    }
+
+    // A break in an inner switch leaves that switch alone.
+    fn nested(n: int64) -> int64 {
+        var result: int64 = 0;
+
+        switch season {
+            case SwitchSeason.SWITCH_SEASON_SUMMER {
+                switch n {
+                    case 1 {
+                        result = 1;
+                        break;
+                    }
+                }
+
+                result += 10;
+            }
+        }
+
+        return result;
+    }
+
+    // An element of a repeated enum, which C++ holds as an int.
+    fn warm_seasons() -> int64 {
+        var warm: int64 = 0;
+
+        for each in seasons {
+            switch each {
+                case SwitchSeason.SWITCH_SEASON_SPRING, SwitchSeason.SWITCH_SEASON_SUMMER {
+                    warm += 1;
+                }
+            }
+        }
+
+        return warm;
+    }
+
+    // Two arms declaring a local of one name, each in scope in its own arm alone.
+    fn scaled() -> int64 {
+        switch small {
+            case 2 {
+                var factor: int64 = 2;
+                return large * factor;
+            }
+            default {
+                var factor: int64 = 3;
+                return large * factor;
+            }
+        }
+    }
+
+    // A call's result, switched on.
+    fn summer_by_temperature() -> bool {
+        switch temperature() {
+            case 30 {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    fn small_edge() -> int64 {
+        switch small {
+            case -2147483648 {
+                return 1;
+            }
+            case -1 {
+                return 2;
+            }
+            case 0 {
+                return 3;
+            }
+            case 2147483647 {
+                return 4;
+            }
+        }
+
+        return 0;
+    }
+
+    fn large_edge() -> int64 {
+        switch large {
+            case -9223372036854775808 {
+                return 1;
+            }
+            case 4294967296 {
+                return 2;
+            }
+            case 9223372036854775807 {
+                return 3;
+            }
+        }
+
+        return 0;
+    }
+
+    fn tally_edge() -> int64 {
+        switch tally {
+            case 0 {
+                return 1;
+            }
+            case 4294967295 {
+                return 2;
+            }
+        }
+
+        return 0;
+    }
+
+    fn big_tally_edge() -> int64 {
+        switch big_tally {
+            case 0x8000_0000_0000_0000 {
+                return 1;
+            }
+            case 18446744073709551615 {
+                return 2;
+            }
+        }
+
+        return 0;
+    }
+}
+
+test SwitchCase.temperature "an arm listing one value" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SUMMER,
+    }
+
+    expect return 30;
+}
+
+test SwitchCase.temperature "an arm listing two values runs for the second" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_AUTUMN,
+    }
+
+    expect return 15;
+}
+
+test SwitchCase.temperature "a value no case lists runs the default" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_WINTER,
+    }
+
+    expect return 0;
+}
+
+test SwitchCase.winter_bonus "a listed value runs its arm" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_WINTER,
+    }
+
+    expect return 10;
+}
+
+test SwitchCase.winter_bonus "with no default, a value no case lists runs nothing" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SPRING,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.winter_bonus "with no default, a number no value names runs nothing" {
+    receiver {
+        season: 9 as SwitchSeason,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.outside_the_warm_seasons "an empty arm keeps its values from the default" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SUMMER,
+    }
+
+    expect return false;
+}
+
+test SwitchCase.outside_the_warm_seasons "a value no case lists still reaches the default" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_AUTUMN,
+    }
+
+    expect return true;
+}
+
+test SwitchCase.season_number_unless_winter "a number no value names runs the default" {
+    receiver {
+        season: 9 as SwitchSeason,
+    }
+
+    expect return 9;
+}
+
+test SwitchCase.must_stop "a case matches a value set by another name for its number" {
+    receiver {
+        signal: SwitchSignal.SWITCH_SIGNAL_STOP,
+    }
+
+    expect return true;
+}
+
+test SwitchCase.must_stop "a case does not match a different number" {
+    receiver {
+        signal: SwitchSignal.SWITCH_SIGNAL_GO,
+    }
+
+    expect return false;
+}
+
+test SwitchCase.counted_past_breaks "a break in an arm leaves the switch and not the loop" {
+    receiver {
+        numbers: [0, 5, 0],
+    }
+
+    expect return 103;
+}
+
+test SwitchCase.arm_left_early "a break skips the rest of its arm" {
+    receiver {
+        small: 1,
+    }
+
+    arg limit = 3;
+    expect return 101;
+}
+
+test SwitchCase.arm_left_early "an arm runs to its end when nothing breaks" {
+    receiver {
+        small: 1,
+    }
+
+    arg limit = 9;
+    expect return 102;
+}
+
+test SwitchCase.summed_skipping_sevens "a continue in an arm continues the loop" {
+    receiver {
+        numbers: [1, 7, 2, 7],
+    }
+
+    expect return 3;
+}
+
+test SwitchCase.steps_to_ten "a break in an arm leaves the switch inside while true" {
+    receiver {
+        small: 0,
+    }
+
+    arg start = 7;
+    expect return 3;
+}
+
+test SwitchCase.steps_to_ten "a return in an arm leaves the loop" {
+    receiver {
+        small: 0,
+    }
+
+    arg start = 10;
+    expect return 0;
+}
+
+test SwitchCase.ended_by_a_constant "if true returns from the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 1;
+    expect return 1;
+}
+
+test SwitchCase.ended_by_a_constant "if true breaks out of the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 2;
+    expect return 0;
+}
+
+test SwitchCase.ended_by_a_constant "a loop on a constant returns from the arm" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 3;
+    expect return 3;
+}
+
+test SwitchCase.nested "a break in an inner switch leaves that switch alone" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SUMMER,
+    }
+
+    arg n = 1;
+    expect return 11;
+}
+
+test SwitchCase.nested "an inner switch matching nothing runs nothing" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SUMMER,
+    }
+
+    arg n = 2;
+    expect return 10;
+}
+
+test SwitchCase.warm_seasons "switches on each element of a repeated enum" {
+    receiver {
+        seasons: [
+            SwitchSeason.SWITCH_SEASON_SPRING,
+            SwitchSeason.SWITCH_SEASON_WINTER,
+            SwitchSeason.SWITCH_SEASON_SUMMER,
+            7 as SwitchSeason,
+        ],
+    }
+
+    expect return 2;
+}
+
+test SwitchCase.scaled "the local of the arm that runs" {
+    receiver {
+        small: 2,
+        large: 5,
+    }
+
+    expect return 10;
+}
+
+test SwitchCase.scaled "the local of the default" {
+    receiver {
+        small: 4,
+        large: 5,
+    }
+
+    expect return 15;
+}
+
+test SwitchCase.summer_by_temperature "switches on a call's result" {
+    receiver {
+        season: SwitchSeason.SWITCH_SEASON_SUMMER,
+    }
+
+    expect return true;
+}
+
+test SwitchCase.small_edge "int32 MIN" {
+    receiver {
+        small: -2147483648,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.small_edge "minus one" {
+    receiver {
+        small: -1,
+    }
+
+    expect return 2;
+}
+
+test SwitchCase.small_edge "zero" {
+    receiver {
+        small: 0,
+    }
+
+    expect return 3;
+}
+
+test SwitchCase.small_edge "int32 MAX" {
+    receiver {
+        small: 2147483647,
+    }
+
+    expect return 4;
+}
+
+test SwitchCase.small_edge "a value no case lists" {
+    receiver {
+        small: 5,
+    }
+
+    expect return 0;
+}
+
+test SwitchCase.large_edge "int64 MIN" {
+    receiver {
+        large: -9223372036854775808,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.large_edge "a value no int32 holds" {
+    receiver {
+        large: 4294967296,
+    }
+
+    expect return 2;
+}
+
+test SwitchCase.large_edge "int64 MAX" {
+    receiver {
+        large: 9223372036854775807,
+    }
+
+    expect return 3;
+}
+
+test SwitchCase.large_edge "zero is listed by no case" {
+    receiver {
+        large: 0,
+    }
+
+    expect return 0;
+}
+
+test SwitchCase.tally_edge "uint32 zero" {
+    receiver {
+        tally: 0,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.tally_edge "uint32 MAX" {
+    receiver {
+        tally: 4294967295,
+    }
+
+    expect return 2;
+}
+
+test SwitchCase.big_tally_edge "the top bit of a uint64" {
+    receiver {
+        big_tally: 0x8000_0000_0000_0000,
+    }
+
+    expect return 1;
+}
+
+test SwitchCase.big_tally_edge "uint64 MAX" {
+    receiver {
+        big_tally: 18446744073709551615,
+    }
+
+    expect return 2;
+}
+
+test SwitchCase.big_tally_edge "a value no case lists" {
+    receiver {
+        big_tally: 1,
+    }
+
+    expect return 0;
+}

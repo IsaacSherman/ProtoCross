@@ -3,6 +3,7 @@ using ProtoCross.Binding;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Symbols;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 
 namespace ProtoCross.Semantics;
@@ -130,6 +131,11 @@ internal static class ScopeSearch
     /// compiler version does not support them -- so it is a name that resolves and then refuses.
     /// </para>
     /// <para>
+    /// A third is the lexer's. A field spelled like a reserved word, <c>default</c> among them, is
+    /// reached by no bare name, because no bare name can be written that way
+    /// (<see cref="Lexer.CanBeWritten"/>).
+    /// </para>
+    /// <para>
     /// A field whose presence has not been established is <em>not</em> excluded. <c>PC0078</c> is a
     /// diagnostic about the value, reported on a name that resolved perfectly well, and the way out
     /// of it is to write the name inside a guard. Withholding it would hide the field from the
@@ -143,7 +149,7 @@ internal static class ScopeSearch
         var taken = declared.Select(name => name.Name).ToHashSet(StringComparer.Ordinal);
 
         return MessageFields.InDeclarationOrder(receiver)
-            .Where(field => !field.IsMap && !taken.Contains(field.Name))
+            .Where(field => !field.IsMap && !taken.Contains(field.Name) && Lexer.CanBeWritten(field.Name))
             .Select(field => new VisibleName(
                 SymbolId.ForField(field),
                 field.Name,
