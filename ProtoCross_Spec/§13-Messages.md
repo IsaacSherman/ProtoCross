@@ -77,7 +77,10 @@ value today, `RequireGuard`.
 Open Questions:
 
 - Oneof fields, which have a case discriminator this says nothing about.
-- Map fields, which are not supported at all ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- ~~Map fields, which are not supported at all.~~ Decided: nothing a guard shows is about a map's
+  element, since an element is reached only through a key, which no guard names. A message read
+  through a lookup has no name and is guarded as a call's result is: bind it to a local
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 
 ### 13.2 Message Construction
 
@@ -120,7 +123,13 @@ Normative Requirements:
   `items: other.items` included, and so is a list given to a singular field.
 - Each field is written at most once, a repeated one included (`PC0061`): a repeated field's list is
   the one place its contents are read.
-- A map field is refused (`PC0060`), as maps are everywhere else ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- A map field's value is a list of entries, each written `{ key: k, value: v }`, as protobuf models
+  an entry ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). An entry is bound as a literal of that model is, so a field that is neither
+  `key` nor `value`, or one written twice, is refused as in any literal, and both have to be written
+  (`PC0121`). A value in the list that is not an entry is `PC0119`, and an entry anywhere but a map
+  field's list is `PC0120`. Entries are stored in the order written, so a key written twice holds the
+  later value, as protobuf's parser makes it. A map field given anything but a list is `PC0063`, a whole
+  map included.
 - A field that is left out is unset. There is no required field and no check that a message is
   complete: protobuf has neither, and this compiler does not invent one.
 - The values are evaluated in the order their fields are written ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), and each field is set in that order.
@@ -165,7 +174,9 @@ extend Order {
 Normative Requirements:
 
 - `==` or `!=` on two messages, or on two repeated values, is `PC0098`. That includes a message
-  literal, a guarded field, and a well-known type such as `google.protobuf.Timestamp`. Its help says
+  literal, a guarded field, and a well-known type such as `google.protobuf.Timestamp`, and two maps
+  whose values are messages. Two maps of any other values compare by their keys and values
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). Its help says
   to compare the fields that decide it, or to declare a method that compares them.
 - Every scalar and every enum keeps its equality ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 - Two operands of different types are `PC0048` before either is asked about. An ordered comparison

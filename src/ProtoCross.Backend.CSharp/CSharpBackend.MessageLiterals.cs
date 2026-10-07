@@ -49,9 +49,12 @@ public sealed partial class CSharpBackend
     private static string FieldInitializer(IrFieldInitializer field, Placement placement, string receiverName)
     {
         var property = NameConventions.GetCSharpPropertyName(field.Field);
-        var value = field.Value is IrList list
-            ? Braced(header: null, list.Elements.Select(element => StoredValue(element, placement, receiverName)))
-            : StoredValue(field.Value, placement, receiverName);
+        var value = field.Value switch
+        {
+            IrList list => Braced(header: null, list.Elements.Select(element => StoredValue(element, placement, receiverName))),
+            IrMapEntries entries => MapEntries(entries, placement, receiverName),
+            _ => StoredValue(field.Value, placement, receiverName),
+        };
 
         return value.Contains('\n', StringComparison.Ordinal)
             ? $"{property} =\n{value}"
@@ -79,7 +82,8 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>Whether a field of a literal sets anything, which one given no elements does not.</summary>
-    private static bool SetsAnything(IrFieldInitializer field) => field.Value is not IrList { Elements.Count: 0 };
+    private static bool SetsAnything(IrFieldInitializer field)
+        => field.Value is not (IrList { Elements.Count: 0 } or IrMapEntries { Entries.Count: 0 });
 
     /// <summary>
     /// <paramref name="lines"/> between braces, each on a line of its own with a comma after it, and

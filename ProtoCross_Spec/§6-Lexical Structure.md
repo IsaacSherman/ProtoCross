@@ -93,6 +93,7 @@ int32
 int64
 message
 not
+on_missing
 on_zero
 or
 proto
@@ -118,6 +119,13 @@ Contextual keywords:
   follows it, and is an identifier everywhere else, for the same reason.
 - `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail` or a name
   follows it, and is an identifier everywhere else, for the same reason.
+
+`on_missing` is reserved, as `on_zero` is, though `on_unknown` is not. It follows a map lookup's
+closing bracket ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and its fallback may begin with a `-` or a literal, so the word and the one
+after it cannot tell a clause from a field named `on_missing` minus one, which is the rule `on_unknown`
+is read by. Reading it as a keyword only after `]` would need the parser, the server's colouring and the
+editor grammar each to look back a token, and a schema field named `on_missing` can no longer be
+written instead.
 
 `switch`, `case` and `default` spell a switch ([15.3](./§15-Control%20Flow.md#153-switch)). `default` was reserved with it, and a schema
 field or package component named `default` can no longer be written, which was accepted as the cost

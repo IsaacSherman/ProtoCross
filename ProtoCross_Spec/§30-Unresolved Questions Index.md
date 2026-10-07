@@ -71,7 +71,8 @@ This section should be maintained as the authoritative list of open decisions.
   element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
   and nothing inside a `for` may change the field it traverses, an append to it included
   ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [18](./§18-Mutability.md#18-mutability)).
-- Map support and map iteration order.
+- ~~Map support and map iteration order.~~ Decided: maps are read and changed by key, and never
+  iterated ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
   and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
 - ~~Switch support.~~ Decided: a statement over an integer or an enum, with braced arms listing

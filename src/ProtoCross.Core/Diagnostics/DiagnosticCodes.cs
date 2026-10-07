@@ -42,6 +42,12 @@ public static class DiagnosticCodes
     /// type is PC0063, as it is for every other field.
     /// </para>
     /// <para>
+    /// PC0038 refused every use of a map field, and PC0060 a map field in a message literal, until #11
+    /// gave maps their operations. A use of a map the language still refuses -- iterating one, asking
+    /// <c>has</c> of one, assigning one whole -- is refused under the code that refuses it for a repeated
+    /// field, with help about maps.
+    /// </para>
+    /// <para>
     /// PC1002 and PC1102 were the C# and C++ backends' refusals of a message literal outside a test's
     /// fixture, from #80's second step until each backend learned to generate one: C# in #80's third
     /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
@@ -49,7 +55,7 @@ public static class DiagnosticCodes
     /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -218,10 +224,6 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnknownName =
         new("PC0037", DiagnosticSeverity.Error, "unknown name");
 
-    /// <summary>A map field, which this version of the compiler does not support (spec 14.2).</summary>
-    public static readonly DiagnosticDescriptor MapsAreNotSupported =
-        new("PC0038", DiagnosticSeverity.Error, "maps are not supported");
-
     // ------------------------------------------------------- member access and calls
 
     /// <summary>A member read from a value that is not a message (spec 13.1).</summary>
@@ -314,10 +316,6 @@ public static class DiagnosticCodes
     /// <summary>A message literal setting a field the message does not declare (spec 13.2).</summary>
     public static readonly DiagnosticDescriptor UnknownLiteralField =
         new("PC0059", DiagnosticSeverity.Error, "unknown field in a message literal");
-
-    /// <summary>A message literal setting a map field, which this compiler does not support (spec 13.2).</summary>
-    public static readonly DiagnosticDescriptor MapsAreNotSupportedInLiterals =
-        new("PC0060", DiagnosticSeverity.Error, "maps are not supported in message literals");
 
     /// <summary>A message literal setting one field more than once (spec 13.2).</summary>
     public static readonly DiagnosticDescriptor DuplicateLiteralField =
@@ -611,6 +609,47 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor SubjectIsAConstant =
         new("PC0112", DiagnosticSeverity.Error, "switch on a constant");
+
+    // ------------------------------------------------------- maps
+
+    /// <summary><c>x[k]</c> on a value that is not a map, which is the only thing looked up by a key (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor ValueCannotBeIndexed =
+        new("PC0113", DiagnosticSeverity.Error, "value cannot be indexed");
+
+    /// <summary>A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MapKeyTypeMismatch =
+        new("PC0114", DiagnosticSeverity.Error, "key type mismatch");
+
+    /// <summary>A map read without saying what a missing key gives (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor LookupNeedsOnMissing =
+        new("PC0115", DiagnosticSeverity.Error, "lookup needs on_missing");
+
+    /// <summary>An <c>on_missing</c> fallback that is not a value of the map's values (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor OnMissingTypeMismatch =
+        new("PC0116", DiagnosticSeverity.Error, "on_missing fallback type mismatch");
+
+    /// <summary>
+    /// An <c>on_missing</c> clause on an element that is written to or through and never read, where a
+    /// missing key is put there instead (spec 14.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnMissingWhereNothingIsRead =
+        new("PC0117", DiagnosticSeverity.Error, "on_missing where nothing is read");
+
+    /// <summary><c>key in x</c> where <c>x</c> is a value but not a map (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipNeedsAMap =
+        new("PC0118", DiagnosticSeverity.Error, "'in' needs a map");
+
+    /// <summary>A value in a map field's list that is not an entry, <c>{ key: k, value: v }</c> (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor MapListHoldsEntries =
+        new("PC0119", DiagnosticSeverity.Error, "map field takes entries");
+
+    /// <summary>An entry, <c>{ key: k, value: v }</c>, anywhere but a map field's list (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor EntryOutsideAMap =
+        new("PC0120", DiagnosticSeverity.Error, "entry outside a map field");
+
+    /// <summary>An entry of a map field's list missing its key or its value (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor EntryNeedsKeyAndValue =
+        new("PC0121", DiagnosticSeverity.Error, "entry needs a key and a value");
 
     // ------------------------------------------------------- the configuration file
 

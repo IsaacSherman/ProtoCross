@@ -640,7 +640,7 @@ public sealed class Parser
         {
             var before = _position;
 
-            elements.Add(ParseExpression(out var elementHeight));
+            elements.Add(ParseListElement(out var elementHeight));
             tallest = Math.Max(tallest, elementHeight);
 
             if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList())
@@ -674,6 +674,35 @@ public sealed class Parser
 
         height = tallest + 1;
         return new ListExpression(elements, Spanning(start, end));
+    }
+
+    /// <summary>One value of a list: an entry of a map field in braces, or any expression.</summary>
+    private Expression ParseListElement(out int height)
+        => Current.Kind == TokenKind.OpenBrace ? ParseMapEntry(out height) : ParseExpression(out height);
+
+    /// <summary>
+    /// Parses <c>{ key: k, value: v }</c>, one entry of a map field's list (spec 13.2, 14.2), with the
+    /// brace as the current token.
+    /// </summary>
+    /// <remarks>
+    /// The fields are read as a literal's are, recovery and all, because an entry is the message
+    /// protobuf models it as. Which fields it may have is the binder's to say, as it is for a literal.
+    /// It takes no nesting budget of its own, for the reason <see cref="ParseMessageLiteral"/> gives.
+    /// </remarks>
+    private Expression ParseMapEntry(out int height)
+    {
+        var start = Advance().Span;
+        var fields = ParseFieldInitializers(out var tallest);
+        var end = Expect(TokenKind.CloseBrace).Span;
+
+        if (!TryReachHeight(tallest + 1, start))
+        {
+            height = 1;
+            return AbandonTallExpression(start);
+        }
+
+        height = tallest + 1;
+        return new MapEntryExpression(fields, Spanning(start, end));
     }
 
     /// <inheritdoc cref="ContextualKeywords.BeginsAMessageLiteral"/>
@@ -1722,16 +1751,17 @@ public sealed class Parser
 
             if (operatorToken.Kind == TokenKind.In)
             {
-                var enumType = ParseTypeReference();
+                var membership = ParseMembership(left, out var collectionHeight);
 
-                if (!TryReachHeight(height + 1, operatorToken.Span))
+                var tested = Math.Max(height, collectionHeight) + 1;
+                if (!TryReachHeight(tested, operatorToken.Span))
                 {
                     height = 1;
                     return AbandonTallExpression(left.Span);
                 }
 
-                height++;
-                left = new EnumMembershipExpression(left, enumType, Spanning(left.Span, enumType.Span));
+                height = tested;
+                left = membership;
                 continue;
             }
 
@@ -1756,6 +1786,26 @@ public sealed class Parser
                 Spanning(left.Span, onZero?.Span ?? right.Span),
                 onZero);
         }
+    }
+
+    /// <summary>The right side of <c>value in ...</c>, with the <c>in</c> consumed.</summary>
+    /// <remarks>
+    /// A name begins a map or an enum, which the binder tells apart (<see cref="MembershipExpression"/>),
+    /// so it is read as an expression. Anything else can only have been meant as a type, and is read as
+    /// one, so a scalar keyword or a missing right side is reported as it always was.
+    /// </remarks>
+    /// <param name="height">How tall the right side is.</param>
+    private Expression ParseMembership(Expression value, out int height)
+    {
+        if (Current.Kind == TokenKind.Identifier)
+        {
+            var collection = ParsePostfixExpression(out height);
+            return new MembershipExpression(value, collection, Spanning(value.Span, collection.Span));
+        }
+
+        height = 1;
+        var enumType = ParseTypeReference();
+        return new EnumMembershipExpression(value, enumType, Spanning(value.Span, enumType.Span));
     }
 
     /// <summary>
@@ -1946,11 +1996,41 @@ public sealed class Parser
     {
         var expression = ParsePrimaryExpression(out height);
 
-        while (Current.Kind is TokenKind.Dot or TokenKind.OpenParen)
+        while (Current.Kind is TokenKind.Dot or TokenKind.OpenParen
+            || (Current.Kind == TokenKind.OpenBracket && OpensAKey()))
         {
             var linkToken = Advance();
             Expression link;
             int linkHeight;
+
+            if (linkToken.Kind == TokenKind.OpenBracket)
+            {
+                var key = ParseExpression(out var keyHeight);
+                var close = Expect(TokenKind.CloseBracket).Span;
+                var onMissing = ParseOnMissingClause(out var fallbackHeight);
+
+                link = new IndexExpression(expression, key, Spanning(expression.Span, onMissing?.Span ?? close), onMissing);
+                linkHeight = Math.Max(height, Math.Max(keyHeight, fallbackHeight)) + 1;
+
+                if (!TryReachHeight(linkHeight, linkToken.Span))
+                {
+                    height = 1;
+                    return AbandonTallExpression(expression.Span);
+                }
+
+                expression = link;
+                height = linkHeight;
+
+                // A clause ends the chain: its fallback was read at unary precedence and took any
+                // access written after it, and 'on_missing fail' takes none, so a member of what
+                // the lookup gives is written around parentheses.
+                if (onMissing is not null)
+                {
+                    break;
+                }
+
+                continue;
+            }
 
             if (linkToken.Kind == TokenKind.Dot)
             {
@@ -1993,6 +2073,100 @@ public sealed class Parser
         }
 
         return expression;
+    }
+
+    /// <summary>
+    /// Whether the bracket that is the current token, after a value, opens a key, <c>[k]</c>, rather
+    /// than a list someone typed a value in front of.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list is a field's value and is never written after one, but a value is typed in front of one
+    /// all the time: <c>values: 7 [5, 1]</c> is a stray token, and read as a lookup on <c>7</c> the list's
+    /// first comma became a missing bracket, and the rest of the fixture three diagnostics more. A key is
+    /// one expression, so brackets holding a comma at their own depth are a list, and so are brackets
+    /// holding nothing, which name no key, and brackets opening on a brace, which begins an entry of a
+    /// map's list and no expression. Either is left where it is, for the field to report once, as
+    /// it reported before maps could be indexed.
+    /// </para>
+    /// <para>
+    /// The look ahead stops at the bracket that closes this one, or at a semicolon, which no
+    /// expression holds, so it reads no further than the statement.
+    /// </para>
+    /// </remarks>
+    private bool OpensAKey()
+    {
+        // An entry of a map field's list begins with a brace, and no expression does.
+        if (Peek(1).Kind == TokenKind.OpenBrace)
+        {
+            return false;
+        }
+
+        var depth = 0;
+
+        for (var offset = 1; ; offset++)
+        {
+            switch (Peek(offset).Kind)
+            {
+                case TokenKind.EndOfFile or TokenKind.Semicolon:
+                    return false;
+
+                case TokenKind.OpenBracket or TokenKind.OpenParen or TokenKind.OpenBrace:
+                    depth++;
+                    break;
+
+                case TokenKind.CloseBracket when depth == 0:
+                    return offset > 1;
+
+                case TokenKind.CloseBracket or TokenKind.CloseParen or TokenKind.CloseBrace:
+                    if (depth == 0)
+                    {
+                        return false;
+                    }
+
+                    depth--;
+                    break;
+
+                case TokenKind.Comma when depth == 0:
+                    return false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parses the <c>on_missing &lt;fallback&gt;</c> suffix of a map lookup (spec 14.2), or returns
+    /// null where none is written.
+    /// </summary>
+    /// <remarks>
+    /// The fallback parses at unary precedence, as <c>on_zero</c>'s does and for the same reason:
+    /// <c>prices[sku] on_missing 0 + 1</c> adds one to whichever value the lookup gives. That includes
+    /// <c>as</c>, so <c>prices[sku] on_missing 0 as int32</c> converts the fallback; parenthesize the
+    /// lookup to convert what it gives. Whether the lookup may have a clause at all is the binder's to
+    /// say, since only it knows whether the element is read.
+    /// </remarks>
+    /// <param name="fallbackHeight">
+    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// <c>on_missing fail</c>.
+    /// </param>
+    private OnMissingClause? ParseOnMissingClause(out int fallbackHeight)
+    {
+        fallbackHeight = 0;
+
+        if (Current.Kind != TokenKind.OnMissing)
+        {
+            return null;
+        }
+
+        var onMissingToken = Advance();
+
+        if (Current.Kind == TokenKind.Fail)
+        {
+            var failToken = Advance();
+            return new OnMissingClause(null, Spanning(onMissingToken.Span, failToken.Span));
+        }
+
+        var fallback = ParseUnaryExpression(out fallbackHeight);
+        return new OnMissingClause(fallback, Spanning(onMissingToken.Span, fallback.Span));
     }
 
     /// <param name="height">

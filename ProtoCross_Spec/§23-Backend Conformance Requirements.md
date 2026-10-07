@@ -35,7 +35,7 @@ time rather than emitting something whose semantics differ.
 | Compound assignment | Yes | Yes | — | Bound as its long form ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so neither backend sees one. |
 | Mutating methods (`mut fn`) | Yes | Yes | — | C# changes a message through protoc's properties, setting an unset one with `??=`; C++ takes `T&` and changes it through setters and mutable accessors ([18](./§18-Mutability.md#18-mutability), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
 | Appending (`append`) | Yes | Yes | — | C# `Add` on the field's `RepeatedField`, cloning a message that is not a literal; C++ protoc's `add_x(value)`, or `*add_x() = T(value)` for a message, and `Add` on a local ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
-| Maps | No | No | — | Blocked on 14.2. |
+| Maps | Yes | Yes | — | Read by key with an `on_missing` clause, changed by key or by a map's methods, and never iterated ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). C# `MapField` through `ProtoCrossMaps`; C++ protoc's `Map` through `protocross_runtime` ([24.1](./§24-Generated%20API%20Strategy.md#241-c), [24.2](./§24-Generated%20API%20Strategy.md#242-c)). |
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |
 | Enum types and values | Yes | Yes | — | Named per 12; both targets re-spell values differently. |

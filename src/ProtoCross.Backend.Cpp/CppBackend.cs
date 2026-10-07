@@ -760,6 +760,14 @@ public sealed partial class CppBackend : ITestProjectScaffold
                 EmitAppend(writer, append, placement);
                 break;
 
+            case IrElementAssignment assignment:
+                EmitElementAssignment(writer, assignment, placement);
+                break;
+
+            case IrMapUpdate update:
+                EmitMapUpdate(writer, update, placement);
+                break;
+
             case IrReturn { Value: null }:
                 writer.WriteLine("return;");
                 break;
@@ -993,6 +1001,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),
+        IrMapLookup lookup => EmitMapLookup(lookup, placement),
+        IrMapContains contains => $"{Expression(contains.Map, placement)}.contains({Expression(contains.Key, placement)})",
+        IrMapQuery query => EmitMapQuery(query, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 
@@ -1041,13 +1052,18 @@ public sealed partial class CppBackend : ITestProjectScaffold
     {
         var accessor = NameConventions.GetCppFieldName(assignment.Target.Field);
 
-        EmitFieldWrite(
+        EmitValueFirstWhereItReadsAnElement(
             writer,
             assignment,
-            assignment.Target,
-            new FieldWriter($"set_{accessor}", $"mutable_{accessor}", assignment.Target.Type is MessageType),
+            assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
             StoredValue(assignment.Value, placement),
-            placement);
+            value => EmitFieldWrite(
+                writer,
+                assignment,
+                assignment.Target,
+                new FieldWriter($"set_{accessor}", $"mutable_{accessor}", assignment.Target.Type is MessageType),
+                value,
+                placement));
     }
 
     /// <summary>An element added to the end of a repeated value, through protoc's <c>add_x</c> (spec 14.1).</summary>
@@ -1119,7 +1135,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
             return;
         }
 
-        if (target.Receiver is not IrFieldAccess link)
+        // An element is a link as a field is: reaching it puts a message at a missing key.
+        if (target.Receiver is not (IrFieldAccess or IrMapElement))
         {
             writer.WriteLine($"*{MutableMember(target.Receiver, placement)}{accessors.Mutator}() = {value};");
             return;
@@ -1127,7 +1144,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
         var owner = NamesFor(statement).Next("owner");
         using var scope = writer.Block(string.Empty);
-        writer.WriteLine($"auto& {owner} = {MutableMessage(link, placement)};");
+        writer.WriteLine($"auto& {owner} = {MutableMessage(target.Receiver, placement)};");
         writer.WriteLine($"*{owner}.{accessors.Mutator}() = {value};");
     }
 
@@ -1169,23 +1186,35 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// (spec 18). A receiver of a mutating call has been guarded already, as every message a method is
     /// called on is (spec 13.1), so for it nothing is set that was not.
     /// </remarks>
-    private static string MutableMessage(IrExpression place, Placement placement) => place is IrFieldAccess field
-        ? $"*{MutablePointer(field, placement)}"
-        : Expression(place, placement);
+    private static string MutableMessage(IrExpression place, Placement placement) => place switch
+    {
+        IrFieldAccess field => $"*{MutablePointer(field, placement)}",
+        IrMapElement element => MutableElement(element, placement),
+        _ => Expression(place, placement),
+    };
 
     /// <summary>
     /// <paramref name="place"/> followed by what reaches one of its members: <c>self.</c>, or
     /// <c>self.mutable_customer()-&gt;</c>.
     /// </summary>
-    private static string MutableMember(IrExpression place, Placement placement) => place is IrFieldAccess field
-        ? $"{MutablePointer(field, placement)}->"
-        : $"{Expression(place, placement)}.";
+    private static string MutableMember(IrExpression place, Placement placement) => place switch
+    {
+        IrFieldAccess field => $"{MutablePointer(field, placement)}->",
+        IrMapElement element => $"{MutableElement(element, placement)}.",
+        _ => $"{Expression(place, placement)}.",
+    };
 
     private static string MutablePointer(IrFieldAccess field, Placement placement)
         => $"{MutableMember(field.Receiver, placement)}mutable_{NameConventions.GetCppFieldName(field.Field)}()";
 
     private static string EmitBinary(IrBinary binary, Placement placement)
     {
+        // The binder gives two maps no operator but == and !=.
+        if (binary.Left.Type is MapType)
+        {
+            return EmitMapEquality(binary, placement);
+        }
+
         var left = Expression(binary.Left, placement);
         var right = Expression(binary.Right, placement);
 
@@ -1644,6 +1673,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         MessageType message => QualifiedTypeName(message.Descriptor),
         EnumPlType enumType => QualifiedEnumName(enumType.Descriptor),
         RepeatedType repeated => RepeatedTypeName(repeated),
+        MapType map => MapTypeName(map),
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unhandled type."),
     };
 

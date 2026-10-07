@@ -90,7 +90,7 @@ public class EnumMembershipTests
 
         Assert.DoesNotContain(
             SyntaxWalk.DescendantsAndSelf(result.SyntaxTree!),
-            node => node is EnumMembershipExpression);
+            node => node is EnumMembershipExpression or MembershipExpression);
         Assert.DoesNotContain(result.Diagnostics, d => d.Code == DiagnosticCodes.ExpressionIsNotCallable.Code);
     }
 

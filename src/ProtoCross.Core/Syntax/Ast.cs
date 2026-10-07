@@ -407,6 +407,64 @@ public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : Sy
 }
 
 /// <summary>
+/// <c>value in something</c> whose right side begins with a name: a key looked for in a map,
+/// <c>sku in prices</c> (spec 14.2), or a value looked for among an enum's names,
+/// <c>status in OrderStatus</c> (spec 12.2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// One node for both, because the parser cannot tell them apart: <c>prices</c> and <c>OrderStatus</c>
+/// are both a name. The binder settles it as it settles <c>Level.HIGH</c>: a dotted name whose first
+/// part names a value is that value, and any other names a type. <see cref="EnumMembershipExpression"/>
+/// is what a right side that cannot be a value still parses to, a scalar keyword or nothing at all,
+/// so that what is said about those is what was always said.
+/// </para>
+/// <para>
+/// The right side is an expression rather than a dotted name, so a map reached through a call or
+/// another map is written as it is anywhere else.
+/// </para>
+/// </remarks>
+public sealed record MembershipExpression(
+    Expression Value,
+    Expression Collection,
+    SourceSpan Span) : Expression(Span);
+
+/// <summary>
+/// One element of a map, <c>prices[sku]</c> (spec 14.2): read with a clause saying what a missing key
+/// gives, or written as a place.
+/// </summary>
+/// <param name="OnMissing">
+/// What a read gives when the key is missing, or null where nothing is written. A read needs one, and
+/// a place that is only written must not have one, which the binder says.
+/// </param>
+public sealed record IndexExpression(
+    Expression Collection,
+    Expression Key,
+    SourceSpan Span,
+    OnMissingClause? OnMissing = null) : Expression(Span);
+
+/// <summary>
+/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, or
+/// <c>fail</c>, which terminates deterministically (spec 14.2).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    public bool IsFail => Fallback is null;
+}
+
+/// <summary>
+/// One entry of a map field's list, <c>{ key: "apple", value: 3 }</c>, written as protobuf models the
+/// entries of a map (spec 13.2, 14.2).
+/// </summary>
+/// <remarks>
+/// A value only where a map field is given one, as a <see cref="ListExpression"/> is only where a
+/// repeated field is. It is braces without the <c>new T</c> a message literal begins with, because the
+/// entry's type is the field's and has no name an author could write.
+/// </remarks>
+public sealed record MapEntryExpression(IReadOnlyList<FieldInitializer> Fields, SourceSpan Span) : Expression(Span);
+
+/// <summary>
 /// An integer literal as written: its magnitude, in any of the spellings spec 6.6 allows.
 /// </summary>
 /// <remarks>

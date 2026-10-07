@@ -359,6 +359,10 @@ public sealed partial class Binder
     {
         NameExpression name => name.Name,
         MemberAccessExpression member => member.Name,
+
+        // An element is written by writing its map, which is the name a reader of 'prices[sku] = 5;'
+        // sees change.
+        IndexExpression index => AssignedNameOf(index.Collection),
         _ => null,
     };
 
@@ -1304,7 +1308,10 @@ public sealed partial class Binder
                     DiagnosticCodes.NotIterable,
                     $"Cannot iterate a value of type '{collection.Type.DisplayName}'.",
                     statement.Collection.Span,
-                    "'for' iterates protobuf repeated fields (spec 14).");
+                    collection.Type is MapType
+                        ? "A map has no order to iterate in, and is read by key. Keep its keys in a repeated field, "
+                          + "in the order wanted, and iterate that (spec 14.2)."
+                        : "'for' iterates protobuf repeated fields (spec 14).");
             }
 
             elementType = ErrorType.Instance;
@@ -1452,6 +1459,11 @@ public sealed partial class Binder
 
     private IrStatement BindAssignment(AssignmentStatement statement, Scope scope, MethodContext context)
     {
+        if (statement.Target is IndexExpression)
+        {
+            return BindElementAssignment(statement, scope, context);
+        }
+
         if (WritesAField(statement.Target, scope, context))
         {
             return BindFieldAssignment(statement, scope, context);
@@ -1518,6 +1530,11 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
+        if (statement.Target is IndexExpression)
+        {
+            return BindCompoundElementAssignment(statement, scope, context);
+        }
+
         if (WritesAField(statement.Target, scope, context))
         {
             return BindCompoundFieldAssignment(statement, scope, context);
@@ -1649,6 +1666,9 @@ public sealed partial class Binder
             HasExpression has => BindHas(has, scope, context),
             CastExpression cast => BindCast(cast, scope, context),
             EnumMembershipExpression membership => BindEnumMembership(membership, scope, context),
+            MembershipExpression membership => BindMembership(membership, scope, context),
+            IndexExpression index => BindLookup(index, scope, context),
+            MapEntryExpression entry => BindStrayEntry(entry, scope, context),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
@@ -1777,12 +1797,6 @@ public sealed partial class Binder
         SourceSpan span,
         MethodContext context)
     {
-        if (field.IsMap)
-        {
-            ReportMap(field, span);
-            return new IrLiteral(null, ErrorType.Instance, span);
-        }
-
         if (IsSingularMessage(field))
         {
             var path = PresencePath(receiver, field);
@@ -1816,12 +1830,6 @@ public sealed partial class Binder
 
         return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
     }
-
-    private void ReportMap(FieldDescriptor field, SourceSpan span)
-        => _diagnostics.Report(
-            DiagnosticCodes.MapsAreNotSupported,
-            $"Field '{field.Name}' is a map, which this compiler version does not support.",
-            span);
 
     /// <summary>
     /// Resolves <c>SomeEnum.SOME_VALUE</c>, or returns null when the member access is not naming an
@@ -2188,6 +2196,11 @@ public sealed partial class Binder
                     return Uncallable(boundReceiver);
                 }
 
+                if (boundReceiver.Type is MapType map)
+                {
+                    return BindMapMethodValue(boundReceiver, map, member, invocation, scope, context);
+                }
+
                 // A statement of its own was bound as an append before it got here (spec 14.1), so
                 // this one is inside an expression, or adds to a value nothing holds.
                 if (boundReceiver.Type is RepeatedType && member.Name.Text == IrAppend.MethodName)
@@ -2494,20 +2507,11 @@ public sealed partial class Binder
             return new IrLiteral(null, ErrorType.Instance, has.Span);
         }
 
-        // Before the three refusals below rather than after them, for the reason a fixture field is
-        // recorded before its own: what they refuse is the question, not the name. 'has' on a
-        // repeated field, on one with implicit presence, or on a map is still a use of that field,
-        // and it is the use a rename would otherwise leave behind.
+        // Before the refusal below rather than after it, for the reason a fixture field is recorded
+        // before its own: what it refuses is the question, not the name. 'has' on a repeated field, on
+        // a map, or on one with implicit presence is still a use of that field, and it is the use a
+        // rename would otherwise leave behind.
         Use(SymbolId.ForField(field), fieldNameSpan);
-
-        if (field.IsMap)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.MapsAreNotSupported,
-                $"'{name}' is a map field.",
-                has.Span);
-            return new IrLiteral(null, ErrorType.Instance, has.Span);
-        }
 
         if (!field.HasPresence)
         {
@@ -2515,7 +2519,10 @@ public sealed partial class Binder
                 DiagnosticCodes.FieldHasNoPresence,
                 $"'{name}' cannot be tested for presence.",
                 has.Span,
-                field.IsRepeated
+                field.IsMap
+                    ? "A map has no presence; an unset one is an empty one. Ask 'is_empty()', or whether it "
+                      + "holds a key with 'key in map' (spec 14.2)."
+                    : field.IsRepeated
                     ? "A repeated field has no presence; an unset one is an empty one. Compare its "
                       + "length, or iterate it and let the loop run zero times (spec 14.1)."
                     : "This field has implicit presence, so an unset value and the type's default "
@@ -2701,14 +2708,25 @@ public sealed partial class Binder
 
     /// <summary>
     /// Whether <c>==</c> means anything for two values of this type. It does not for a message or a
-    /// repeated value until spec 13.3 says what makes two of them equal.
+    /// repeated value until spec 13.3 says what makes two of them equal, nor so for a map of messages.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Both places that compare two values ask this one question: an operator, and an
     /// <c>expect return</c> (spec 25.3). When 13.3 decides, they change together, so neither states
     /// the rule for itself.
+    /// </para>
+    /// <para>
+    /// Two maps are equal when they hold the same keys, each with a value equal to the other's, in
+    /// whatever order either holds them (spec 14.2). So a map has equality exactly when its values do.
+    /// </para>
     /// </remarks>
-    private static bool HasEquality(PlType type) => type is not (MessageType or RepeatedType);
+    private static bool HasEquality(PlType type) => type switch
+    {
+        MessageType or RepeatedType => false,
+        MapType map => HasEquality(map.ValueType),
+        _ => true,
+    };
 
     /// <summary>
     /// Reports <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing
@@ -2732,17 +2750,24 @@ public sealed partial class Binder
     /// </remarks>
     private void ReportUndefinedEquality(BinaryExpression binary, string symbol, PlType operandType)
     {
-        var isMessage = operandType is MessageType;
+        var (values, help) = operandType switch
+        {
+            MessageType => (
+                "messages",
+                "Compare the fields that decide it here, or declare a method that compares them and call that (spec 13.3)."),
+            MapType => (
+                "maps of messages",
+                "Compare what matters about the values instead, looking each up by its key (spec 13.3, 14.2)."),
+            _ => (
+                "repeated values",
+                "Compare what matters about the elements instead, such as a count or a total taken in a loop (spec 13.3)."),
+        };
+
         _diagnostics.Report(
             DiagnosticCodes.OperandsHaveNoEquality,
-            $"Cannot apply '{symbol}' to two '{operandType.DisplayName}' values: what makes two "
-            + (isMessage ? "messages" : "repeated values") + " equal is not defined.",
+            $"Cannot apply '{symbol}' to two '{operandType.DisplayName}' values: what makes two {values} equal is not defined.",
             binary.Span,
-            isMessage
-                ? "Compare the fields that decide it here, or declare a method that compares them "
-                  + "and call that (spec 13.3)."
-                : "Compare what matters about the elements instead, such as a count or a total "
-                  + "taken in a loop (spec 13.3).");
+            help);
     }
 
     /// <summary>

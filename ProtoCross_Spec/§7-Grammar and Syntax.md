@@ -59,12 +59,16 @@ test_expectation  = "expect" ( "return" expression | "fail" ) ";";
 
 conversion        = expression "as" type_ref                       (* an expression *)
                     [ "on_unknown" ( postfix_expr | "fail" ) ];      (* begins with a name *)
-membership        = expression "in" type_ref;                      (* an expression *)
+membership        = expression "in" ( postfix_expr | type_ref );    (* an expression *)
+lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
+                    [ "on_missing" ( unary_expr | "fail" ) ];
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
 field_value       = list_value | expression;
-list_value        = "[" [ expression { "," expression } [ "," ] ] "]";
+list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";
+list_element      = map_entry | expression;
+map_entry         = "{" [ field_list ] "}";                         (* a map field's entry *)
 ```
 
 Normative Requirement:
@@ -90,6 +94,13 @@ Normative Requirement:
   so an arm still being typed never takes the switch's closing brace for its own. A `case` or
   `default` arm with no switch around it is reported, and its body read as a block
   ([15.3](./§15-Control%20Flow.md#153-switch)).
+- `[` after a postfix expression looks up a key, and an `on_missing` clause after the `]` belongs to
+  that lookup. Its fallback is a unary expression, as `on_zero`'s is, and the clause ends the postfix
+  chain, so `(items[id] on_missing fail).quantity` reads a member of what the lookup gives
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The right side of `in` is a postfix expression when it begins with a name, which the
+  binder reads as a map or an enum, and a type otherwise.
+- Braces in a list are an entry of a map field, `{ key: k, value: v }`, with fields written as a
+  literal's are ([13.2](./§13-Messages.md#132-message-construction)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
   it, and is an identifier anywhere else. The clause belongs to the one conversion it follows, and
   its fallback is a postfix expression, so a conversion after it converts the whole conversion

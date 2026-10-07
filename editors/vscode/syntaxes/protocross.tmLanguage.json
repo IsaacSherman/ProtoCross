@@ -59,12 +59,12 @@
       "patterns": [
         {
           "name": "keyword.control.pcross",
-          "match": "(?<![\\p{L}\\p{Nd}_])(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])"
+          "match": "(?<![\\p{L}\\p{Nd}_])(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_missing|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])"
         },
         {
           "comment": "'new' is a keyword only where it begins a message literal, with a type name after it (spec 13.2); anywhere else it is a name, and the identifier rule colours it. A type name is an identifier, so a reserved word after 'new' does not count -- 'has new and has new' reads a field named new twice -- and neither do __INF and __NAN, which are numbers. The reserved words are spec 6.4's list again, which the server's test suite holds to the lexer's. A grammar sees one line, so a type name on the next line leaves 'new' coloured as a name until the server answers.",
           "name": "keyword.control.pcross",
-          "match": "(?<![\\p{L}\\p{Nd}_])new(?=[ \\t]+(?!(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])|(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_]))[\\p{L}_])"
+          "match": "(?<![\\p{L}\\p{Nd}_])new(?=[ \\t]+(?!(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_missing|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])|(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_]))[\\p{L}_])"
         },
         {
           "comment": "'mut' is a keyword only where it marks a method, with 'fn' after it (spec 18); anywhere else it is a name, and the identifier rule colours it. A grammar sees one line, so 'fn' on the next line leaves 'mut' coloured as a name until the server answers.",
@@ -74,7 +74,7 @@
         {
           "comment": "'on_unknown' is a keyword only where it begins a conversion's clause, with 'fail' or a name after it (spec 12); anywhere else it is a name, and the identifier rule colours it. A name is an identifier, so a reserved word other than 'fail' does not count, and neither do __INF and __NAN, which are numbers. The reserved words are spec 6.4's list again. A grammar sees one line, so a clause continued on the next line leaves 'on_unknown' coloured as a name until the server answers.",
           "name": "keyword.control.pcross",
-          "match": "(?<![\\p{L}\\p{Nd}_])on_unknown(?=[ \\t]+(?:fail(?![\\p{L}\\p{Nd}_])|(?!(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])|(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_]))[\\p{L}_]))"
+          "match": "(?<![\\p{L}\\p{Nd}_])on_unknown(?=[ \\t]+(?:fail(?![\\p{L}\\p{Nd}_])|(?!(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|enum|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|message|not|on_missing|on_zero|or|proto|receiver|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])|(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_]))[\\p{L}_]))"
         }
       ]
     },

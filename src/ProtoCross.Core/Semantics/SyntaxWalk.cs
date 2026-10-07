@@ -74,6 +74,12 @@ public static class SyntaxWalk
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
             EnumMembershipExpression membership => [membership.Value, membership.EnumType],
+            MembershipExpression membership => [membership.Value, membership.Collection],
+            IndexExpression index => index.OnMissing is { } onMissing
+                ? [index.Collection, index.Key, onMissing]
+                : [index.Collection, index.Key],
+            OnMissingClause { Fallback: { } fallback } => [fallback],
+            MapEntryExpression entry => [.. entry.Fields],
             CastExpression cast => cast.OnUnknown is { } onUnknown
                 ? [cast.Operand, cast.TargetType, onUnknown]
                 : [cast.Operand, cast.TargetType],
