@@ -56,9 +56,9 @@ message Outer {
   Inner other_inner = 14;
 }
 
-// A message of its own rather than a field on Outer, so that adding the language's one unsupported
-// field kind cannot reach a test that was not asking about it. Reading a map is PC0038, so this is
-// what says a name that would be refused is never offered.
+// A message of its own rather than a field on Outer, so that a map cannot reach a test that was not
+// asking about one. A map is read by key (spec 14.2), so this is what says a map field is offered as
+// any field is.
 message Mapped {
   map<string, int64> tags = 1;
   int64 count = 2;

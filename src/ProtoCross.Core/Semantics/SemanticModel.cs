@@ -304,7 +304,7 @@ public sealed class SemanticModel
 
     /// <summary>
     /// Where this document wrote a method the language defines rather than any source: the
-    /// <c>append</c> of each append (spec 14.1).
+    /// <c>append</c> of each append (spec 14.1), and each of a map's methods (spec 14.2).
     /// </summary>
     /// <remarks>
     /// Apart from <see cref="AllReferences"/>, because such a name refers to no symbol. Nothing declares
@@ -312,7 +312,18 @@ public sealed class SemanticModel
     /// what an editor wants of it is only where it is, to colour it as the method it reads as.
     /// </remarks>
     public IReadOnlyList<SourceSpan> LanguageMethodNames
-        => _module is null ? [] : [.. IrWalk.DescendantsAndSelf(_module).OfType<IrAppend>().Select(append => append.NameSpan)];
+        => _module is null
+            ? []
+            : [
+                .. IrWalk.DescendantsAndSelf(_module).Select(node => node switch
+                    {
+                        IrAppend append => append.NameSpan,
+                        IrMapQuery query => query.NameSpan,
+                        IrMapUpdate update => update.NameSpan,
+                        _ => (SourceSpan?)null,
+                    })
+                    .OfType<SourceSpan>(),
+            ];
 
     /// <summary>
     /// Where <paramref name="symbol"/> was declared, or null when this compilation does not declare

@@ -364,9 +364,17 @@ public sealed class CompletionProvider
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
-        var takenOff = MembersTakenOff(model, subject);
+        var takenOff = LinksTakenOff(model, subject);
         var writingAReceiver = subject.FollowedByDot || takenOff.Count > 0;
-        var appendedTo = subject.FollowedByAppend || takenOff.Contains(IrAppend.MethodName);
+
+        if (MembershipNameAt(model, subject) is { } tested)
+        {
+            return
+            [
+                .. InScope(model, result, subject, presence, writingAReceiver, takenOff, asked.Document),
+                .. EnumsAt(tested, types, result, subject, asked.Document),
+            ];
+        }
 
         if (subject.PrecededByDot)
         {
@@ -376,7 +384,7 @@ public sealed class CompletionProvider
                 subject,
                 presence,
                 writingAReceiver,
-                appendedTo,
+                takenOff,
                 TakenOffAsAStatement(model, subject),
                 asked.Document);
         }
@@ -391,7 +399,12 @@ public sealed class CompletionProvider
             return fields;
         }
 
-        return InScope(model, result, subject, presence, writingAReceiver, appendedTo, asked.Document);
+        if (EntryFields(model, subject, asked.Document) is { } entryFields)
+        {
+            return entryFields;
+        }
+
+        return InScope(model, result, subject, presence, writingAReceiver, takenOff, asked.Document);
     }
 
     /// <summary>
@@ -431,8 +444,8 @@ public sealed class CompletionProvider
             && EditorPositions.Covers(field, subject.Start);
 
     /// <summary>
-    /// The member something else is about to take off the name the caret is writing, for each access
-    /// that takes one: none where the name is not a receiver.
+    /// What is written after the name the caret is writing, link by link: a member taken off it, a call,
+    /// a key looked up in it. None where the name is not a receiver.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -468,19 +481,76 @@ public sealed class CompletionProvider
     /// access to find -- so the two are a union, each answering where the other cannot.
     /// </para>
     /// <para>
-    /// The members rather than only whether there are any, because one of them decides what else may
-    /// stand there: a repeated value has one member, <c>append</c>, so it is a receiver of that and of
-    /// nothing else (<see cref="CanBeAReceiver"/>).
+    /// The links rather than only whether there are any, because they decide what else may stand there
+    /// (<see cref="CanBeAReceiver"/>): a repeated value has one member, <c>append</c>, so it is a
+    /// receiver of that and of nothing else, and only a map is indexed. Every link after the name, not
+    /// only the first, because an index changes the type the next link is taken off:
+    /// <c>(built.items[7] on_missing fail).quantity</c> needs a map of messages before the bracket, and
+    /// the completion sweep caught a map of numbers offered there.
+    /// </para>
+    /// <para>
+    /// A name the next link calls is a callee, and has no links here, as before: what may stand there
+    /// is settled by <see cref="SchemaSubject.FollowedByCall"/>. Where no tree was built, the token
+    /// after the name answers, as it always has: a dot is some member, and <c>.append</c> is that one.
     /// </para>
     /// </remarks>
-    private static IReadOnlyList<string> MembersTakenOff(SemanticModel model, SchemaSubject subject)
-        => model.SyntaxAt(subject.Start) is { } location
-            ? [
-                .. location.Path.OfType<MemberAccessExpression>()
-                    .Where(access => EndsAt(access.Receiver) is { } name && EditorPositions.Covers(name, subject.Start))
-                    .Select(access => access.Name.Text),
-            ]
+    private static IReadOnlyList<Link> LinksTakenOff(SemanticModel model, SchemaSubject subject)
+    {
+        var links = new List<Link>();
+
+        if (model.SyntaxAt(subject.Start) is { } location)
+        {
+            var path = location.Path;
+            var name = path.Count - 1;
+
+            while (name >= 0
+                && !(path[name] is NameExpression or MemberAccessExpression
+                    && EndsAt((Expression)path[name]) is { } written
+                    && EditorPositions.Covers(written, subject.Start)))
+            {
+                name--;
+            }
+
+            for (var child = name; child > 0; child--)
+            {
+                Link? link = path[child - 1] switch
+                {
+                    MemberAccessExpression access when ReferenceEquals(access.Receiver, path[child]) => new Link(LinkKind.Member, access.Name.Text),
+                    InvocationExpression call when ReferenceEquals(call.Callee, path[child]) => new Link(LinkKind.Call),
+                    IndexExpression index when ReferenceEquals(index.Collection, path[child]) => new Link(LinkKind.Index),
+                    _ => null,
+                };
+
+                if (link is not { } found)
+                {
+                    break;
+                }
+
+                links.Add(found);
+            }
+        }
+
+        if (links is [{ Kind: LinkKind.Call }, ..])
+        {
+            return [];
+        }
+
+        return links.Count > 0 ? links
+            : subject.FollowedByAppend ? [new Link(LinkKind.Member, IrAppend.MethodName)]
+            : subject.FollowedByDot ? [new Link(LinkKind.Member)]
             : [];
+    }
+
+    /// <summary>One thing written after a value: a member taken off it, a call of it, or a key looked up in it.</summary>
+    /// <param name="Member">The member's name, or null where a dot follows and nothing says which member.</param>
+    private readonly record struct Link(LinkKind Kind, string? Member = null);
+
+    private enum LinkKind
+    {
+        Member,
+        Call,
+        Index,
+    }
 
     /// <summary>
     /// Whether the member the caret is writing after a dot would stand as a statement of its own,
@@ -955,9 +1025,8 @@ public sealed class CompletionProvider
     /// </para>
     /// <para>
     /// A field already given a value is dropped, because a field written twice is <c>PC0061</c>. That
-    /// includes a repeated one, which takes all of its values in one list. A map field is dropped as
-    /// everywhere else, this time because a map in a literal is <c>PC0060</c> rather than
-    /// <c>PC0038</c> -- a different code for the same unsupported thing.
+    /// includes a repeated one, which takes all of its values in one list, and a map, which takes all
+    /// of its entries in one.
     /// </para>
     /// <para>
     /// <b>Being inside a literal is not the same as naming one of its fields</b>, and the values are
@@ -1017,9 +1086,7 @@ public sealed class CompletionProvider
         return
         [
             .. MessageFields.InDeclarationOrder(literal.MessageType.Descriptor)
-                .Where(candidate => !candidate.IsMap
-                    && !already.Contains(candidate.Name)
-                    && Lexer.CanBeWritten(candidate.Name))
+                .Where(candidate => !already.Contains(candidate.Name) && Lexer.CanBeWritten(candidate.Name))
                 .Select(candidate => Member(
                     candidate.Name,
                     CompletionItemKind.Field,
@@ -1041,6 +1108,60 @@ public sealed class CompletionProvider
     /// </remarks>
     private static bool BeforeItsClosingBrace(SourceSpan span, int offset, string text)
         => offset < span.End.Offset || span.Length == 0 || text[span.End.Offset - 1] != '}';
+
+    /// <summary>
+    /// The fields of a map's entry, <c>key</c> and <c>value</c>, where the caret names one inside an
+    /// entry's braces (spec 13.2); null anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// An entry is the message protobuf models it as, and its fields are bound as a literal's are, so
+    /// each name written there resolves to the entry's own field. The entry is not a literal of a
+    /// message the author named, so <see cref="LiteralFields"/> does not reach it: the message is the
+    /// map field's entry type, which is read from the field whose list the entry is in. The entry is read
+    /// from the syntax, because one still missing its key or its value is refused and never reaches the
+    /// IR, which is exactly when an author asks what to write in it. A field already written is dropped,
+    /// as in a literal, and a caret in a field's value is a value, answered as every other value is.
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem>? EntryFields(SemanticModel model, SchemaSubject subject, OpenDocument document)
+    {
+        if (model.IrAt(subject.Start)?.Enclosing<IrFieldInitializer>() is not { Field.IsMap: true } map
+            || model.SyntaxAt(subject.Start) is not { } syntax
+            || syntax.Path.OfType<MapEntryExpression>().LastOrDefault() is not { } entry)
+        {
+            return null;
+        }
+
+        var naming = syntax.Path.LastOrDefault(node => node is FieldInitializer or MapEntryExpression) switch
+        {
+            FieldInitializer field => subject.Start <= field.Name.Span.End.Offset,
+            MapEntryExpression => BeforeItsClosingBrace(entry.Span, subject.Start, document.Text),
+            _ => false,
+        };
+
+        if (!naming)
+        {
+            return null;
+        }
+
+        var already = entry.Fields
+            .Where(written => !written.Name.IsMissing && !EditorPositions.Covers(written.Span, subject.Start))
+            .Select(written => written.Name.Text)
+            .ToHashSet(StringComparer.Ordinal);
+
+        return
+        [
+            .. MessageFields.InDeclarationOrder(map.Field.MessageType)
+                .Where(field => !already.Contains(field.Name))
+                .Select(field => Member(
+                    field.Name,
+                    CompletionItemKind.Field,
+                    TypeFactory.FromField(field).DisplayName,
+                    null,
+                    "0",
+                    subject,
+                    document)),
+        ];
+    }
 
     /// <summary>The types that could be named where the caret is, or null when it is not a type position.</summary>
     /// <remarks>
@@ -1072,7 +1193,20 @@ public sealed class CompletionProvider
             return null;
         }
 
-        var reference = at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start);
+        var qualifiedEnum = QualifiedMembershipSlot(model, at, subject);
+        var reference = at.Enclosing<TypeReference>() ?? TypeSlotAt(at, subject.Start) ?? qualifiedEnum;
+
+        // The right side of 'in' with nothing written yet may be a map as much as an enum, and the arm
+        // for a name being written there offers both (MembershipNameAt).
+        if (reference is not null && ReferenceEquals(reference, UnwrittenMembership(at)))
+        {
+            return null;
+        }
+
+        // A type after 'in' asks whether a value is one its enum names, so nothing but an enum binds
+        // there (spec 12.2).
+        var askingAnEnum = qualifiedEnum is not null
+            || (at.Enclosing<EnumMembershipExpression>() is { } enumTest && ReferenceEquals(enumTest.EnumType, reference));
 
         // A literal's type not yet begun leaves no node at all: 'new' with nothing after it is a name
         // to the parser (SchemaSubject.PrecededByNew). It begins a literal wherever 'new' names no
@@ -1108,16 +1242,114 @@ public sealed class CompletionProvider
             // being touched, and one that is only a keyword is never offered as a type.
             .. Lexer.Keywords.Keys
                 .Where(spelling => !building
+                    && !askingAnEnum
                     && (TypeFactory.TryGetScalar(spelling) is not null || (returning && spelling == "void")))
                 .Order(StringComparer.Ordinal)
                 .Select(spelling => Member(
                     spelling, CompletionItemKind.Keyword, "scalar type", null, "0", subject, document)),
 
             .. types.All
-                .Where(type => !building || type.IsMessage)
+                .Where(type => (!building || type.IsMessage) && (!askingAnEnum || !type.IsMessage))
                 .SelectMany(type => Spellings(type, types, result, subject, document)),
         ]);
     }
+
+    /// <summary>
+    /// The right side of <c>in</c> as the enum it names, where it is a qualified name whose first part
+    /// names no value; null anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The parser reads a name after <c>in</c> as an expression, because only the binder can tell a map
+    /// from an enum, and it tells them apart by the first part of the name: one that names a value is
+    /// that value (spec 14.2, 12.2). Where it names none, the whole name is a type, as it was when the
+    /// parser read it as one, so it is offered the way a type reference is. The name given is the
+    /// parser's own shape for one: the whole of it, or the empty point after a dot nothing follows yet.
+    /// </para>
+    /// <para>
+    /// A single name is not here. It may still become a map or an enum, and
+    /// <see cref="MembershipNameAt"/> offers both.
+    /// </para>
+    /// </remarks>
+    private static TypeReference? QualifiedMembershipSlot(SemanticModel model, SyntaxLocation at, SchemaSubject subject)
+    {
+        if (at.Enclosing<MembershipExpression>() is not { Collection: MemberAccessExpression collection }
+            || !EditorPositions.Covers(collection.Span, subject.Start)
+            || LeadingNameOf(collection) is not { } leading
+            || NamesAValue(model, subject, leading.Name.Text))
+        {
+            return null;
+        }
+
+        var name = collection.Name.IsMissing
+            ? collection.Name
+            : new SyntaxName(DottedNameOf(collection), collection.Span);
+
+        return new TypeReference(name, collection.Span);
+    }
+
+    /// <summary>
+    /// Where the caret writes the right side of <c>in</c> as a single name, or has written nothing there
+    /// yet: the slot to write an enum into, which may as well be a map, or null anywhere else.
+    /// </summary>
+    /// <remarks>
+    /// A single name there is a map when it names a value and an enum when it does not, and while it
+    /// is being typed nothing says which, so both are offered: the names in scope, and the enums.
+    /// </remarks>
+    private static TypeReference? MembershipNameAt(SemanticModel model, SchemaSubject subject)
+    {
+        if (model.SyntaxAt(subject.Start) is not { } at)
+        {
+            return null;
+        }
+
+        if (at.Enclosing<MembershipExpression>() is { Collection: NameExpression name }
+            && EditorPositions.Covers(name.Span, subject.Start))
+        {
+            return new TypeReference(name.Name, name.Span);
+        }
+
+        return UnwrittenMembership(at) is { } unwritten && EditorPositions.Covers(unwritten.Span, subject.Start)
+            ? unwritten
+            : null;
+    }
+
+    /// <summary>The type of an <c>in</c> around <paramref name="at"/> whose right side has not been written.</summary>
+    private static TypeReference? UnwrittenMembership(SyntaxLocation at)
+        => at.Enclosing<EnumMembershipExpression>() is { EnumType.Name.IsMissing: true } membership ? membership.EnumType : null;
+
+    /// <summary>Every enum, spelled as it may be written into <paramref name="slot"/>.</summary>
+    private static IReadOnlyList<CompletionItem> EnumsAt(
+        TypeReference slot, SchemaTypes types, CompilationResult result, SchemaSubject subject, OpenDocument document)
+    {
+        if (TypeEdit(subject, slot, document) is not { } written)
+        {
+            return [];
+        }
+
+        return written.Writable(
+        [
+            .. types.All
+                .Where(type => !type.IsMessage)
+                .SelectMany(type => Spellings(type, types, result, written.Subject, document)),
+        ]);
+    }
+
+    /// <summary>The first name of a chain of member accesses, or null where the chain begins at anything else.</summary>
+    private static NameExpression? LeadingNameOf(Expression expression) => expression switch
+    {
+        NameExpression name => name,
+        MemberAccessExpression member => LeadingNameOf(member.Receiver),
+        _ => null,
+    };
+
+    /// <summary>A chain of member accesses over a name, written as the dotted name it is.</summary>
+    private static string DottedNameOf(Expression expression) => expression switch
+    {
+        MemberAccessExpression member => $"{DottedNameOf(member.Receiver)}.{member.Name.Text}",
+        NameExpression name => name.Name.Text,
+        _ => string.Empty,
+    };
 
     /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
     /// <remarks>
@@ -1296,8 +1528,8 @@ public sealed class CompletionProvider
     /// <para>
     /// The names come from <c>ScopeAt</c> rather than from a walk of the tree, which is what makes
     /// this correct rather than approximately correct: that query already drops a field shadowed by a
-    /// local of the same name, and a map field, for the same reasons the binder would refuse them.
-    /// Restating either rule here would be a second copy that agrees until it does not.
+    /// local of the same name, for the reason the binder resolves the local instead. Restating the rule
+    /// here would be a second copy that agrees until it does not.
     /// </para>
     /// <para>
     /// Methods are offered too, and as calls. A bare name resolves against the implicit receiver, so
@@ -1316,7 +1548,7 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
-        bool appendedTo,
+        IReadOnlyList<Link> takenOff,
         OpenDocument document)
     {
         if (model.ScopeAt(subject.Start) is not { } scope)
@@ -1385,7 +1617,7 @@ public sealed class CompletionProvider
         return
         [
             .. scope.Names
-                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, appendedTo, result.Module))
+                .Where(visible => !writingAReceiver || CanBeAReceiver(visible.Type, takenOff, result.Module))
                 .Select(visible => Member(
                     visible.Name,
                     visible.Symbol.Kind is SymbolKind.Field
@@ -1614,60 +1846,95 @@ public sealed class CompletionProvider
         // test is inside the access of 'y', and taking the nearest access first would offer T's fields
         // after 'x.'.
         var receiver = at.Path
-            .LastOrDefault(node => node is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend) switch
+            .LastOrDefault(node => node
+                is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend or IrMapQuery or IrMapUpdate) switch
             {
                 IrMissingMemberAccess awaiting => awaiting.Receiver,
                 IrFieldAccess access => access.Receiver,
                 IrFieldPresence presence => presence.Receiver,
                 IrMethodCall call => call.Receiver,
                 IrAppend append => append.Collection,
+                IrMapQuery query => query.Map,
+                IrMapUpdate update => update.Map,
                 _ => null,
             };
 
         return receiver switch
         {
-            { Type: MessageType or RepeatedType } => receiver.Type,
+            { Type: MessageType or RepeatedType or MapType } => receiver.Type,
             IrLiteral { Value: null, Type: EnumPlType } => receiver.Type,
             _ => null,
         };
     }
 
     /// <summary>
-    /// Whether a value of <paramref name="type"/> may stand where a member is taken off it: a message,
-    /// which has fields and methods, or, where the member is <c>append</c>, a value that has one -- a
-    /// repeated value, whose one member it is (spec 14.1), or a message declaring a method of that name.
+    /// Whether a value of <paramref name="type"/> may stand where <paramref name="links"/> follow it: a
+    /// message in front of a member, which has fields and methods; a map in front of a key, whose values
+    /// are then asked about what follows; and, in front of a member the language gives a repetition or a
+    /// map, a value that has it -- a repeated value before <c>append</c> (spec 14.1), a map before one of
+    /// its methods (spec 14.2), or a message declaring a field or a method of that name.
     /// </summary>
-    /// <param name="appendedTo">Whether the member taken off it is <c>append</c>.</param>
     /// <remarks>
     /// <para>
     /// The one answer to which names may stand where a receiver goes, for a bare name and a member
     /// alike, so the two cannot disagree about whether <c>entries</c> in <c>entries.append(e)</c> is
-    /// one. A repeated value before any other member would be offered only to be refused, as
+    /// one. A repeated value or a map before any other member would be offered only to be refused, as
     /// <c>order.lines.quantity</c> is. An enum is not here: its constants are reached through its
     /// name, never through a value.
     /// </para>
     /// <para>
-    /// Before <c>.append</c> the member is known, and so is what has it. Before any other, a message is
-    /// offered whether or not it has the member, which is what has always been offered there: asking
-    /// is a question about each message's fields and methods that nothing has needed until now.
+    /// Before one of the language's own methods the member is known, and so is what has it. A message
+    /// stands there only if it declares one of that name, which <c>prices.count()</c> showed: every
+    /// message field was offered in front of <c>.count()</c>, and none had one. Before any other member,
+    /// a message is offered whether or not it has the member, which is what has always been offered
+    /// there, and what follows that member is not asked.
     /// </para>
     /// </remarks>
-    private static bool CanBeAReceiver(PlType type, bool appendedTo, IrModule? module)
-        => appendedTo
-            ? type is RepeatedType
-                || (type is MessageType message
-                    && module?.MethodsOn(message.Descriptor.FullName).Any(method => method.Name == IrAppend.MethodName) == true)
-            : type is MessageType;
+    private static bool CanBeAReceiver(PlType type, IReadOnlyList<Link> links, IrModule? module)
+        => Reaches(type, links, 0, module);
+
+    /// <summary>Whether a value of <paramref name="type"/> can have <paramref name="links"/> from <paramref name="index"/> on written after it.</summary>
+    private static bool Reaches(PlType type, IReadOnlyList<Link> links, int index, IrModule? module)
+    {
+        if (index >= links.Count)
+        {
+            return true;
+        }
+
+        var link = links[index];
+
+        return (link.Kind, type) switch
+        {
+            (LinkKind.Index, MapType map) => Reaches(map.ValueType, links, index + 1, module),
+            (LinkKind.Member, RepeatedType) => link.Member == IrAppend.MethodName,
+            (LinkKind.Member, MapType) when link.Member is null => true,
+            (LinkKind.Member, MapType) => MapMethods.Named(link.Member!) is { } method
+                && Reaches(MapMethods.ResultOf(method), links, AfterACall(links, index + 1), module),
+            (LinkKind.Member, MessageType message)
+                => link.Member is null || !IsTheLanguagesMethod(link.Member) || Declares(message, link.Member, module),
+            _ => false,
+        };
+    }
+
+    /// <summary><paramref name="index"/>, or the link after it where it is the call of the method before it.</summary>
+    private static int AfterACall(IReadOnlyList<Link> links, int index)
+        => index < links.Count && links[index].Kind == LinkKind.Call ? index + 1 : index;
+
+    /// <summary>Whether <paramref name="member"/> is a method the language gives a repetition or a map.</summary>
+    private static bool IsTheLanguagesMethod(string member)
+        => member == IrAppend.MethodName || MapMethods.Named(member) is not null;
+
+    /// <summary>Whether <paramref name="message"/> declares a field or a ProtoCross method called <paramref name="member"/>.</summary>
+    private static bool Declares(MessageType message, string member, IrModule? module)
+        => MessageFields.Named(message.Descriptor, member) is not null
+            || module?.MethodsOn(message.Descriptor.FullName).Any(method => method.Name == member) == true;
 
     /// <summary>What may be written after a dot on a value of this type.</summary>
     /// <remarks>
     /// <para>
-    /// The rules are the binder's and are borrowed rather than restated. A map field is excluded on
-    /// the descriptor, because reading one is <c>PC0038</c> and a map never becomes a
-    /// <see cref="PlType"/> at all -- the same exclusion, for the same reason, that
-    /// <c>ScopeSearch.ReachableFields</c> makes. A method is offered because it is reachable through a
-    /// call, and it is offered with its parentheses because naming one without calling it is
-    /// <c>PC0040</c>.
+    /// The rules are the binder's and are borrowed rather than restated. A method is offered because it
+    /// is reachable through a call, and it is offered with its parentheses because naming one without
+    /// calling it is <c>PC0040</c>.
     /// </para>
     /// <para>
     /// A repeated value offers its one method, <c>append</c>, and nothing of its element type's, which
@@ -1683,7 +1950,7 @@ public sealed class CompletionProvider
         SchemaSubject subject,
         bool presence,
         bool writingAReceiver,
-        bool appendedTo,
+        IReadOnlyList<Link> takenOff,
         bool aStatement,
         OpenDocument document)
         => receiver switch
@@ -1697,10 +1964,9 @@ public sealed class CompletionProvider
                 // can never be: 'other.count()' is PC0044, an unknown method, rather than a field
                 // read with punctuation after it.
                 .. MessageFields.InDeclarationOrder(message.Descriptor)
-                    .Where(field => !field.IsMap
-                        && Lexer.CanBeWritten(field.Name)
+                    .Where(field => Lexer.CanBeWritten(field.Name)
                         && !subject.FollowedByCall
-                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), appendedTo, result.Module)))
+                        && (!writingAReceiver || CanBeAReceiver(TypeFactory.FromField(field), takenOff, result.Module)))
                     .Select(field => Member(
                         field.Name,
                         CompletionItemKind.Field,
@@ -1738,6 +2004,23 @@ public sealed class CompletionProvider
                     rank: "1",
                     subject,
                     document),
+            ],
+
+            // A map's methods (spec 14.2). Each gives an int32, a bool or nothing, none of which has a
+            // member, so none is offered where a receiver goes or as the operand of 'has'. A change has
+            // no value, so it is offered only where it stands as a statement, as an append is.
+            MapType map when !writingAReceiver && !presence =>
+            [
+                .. MapMethods.All
+                    .Where(method => aStatement || !MapMethods.Changes(method))
+                    .Select(method => Member(
+                        subject.FollowedByCall ? MapMethods.NameOf(method) : MapMethods.NameOf(method) + "()",
+                        CompletionItemKind.Method,
+                        MapMethods.DisplayNameFor(method, map),
+                        null,
+                        rank: "1",
+                        subject,
+                        document)),
             ],
 
             // A constant has no members of its own and is not callable, so where a receiver or a call

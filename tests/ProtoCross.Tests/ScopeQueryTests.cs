@@ -240,11 +240,11 @@ public class ScopeQueryTests
     }
 
     /// <summary>
-    /// Reading a map is PC0038, so a map field is a name that resolves and is then refused. It is
-    /// never offered, which is the rule #43 depends on: nothing in the list may fail to bind.
+    /// A map field is read by key (spec 14.2), so it is in scope as any field is. It was withheld until
+    /// #11, while reading one was refused outright.
     /// </summary>
     [Fact]
-    public void AMapFieldIsNeverOffered()
+    public void AMapFieldIsInScope()
     {
         const string source =
             """
@@ -261,7 +261,7 @@ public class ScopeQueryTests
         var names = NamesAt(SemanticModel.For(result), source.IndexOf("return count;", StringComparison.Ordinal));
 
         Assert.Contains("count", names);
-        Assert.DoesNotContain("tags", names);
+        Assert.Contains("tags", names);
     }
 
     /// <summary>
@@ -792,7 +792,7 @@ public class ScopeQueryTests
     /// <summary>
     /// Everything offered binds, and binds to what was promised. Every name the query reports at
     /// every statement position of a real source is written back into that source as a statement of
-    /// its own, and the whole thing recompiled: no unknown name, no unsupported map, and each probe
+    /// its own, and the whole thing recompiled: no unknown name, and each probe
     /// resolving to the declaration the query named.
     /// </summary>
     /// <remarks>
@@ -840,7 +840,7 @@ public class ScopeQueryTests
 
         Assert.DoesNotContain(
             result.Diagnostics,
-            diagnostic => diagnostic.Code is "PC0037" or "PC0038");
+            diagnostic => diagnostic.Code is "PC0037");
 
         foreach (var (offset, expected) in probed.Probes)
         {

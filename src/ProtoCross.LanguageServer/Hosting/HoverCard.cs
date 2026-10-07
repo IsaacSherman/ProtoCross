@@ -78,7 +78,7 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutAppend(model, offset) ?? AboutExpression(model, offset);
+        return card ?? AboutAppend(model, offset) ?? AboutMapMethod(model, offset) ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -230,6 +230,42 @@ internal static class HoverCard
             ],
             append.NameSpan);
     }
+
+    /// <summary>The card for one of a map's methods, written as the method it reads as (spec 14.2).</summary>
+    /// <remarks>
+    /// For the reason <see cref="AboutAppend"/> gives: none of them is a symbol, so the symbol arm has
+    /// nothing to say, and the card is the signature with a line on what it does. On the name only.
+    /// </remarks>
+    private static Hover? AboutMapMethod(SemanticModel model, int offset)
+    {
+        var (method, map, name) = model.IrAt(offset)?.Node switch
+        {
+            IrMapQuery { Map.Type: MapType queried } query => (query.Method, queried, query.NameSpan),
+            IrMapUpdate { Map.Type: MapType changed } update => (update.Method, changed, update.NameSpan),
+            _ => default((MapMethod, MapType?, SourceSpan)),
+        };
+
+        if (map is null || !EditorPositions.Covers(name, offset))
+        {
+            return null;
+        }
+
+        return Card([Signature(MapMethods.DisplayNameFor(method, map)), MapMethodSummary(method)], name);
+    }
+
+    /// <summary>What each of a map's methods does, in the words of its card.</summary>
+    private static string MapMethodSummary(MapMethod method) => method switch
+    {
+        MapMethod.Count => "How many keys the map holds (spec 14.2).",
+        MapMethod.IsEmpty => "Whether the map holds no key (spec 14.2).",
+        MapMethod.Remove => "Removes `key`, whether or not the map holds it (spec 14.2).",
+        MapMethod.Clear => "Removes every key (spec 14.2).",
+        MapMethod.AddIfAbsent => "Stores `value` at `key`, unless `key` already holds a value (spec 14.2).",
+        MapMethod.ReplaceIfPresent => "Stores `value` at `key`, if `key` already holds a value (spec 14.2).",
+        MapMethod.Merge => "Stores every value of `other` at its key, `other`'s winning where both hold one. "
+            + "A message is stored as a copy of its own (spec 14.2).",
+        _ => throw new ArgumentOutOfRangeException(nameof(method), method, "Not a map's method."),
+    };
 
     /// <summary>What the innermost expression covering the caret is, where no name is.</summary>
     /// <remarks>
