@@ -362,7 +362,11 @@ public sealed record IrAssignment(IrLocalReference Target, IrExpression Value, S
 /// </para>
 /// </remarks>
 public sealed record IrFieldAssignment(IrFieldAccess Target, IrExpression Value, SourceSpan Span)
-    : IrStatement(Span);
+    : IrStatement(Span)
+{
+    /// <inheritdoc cref="IrElementAssignment.ReadsItsTarget"/>
+    public bool ReadsItsTarget { get; init; }
+}
 
 /// <summary>
 /// An element added to the end of a repeated value the method may change: <c>entries.append(entry);</c>
@@ -415,6 +419,71 @@ public sealed record IrAppend(IrExpression Collection, IrExpression Value, Sourc
             + VoidType.Instance.DisplayName;
     }
 }
+
+/// <summary>
+/// A value stored at a key of a map the method may change, <c>prices[sku] = 5;</c> (spec 14.2, 18),
+/// replacing whatever the key held.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A node of its own beside <see cref="IrFieldAssignment"/>, for the reason that one stands apart
+/// from <see cref="IrAssignment"/>: each target writes a map its own way, through an indexer in C# and
+/// through protoc's <c>Map</c> in C++.
+/// </para>
+/// <para>
+/// Ordered as an assignment to a field is (spec 9.3): the map is reached, setting every unset
+/// message on the way, then the key and the value are evaluated, and the element is stored last. A
+/// value that asks whether the key is there finds the map as it was. The value is stored as a
+/// field's is (<see cref="IrExpression.IsCopiedWhenStored"/>).
+/// </para>
+/// </remarks>
+public sealed record IrElementAssignment(IrMapElement Target, IrExpression Value, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <summary>Whether the value reads the target it is stored to: the long form of a compound assignment.</summary>
+    /// <remarks>
+    /// <para>
+    /// The one thing about a compound assignment the IR says, because it decides an order a backend has
+    /// to keep. A compound reads its target, then stores (spec 9.3). Where the target is written through
+    /// an element of a map, reaching it puts a message at a missing key, and the read, which looks the
+    /// key up with its clause, has to come first: <c>(items[1] on_missing new Item { quantity: 10
+    /// }).quantity += 5;</c> gives 15 at a missing key, and would give 5 if the read found the message
+    /// reaching had just put there. Both targets reach an assignment's place before its value, so a
+    /// backend evaluates such a value first (<see cref="Semantics.IrMutation.ReachesThroughAnElement"/>).
+    /// </para>
+    /// <para>
+    /// Init-only with a default of false, so every assignment that is not a compound keeps the order
+    /// it always had: the place first, then the value.
+    /// </para>
+    /// </remarks>
+    public bool ReadsItsTarget { get; init; }
+}
+
+/// <summary>
+/// A change made to a map the method may change through one of the methods the language gives a map:
+/// <c>prices.remove(sku);</c> (spec 14.2, 18).
+/// </summary>
+/// <param name="Method">Which change. Never <see cref="MapMethod.Count"/> or <see cref="MapMethod.IsEmpty"/>, which are values.</param>
+/// <param name="Map">The map changed, reached through a chain of places as an append's collection is.</param>
+/// <param name="Arguments">What <paramref name="Method"/> takes, in the order <see cref="MapMethods.ParametersOf"/> names them.</param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A statement, as an append is, and for its reason: none of these has a value, so each can only stand
+/// on its own. One node for all five, because each is a map, a list of arguments and a name, and they
+/// differ only in what a backend writes for them.
+/// </para>
+/// <para>
+/// Ordered as an append is: the map is reached, then the arguments are evaluated left to right, and
+/// the change is made last.
+/// </para>
+/// </remarks>
+public sealed record IrMapUpdate(
+    MapMethod Method,
+    IrExpression Map,
+    IReadOnlyList<IrExpression> Arguments,
+    SourceSpan NameSpan,
+    SourceSpan Span) : IrStatement(Span);
 
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
 
@@ -509,9 +578,10 @@ public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
     /// (spec 13.2), but a local can hold one (#13), and a C# <c>RepeatedField</c> is a reference whose
     /// elements are the messages the field holds: a change made to an element through the local would
     /// otherwise be a change to the field. C++ copies it, elements and all, as it copies a message.
+    /// A map is copied for the same reason, since a C# <c>MapField</c> is a reference too (#11).
     /// </para>
     /// </remarks>
-    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType && this is not IrMessageLiteral;
+    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType or MapType && this is not IrMessageLiteral;
 }
 
 /// <summary>The implicit receiver of the enclosing method.</summary>
@@ -824,6 +894,113 @@ public sealed record IrNumberToEnum(
 /// </remarks>
 public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, SourceSpan Span)
     : IrExpression(ScalarType.BoolType, Span);
+
+/// <summary>What a map lookup gives when its key is missing (spec 14.2).</summary>
+public enum MissingKeyBehavior
+{
+    /// <summary>The fallback the clause wrote, evaluated only when the key is missing.</summary>
+    Fallback,
+
+    /// <summary>Terminate the program deterministically, as <c>on_zero fail</c> does.</summary>
+    Fail,
+
+    /// <summary>
+    /// No clause was written, which is <c>PC0115</c>. Kept as a lookup of the map's value type rather
+    /// than collapsed to an error, so the expression around it reports nothing further; no backend is
+    /// handed one, because a compilation that reported it has failed.
+    /// </summary>
+    Unstated,
+}
+
+/// <summary>The value a map holds at a key, <c>prices[sku] on_missing 0</c> (spec 14.2).</summary>
+/// <param name="Fallback">
+/// The value a missing key gives. Non-null exactly when <paramref name="OnMissing"/> is
+/// <see cref="MissingKeyBehavior.Fallback"/>, and evaluated only when the key is missing.
+/// </param>
+/// <remarks>
+/// <para>
+/// Every read of a map is one of these. Neither target agrees with the other about a missing key:
+/// C#'s indexer throws, and C++'s <c>operator[]</c> inserts a default and returns it, which changes
+/// the map. So the language has no read that leaves it to the target, and an author says what a
+/// missing key gives where the lookup is written, as <c>on_zero</c> says what a zero divisor gives.
+/// </para>
+/// <para>
+/// What it gives is a value, not the element: a message is the one the map holds, or the fallback,
+/// and is copied where it is stored, as a field's is (<see cref="IrExpression.IsCopiedWhenStored"/>).
+/// </para>
+/// </remarks>
+public sealed record IrMapLookup(
+    IrExpression Map,
+    IrExpression Key,
+    MissingKeyBehavior OnMissing,
+    IrExpression? Fallback,
+    PlType ValueType,
+    SourceSpan Span) : IrExpression(ValueType, Span)
+{
+    /// <summary>
+    /// What <c>on_missing fail</c> names the map by: the field's protobuf name, or the map's type where
+    /// no field holds it.
+    /// </summary>
+    /// <remarks>
+    /// Worked out here, so both runtimes write the same line for the same lookup, as both write the
+    /// enum's protobuf name for a conversion that fails.
+    /// </remarks>
+    public string MapName => Map is IrFieldAccess access ? access.Field.FullName : Map.Type.DisplayName;
+}
+
+/// <summary>Whether a map holds a key, <c>sku in prices</c> (spec 14.2).</summary>
+/// <remarks>
+/// The key comes first because it is written first. The two are evaluated in an order the language
+/// has not settled for any operator's operands (spec 9.3), which nothing can observe but a key or a
+/// map whose evaluation ends the program.
+/// </remarks>
+public sealed record IrMapContains(IrExpression Key, IrExpression Map, SourceSpan Span)
+    : IrExpression(ScalarType.BoolType, Span);
+
+/// <summary>A value worked out from a map, <c>prices.count()</c> or <c>prices.is_empty()</c> (spec 14.2).</summary>
+/// <param name="Method"><see cref="MapMethod.Count"/> or <see cref="MapMethod.IsEmpty"/>.</param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+public sealed record IrMapQuery(MapMethod Method, IrExpression Map, SourceSpan NameSpan, SourceSpan Span)
+    : IrExpression(MapMethods.ResultOf(Method), Span);
+
+/// <summary>
+/// An element of a map as a place: what <c>prices[sku] = 5;</c> stores to, and what
+/// <c>orders[id].status = SHIPPED;</c> writes through (spec 14.2, 18).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Never a read, which is <see cref="IrMapLookup"/>, and never a value a backend evaluates on its own.
+/// It stands where a place does: the target of an <see cref="IrElementAssignment"/>, or a link of a
+/// chain of places, written through by an assignment, an append, a map's own change or a call to a
+/// <c>mut fn</c>.
+/// </para>
+/// <para>
+/// Written through, a missing key is given a new message first, as an unset message field written
+/// through is set (spec 13.1). That is what both targets' mutable access does with a missing key, and
+/// what the author asked for: a change to the element at that key.
+/// </para>
+/// </remarks>
+public sealed record IrMapElement(IrExpression Map, IrExpression Key, PlType ValueType, SourceSpan Span)
+    : IrExpression(ValueType, Span);
+
+/// <summary>
+/// The entries a map field is given, <c>[{ key: k, value: v }, ...]</c>, in the order written
+/// (spec 13.2, 14.2).
+/// </summary>
+/// <remarks>
+/// A value only where a map field is given one, as an <see cref="IrList"/> is only where a repeated
+/// field is. Entries are stored in the order written, so a key written twice holds the later value,
+/// which is what protobuf's parser makes of one.
+/// </remarks>
+public sealed record IrMapEntries(MapType MapType, IReadOnlyList<IrMapEntry> Entries, SourceSpan Span)
+    : IrExpression(MapType, Span);
+
+/// <summary>One entry of a map field's list, <c>{ key: k, value: v }</c>.</summary>
+/// <remarks>
+/// Its key and its value are evaluated in the order spec 9.3 leaves open for an operator's operands,
+/// which only a key and a value that can both end the program could tell apart.
+/// </remarks>
+public sealed record IrMapEntry(IrExpression Key, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
 /// <summary>A literal value, in the type it took where it was written (spec 10.3).</summary>
 /// <remarks>

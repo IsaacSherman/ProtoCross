@@ -38,6 +38,7 @@ public enum TokenKind
     Int64,
     Message,
     Not,
+    OnMissing,
     OnZero,
     Or,
     Proto,

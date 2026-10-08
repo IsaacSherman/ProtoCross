@@ -89,6 +89,12 @@ public sealed partial class CppBackend
     {
         foreach (var initializer in literal.Fields)
         {
+            if (initializer.Value is IrMapEntries)
+            {
+                EmitMapEntries(writer, access, initializer, placement);
+                continue;
+            }
+
             var field = initializer.Field;
             var accessor = NameConventions.GetCppFieldName(field);
             var place = field.IsRepeated ? $"add_{accessor}()" : $"mutable_{accessor}()";
@@ -122,11 +128,11 @@ public sealed partial class CppBackend
     }
 
     /// <summary>
-    /// Whether a literal sets anything, which one giving only empty lists does not. A nested literal
-    /// counts, even one that sets nothing, because it gives its field presence.
+    /// Whether a literal sets anything, which one giving only empty lists and empty maps does not. A
+    /// nested literal counts, even one that sets nothing, because it gives its field presence.
     /// </summary>
     private static bool SetsAnything(IrMessageLiteral literal)
-        => literal.Fields.Any(field => field.Value is not IrList { Elements.Count: 0 });
+        => literal.Fields.Any(field => field.Value is not (IrList { Elements.Count: 0 } or IrMapEntries { Entries.Count: 0 }));
 
     /// <summary>
     /// Names for what generated code declares inside <paramref name="node"/>. None of them is a name

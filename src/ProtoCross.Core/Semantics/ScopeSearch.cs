@@ -124,14 +124,13 @@ internal static class ScopeSearch
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Two exclusions, both of them <c>Binder.BindName</c>'s. A local or parameter of the same
-    /// spelling wins, so the field is not offered at all: it is unreachable by that name, and an
-    /// entry saying otherwise would be a completion that binds to something else the moment it is
-    /// accepted. And a map field is never offered, because reading one is <c>PC0038</c> -- this
-    /// compiler version does not support them -- so it is a name that resolves and then refuses.
+    /// One exclusion is <c>Binder.BindName</c>'s. A local or parameter of the same spelling wins, so
+    /// the field is not offered at all: it is unreachable by that name, and an entry saying otherwise
+    /// would be a completion that binds to something else the moment it is accepted. A map field was
+    /// withheld as well until #11, while reading one was refused outright.
     /// </para>
     /// <para>
-    /// A third is the lexer's. A field spelled like a reserved word, <c>default</c> among them, is
+    /// A second is the lexer's. A field spelled like a reserved word, <c>default</c> among them, is
     /// reached by no bare name, because no bare name can be written that way
     /// (<see cref="Lexer.CanBeWritten"/>).
     /// </para>
@@ -149,7 +148,7 @@ internal static class ScopeSearch
         var taken = declared.Select(name => name.Name).ToHashSet(StringComparer.Ordinal);
 
         return MessageFields.InDeclarationOrder(receiver)
-            .Where(field => !field.IsMap && !taken.Contains(field.Name) && Lexer.CanBeWritten(field.Name))
+            .Where(field => !taken.Contains(field.Name) && Lexer.CanBeWritten(field.Name))
             .Select(field => new VisibleName(
                 SymbolId.ForField(field),
                 field.Name,

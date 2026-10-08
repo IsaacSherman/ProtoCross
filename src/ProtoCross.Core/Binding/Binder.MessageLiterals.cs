@@ -164,15 +164,6 @@ public sealed partial class Binder
         // renaming it must be shown.
         Use(SymbolId.ForField(descriptorField), field.Name.Span);
 
-        if (descriptorField.IsMap)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.MapsAreNotSupportedInLiterals,
-                $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
-                field.Span);
-            return null;
-        }
-
         if (!written.Add(descriptorField.Name))
         {
             _diagnostics.Report(
@@ -185,8 +176,9 @@ public sealed partial class Binder
             return null;
         }
 
-        var value = descriptorField.IsRepeated
-            ? BindRepeatedValue(descriptorField, field, scope, context)
+        // A map before a repeated field, because protobuf declares a map as a repeated field of entries.
+        var value = descriptorField.IsMap ? BindMapValue(descriptorField, field, scope, context)
+            : descriptorField.IsRepeated ? BindRepeatedValue(descriptorField, field, scope, context)
             : BindSingularValue(descriptorField, field, scope, context);
 
         return new IrFieldInitializer(descriptorField, value, field.Span);
@@ -329,21 +321,33 @@ public sealed partial class Binder
     /// </summary>
     /// <remarks>
     /// A list is bound element by element, because no expression binder is handed one: a list is only
-    /// ever a repeated field's value, and this one has no field.
+    /// ever a repeated field's value, and this one has no field. An entry of a map is bound field by
+    /// field, for the same reason: it is only ever an element of a map field's list.
     /// </remarks>
     private void BindDiscarded(Expression value, Scope scope, MethodContext context)
     {
-        if (value is ListExpression list)
+        switch (value)
         {
-            foreach (var element in list.Elements)
-            {
-                BindExpression(element, scope, context, null);
-            }
+            case ListExpression list:
+                foreach (var element in list.Elements)
+                {
+                    BindDiscarded(element, scope, context);
+                }
 
-            return;
+                return;
+
+            case MapEntryExpression entry:
+                foreach (var field in entry.Fields)
+                {
+                    BindDiscarded(field.Value, scope, context);
+                }
+
+                return;
+
+            default:
+                BindExpression(value, scope, context, null);
+                return;
         }
-
-        BindExpression(value, scope, context, null);
     }
 
     /// <summary>The shortest name that resolves to <paramref name="message"/> where a type is written.</summary>

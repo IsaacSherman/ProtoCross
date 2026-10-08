@@ -5,7 +5,7 @@ sub-issues and counting. It is too large for one session, one branch, or one rev
 process we run for each of them, so that the process itself does not have to be re-derived every
 time context is cleared.
 
-Read it together with [ARCHITECTURE.md](../ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
+Read it together with [ARCHITECTURE.md](../Architecture/ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
 
 ## The shape of the work
 
@@ -51,7 +51,7 @@ gh issue view 36
 ```
 
 Read the sub-issue **and** [#47](https://github.com/IsaacSherman/ProtoCross/issues/47), then
-[ARCHITECTURE.md](../ARCHITECTURE.md). Trace the actual call sites before planning — the issues are
+[ARCHITECTURE.md](../Architecture/ARCHITECTURE.md). Trace the actual call sites before planning — the issues are
 specific about scope ("constructed in only eleven places") and those claims are worth verifying, not
 assuming.
 
@@ -143,7 +143,7 @@ Not the same errand as step 4. The spec is the language and moves with the commi
 this is the map, and it is worth drawing once the shape has stopped moving.
 
 Most of this epic adds surface: a server project, a queryable semantic model, new public types on the
-pipeline. [ARCHITECTURE.md](../ARCHITECTURE.md) is a living document — if the issue added a project,
+pipeline. [ARCHITECTURE.md](../Architecture/ARCHITECTURE.md) is a living document — if the issue added a project,
 a pipeline stage, or a type a cold reader would need to know about, update it now. A stale map is
 worse than none, because it is trusted.
 

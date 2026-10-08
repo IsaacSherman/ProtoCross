@@ -118,6 +118,8 @@ public static class IrWalk
             IrAssignment assignment => [assignment.Target, assignment.Value],
             IrFieldAssignment assignment => [assignment.Target, assignment.Value],
             IrAppend append => [append.Collection, append.Value],
+            IrElementAssignment assignment => [assignment.Target, assignment.Value],
+            IrMapUpdate update => [update.Map, .. update.Arguments],
             IrReturn { Value: { } returned } => [returned],
             IrForEach loop => [loop.Collection, loop.Body],
             IrIf branch => branch.Else is { } otherwise
@@ -144,6 +146,14 @@ public static class IrWalk
             IrConversion conversion => [conversion.Operand],
             IrEnumToNumber conversion => [conversion.Operand],
             IrEnumMembership membership => [membership.Value],
+            IrMapLookup lookup => lookup.Fallback is { } fallback
+                ? [lookup.Map, lookup.Key, fallback]
+                : [lookup.Map, lookup.Key],
+            IrMapContains contains => [contains.Key, contains.Map],
+            IrMapQuery query => [query.Map],
+            IrMapElement element => [element.Map, element.Key],
+            IrMapEntries entries => [.. entries.Entries],
+            IrMapEntry entry => [entry.Key, entry.Value],
             IrNumberToEnum conversion => conversion.Fallback is { } fallback
                 ? [conversion.Operand, fallback]
                 : [conversion.Operand],

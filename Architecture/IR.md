@@ -1,0 +1,21 @@
+# IR and semantic lookup
+
+Use the [feature index](Feature-Index.md) to choose a topic and [Language.md](Language.md) to find its producer. [§22](../ProtoCross_Spec/§22-IR%20and%20Compiler%20Architecture.md) owns the IR contract; this page points to its implementation.
+
+| Topic | Source and entry symbols | Focused tests / spec |
+|---|---|---|
+| Node families | [Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs): `IrModule`, `IrMethodSignature`, `IrStatement`, `IrExpression`, `IrTest` | [IrContractTests](../tests/ProtoCross.Tests/IrContractTests.cs) |
+| Feature and recovery nodes | [Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs): `IrIntegerDivision`, `IrNumberToEnum`, `IrMapLookup`, `IrMessageLiteral`, `IrMissingMemberAccess`, `IrUncallableInvocation` | [PartialBindingTests](../tests/ProtoCross.Tests/PartialBindingTests.cs); feature producers in [Language.md](Language.md) |
+| Types and descriptor conversion | [PlType.cs](../src/ProtoCross.Core/Types/PlType.cs): `PlType`, `TypeFactory.FromField`, `MapType`, `ErrorType` | [IrContractTests](../tests/ProtoCross.Tests/IrContractTests.cs); [§8](../ProtoCross_Spec/§8-Type%20System.md) |
+| Numeric behavior annotations | [NumericPolicy.cs](../src/ProtoCross.Core/Ir/NumericPolicy.cs): `ResolveArithmetic`, `ResolveDivision`, `ResolveConversion`; [ArithmeticBehavior.cs](../src/ProtoCross.Core/Ir/ArithmeticBehavior.cs): `ArithmeticBehavior`, `ConversionBehavior` | [IrContractTests](../tests/ProtoCross.Tests/IrContractTests.cs), [ConversionTests](../tests/ProtoCross.Tests/ConversionTests.cs); [§10](../ProtoCross_Spec/§10-Numeric%20Semantics.md) |
+| Independent tree copies | [IrCopy.cs](../src/ProtoCross.Core/Semantics/IrCopy.cs): `IrCopy.Of` | [IrCopyTests](../tests/ProtoCross.Tests/IrCopyTests.cs), [TreeWalkTests](../tests/ProtoCross.Tests/TreeWalkTests.cs) |
+| Flow and constant conditions | [IrFlow.cs](../src/ProtoCross.Core/Semantics/IrFlow.cs): `NeverFallsThrough`; [IrConstants.cs](../src/ProtoCross.Core/Semantics/IrConstants.cs): `HasAConstantCondition` | [BackendTests.Switch](../tests/ProtoCross.Tests/BackendTests.Switch.cs); [§15](../ProtoCross_Spec/§15-Control%20Flow.md) |
+| Storage and mutation queries | [IrMutation.cs](../src/ProtoCross.Core/Semantics/IrMutation.cs): `WrittenPlace`, `RootOf`, `IsPassedAsACopy`; [Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs): `IrExpression.IsCopiedWhenStored` | [BackendTests.Mutation](../tests/ProtoCross.Tests/BackendTests.Mutation.cs); [§18](../ProtoCross_Spec/§18-Mutability.md) |
+| Traversal and child ownership | [IrWalk.cs](../src/ProtoCross.Core/Semantics/IrWalk.cs): `ChildrenOf`, `DescendantsAndSelf`, `DeclarationsOf`; [SyntaxWalk.cs](../src/ProtoCross.Core/Semantics/SyntaxWalk.cs): `ChildrenOf` | [TreeWalkTests](../tests/ProtoCross.Tests/TreeWalkTests.cs) |
+| References and declarations | [SemanticModel.cs](../src/ProtoCross.Core/Semantics/SemanticModel.cs): `ReferenceAt`, `ReferencesTo`, `DeclarationOf`; [ReferenceIndex.cs](../src/ProtoCross.Core/Semantics/ReferenceIndex.cs): `ReferenceIndex` | [ReferenceIndexTests](../tests/ProtoCross.Tests/ReferenceIndexTests.cs) |
+| Scope and position queries | [SemanticModel.cs](../src/ProtoCross.Core/Semantics/SemanticModel.cs): `ScopeAt`, `SyntaxAt`, `IrAt`, `BoundFrom`, `SourceOf`; [ScopeSearch.cs](../src/ProtoCross.Core/Semantics/ScopeSearch.cs): `At` | [ScopeQueryTests](../tests/ProtoCross.Tests/ScopeQueryTests.cs), [PositionQueryTests](../tests/ProtoCross.Tests/PositionQueryTests.cs) |
+| Backend consumers | [IBackend.cs](../src/ProtoCross.Core/Backend/IBackend.cs): `IBackend.Emit`, `ITestBackend.EmitTests`; [CSharpBackend.cs](../src/ProtoCross.Backend.CSharp/CSharpBackend.cs) and [CppBackend.cs](../src/ProtoCross.Backend.Cpp/CppBackend.cs): `EmitStatement`, `Expression` | [BackendTests](../tests/ProtoCross.Tests/BackendTests.cs); [§23](../ProtoCross_Spec/§23-Backend%20Conformance%20Requirements.md) |
+
+The binder records `IrModule.References` and `Scope`; `SemanticModel` combines those facts with syntax for editor queries. `IrModule.DeclaredIn` selects a source's output from a module bound across sources.
+
+`IrFlow` serves return checks, presence guards and switch emission. `IrCopy` supports assignment lowering; storage copying is a separate question answered by `IsCopiedWhenStored` and `IrMutation`. When adding a node, inspect walkers, copying and each consumer listed above.

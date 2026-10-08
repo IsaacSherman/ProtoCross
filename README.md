@@ -126,6 +126,14 @@ Implemented:
   `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
   and 12.2.
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
+- Maps, read and changed by key and never iterated. Every read says what a missing key gives,
+  `prices[sku] on_missing 0` or `on_missing fail`, and the fallback is evaluated only when the key is
+  missing. `sku in prices`, `count()` and `is_empty()` ask about a map; `prices[sku] = 5;`,
+  `counts[word] on_missing 0 += 1;`, `remove`, `clear`, `add_if_absent`, `replace_if_present` and
+  `merge` change one; and writing through a missing key, `items[id].label = "x";`, puts a message
+  there first. Two maps compare by keys and values, in any order. A literal gives a map its entries,
+  `prices: [{ key: "apple", value: 3 }]`. The spec has the rules in section 14.2, and `on_missing` is
+  now a reserved word.
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
   `items: [a, b]`, and the values are evaluated in the order written. A literal shows no field to be
@@ -152,11 +160,11 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: maps, `Result` types, `==` between two messages, asking which member of a
-`oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can
-be read, tested with `has` and assigned, and assigning one unsets the others. The compiler refuses
-what it does not implement, such as a map field, rather than emitting something whose semantics
-differ from the spec.
+Not implemented: `Result` types, `==` between two messages, asking which member of a `oneof` is
+set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
+tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
+does not implement, such as iterating a map, rather than emitting something whose semantics differ
+from the spec.
 
 ### Building
 

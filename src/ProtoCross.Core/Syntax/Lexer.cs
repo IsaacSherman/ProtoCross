@@ -67,6 +67,7 @@ public sealed class Lexer
         ["int64"] = TokenKind.Int64,
         ["message"] = TokenKind.Message,
         ["not"] = TokenKind.Not,
+        ["on_missing"] = TokenKind.OnMissing,
         ["on_zero"] = TokenKind.OnZero,
         ["or"] = TokenKind.Or,
         ["proto"] = TokenKind.Proto,

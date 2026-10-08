@@ -35,13 +35,14 @@ time rather than emitting something whose semantics differ.
 | Compound assignment | Yes | Yes | — | Bound as its long form ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)), so neither backend sees one. |
 | Mutating methods (`mut fn`) | Yes | Yes | — | C# changes a message through protoc's properties, setting an unset one with `??=`; C++ takes `T&` and changes it through setters and mutable accessors ([18](./§18-Mutability.md#18-mutability), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
 | Appending (`append`) | Yes | Yes | — | C# `Add` on the field's `RepeatedField`, cloning a message that is not a literal; C++ protoc's `add_x(value)`, or `*add_x() = T(value)` for a message, and `Add` on a local ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). |
-| Maps | No | No | — | Blocked on 14.2. |
+| Maps | Yes | Yes | — | Read by key with an `on_missing` clause, changed by key or by a map's methods, and never iterated ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). C# `MapField` through `ProtoCrossMaps`; C++ protoc's `Map` through `protocross_runtime` ([24.1](./§24-Generated%20API%20Strategy.md#241-c), [24.2](./§24-Generated%20API%20Strategy.md#242-c)). |
 | Result/error returns | No | No | — | Blocked on 19. |
 | Explicit casts | Yes | Yes | — | `x as int64`; see 10.3 for the per-family rules. |
 | Enum types and values | Yes | Yes | — | Named per 12; both targets re-spell values differently. |
 | An enum's number (`as int32`, `as Enum`) | Yes | Yes | — | A cast in both. `on_unknown`, and a closed enum's default, ask `Enum.IsDefined` in C# and protoc's `_IsValid` in C++, and fail with exit code 70 as `on_zero fail` does ([12.1](./§12-Enums.md#121-an-enums-number)). |
 | Whether a value has a name (`in`) | Yes | Yes | — | `Enum.IsDefined` in C#; protoc's `_IsValid` in C++ ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)). |
 | Conditionals and `while` | Yes | Yes | — | `if` / `else if` / `else`, `while`, `break`, `continue` ([15](./§15-Control%20Flow.md#15-control-flow)). |
+| `switch` | Yes | Yes | — | The target's own `switch`, a braced section per arm, ending in `break;` where the arm can reach its end. C# suspends CS0162 around that `break;` where a constant condition may end the arm first ([24.1](./§24-Generated%20API%20Strategy.md#241-c)), and C++ adds a `default` that does nothing where the author wrote none ([15.3](./§15-Control%20Flow.md#153-switch)). |
 | Field presence (`has`) | Yes | Yes | — | `x != null` or `HasX` in C#; `has_x()` in C++ ([8.4](./§8-Type%20System.md#84-nullability-and-presence)). |
 | Unset message-field guard | Yes | Yes | — | Compile-time (`PC0078`), so neither backend emits a runtime check ([13.1](./§13-Messages.md#131-field-access)). |
 | Proto2 presence | Yes | Yes | — | Via `FieldDescriptor.HasPresence`; no syntax-version branch ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)). |

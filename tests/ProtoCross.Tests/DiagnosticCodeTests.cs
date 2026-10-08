@@ -101,8 +101,8 @@ public class DiagnosticCodeTests
     /// </remarks>
     private static IEnumerable<string> Documentation()
     {
-        string[] directories = ["ProtoCross_Spec", "docs"];
-        string[] files = ["README.md", "ARCHITECTURE.md", "CLAUDE.md", Path.Combine("tests", "conformance", "README.md")];
+        string[] directories = ["ProtoCross_Spec", "Architecture", "docs"];
+        string[] files = ["README.md", "CLAUDE.md", Path.Combine("tests", "conformance", "README.md")];
 
         foreach (var directory in directories)
         {

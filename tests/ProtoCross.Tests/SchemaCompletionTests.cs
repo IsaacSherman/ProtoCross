@@ -277,18 +277,18 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// Reading a map is PC0038, so a map field is a name that resolves and is then refused. Offering
-    /// it would be the completion list breaking its one promise.
+    /// A map field is read by key (spec 14.2), so it is a field like any other after a dot. It was
+    /// withheld until #11, while reading one was refused outright.
     /// </summary>
     [Fact]
-    public async Task AMapFieldIsNeverOfferedAfterADot()
+    public async Task AMapFieldIsOfferedAfterADot()
     {
         var offered = await OfferedAsync(
             "extend Outer {\n    fn f(m: Mapped) -> int64 {\n        return m.\n    }\n}\n",
             "return m.");
 
         Assert.Contains("count", Labels(offered));
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>
@@ -708,18 +708,18 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// ScopeAt already drops a map field, for the reason the binder refuses one. Asserted here as
-    /// well as after a dot because the two contexts reach the field set by different routes.
+    /// ScopeAt offers a map field as it offers any field. Asserted here as well as after a dot because
+    /// the two contexts reach the field set by different routes.
     /// </summary>
     [Fact]
-    public async Task ABareIdentifierNeverOffersAMapField()
+    public async Task ABareIdentifierOffersAMapField()
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 {\n        return count;\n    }\n}\n",
             "return cou");
 
         Assert.Contains("count", Labels(offered));
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>
@@ -1055,9 +1055,9 @@ public partial class SchemaCompletionTests
         Assert.DoesNotContain("count", Labels(offered));
     }
 
-    /// <summary>A map in a fixture is PC0060 rather than PC0038 -- a different code, the same refusal.</summary>
+    /// <summary>A fixture gives a map field its entries (spec 13.2), so it is offered as any field is.</summary>
     [Fact]
-    public async Task ATestFixtureNeverOffersAMapField()
+    public async Task ATestFixtureOffersAMapField()
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 { return count; }\n}\n"
@@ -1065,7 +1065,7 @@ public partial class SchemaCompletionTests
                 + "    expect return 1;\n}\n",
             "        count: 1,\n");
 
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>

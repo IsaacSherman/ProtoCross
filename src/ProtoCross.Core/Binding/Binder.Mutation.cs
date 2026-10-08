@@ -57,6 +57,10 @@ public sealed partial class Binder
                 ? field + ElementStep
                 : null,
         IrFieldAccess field => StorageOf(field.Receiver) is { } receiver ? Through(receiver, field.Field) : null,
+
+        // Every element of a map is keyed as one, as every element of a repeated field is: which key it
+        // is depends on a value the binder does not know.
+        IrMapElement element => StorageOf(element.Map) is { } map ? map + ElementStep : null,
         _ => NamedRoot(place),
     };
 
@@ -96,6 +100,7 @@ public sealed partial class Binder
             => _elementsOf.TryGetValue(binding.Id, out var collection) ? ReadOnlyPartOf(collection, context) : place,
         IrLocalReference => null,
         IrFieldAccess field => ReadOnlyPartOf(field.Receiver, context),
+        IrMapElement element => ReadOnlyPartOf(element.Map, context),
         _ => place,
     };
 
@@ -139,6 +144,8 @@ public sealed partial class Binder
         IrLocalReference local => local.Local.Name,
         IrParameterReference parameter => parameter.Parameter.Name,
         IrMethodCall call => $"{call.Target.Name}(…)",
+        IrMapElement element => $"{Unquoted(element.Map)}[…]",
+        IrMapLookup lookup => $"{Unquoted(lookup.Map)}[…]",
         IrMessageLiteral literal => $"new {literal.MessageType.Descriptor.Name} {{ … }}",
         _ => "this",
     };
@@ -210,8 +217,10 @@ public sealed partial class Binder
     /// <para>
     /// The target is a copy of the read, node for node, as a local's target is a reference of its own
     /// at the read's span (spec 22.2). Sharing the read's nodes would put one node in two places, and a
-    /// walk of the tree would reach it twice. A read that begins at something other than a place has no
-    /// target to copy: a change to it is refused, and nothing is assigned.
+    /// walk of the tree would reach it twice. A lookup the read goes through is the element it looked
+    /// up in the copy (<see cref="PlaceOf"/>), so <c>(orders[id] on_missing fail).count += 1</c> stores
+    /// into the order at that key. A read that begins at something other than a place has no target to
+    /// copy: a change to it is refused, and nothing is assigned.
     /// </para>
     /// </remarks>
     private IrStatement BindCompoundFieldAssignment(
@@ -230,31 +239,36 @@ public sealed partial class Binder
         };
 
         // The long form did not bind to an operation on the field, and has said why.
-        if (read is not IrFieldAccess field)
+        if (read is not IrFieldAccess)
         {
             return new IrExpressionStatement(operation, statement.Span);
         }
 
-        CheckFieldWrite(field, statement.Span, context);
+        var place = (IrFieldAccess)PlaceOf(read);
+        CheckFieldWrite(place, statement.Span, context);
 
-        return IrMutation.IsPlace(field)
-            ? new IrFieldAssignment((IrFieldAccess)CopyOf(field), operation, statement.Span)
+        return IrMutation.IsPlace(place)
+            ? new IrFieldAssignment(place, operation, statement.Span) { ReadsItsTarget = true }
             : new IrExpressionStatement(operation, statement.Span);
     }
 
-    /// <summary><paramref name="place"/> built again from new nodes, so it shares none with the original.</summary>
-    private static IrExpression CopyOf(IrExpression place) => place switch
-    {
-        IrFieldAccess field => field with { Receiver = CopyOf(field.Receiver) },
-        _ => place with { },
-    };
-
     /// <summary>
-    /// Everything that can make a field unwritable here: being a repeated field, being reached
+    /// Everything that can make a field unwritable here: being a map or a repeated field, being reached
     /// through something the method may not change, and holding a field a loop is traversing.
     /// </summary>
     private void CheckFieldWrite(IrFieldAccess field, SourceSpan span, MethodContext context)
     {
+        if (field.Field.IsMap)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.InvalidAssignmentTarget,
+                $"'{field.Field.Name}' is a map field, which cannot be assigned whole.",
+                span,
+                $"A map is changed by key: '{field.Field.Name}[key] = value;', or through '{MapMethods.NameOf(MapMethod.Clear)}' "
+                + $"and '{MapMethods.NameOf(MapMethod.Merge)}' (spec 14.2).");
+            return;
+        }
+
         if (field.Field.IsRepeated)
         {
             _diagnostics.Report(
@@ -287,14 +301,30 @@ public sealed partial class Binder
     {
         yield return field;
 
-        for (IrExpression link = field; link is IrFieldAccess access; link = access.Receiver)
+        for (IrExpression? link = field; link is not null; link = NextLinkOut(link))
         {
+            if (link is not IrFieldAccess access)
+            {
+                continue;
+            }
+
             foreach (var sibling in OneofSiblingsOf(access.Field))
             {
                 yield return new IrFieldAccess(access.Receiver, sibling, TypeFactory.FromField(sibling), access.Span);
             }
         }
     }
+
+    /// <summary>
+    /// The link a place is reached through: a field's message, or an element's map. Null at the root,
+    /// which nothing reaches.
+    /// </summary>
+    private static IrExpression? NextLinkOut(IrExpression link) => link switch
+    {
+        IrFieldAccess field => field.Receiver,
+        IrMapElement element => element.Map,
+        _ => null,
+    };
 
     /// <summary>The other members of the <c>oneof</c> <paramref name="field"/> is in, which setting it unsets.</summary>
     private static IEnumerable<FieldDescriptor> OneofSiblingsOf(FieldDescriptor field)
@@ -336,22 +366,17 @@ public sealed partial class Binder
                 return Member(receiver, member, field => PlaceField(receiver, field, member.Span));
             }
 
+            case IndexExpression index:
+                return BindElement(index, scope, context);
+
             default:
                 return BindExpression(expression, scope, context, null);
         }
     }
 
-    /// <summary>A field written to, or written through, refusing a map as every use of one is refused.</summary>
-    private IrExpression PlaceField(IrExpression receiver, FieldDescriptor field, SourceSpan span)
-    {
-        if (field.IsMap)
-        {
-            ReportMap(field, span);
-            return new IrLiteral(null, ErrorType.Instance, span);
-        }
-
-        return new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
-    }
+    /// <summary>A field written to, or written through.</summary>
+    private static IrExpression PlaceField(IrExpression receiver, FieldDescriptor field, SourceSpan span)
+        => new IrFieldAccess(receiver, field, TypeFactory.FromField(field), span);
 
     // ------- mutating calls
 
@@ -475,6 +500,8 @@ public sealed partial class Binder
             IrReturn { Value: { } returned } => [(returned, true)],
             IrFieldAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
             IrAppend append => [(append.Collection, false), (append.Value, false)],
+            IrElementAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
+            IrMapUpdate update => [(update.Map, false), .. update.Arguments.Select(argument => (argument, false))],
             IrIf branch => [(branch.Condition, false)],
             IrWhile loop => [(loop.Condition, false)],
             IrSwitch choice => [(choice.Subject, false)],
@@ -495,8 +522,13 @@ public sealed partial class Binder
             return RefuseExpressionStatement(statement, scope, context);
         }
 
-        return AppendCallee(invocation, scope, context) is { } callee
-            ? BindAppend(invocation, callee, statement.Span, scope, context)
+        if (AppendCallee(invocation, scope, context) is { } callee)
+        {
+            return BindAppend(invocation, callee, statement.Span, scope, context);
+        }
+
+        return MapUpdateCallee(invocation, scope, context) is { } update
+            ? BindMapUpdate(invocation, update.Callee, update.Method, statement.Span, scope, context)
             : new IrExpressionStatement(BindInvocation(invocation, scope, context), statement.Span);
     }
 
@@ -890,8 +922,9 @@ public sealed partial class Binder
 
                 // An append changes no element already there, so it ends nothing a guard showed about
                 // one. Each message it writes through is set, which unsets the other members of that
-                // one's oneof, as an assignment's links do.
-                if (IsAppendTo(method, traced))
+                // one's oneof, as an assignment's links do. A change to a map ends the same, and no
+                // more: nothing a guard can show is reached through a map's element.
+                if (IsAppendTo(method, traced) || IsMapUpdateOf(method, traced))
                 {
                     return traced.IsReadOnly ? [] : SiblingsUnsetThrough(traced, traced.Links.Count);
                 }
@@ -904,6 +937,7 @@ public sealed partial class Binder
                 if (traced is not { Message: { } message } trace)
                 {
                     return method == IrAppend.MethodName
+                        || MapMethods.Named(method) is { } changes && MapMethods.Changes(changes)
                         || _methods.Any(entry => entry.Key.Method == method && entry.Value.IsMutating)
                             ? [EndedFacts.Untraced]
                             : [];
@@ -916,6 +950,10 @@ public sealed partial class Binder
                 return [];
         }
     }
+
+    /// <summary>Whether calling <paramref name="method"/> on the place <paramref name="trace"/> traced changes a map.</summary>
+    private static bool IsMapUpdateOf(string method, [NotNullWhen(true)] PlaceTrace? trace)
+        => trace is { HoldsAMap: not null } && MapMethods.Named(method) is { } update && MapMethods.Changes(update);
 
     private bool IsMutating(MessageDescriptor receiver, string method)
         => _methods.TryGetValue((receiver.FullName, method), out var signature) && signature.IsMutating;
@@ -938,11 +976,19 @@ public sealed partial class Binder
                     { Local: { } local } => new PlaceTrace(
                         IsLoopBinding(local) ? LoopPresenceRoot(local.Name) : LocalPresenceRoot(local.Name),
                         [],
-                        (local.Type as MessageType)?.Descriptor) { HoldsARepeatedValue = local.Type is RepeatedType },
+                        (local.Type as MessageType)?.Descriptor)
+                    {
+                        HoldsARepeatedValue = local.Type is RepeatedType,
+                        HoldsAMap = local.Type as MapType,
+                    },
                     { Parameter: { } parameter } => new PlaceTrace(
                         ParameterPresenceRoot(parameter.Name),
                         [],
-                        (parameter.Type as MessageType)?.Descriptor) { HoldsARepeatedValue = parameter.Type is RepeatedType },
+                        (parameter.Type as MessageType)?.Descriptor)
+                    {
+                        HoldsARepeatedValue = parameter.Type is RepeatedType,
+                        HoldsAMap = parameter.Type as MapType,
+                    },
                     { Field: { } field } => new PlaceTrace(ReceiverPresenceRoot, [], context.Receiver).Through(field),
                     _ => null,
                 };
@@ -951,6 +997,9 @@ public sealed partial class Binder
                     when TracePlace(member.Receiver, scope, context) is { Message: { } message } trace
                     && MessageFields.Named(message, member.Name.Text) is { } field:
                 return trace.Through(field);
+
+            case IndexExpression index when TracePlace(index.Collection, scope, context) is { HoldsAMap: not null } trace:
+                return trace.ThroughElement();
 
             default:
                 return null;
@@ -967,6 +1016,9 @@ public sealed partial class Binder
         /// <summary>Whether the place holds a repeated value, which an append may add to.</summary>
         public bool HoldsARepeatedValue { get; init; }
 
+        /// <summary>The map the place holds, which its methods may change, or null when it holds none.</summary>
+        public MapType? HoldsAMap { get; init; }
+
         /// <summary>The fields after the root, each after a separator, as a presence key writes them: <c>.customer.card</c>.</summary>
         public string Path => PathTo(Links.Count);
 
@@ -978,7 +1030,15 @@ public sealed partial class Binder
             => new(Root, [.. Links, field], IsSingularMessage(field) ? field.MessageType : null)
             {
                 HoldsARepeatedValue = field.IsRepeated && !field.IsMap,
+                HoldsAMap = field.IsMap ? (MapType)TypeFactory.FromField(field) : null,
             };
+
+        /// <summary>
+        /// The element of the map this place holds. It adds no link, because nothing a guard shows is
+        /// ever about an element: one is reached only through a key, which no guard names.
+        /// </summary>
+        public PlaceTrace ThroughElement()
+            => new(Root, Links, (HoldsAMap?.ValueType as MessageType)?.Descriptor);
     }
 
     /// <summary>The facts one change ends.</summary>

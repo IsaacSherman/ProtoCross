@@ -390,7 +390,25 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         using var methodScope = writer.Block(
             $"public static {returnType} {methodName}({string.Join(", ", parameters)})");
 
-        EmitStatements(writer, method.Body.Statements, new Body(placement, IrMutation.ChangesAMessage(method)));
+        EmitStatements(
+            writer,
+            method.Body.Statements,
+            new Body(placement, IrMutation.ChangesAMessage(method)) { Taken = NamesDeclaredIn(method) });
+    }
+
+    /// <summary>Every name <paramref name="method"/> declares as C# writes it: its receiver, parameters, locals and loop bindings.</summary>
+    private static HashSet<string> NamesDeclaredIn(IrMethod method)
+    {
+        var names = new HashSet<string>(StringComparer.Ordinal) { ReceiverName };
+        names.UnionWith(method.Parameters.Select(parameter => Escape(parameter.Name)));
+        names.UnionWith(IrWalk.DescendantsAndSelf(method.Body).Select(node => node switch
+        {
+            IrVariableDeclaration declaration => Escape(declaration.Local.Name),
+            IrForEach loop => Escape(loop.Loop.Name),
+            _ => null,
+        }).OfType<string>());
+
+        return names;
     }
 
     /// <summary>What every statement of one method's body is written with.</summary>
@@ -414,6 +432,25 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     /// </remarks>
     private sealed record Body(Placement Placement, bool CopiesIntoLocals)
     {
+        /// <summary>Every name the method declares, which a name generated code declares inside it must not be.</summary>
+        /// <remarks>
+        /// The whole method's, not only the names in scope where the declaration is: C# refuses a local
+        /// that would give another meaning to a name used anywhere in an enclosing scope (CS0136).
+        /// </remarks>
+        public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
+        public string Unused(string stem)
+        {
+            var name = stem;
+            for (var suffix = 1; Taken.Contains(name); suffix++)
+            {
+                name = stem + suffix.ToString(CultureInfo.InvariantCulture);
+            }
+
+            return name;
+        }
+
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
             => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Expression(value, Placement);
@@ -425,11 +462,12 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         /// <remarks>
         /// A call's result is a reference in C#, and may be part of the receiver the loop's body
         /// changes, where C++ keeps the result in a local of its own (spec 24.2). A loop over it would
-        /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. A
-        /// literal is held by nothing else, and is traversed as it is.
+        /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. So
+        /// is what a lookup gives, which is the message the map holds. A literal is held by nothing
+        /// else, and is traversed as it is.
         /// </remarks>
         public string Collection(IrForEach loop)
-            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is IrMethodCall owner
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrMapLookup) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
     }
@@ -477,15 +515,26 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 break;
 
             case IrFieldAssignment assignment:
-                writer.WriteLine(
-                    $"{WritableField(assignment.Target, placement)} = "
-                    + $"{StoredValue(assignment.Value, placement, ReceiverName)};");
+                EmitValueFirstWhereItReadsAnElement(
+                    writer,
+                    assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
+                    StoredValue(assignment.Value, placement, ReceiverName),
+                    body,
+                    value => $"{WritableField(assignment.Target, placement)} = {value};");
                 break;
 
             case IrAppend append:
                 writer.WriteLine(
                     $"{WritableCollection(append.Collection, placement)}."
                     + $"Add({StoredValue(append.Value, placement, ReceiverName)});");
+                break;
+
+            case IrElementAssignment assignment:
+                EmitElementAssignment(writer, assignment, body);
+                break;
+
+            case IrMapUpdate update:
+                EmitMapUpdate(writer, update, placement);
                 break;
 
             case IrReturn { Value: null }:
@@ -653,6 +702,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrEnumValue enumValue => EnumValue(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement, receiverName),
+        IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
+        IrMapContains contains
+            => $"{Expression(contains.Map, placement, receiverName)}.ContainsKey({Expression(contains.Key, placement, receiverName)})",
+        IrMapQuery query => EmitMapQuery(query, placement, receiverName),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 
@@ -689,6 +742,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrFieldAccess field => $"({WritableMessage(field.Receiver, placement)}."
             + $"{NameConventions.GetCSharpPropertyName(field.Field)} ??= "
             + $"new global::{NameConventions.GetCSharpTypeName(field.Field.MessageType)}())",
+        IrMapElement element => WritableElement(element, placement),
         _ => Expression(place, placement),
     };
 
@@ -809,6 +863,12 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
     private static string EmitBinary(IrBinary binary, Placement placement, string receiverName)
     {
+        // The binder gives two maps no operator but == and !=.
+        if (binary.Left.Type is MapType)
+        {
+            return EmitMapEquality(binary, placement, receiverName);
+        }
+
         var left = Expression(binary.Left, placement, receiverName);
         var right = Expression(binary.Right, placement, receiverName);
         var op = OperatorText(binary.Operator);
@@ -1139,6 +1199,8 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         EnumPlType enumType => "global::" + NameConventions.GetCSharpTypeName(enumType.Descriptor),
         RepeatedType repeated =>
             $"global::Google.Protobuf.Collections.RepeatedField<{TypeName(repeated.ElementType)}>",
+        MapType map =>
+            $"global::Google.Protobuf.Collections.MapField<{TypeName(map.KeyType)}, {TypeName(map.ValueType)}>",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unhandled type."),
     };
 

@@ -1,0 +1,827 @@
+// Conformance vectors for maps (spec 14.2).
+//
+// A map is read and changed by key, and never iterated. Neither target agrees with the other about a
+// missing key -- C#'s indexer throws, and C++'s operator[] puts a default there -- so every read says
+// what a missing key gives, and these are the places the two could go their own way:
+//
+// - a read of a key that is there, and of one that is not, with a fallback and with 'fail';
+// - a fallback that would end the program, which is never evaluated when the key is there;
+// - each kind of key and value protobuf allows;
+// - a store, a compound store, and each of the methods that change a map;
+// - a compound store through a missing key, which reads with its clause before the key is given a
+//   message;
+// - a merge from a map held inside one of the target's own elements;
+// - a message written through at a missing key, and a map inside such a message;
+// - a key written twice in a literal, which keeps the later value;
+// - equality, in whatever order the two maps hold their keys, and a NaN that equals nothing;
+// - a loop over a field of what a lookup gives, while the loop changes the map it came from;
+// - what a lookup gives, passed to a method that changes the map it came from.
+
+import proto "map_fields.proto";
+
+extend MapCase {
+    // ------- reading
+
+    fn price_of(sku: string) -> int64 {
+        return prices[sku] on_missing -1;
+    }
+
+    fn price_or_fail(sku: string) -> int64 {
+        return prices[sku] on_missing fail;
+    }
+
+    fn has_price(sku: string) -> bool {
+        return sku in prices;
+    }
+
+    // A literal key takes the map's key type, as a literal assigned to a local does.
+    fn has_name_three() -> bool {
+        return 3 in names;
+    }
+
+    fn name_of(n: int32) -> string {
+        return names[n] on_missing "none";
+    }
+
+    fn level_of(key: string) -> MapLevel {
+        return levels[key] on_missing MapLevel.MAP_LEVEL_UNSPECIFIED;
+    }
+
+    fn ratio_of(flag: bool) -> double {
+        return ratios[flag] on_missing 0.5;
+    }
+
+    fn flagged(id: uint64) -> bool {
+        return flags[id] on_missing false;
+    }
+
+    fn signed_count(key: int64) -> int32 {
+        return signed_counts[key] on_missing 0;
+    }
+
+    fn fixed_count(key: uint32) -> uint32 {
+        return fixed_counts[key] on_missing 0;
+    }
+
+    // A message value, read through what the lookup gives.
+    fn item_quantity(id: int64) -> int64 {
+        return (items[id] on_missing new MapItem { quantity: -1 }).quantity;
+    }
+
+    // The fallback is evaluated only when the key is missing, so a fallback that would end the
+    // program does not end it while the key is there.
+    fn lazy_fallback(sku: string, other: string) -> int64 {
+        return prices[sku] on_missing (prices[other] on_missing fail);
+    }
+
+    fn price_count() -> int32 {
+        return prices.count();
+    }
+
+    fn no_prices() -> bool {
+        return prices.is_empty();
+    }
+
+    fn same_prices() -> bool {
+        return prices == other_prices;
+    }
+
+    fn prices_differ() -> bool {
+        return prices != other_prices;
+    }
+
+    // A NaN equals nothing, itself included, so a map holding one equals nothing either.
+    fn ratios_equal_themselves() -> bool {
+        return ratios == ratios;
+    }
+
+    fn other_count(other: MapCase) -> int32 {
+        return other.prices.count();
+    }
+
+    // ------- literals
+
+    // A key written twice keeps the later value.
+    fn built_twice() -> int64 {
+        var built = new MapCase {
+            prices: [
+                { key: "a", value: 1 },
+                { key: "a", value: 2 },
+                { key: "b", value: 3 },
+            ],
+        };
+
+        return (built.prices["a"] on_missing 0) * 10 + built.prices.count() as int64;
+    }
+
+    fn built_item() -> int64 {
+        var built = new MapCase {
+            items: [{ key: 7, value: new MapItem { quantity: 4 } }],
+        };
+
+        return (built.items[7] on_missing fail).quantity;
+    }
+
+    // ------- changing
+
+    mut fn stored(sku: string, price: int64) -> int64 {
+        prices[sku] = price;
+        return prices[sku] on_missing -1;
+    }
+
+    // The value is evaluated before the element is stored, so it sees the map as it was.
+    mut fn stored_count(sku: string) -> int64 {
+        prices[sku] = prices.count() as int64;
+        return prices[sku] on_missing -1;
+    }
+
+    mut fn tally(word: string) -> int64 {
+        for each in words {
+            prices[each] on_missing 0 += 1;
+        }
+
+        return prices[word] on_missing 0;
+    }
+
+    mut fn removed(sku: string) -> bool {
+        prices.remove(sku);
+        return sku in prices;
+    }
+
+    mut fn cleared() -> int32 {
+        prices.clear();
+        return prices.count();
+    }
+
+    mut fn added(sku: string, price: int64) -> int64 {
+        prices.add_if_absent(sku, price);
+        return prices[sku] on_missing -1;
+    }
+
+    mut fn replaced(sku: string, price: int64) -> int64 {
+        prices.replace_if_present(sku, price);
+        return prices[sku] on_missing -1;
+    }
+
+    // The other map's value wins where both hold a key.
+    mut fn merged(sku: string) -> int64 {
+        prices.merge(other_prices);
+        return (prices[sku] on_missing -1) * 10 + prices.count() as int64;
+    }
+
+    // Merging a map into itself changes nothing.
+    mut fn merged_with_itself() -> int32 {
+        prices.merge(prices);
+        return prices.count();
+    }
+
+    // A message written through at a missing key is put there first.
+    mut fn labelled(id: int64, label: string) -> string {
+        items[id].label = label;
+        return (items[id] on_missing fail).label;
+    }
+
+    mut fn marked(id: int64) -> int64 {
+        items[id].marks.append(7);
+        items[id].marks.append(8);
+
+        var item = items[id] on_missing fail;
+        var total: int64 = 0;
+        for mark in item.marks {
+            total += mark;
+        }
+
+        return total;
+    }
+
+    // A map inside a message that is itself an element.
+    mut fn tagged(id: int64, tag: string) -> int64 {
+        items[id].tags[tag] = 3;
+        return (items[id] on_missing fail).tags[tag] on_missing -1;
+    }
+
+    // A map reached through a message field, which writing sets.
+    mut fn held(key: string) -> int64 {
+        holder.inner[key] = 9;
+
+        if has holder {
+            return holder.inner[key] on_missing -1;
+        }
+
+        return -2;
+    }
+
+    // A compound store through a message the lookup gives, or the fallback where the key is missing.
+    // The read comes first, so a missing key starts from the fallback, not from the message the store
+    // then puts there.
+    mut fn bumped(id: int64) -> int64 {
+        (items[id] on_missing new MapItem { quantity: 10 }).quantity += 5;
+        return (items[id] on_missing fail).quantity;
+    }
+
+    mut fn bumped_or_fail(id: int64) -> int64 {
+        (items[id] on_missing fail).quantity += 1;
+        return (items[id] on_missing fail).quantity;
+    }
+
+    // The source is inside the element at key 1, which the merge replaces while it reads the source.
+    mut fn merged_from_inside() -> int64 {
+        var held = items;
+        held.merge((held[1] on_missing fail).children);
+        return (held[2] on_missing fail).quantity;
+    }
+
+    // A local holds a map of its own, so changing it leaves the field alone.
+    mut fn copy_is_own(sku: string) -> int64 {
+        var copy = prices;
+        copy[sku] = 100;
+        return prices[sku] on_missing 0;
+    }
+
+    // The loop traverses what the lookup gave, and the body appends to the message the map holds, so
+    // the loop must not see its own appends.
+    mut fn marks_then_doubled(id: int64) -> int64 {
+        var total: int64 = 0;
+
+        for mark in (items[id] on_missing new MapItem {}).marks {
+            total += mark;
+            items[id].marks.append(mark);
+        }
+
+        return total * 10 + (items[id] on_missing fail).count_marks();
+    }
+
+    // A parameter is read-only, and what a lookup gives is a value, so an argument read from the map
+    // keeps its value while the method changes what the map holds at that key.
+    mut fn quantity_after_change(item: MapItem) -> int64 {
+        items[1].quantity = 20;
+        return item.quantity;
+    }
+
+    mut fn passed_item() -> int64 {
+        return quantity_after_change(items[1] on_missing fail);
+    }
+
+    mut fn name_after_change(name: string) -> string {
+        names[1] = "after";
+        return name;
+    }
+
+    mut fn passed_name() -> string {
+        return name_after_change(names[1] on_missing fail);
+    }
+
+    mut fn label_after_change(label: string) -> string {
+        items[1].label = "after";
+        return label;
+    }
+
+    mut fn passed_label() -> string {
+        return label_after_change((items[1] on_missing fail).label);
+    }
+}
+
+extend MapItem {
+    fn count_marks() -> int64 {
+        var count: int64 = 0;
+        for mark in marks {
+            count += 1;
+        }
+
+        return count;
+    }
+}
+
+// ------- reading
+
+test MapCase.price_of "a key that is there gives its value" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }, { key: "pear", value: 5 }],
+    }
+
+    arg sku = "pear";
+    expect return 5;
+}
+
+test MapCase.price_of "a missing key gives the fallback" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "plum";
+    expect return -1;
+}
+
+test MapCase.price_or_fail "a key that is there gives its value under fail" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    expect return 3;
+}
+
+test MapCase.price_or_fail "a missing key under 'on_missing fail' terminates" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "plum";
+    expect fail;
+}
+
+test MapCase.has_price "in finds a key that is there" {
+    receiver {
+        prices: [{ key: "apple", value: 0 }],
+    }
+
+    arg sku = "apple";
+    expect return true;
+}
+
+test MapCase.has_price "in does not find a missing key" {
+    receiver {
+        prices: [{ key: "apple", value: 0 }],
+    }
+
+    arg sku = "plum";
+    expect return false;
+}
+
+test MapCase.has_name_three "a literal key of an int32 map" {
+    receiver {
+        names: [{ key: 3, value: "three" }],
+    }
+
+    expect return true;
+}
+
+test MapCase.name_of "a string value" {
+    receiver {
+        names: [{ key: -2, value: "minus two" }],
+    }
+
+    arg n = -2;
+    expect return "minus two";
+}
+
+test MapCase.name_of "a missing key of a string map" {
+    receiver {
+        small: 0,
+    }
+
+    arg n = 4;
+    expect return "none";
+}
+
+test MapCase.level_of "an enum value" {
+    receiver {
+        levels: [{ key: "x", value: MapLevel.MAP_LEVEL_HIGH }],
+    }
+
+    arg key = "x";
+    expect return MapLevel.MAP_LEVEL_HIGH;
+}
+
+test MapCase.ratio_of "a bool key and a double value" {
+    receiver {
+        ratios: [{ key: false, value: 0.25 }, { key: true, value: 2.5 }],
+    }
+
+    arg flag = true;
+    expect return 2.5;
+}
+
+test MapCase.flagged "a uint64 key at its largest" {
+    receiver {
+        flags: [{ key: 18446744073709551615, value: true }],
+    }
+
+    arg id = 18446744073709551615;
+    expect return true;
+}
+
+test MapCase.signed_count "a negative sint64 key" {
+    receiver {
+        signed_counts: [{ key: -5, value: 2 }],
+    }
+
+    arg key = -5;
+    expect return 2;
+}
+
+test MapCase.fixed_count "a fixed32 key" {
+    receiver {
+        fixed_counts: [{ key: 4294967295, value: 6 }],
+    }
+
+    arg key = 4294967295;
+    expect return 6;
+}
+
+test MapCase.item_quantity "a message value" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { quantity: 12 } }],
+    }
+
+    arg id = 1;
+    expect return 12;
+}
+
+test MapCase.item_quantity "a missing message value gives the fallback message" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 1;
+    expect return -1;
+}
+
+test MapCase.lazy_fallback "a fallback that would fail is not evaluated while the key is there" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    arg other = "plum";
+    expect return 3;
+}
+
+test MapCase.lazy_fallback "a fallback that fails is evaluated when the key is missing" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "pear";
+    arg other = "plum";
+    expect fail;
+}
+
+test MapCase.price_count "count is the number of keys" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 1 }, { key: "c", value: 1 }],
+    }
+
+    expect return 3;
+}
+
+test MapCase.no_prices "an unset map is empty" {
+    receiver {
+        small: 0,
+    }
+
+    expect return true;
+}
+
+test MapCase.no_prices "a map with a key is not empty" {
+    receiver {
+        prices: [{ key: "a", value: 0 }],
+    }
+
+    expect return false;
+}
+
+test MapCase.same_prices "two maps holding the same entries in another order are equal" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+        other_prices: [{ key: "b", value: 2 }, { key: "a", value: 1 }],
+    }
+
+    expect return true;
+}
+
+test MapCase.same_prices "one value apart is not equal" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+        other_prices: [{ key: "a", value: 1 }, { key: "b", value: 3 }],
+    }
+
+    expect return false;
+}
+
+test MapCase.same_prices "one key more is not equal" {
+    receiver {
+        prices: [{ key: "a", value: 1 }],
+        other_prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+    }
+
+    expect return false;
+}
+
+test MapCase.prices_differ "!= is the opposite of ==" {
+    receiver {
+        prices: [{ key: "a", value: 1 }],
+        other_prices: [{ key: "a", value: 1 }],
+    }
+
+    expect return false;
+}
+
+test MapCase.ratios_equal_themselves "a map holding a NaN does not equal itself" {
+    receiver {
+        ratios: [{ key: true, value: __NAN }],
+    }
+
+    expect return false;
+}
+
+test MapCase.ratios_equal_themselves "a map holding no NaN equals itself" {
+    receiver {
+        ratios: [{ key: true, value: 1.5 }],
+    }
+
+    expect return true;
+}
+
+test MapCase.other_count "a map in a message passed as an argument" {
+    receiver {
+        small: 0,
+    }
+
+    arg other = new MapCase { prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }] };
+    expect return 2;
+}
+
+// ------- literals
+
+test MapCase.built_twice "a key written twice in a literal keeps the later value" {
+    receiver {
+        small: 0,
+    }
+
+    expect return 22;
+}
+
+test MapCase.built_item "a message value in a literal" {
+    receiver {
+        small: 0,
+    }
+
+    expect return 4;
+}
+
+// ------- changing
+
+test MapCase.stored "a store adds a missing key" {
+    receiver {
+        small: 0,
+    }
+
+    arg sku = "apple";
+    arg price = 9;
+    expect return 9;
+}
+
+test MapCase.stored "a store replaces a key that is there" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    arg price = 9;
+    expect return 9;
+}
+
+test MapCase.stored_count "the value of a store sees the map as it was" {
+    receiver {
+        prices: [{ key: "a", value: 1 }],
+    }
+
+    arg sku = "b";
+    expect return 1;
+}
+
+test MapCase.tally "a compound store counts each word" {
+    receiver {
+        words: ["a", "b", "a", "c", "a"],
+    }
+
+    arg word = "a";
+    expect return 3;
+}
+
+test MapCase.removed "remove takes the key away" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    expect return false;
+}
+
+test MapCase.removed "removing a missing key does nothing" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "plum";
+    expect return false;
+}
+
+test MapCase.cleared "clear leaves no key" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+    }
+
+    expect return 0;
+}
+
+test MapCase.added "add_if_absent adds a missing key" {
+    receiver {
+        small: 0,
+    }
+
+    arg sku = "apple";
+    arg price = 4;
+    expect return 4;
+}
+
+test MapCase.added "add_if_absent leaves a key that is there" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    arg price = 4;
+    expect return 3;
+}
+
+test MapCase.replaced "replace_if_present replaces a key that is there" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    arg price = 4;
+    expect return 4;
+}
+
+test MapCase.replaced "replace_if_present adds nothing" {
+    receiver {
+        small: 0,
+    }
+
+    arg sku = "apple";
+    arg price = 4;
+    expect return -1;
+}
+
+test MapCase.merged "the other map's value wins where both hold a key" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+        other_prices: [{ key: "b", value: 7 }, { key: "c", value: 8 }],
+    }
+
+    arg sku = "b";
+    expect return 73;
+}
+
+test MapCase.merged_with_itself "merging a map into itself changes nothing" {
+    receiver {
+        prices: [{ key: "a", value: 1 }, { key: "b", value: 2 }],
+    }
+
+    expect return 2;
+}
+
+test MapCase.labelled "writing through a missing key puts a message there" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 5;
+    arg label = "new";
+    expect return "new";
+}
+
+test MapCase.labelled "writing through a key that is there changes its message" {
+    receiver {
+        items: [{ key: 5, value: new MapItem { label: "old", quantity: 2 } }],
+    }
+
+    arg id = 5;
+    arg label = "new";
+    expect return "new";
+}
+
+test MapCase.marked "appending through an element" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 1;
+    expect return 15;
+}
+
+test MapCase.tagged "a map inside an element" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 2;
+    arg tag = "t";
+    expect return 3;
+}
+
+test MapCase.held "a map reached through a message field" {
+    receiver {
+        small: 0,
+    }
+
+    arg key = "k";
+    expect return 9;
+}
+
+test MapCase.bumped "a compound store through a missing key starts from the fallback" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 3;
+    expect return 15;
+}
+
+test MapCase.bumped "a compound store through a key that is there" {
+    receiver {
+        items: [{ key: 3, value: new MapItem { quantity: 1 } }],
+    }
+
+    arg id = 3;
+    expect return 6;
+}
+
+test MapCase.bumped_or_fail "a compound store through a missing key under fail terminates" {
+    receiver {
+        small: 0,
+    }
+
+    arg id = 3;
+    expect fail;
+}
+
+test MapCase.bumped_or_fail "a compound store under fail through a key that is there" {
+    receiver {
+        items: [{ key: 3, value: new MapItem { quantity: 1 } }],
+    }
+
+    arg id = 3;
+    expect return 2;
+}
+
+test MapCase.merged_from_inside "a merge from inside an element it replaces reads the source whole" {
+    receiver {
+        items: [{
+            key: 1,
+            value: new MapItem {
+                children: [
+                    { key: 1, value: new MapItem { quantity: 20 } },
+                    { key: 2, value: new MapItem { quantity: 30 } },
+                ],
+            },
+        }],
+    }
+
+    expect return 30;
+}
+
+test MapCase.copy_is_own "a local holds a map of its own" {
+    receiver {
+        prices: [{ key: "apple", value: 3 }],
+    }
+
+    arg sku = "apple";
+    expect return 3;
+}
+
+test MapCase.marks_then_doubled "a loop over what a lookup gave does not see its own appends" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { marks: [1, 2] } }],
+    }
+
+    arg id = 1;
+    expect return 34;
+}
+
+test MapCase.passed_item "a message a lookup gave keeps its value while the map changes" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { quantity: 10 } }],
+    }
+
+    expect return 10;
+}
+
+test MapCase.passed_name "a string a lookup gave keeps its value while the map changes" {
+    receiver {
+        names: [{ key: 1, value: "before" }],
+    }
+
+    expect return "before";
+}
+
+test MapCase.passed_label "a field read through a lookup keeps its value while the map changes" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { label: "before" } }],
+    }
+
+    expect return "before";
+}

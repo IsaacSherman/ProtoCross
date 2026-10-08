@@ -88,6 +88,23 @@ public sealed record RepeatedType(PlType ElementType) : PlType
     public override string DisplayName => $"repeated {ElementType.DisplayName}";
 }
 
+/// <summary>A protobuf map field: values looked up by key, in no order (spec 14.2).</summary>
+/// <remarks>
+/// <para>
+/// A type of its own rather than a <see cref="RepeatedType"/> of entries, which is how protobuf
+/// encodes one. Every operation the language gives a map is by key, and none gives an order, so a
+/// value that could be iterated as a repetition would be the one thing about it the language refuses.
+/// </para>
+/// <para>
+/// Spelled as protobuf spells it, <c>map&lt;string, int64&gt;</c>, with each side named as the language
+/// names its type, so a key declared <c>sint64</c> reads as the <c>int64</c> it is everywhere else.
+/// </para>
+/// </remarks>
+public sealed record MapType(PlType KeyType, PlType ValueType) : PlType
+{
+    public override string DisplayName => $"map<{KeyType.DisplayName}, {ValueType.DisplayName}>";
+}
+
 /// <summary>
 /// Method return marker only. Spec 8.1 is explicit that void is not a protobuf value type and
 /// cannot be used for fields, variables, or parameters.
@@ -132,10 +149,37 @@ public static class TypeFactory
         => ScalarsBySpelling.TryGetValue(spelling, out var type) ? type : null;
 
     /// <summary>Maps a protobuf field to its ProtoCross type, including repeated wrapping.</summary>
+    /// <remarks>
+    /// A map is asked first, because protobuf declares one as a repeated field of entries: answered
+    /// as repeated, it would be a list of messages nobody declared.
+    /// </remarks>
     public static PlType FromField(FieldDescriptor field)
     {
+        ArgumentNullException.ThrowIfNull(field);
+
+        if (field.IsMap)
+        {
+            return new MapType(FromFieldValue(MapKeyOf(field)), FromFieldValue(MapValueOf(field)));
+        }
+
         var element = FromFieldValue(field);
         return field.IsRepeated ? new RepeatedType(element) : element;
+    }
+
+    /// <summary>The key field of a map field's entry, which protobuf numbers 1.</summary>
+    public static FieldDescriptor MapKeyOf(FieldDescriptor map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
+        return map.MessageType.FindFieldByNumber(1);
+    }
+
+    /// <summary>The value field of a map field's entry, which protobuf numbers 2.</summary>
+    public static FieldDescriptor MapValueOf(FieldDescriptor map)
+    {
+        ArgumentNullException.ThrowIfNull(map);
+
+        return map.MessageType.FindFieldByNumber(2);
     }
 
     /// <summary>The type of a single value of <paramref name="field"/>, ignoring repetition.</summary>

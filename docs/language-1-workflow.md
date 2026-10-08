@@ -4,7 +4,7 @@
 for 1.0. It follows [the #47 process](epic-47-workflow.md) almost step for step. This file records
 only what is different, so the two cannot drift apart: where it says nothing, do what that one says.
 
-Read it together with [ARCHITECTURE.md](../ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
+Read it together with [ARCHITECTURE.md](../Architecture/ARCHITECTURE.md) and [CLAUDE.md](../CLAUDE.md).
 
 ## What is different
 

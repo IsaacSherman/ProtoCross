@@ -108,6 +108,100 @@ because the call may have returned part of the very receiver being changed. For 
 a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
 result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
 
+**A map is protoc's `MapField`, and what it does not say as the language does goes through
+`ProtoCrossMaps` in the support file** ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). A lookup with a fallback is
+`ProtoCrossMaps.FindValue(map, key) ?? fallback`, or `FindReference` for a value that is not a C# value
+type: each gives the value or null, so `??` evaluates the fallback only where the key is missing,
+without a delegate or a local the call site would have to name. `on_missing fail` is
+`FoundOrFail(map, key, name)`, which writes the field's protobuf name and ends the program as
+`on_zero fail` does. Whether a key is there is `ContainsKey`, `count()` is `Count`, and a store is
+`map[key] = value`, which C# evaluates in the language's order. A message written through at a key is
+`ProtoCrossMaps.Entry(map, key)`, which puts a new one there first where the key is missing. A
+compound store written through an element evaluates its value into a local first, since C# reaches an
+assignment's place before its value, and the read must not find the message reaching put there.
+`add_if_absent`, `replace_if_present` and `merge` are helpers of those names, and a merge of messages
+copies each one. Two maps are compared by `AreEqual`, with overloads for `double` and `float` that
+compare by `==`, because their `Equals`, which `MapField.Equals` uses, calls two NaNs equal. A literal's
+entries are index initializers, `Prices = { ["a"] = 1L, }`, stored in the order written.
+
+**Generated C# suspends CS0162, C#'s warning about unreachable code, around one line only: the
+`break;` that ends a switch arm C# may judge unreachable.** Each arm of a switch is a section of C#'s own `switch` ([15.3](./§15-Control%20Flow.md#153-switch)), and C# refuses
+a section whose end can be reached (CS0163), so a section ends in `break;` wherever its arm can reach
+its end. Whether it can is asked of the IR, by the rule that decides whether a method needs a return
+([15.1](./§15-Control%20Flow.md#151-conditional-statements)), and that rule does not look at what a condition's value is. C# does. It works out an
+expression built from constants before the method runs, and decides what can be reached from the
+answer. So in
+
+```protocross
+case 1 {
+    if true {
+        return 1;
+    }
+}
+```
+
+ProtoCross finds that the arm can reach its end, since an `if` with no `else` may not be taken, and C#
+finds that it cannot, since `if (true)` always is. The `break;` ProtoCross needs there is one C# warns
+will never run (CS0162), and a consumer building with warnings as errors, as the conformance harness
+does, cannot build the output. So wherever an arm holds a branch or a loop whose condition is built
+from literals and enum values alone, at any depth, that `break;` is written with the warning
+suspended around it, and around nothing else:
+
+```csharp
+case 1L:
+{
+    if (true)
+    {
+        return 1L;
+    }
+    #pragma warning disable CS0162 // A constant condition above may end the arm first.
+    break;
+    #pragma warning restore CS0162
+}
+```
+
+Every other arm ends in a plain `break;`, or in nothing where ProtoCross already finds its end
+unreachable. C++ never needs the guard, because it does not warn about a `break` it cannot reach.
+
+**The `break;` is guarded rather than left out, because leaving it out is right only where C# folds
+the condition and the fold ends the arm, and the IR cannot say which arms those are.** A condition
+built from constants is not one C# always works out, nor one whose answer always ends the arm:
+
+- `if 1 == 2 { return 1; }` is folded, to false. The branch is never taken, and the arm reaches its
+  end.
+- `if 2 * 3 == 6 { return 1; }` is folded under the default wrapping policy, where C# writes
+  `unchecked(2L * 3L)`, and is not under the checked or saturating policy, where it writes a call to
+  the runtime's `CheckedMultiply` or `SaturatingMultiply`. One source ends its arm under one
+  `protocross.config.xml` and reaches its end under another ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
+- `if true { if large > 1 { return 1; } }` is folded, and the arm still reaches its end through the
+  inner `if`.
+
+In each of these, a section C# can leave with no `break;` is CS0163, which is an error in every
+consumer's build that no setting turns off. A `break;` C# cannot reach is a warning, and the guard
+suspends it for one line. With the guard, the output is right whichever way C# decides: a `break;`
+C# can reach is there and leaves the switch, and one it cannot reach is never run and never
+reported. The backend never has to predict C#. Predicting it would mean reproducing C#'s constant
+folding and its reachability rules exactly, and consulting the overflow policy, which a backend
+never does ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)). Any mistake in that prediction would be an error rather than a warning.
+
+Both halves of the guard carry weight, so neither is tidied away. Without the `#pragma`, a consumer
+building with warnings as errors cannot build a method whose arm holds such a condition. Without the
+`break;`, nobody can build one whose arm C# can leave. The `switch_statement` conformance vector runs
+arms ended by a constant condition in both backends, under warnings as errors
+([25.2](./§25-Testing%20and%20Conformance%20Vectors.md#252-conformance-vector-format)).
+
+Three alternatives were rejected:
+
+- **Teaching ProtoCross's reachability to fold constants.** It would change which methods need a
+  return, which is the language rather than a backend's concern. Anywhere it folded something C# does
+  not, it would also leave out a `break;` that C# requires.
+- **Suspending CS0162 for the whole file**, as the header suspends CS1718 for a comparison written
+  `x != x`. That would also hide what C# reports about code the
+  author wrote and a constant condition makes unreachable, and it would change the header of every
+  generated file.
+- **Refusing a constant condition inside an arm.** That would turn one target's warning into a
+  language rule.
+
 Questions:
 
 - Are generated protobuf C# classes safe to extend directly?
@@ -252,6 +346,25 @@ value.
   its literal reads.
 - A literal that sets nothing is `T()`.
 - A test's receiver fixture is written by the same writer, into the local `receiver`.
+
+**A map is protoc's `Map`, read through `protocross_runtime.h` and written through `mutable_x()`**
+([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). `operator[]` puts a default at a missing key, which the language means only where an element
+is written to or through, so no read uses it. A lookup with a fallback is
+`protocross_runtime::value_or(map, key, [&] { return fallback; })`, which calls the lambda only where
+the key is missing, and gives the value by value, since the fallback is a temporary. `on_missing fail`
+is `found_or_fail`, which gives the value by value too. What a lookup gives is a value, and a
+reference into the map passed to a `mut fn` would change under it as the method changed the map, so
+a lookup is a temporary of its own wherever it is passed. Whether a key is there is `contains`,
+`count()` is `size()` as an `int32_t`, and a store is `(*self.mutable_x())[key] = value`. C++17
+evaluates the value before that element, so a value that asks about the map finds it as it was. Where
+the map is reached through a message field or an element, which reaching sets, it is bound by
+reference in a block of its own first, as a message field written through links is: the right side of
+`=` is evaluated before the left, and a call's arguments in no order, so neither would set the links
+first. A compound store written through an element evaluates its value into a local before either,
+because the read must not find the message reaching puts at a missing key. `merge` takes its source
+by value, since the source may be a map inside one of the target's own elements, which the merge
+replaces while it reads. The helpers the support header adds are templates over the map, so it
+still includes no protobuf header.
 
 **A loop over a field of a temporary message keeps that message alive.** In
 `for line in with_lines().lines`, the accessor returns a reference into a message that C++20
