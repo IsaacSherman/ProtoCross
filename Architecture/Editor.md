@@ -10,7 +10,7 @@
 | Completion: context capture and imports | [CompletionProvider][comp]: `Read`, `Schemas` | [Import completion][imp-t] |
 | Completion: scope, dotted members, presence | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members` | [Schema completion][comp-t] |
 | Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted` | [Type edits][type-t] |
-| Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t] |
+| Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t], [Refused parts][refused-t] |
 | Completion: switch keywords | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t] |
 | Hover and go-to-definition | [HoverProvider][hover], [DefinitionProvider][def]: `AnswerAsync` | [Hover][hover-t], [Definition][def-t] |
 | References, highlights, signature help | [Host][host]: `FindReferences`, `AtPosition` | [References][refs-t], [Signatures][sig-t] |
@@ -45,6 +45,7 @@
 [type-t]: ../tests/ProtoCross.Tests/SchemaCompletionTests.TypeEditReview.cs
 [lit-t]: ../tests/ProtoCross.Tests/SchemaCompletionTests.Literals.cs
 [entry-t]: ../tests/ProtoCross.Tests/MapEntryCompletionReviewTests.cs
+[refused-t]: ../tests/ProtoCross.Tests/RefusedPartTests.Completion.cs
 [sw-t]: ../tests/ProtoCross.Tests/SchemaCompletionTests.Switch.cs
 [hover-t]: ../tests/ProtoCross.Tests/HoverTests.cs
 [def-t]: ../tests/ProtoCross.Tests/DefinitionTests.cs

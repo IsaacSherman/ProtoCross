@@ -150,7 +150,35 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
 /// the two an editor meant.
 /// </para>
 /// </remarks>
-public abstract record IrNode(SourceSpan Span);
+public abstract record IrNode(SourceSpan Span)
+{
+    /// <summary>
+    /// What was written in this construct and bound, but given no place in it: the value of a field
+    /// the binder refused, an element where a map's entry goes, or the parts of a construct refused
+    /// whole, which this node then stands for as an error.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Kept for the editor, which asks about what is written while it is still wrong. A value nothing
+    /// held was bound for the names and mistakes in it and then dropped, and a literal written there
+    /// was not in the IR to ask: completion inside it found the literal around it and offered that
+    /// one's fields (#175). Spec 22.2 says a failed bind leaves an error rather than a hole, and
+    /// <see cref="IrUncallableInvocation"/> keeps its arguments for the same reason.
+    /// </para>
+    /// <para>
+    /// One list on every node, rather than a list on each record that can refuse something, because
+    /// the rule is one rule. A literal, an entry, a map's entries and a map's element each refuse a
+    /// part, and each list would have needed its own arm in the walk and in the copy. The next
+    /// construct to refuse a part would have needed more. The walk merges these with what the node
+    /// holds, in source order.
+    /// </para>
+    /// <para>
+    /// No backend reads it. A part is refused only with a diagnostic, and a module with one is never
+    /// emitted.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<IrExpression> Refused { get; init; } = [];
+}
 
 /// <summary>
 /// Identifies a method without carrying its body, so a call can reference a method declared later
