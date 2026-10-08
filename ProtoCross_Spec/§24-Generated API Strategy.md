@@ -352,7 +352,9 @@ value.
 is written to or through, so no read uses it. A lookup with a fallback is
 `protocross_runtime::value_or(map, key, [&] { return fallback; })`, which calls the lambda only where
 the key is missing, and gives the value by value, since the fallback is a temporary. `on_missing fail`
-is `found_or_fail`, which gives a reference into the map. Whether a key is there is `contains`,
+is `found_or_fail`, which gives the value by value too. What a lookup gives is a value, and a
+reference into the map passed to a `mut fn` would change under it as the method changed the map, so
+a lookup is a temporary of its own wherever it is passed. Whether a key is there is `contains`,
 `count()` is `size()` as an `int32_t`, and a store is `(*self.mutable_x())[key] = value`. C++17
 evaluates the value before that element, so a value that asks about the map finds it as it was. Where
 the map is reached through a message field or an element, which reaching sets, it is bound by

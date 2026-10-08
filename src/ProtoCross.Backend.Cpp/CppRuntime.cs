@@ -737,9 +737,18 @@ public static class CppRuntime
     /// </para>
     /// <para>
     /// A lookup with a fallback takes the fallback as something to call, which the call site writes as
-    /// a lambda, so it is evaluated only when the key is missing. It returns the value by value: the
-    /// fallback is a temporary, and a reference to it would outlive it. A lookup that fails returns a
-    /// reference into the map, which outlives the expression it is read in.
+    /// a lambda, so it is evaluated only when the key is missing.
+    /// </para>
+    /// <para>
+    /// Both lookups return the value by value, because what a lookup gives is a value (spec 14.2). A
+    /// fallback is a temporary, and a reference to it would outlive it. A lookup that fails could give a
+    /// reference into the map instead and save a copy, and review found that wrong. A lookup passed to
+    /// a <c>mut fn</c> is then the map's own storage, and the method changing the map changes its
+    /// read-only argument: <c>observe(items[1] on_missing fail)</c> sees a store to <c>items[1]</c> the
+    /// method makes after it was called. A call passes an argument that is not a place as written,
+    /// because it is a temporary of its own (spec 18), and returning by value is what keeps a lookup
+    /// one. A copy at that call alone would have kept the reference everywhere else, and left every
+    /// future place a lookup can be held across a change to ask the question again.
     /// </para>
     /// <para>
     /// Equality compares each value with its own <c>==</c>, as the C# runtime does, so a NaN equals
@@ -781,7 +790,7 @@ public static class CppRuntime
 
         writer.WriteLine();
         writer.WriteLine("template <typename Map, typename Key>");
-        using (writer.Block("inline const typename Map::mapped_type& found_or_fail(const Map& map, const Key& key, const char* map_name)"))
+        using (writer.Block("inline typename Map::mapped_type found_or_fail(const Map& map, const Key& key, const char* map_name)"))
         {
             writer.WriteLine("auto found = map.find(key);");
             using (writer.Block("if (found == map.end())"))

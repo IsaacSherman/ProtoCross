@@ -14,7 +14,8 @@
 // - a message written through at a missing key, and a map inside such a message;
 // - a key written twice in a literal, which keeps the later value;
 // - equality, in whatever order the two maps hold their keys, and a NaN that equals nothing;
-// - a loop over a field of what a lookup gives, while the loop changes the map it came from.
+// - a loop over a field of what a lookup gives, while the loop changes the map it came from;
+// - what a lookup gives, passed to a method that changes the map it came from.
 
 import proto "map_fields.proto";
 
@@ -248,6 +249,35 @@ extend MapCase {
         }
 
         return total * 10 + (items[id] on_missing fail).count_marks();
+    }
+
+    // A parameter is read-only, and what a lookup gives is a value, so an argument read from the map
+    // keeps its value while the method changes what the map holds at that key.
+    mut fn quantity_after_change(item: MapItem) -> int64 {
+        items[1].quantity = 20;
+        return item.quantity;
+    }
+
+    mut fn passed_item() -> int64 {
+        return quantity_after_change(items[1] on_missing fail);
+    }
+
+    mut fn name_after_change(name: string) -> string {
+        names[1] = "after";
+        return name;
+    }
+
+    mut fn passed_name() -> string {
+        return name_after_change(names[1] on_missing fail);
+    }
+
+    mut fn label_after_change(label: string) -> string {
+        items[1].label = "after";
+        return label;
+    }
+
+    mut fn passed_label() -> string {
+        return label_after_change((items[1] on_missing fail).label);
     }
 }
 
@@ -770,4 +800,28 @@ test MapCase.marks_then_doubled "a loop over what a lookup gave does not see its
 
     arg id = 1;
     expect return 34;
+}
+
+test MapCase.passed_item "a message a lookup gave keeps its value while the map changes" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { quantity: 10 } }],
+    }
+
+    expect return 10;
+}
+
+test MapCase.passed_name "a string a lookup gave keeps its value while the map changes" {
+    receiver {
+        names: [{ key: 1, value: "before" }],
+    }
+
+    expect return "before";
+}
+
+test MapCase.passed_label "a field read through a lookup keeps its value while the map changes" {
+    receiver {
+        items: [{ key: 1, value: new MapItem { label: "before" } }],
+    }
+
+    expect return "before";
 }

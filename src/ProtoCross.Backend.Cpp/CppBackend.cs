@@ -1015,7 +1015,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// A <c>mut fn</c> takes its receiver as <c>T&amp;</c>, so it is handed the message through the
     /// mutable accessors (<see cref="MutableMessage"/>). Its arguments are passed as every other call's
     /// are: a parameter is read-only whatever method it belongs to, and an argument that is not a place
-    /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>).
+    /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>). A map's lookup is
+    /// one too, since the runtime gives what it finds by value rather than as a reference into the map.
     /// </remarks>
     private static string EmitCall(IrMethodCall call, Placement placement)
     {
