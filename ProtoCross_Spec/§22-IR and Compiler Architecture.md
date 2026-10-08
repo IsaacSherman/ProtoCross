@@ -127,6 +127,8 @@ The IR preserves:
   place, which is never read, is a node apart from a lookup: the target of a store, or a link of a
   chain of places, written through. A store to one, and the change each of a map's methods makes, are
   statements, and a literal's entries are a node holding them in the order written ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+  An entry missing its key or its value is refused and still kept, with an error in place of each part
+  it lacks, so what was written in it is there to ask about while it is being typed.
   A compound store's place is a copy of what it reads, node for node, with each lookup made the
   element it looked up, so no node stands in two places.
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the

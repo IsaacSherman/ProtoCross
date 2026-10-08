@@ -552,7 +552,7 @@ public sealed partial class Binder
         return bound;
     }
 
-    /// <summary>One entry of a map field's list, or null for one that is refused.</summary>
+    /// <summary>One entry of a map field's list, or null for an element that is not one.</summary>
     /// <remarks>
     /// <para>
     /// An entry is the message protobuf models it as, with the key as its field 1 and the value as its
@@ -560,6 +560,14 @@ public sealed partial class Binder
     /// twice, and a value of the wrong type are refused under the codes that refuse them in a literal.
     /// Both have to be written. A key written in two entries holds the later one's value, as protobuf's
     /// parser makes it.
+    /// </para>
+    /// <para>
+    /// An entry missing its key or its value is refused and still kept, with an error standing in for
+    /// what it lacks, as a call that could not be made keeps its arguments. What was written in it is
+    /// what an editor asks about while the entry is being typed, and the value is often a literal whose
+    /// fields are being chosen. Dropped, the literal was not there to ask, and completion inside it
+    /// answered with the entry's own fields instead (spec 22.2: a failed bind leaves an error, not a
+    /// hole). The error spans the entry, which is the only place what is missing could be said to be.
     /// </para>
     /// <para>
     /// An element that is not an entry is refused, and still bound for the names written in it.
@@ -603,6 +611,10 @@ public sealed partial class Binder
                 "Write both: '{ key: k, value: v }' (spec 13.2).");
         }
 
-        return null;
+        // One error for each part missing, since no node stands in two places.
+        return new IrMapEntry(
+            key ?? new IrLiteral(null, ErrorType.Instance, entry.Span),
+            value ?? new IrLiteral(null, ErrorType.Instance, entry.Span),
+            entry.Span);
     }
 }

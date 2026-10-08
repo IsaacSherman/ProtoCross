@@ -244,6 +244,33 @@ public partial class MapTests
         Assert.EndsWith(missing + ".", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A refused entry keeps what was written in it, with an error standing in for what it lacks, so a
+    /// literal being typed as its value is still there for an editor to ask about.
+    /// </summary>
+    [Fact]
+    public void AnEntryMissingItsKeyKeepsTheValueWrittenInIt()
+    {
+        var entry = Single<IrMapEntry>(CompileReturning(
+            "int32",
+            "new MapCase { items: [{ value: new MapItem { quantity: 3 } }] }.items.count()"));
+
+        Assert.IsType<ErrorType>(entry.Key.Type);
+        Assert.Equal(
+            "protocross.conformance.MapItem",
+            Assert.IsType<IrMessageLiteral>(entry.Value).MessageType.DisplayName);
+    }
+
+    [Fact]
+    public void AnEntryMissingBothItsPartsHasAnErrorForEach()
+    {
+        var entry = Single<IrMapEntry>(CompileReturning("int32", "new MapCase { prices: [{ }] }.prices.count()"));
+
+        Assert.IsType<ErrorType>(entry.Key.Type);
+        Assert.IsType<ErrorType>(entry.Value.Type);
+        Assert.False(ReferenceEquals(entry.Key, entry.Value), "no node may stand in two places (spec 22.2)");
+    }
+
     /// <summary>A misspelled field is refused once, as in any literal, and not told it lacks one too.</summary>
     [Fact]
     public void AnEntrysUnknownFieldIsRefusedAsALiteralsIs()

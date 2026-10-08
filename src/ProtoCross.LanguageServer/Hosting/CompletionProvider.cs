@@ -1117,10 +1117,12 @@ public sealed class CompletionProvider
     /// An entry is the message protobuf models it as, and its fields are bound as a literal's are, so
     /// each name written there resolves to the entry's own field. The entry is not a literal of a
     /// message the author named, so <see cref="LiteralFields"/> does not reach it: the message is the
-    /// map field's entry type, which is read from the field whose list the entry is in. The entry is read
-    /// from the syntax, because one still missing its key or its value is refused and never reaches the
-    /// IR, which is exactly when an author asks what to write in it. A field already written is dropped,
-    /// as in a literal, and a caret in a field's value is a value, answered as every other value is.
+    /// map field's entry type, which is read from the field whose list the entry is in. What is written in
+    /// the entry is read from the syntax, as a literal's fields are, because a field the binder refused
+    /// is still spent. A field already written is dropped, as in a literal, and a caret in a field's
+    /// value is a value, answered as every other value is. That includes a literal written as the
+    /// value: a name in its braces is one of its own fields, which <see cref="LiteralFields"/> offers,
+    /// and never the entry's.
     /// </remarks>
     private static IReadOnlyList<CompletionItem>? EntryFields(SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
@@ -1131,9 +1133,11 @@ public sealed class CompletionProvider
             return null;
         }
 
-        var naming = syntax.Path.LastOrDefault(node => node is FieldInitializer or MapEntryExpression) switch
+        // The innermost of the three, because an entry's value may be a literal, and a field named in
+        // its braces is that literal's, not the entry's (LiteralFields).
+        var naming = syntax.Path.LastOrDefault(node => node is FieldInitializer or MapEntryExpression or MessageLiteralExpression) switch
         {
-            FieldInitializer field => subject.Start <= field.Name.Span.End.Offset,
+            FieldInitializer field => entry.Fields.Contains(field) && subject.Start <= field.Name.Span.End.Offset,
             MapEntryExpression => BeforeItsClosingBrace(entry.Span, subject.Start, document.Text),
             _ => false,
         };
