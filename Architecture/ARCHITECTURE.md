@@ -1,11 +1,15 @@
 # ProtoCross architecture
 
+Start with the [feature lookup](Feature-Index.md) to find the source files, entry symbols, and tests
+for one topic. Its short guides sit alongside this document; read this overview when you need the
+full pipeline or the invariants that connect its layers.
+
 A map for a cold start: what exists, where it lives, and which invariants constrain a change. The
-language itself is specified in [ProtoCross_Spec/](ProtoCross_Spec/README.md); how to write code here is in
-[CLAUDE.md](CLAUDE.md); the per-issue process is in
-[docs/language-1-workflow.md](docs/language-1-workflow.md) for the 1.0 language epic and
-[docs/epic-47-workflow.md](docs/epic-47-workflow.md) for the editor-support epic; what the server is held to for latency, and
-what that was measured to be, is in [docs/performance.md](docs/performance.md).
+language itself is specified in [ProtoCross_Spec/](../ProtoCross_Spec/README.md); how to write code here is in
+[CLAUDE.md](../CLAUDE.md); the per-issue process is in
+[docs/language-1-workflow.md](../docs/language-1-workflow.md) for the 1.0 language epic and
+[docs/epic-47-workflow.md](../docs/epic-47-workflow.md) for the editor-support epic; what the server is held to for latency, and
+what that was measured to be, is in [docs/performance.md](../docs/performance.md).
 
 ProtoCross compiles small methods written against protobuf messages into equivalent C# and C++.
 Behavior is defined once and generated per target, and it has to mean the same thing in each.
@@ -13,19 +17,19 @@ Behavior is defined once and generated per target, and it has to mean the same t
 ## The solution
 
 `ProtoCross.slnx`, seven projects, `net10.0`. Settings are central in
-[Directory.Build.props](Directory.Build.props): nullable enabled, implicit usings, **warnings as
+[Directory.Build.props](../Directory.Build.props): nullable enabled, implicit usings, **warnings as
 errors**, and `CheckForOverflowUnderflow=false` on purpose — the compiler must never inherit the
 arithmetic behavior it exists to define.
 
 | Project | Role |
 |---|---|
-| [src/ProtoCross.Core](src/ProtoCross.Core) | Lexer, parser, binder, IR, diagnostics, config. No CLI coupling. |
-| [src/ProtoCross.Backend.CSharp](src/ProtoCross.Backend.CSharp) | C# emission, plus generated test projects. |
-| [src/ProtoCross.Backend.Cpp](src/ProtoCross.Backend.Cpp) | The same for C++. |
-| [src/ProtoCross.Cli](src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
-| [src/ProtoCross.LanguageServer](src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
-| [src/ProtoCross.Projects](src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
-| [tests/ProtoCross.Tests](tests/ProtoCross.Tests) | One xunit project covering all of it. |
+| [src/ProtoCross.Core](../src/ProtoCross.Core) | Lexer, parser, binder, IR, diagnostics, config. No CLI coupling. |
+| [src/ProtoCross.Backend.CSharp](../src/ProtoCross.Backend.CSharp) | C# emission, plus generated test projects. |
+| [src/ProtoCross.Backend.Cpp](../src/ProtoCross.Backend.Cpp) | The same for C++. |
+| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
+| [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
+| [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
+| [tests/ProtoCross.Tests](../tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
@@ -33,80 +37,80 @@ dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` refere
 globbing package and nothing else, so that listing directories to find sources happens beside Core
 rather than in it. The CLI references it too.
 
-Outside the solution, [editors/vscode](editors/vscode) is the VS Code extension: TypeScript, built with
+Outside the solution, [editors/vscode](../editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
 
 ## The pipeline
 
-Driven by [`Compilation`](src/ProtoCross.Core/Compilation.cs). Three doors into it: the constructor
+Driven by [`Compilation`](../src/ProtoCross.Core/Compilation.cs). Three doors into it: the constructor
 (hold it to recompile the same buffer), `Compile(SourceDocument, …)`, and `Compile(string path, …)`,
 each with a form that takes a list of sources.
 
-1. **Source.** [`SourceDocument`](src/ProtoCross.Core/SourceDocument.cs) is text plus a
+1. **Source.** [`SourceDocument`](../src/ProtoCross.Core/SourceDocument.cs) is text plus a
    `SourceIdentity` — the name diagnostics print, the directory that settles policy and anchors
    imports, and the path, which is `null` for a buffer that was never saved. `ReadFrom` is the only
    place the compiler reads ProtoCross source from disk. A compilation takes one source or several;
    several are one program, and are refused (`PC2006`) when two would be generated under one name —
    compared by `NameConventions.OutputKey`, which folds a name the way every generated name does.
 2. **Policy.** The nearest `protocross.config.xml` at or above the source directory
-   ([`ProjectConfig.Discover`/`Load`](src/ProtoCross.Core/Config/ProjectConfig.cs)). Every source of
+   ([`ProjectConfig.Discover`/`Load`](../src/ProtoCross.Core/Config/ProjectConfig.cs)). Every source of
    a compilation must find the same one (`PC2005`). A config that
    exists and cannot be read **stops** the compilation rather than falling back to defaults. A host
    serving an editor settles this per document instead, through
-   [`WorkspaceConfiguration`](src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) — see
+   [`WorkspaceConfiguration`](../src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) — see
    *Configuration* below.
-3. **Lex.** [`Lexer.Tokenize`](src/ProtoCross.Core/Syntax/Lexer.cs) → `List<Token>`. No token spans
+3. **Lex.** [`Lexer.Tokenize`](../src/ProtoCross.Core/Syntax/Lexer.cs) → `List<Token>`. No token spans
    more than one line.
-4. **Parse.** [`Parser.ParseCompilationUnit`](src/ProtoCross.Core/Syntax/Parser.cs) → the AST in
-   [Ast.cs](src/ProtoCross.Core/Syntax/Ast.cs). Recursive descent, error-recovering, depth-budgeted
+4. **Parse.** [`Parser.ParseCompilationUnit`](../src/ProtoCross.Core/Syntax/Parser.cs) → the AST in
+   [Ast.cs](../src/ProtoCross.Core/Syntax/Ast.cs). Recursive descent, error-recovering, depth-budgeted
    (`MaxNestingDepth`) because a `StackOverflowException` cannot be caught. The budget bounds the
    tree as well as the recursion: an expression built by a loop -- `a.b.c`, `1 + 2 + 3` -- is held
    to it by height, because every later stage recurses over what the parser builds. A name it
-   expected and did not find is a [`SyntaxName`](src/ProtoCross.Core/Syntax/SyntaxName.cs) that
+   expected and did not find is a [`SyntaxName`](../src/ProtoCross.Core/Syntax/SyntaxName.cs) that
    says so, carrying the empty range where the name would go.
 5. **No gate.** Parse errors do not stop the pipeline. A buffer being typed into is broken most of
    the time an editor asks anything about it, and what it most often asks — what may follow this
    dot — only the binder can answer.
 6. **Descriptors.** Every source's imports are loaded together, each schema once, and every source
    binds against all of them. Each import is resolved into an
-   [`ImportResolution`](src/ProtoCross.Core/ImportResolution.cs) — resolved, not found, or never
+   [`ImportResolution`](../src/ProtoCross.Core/ImportResolution.cs) — resolved, not found, or never
    written — against the roots
-   [`SchemaCatalog.RootsFor`](src/ProtoCross.Core/Binding/SchemaCatalog.cs) settles: the search paths,
+   [`SchemaCatalog.RootsFor`](../src/ProtoCross.Core/Binding/SchemaCatalog.cs) settles: the search paths,
    then the loader's own. The whole list is published on the result, and one that was not found is
    told which schema in the directory it named it came closest to. Then
-   [`DescriptorLoader`](src/ProtoCross.Core/Binding/DescriptorLoader.cs) shells out to `protoc`
-   (located by [`ProtocLocator`](src/ProtoCross.Core/Binding/ProtocLocator.cs)) and returns a
-   [`DescriptorBundle`](src/ProtoCross.Core/Binding/DescriptorBundle.cs): the built `FileDescriptor`s,
+   [`DescriptorLoader`](../src/ProtoCross.Core/Binding/DescriptorLoader.cs) shells out to `protoc`
+   (located by [`ProtocLocator`](../src/ProtoCross.Core/Binding/ProtocLocator.cs)) and returns a
+   [`DescriptorBundle`](../src/ProtoCross.Core/Binding/DescriptorBundle.cs): the built `FileDescriptor`s,
    the `FileDescriptorSet` they came from with its `--include_source_info` source info, and the file
    each schema in the transitive closure was read from. `Load` still returns the descriptor list
-   alone, so no existing caller moved. A [`DescriptorCache`](src/ProtoCross.Core/Binding/DescriptorCache.cs)
+   alone, so no existing caller moved. A [`DescriptorCache`](../src/ProtoCross.Core/Binding/DescriptorCache.cs)
    on the loader's options keeps bundles, keyed by a
-   [`DescriptorRequest`](src/ProtoCross.Core/Binding/DescriptorRequest.cs) — which `protoc`, which
+   [`DescriptorRequest`](../src/ProtoCross.Core/Binding/DescriptorRequest.cs) — which `protoc`, which
    roots in which order, which files — and re-checked against a content hash of every file in the
    closure, because the request cannot name a schema that is only reached through an import. The
    loader is uncached unless a caller supplies one, `protoc` runs under a timeout — reported as
    `PC0083` and as a kind on the failure, so an expiry is not mistaken for a schema error — and a
    failure keeps its report line by line as
-   [`ProtocDiagnostic`](src/ProtoCross.Core/Binding/ProtocDiagnostic.cs) rather than only as prose.
+   [`ProtocDiagnostic`](../src/ProtoCross.Core/Binding/ProtocDiagnostic.cs) rather than only as prose.
    A cached entry holds the load as a `Task` rather than a `Lazy`, which is what lets a caller
    abandon its wait: `LoadBundle` and `Compile` take a `CancellationToken` that stops the *waiting*,
    and stops `protoc` itself only for a load no cache holds, because a cached load belongs to the
    cache and its successor usually wants exactly it. The source info the set carries is answered rather than merely kept:
    `DescriptorBundle.DeclarationOf` turns a message, enum, field or enum value descriptor into a
-   [`SchemaDeclaration`](src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) — the `.proto` it was
+   [`SchemaDeclaration`](../src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) — the `.proto` it was
    written in, the range of the declaration and of its name, and the comments around it — through a
-   per-file [`SchemaSourceIndex`](src/ProtoCross.Core/Binding/SchemaSourceIndex.cs) built on first ask
+   per-file [`SchemaSourceIndex`](../src/ProtoCross.Core/Binding/SchemaSourceIndex.cs) built on first ask
    and kept on the bundle. The same question is answerable from a `SymbolId` rather than a descriptor,
    which is the handle a caret produces: a name in type position resolves to a type and leaves no IR
    node behind, so an identity is all there is to ask with. Both doors are fed by one walk over what a
-   schema declares ([`SchemaSymbols`](src/ProtoCross.Core/Binding/SchemaSymbols.cs)) — the bundle uses
+   schema declares ([`SchemaSymbols`](../src/ProtoCross.Core/Binding/SchemaSymbols.cs)) — the bundle uses
    it to index which file declares each identity, the source index to address each declaration's
    `SourceCodeInfo` path — because two descents disagree first about an enum nested in a message.
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
-7. **Bind.** [`Binder.Bind`](src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
+7. **Bind.** [`Binder.Bind`](../src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
    descriptors and produces typed IR. It binds several sources, each a
-   [`SourceTree`](src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
+   [`SourceTree`](../src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
    so a call or a test may reach from one source into another, and `IrModule.DeclaredIn` divides the
    module back into what each source declares. Sugar ends here: a compound assignment `x += y` is bound as the
    assignment of `x + y` to `x` (an `IrAssignment`, or an `IrFieldAssignment` for a field), so the IR
@@ -116,14 +120,14 @@ each with a form that takes a list of sources.
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
    message to bind against. Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
-   [`DeclarationSite`](src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
+   [`DeclarationSite`](../src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
    declaration it means and say which symbol that is. It also records the other direction as it
-   goes: every name it resolves becomes a [`SymbolReference`](src/ProtoCross.Core/Symbols/SymbolReference.cs)
+   goes: every name it resolves becomes a [`SymbolReference`](../src/ProtoCross.Core/Symbols/SymbolReference.cs)
    in `IrModule.References`, spanning the name alone. That has to happen here rather than in a later
    pass, because a type reference resolves to a type and leaves no IR node behind, and because the
    spans the IR does carry are extents — `IrMethodCall` covers its arguments — rather than names. Its
    `Scope` chain is published the same way, as a flat list of
-   [`ScopeEntry`](src/ProtoCross.Core/Symbols/ScopeEntry.cs) in `IrModule.Scope`: one entry per name
+   [`ScopeEntry`](../src/ProtoCross.Core/Symbols/ScopeEntry.cs) in `IrModule.Scope`: one entry per name
    that *entered* a scope, carrying the range it can be written over and the offset it starts
    resolving from. Recorded where each name is declared, because whether a name won is decided there
    and nowhere else — a parameter with no name, a second parameter of one name, and a `var` that
@@ -138,12 +142,12 @@ each with a form that takes a list of sources.
      append on anything holding the field.
    - **Mutation** (spec 18): who may change what (`PC0094`–`PC0097`), and the loop rule that nothing
      inside a `for` may change the field it traverses. This lives in
-     [Binder.Mutation.cs](src/ProtoCross.Core/Binding/Binder.Mutation.cs). It traces every change to
+     [Binder.Mutation.cs](../src/ProtoCross.Core/Binding/Binder.Mutation.cs). It traces every change to
      one place, a root and a chain of fields, so assignment, a `mut fn` call and an append are judged
      by one answer and cannot come to disagree.
 
    A message literal and a test's fixture are bound by the same code
-   ([Binder.MessageLiterals.cs](src/ProtoCross.Core/Binding/Binder.MessageLiterals.cs)), because a
+   ([Binder.MessageLiterals.cs](../src/ProtoCross.Core/Binding/Binder.MessageLiterals.cs)), because a
    fixture is a literal.
 8. **Result.** `CompilationResult` carries the IR *even when the file did not parse*, the syntax
    tree, the descriptors, the whole `Schema` bundle they came from, the import outcomes, the
@@ -154,7 +158,7 @@ each with a form that takes a list of sources.
    **`Module` is the partial one. Emit from `EmittableModule`**, which is null unless the
    compilation produced a whole program.
 9. **Emit.** Backends consume the IR only, one source at a time:
-   [`SourceEmission`](src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
+   [`SourceEmission`](../src/ProtoCross.Core/Backend/SourceEmission.cs) hands each backend one source's
    part of the module (`IrModule.DeclaredIn`) with the options that name its files and the namespace
    its behavior is declared in (`BackendOptions.For`), and keeps one copy of the runtime file every
    source's output shares.
@@ -163,14 +167,14 @@ each with a form that takes a list of sources.
    source's tests. The binder is what makes that division sound: a production method that calls a
    test source's method is `PC0088`, so nothing in the behavior output calls into the test output;
    and production behavior is bound against the production schema closure alone
-   ([`ProductionSchemaClosure`](src/ProtoCross.Core/ProductionSchemaClosure.cs)), so a schema only a
+   ([`ProductionSchemaClosure`](../src/ProtoCross.Core/ProductionSchemaClosure.cs)), so a schema only a
    test source brings is `PC0089` there rather than a name that resolves. A schema in that closure
    that the compilation loaded through a test source's directory is `PC0090`, since the production
    build would load it from somewhere else or not at all.
    A production build sets `CompilationOptions.SkipTests`, and the binder never sees a test. The
    command line runs one whenever it is not asked for `--test-out`.
 
-Both trees are **addressable**: [`SemanticModel.For(result)`](src/ProtoCross.Core/Semantics/SemanticModel.cs)
+Both trees are **addressable**: [`SemanticModel.For(result)`](../src/ProtoCross.Core/Semantics/SemanticModel.cs)
 answers "what is at this offset" for the syntax tree and for the IR, hands back the chain of nodes
 above the answer, and crosses between the two by span. The rule the awkward positions follow — a
 caret at the end of an identifier, between two nodes, on an empty range — is written once in
@@ -200,77 +204,77 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 
 | Concern | Type | File |
 |---|---|---|
-| Location | `SourceSpan`, `SourcePosition` | [Diagnostics/SourceSpan.cs](src/ProtoCross.Core/Diagnostics/SourceSpan.cs) |
-| Whether two paths are one path | `PathIdentity` | [PathIdentity.cs](src/ProtoCross.Core/PathIdentity.cs) |
-| A document, to an editor and to the compiler | `DocumentUri` | [Workspace/DocumentUri.cs](src/ProtoCross.LanguageServer/Workspace/DocumentUri.cs) |
-| What an editor may configure, and where it wins | `WorkspaceConfiguration`, `ProtoCrossSettings` | [Workspace/WorkspaceConfiguration.cs](src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) |
-| What one document compiles under | `DocumentConfiguration`, `ConfigurationSource` | [Workspace/DocumentConfiguration.cs](src/ProtoCross.LanguageServer/Workspace/DocumentConfiguration.cs) |
-| Which settings an untrusted workspace may not state, and what it stated anyway | `SettingDefinition`, `SettingTrust`, `WorkspaceTrust`, `WithheldSetting` | [Workspace/SettingDefinition.cs](src/ProtoCross.LanguageServer/Workspace/SettingDefinition.cs), [Workspace/WorkspaceTrust.cs](src/ProtoCross.LanguageServer/Workspace/WorkspaceTrust.cs) |
-| One JSON-RPC conversation | `JsonRpcConnection`, `MessageReader` | [Protocol/JsonRpcConnection.cs](src/ProtoCross.LanguageServer/Protocol/JsonRpcConnection.cs) |
-| The server itself | `LanguageServerHost` | [Hosting/LanguageServerHost.cs](src/ProtoCross.LanguageServer/Hosting/LanguageServerHost.cs) |
-| Who is told what is wrong with which file | `DiagnosticRouter`, `DiagnosticContribution` | [Hosting/DiagnosticRouter.cs](src/ProtoCross.LanguageServer/Hosting/DiagnosticRouter.cs) |
-| What the compiler tells an editor to colour | `SemanticTokenLegend`, `SemanticTokenEncoder` | [Hosting/SemanticTokenLegend.cs](src/ProtoCross.LanguageServer/Hosting/SemanticTokenLegend.cs) |
-| Who serves that, and what this client can paint | `ClassificationProvider`, `ClientLegend`, `SemanticTokenDiff` | [Hosting/ClassificationProvider.cs](src/ProtoCross.LanguageServer/Hosting/ClassificationProvider.cs), [Hosting/ClientLegend.cs](src/ProtoCross.LanguageServer/Hosting/ClientLegend.cs) |
-| Where a comment was | `Comment` | [Syntax/Comment.cs](src/ProtoCross.Core/Syntax/Comment.cs) |
-| Written or not-yet-written names | `SyntaxName` | [Syntax/SyntaxName.cs](src/ProtoCross.Core/Syntax/SyntaxName.cs) |
-| Words that are keywords in one position only (`new`, `mut`), for the parser and the colouring alike | `ContextualKeywords` | [Syntax/ContextualKeywords.cs](src/ProtoCross.Core/Syntax/ContextualKeywords.cs) |
-| What became of an import | `ImportResolution` | [ImportResolution.cs](src/ProtoCross.Core/ImportResolution.cs) |
-| Which file a schema path names | `SchemaLookup` | [Binding/SchemaLookup.cs](src/ProtoCross.Core/Binding/SchemaLookup.cs) |
-| Which roots are searched, and what they hold | `SchemaCatalog`, `SchemaCandidate` | [Binding/SchemaCatalog.cs](src/ProtoCross.Core/Binding/SchemaCatalog.cs) |
-| What could be typed at a position | `CompletionProvider`, `ImportPathContext` | [Hosting/CompletionProvider.cs](src/ProtoCross.LanguageServer/Hosting/CompletionProvider.cs) |
-| What a request is about, and what it owes for leaving the process | `DocumentRequest`, `DeferredAnswers` | [Hosting/DocumentRequest.cs](src/ProtoCross.LanguageServer/Hosting/DocumentRequest.cs), [Hosting/DeferredAnswers.cs](src/ProtoCross.LanguageServer/Hosting/DeferredAnswers.cs) |
-| What the caret names, and where that was declared | `DeclaredSymbol` | [Hosting/DeclaredSymbol.cs](src/ProtoCross.LanguageServer/Hosting/DeclaredSymbol.cs) |
-| Everywhere that symbol is written | `SymbolOccurrences`, `ReferenceProvider`, `HighlightProvider` | [Hosting/SymbolOccurrences.cs](src/ProtoCross.LanguageServer/Hosting/SymbolOccurrences.cs), [Hosting/ReferenceProvider.cs](src/ProtoCross.LanguageServer/Hosting/ReferenceProvider.cs) |
-| Which document a span is in, as the client spells it | `SymbolLocations` | [Hosting/SymbolLocations.cs](src/ProtoCross.LanguageServer/Hosting/SymbolLocations.cs) |
-| The call being typed, and what it expects next | `CallSubject`, `SignatureHelpProvider` | [Hosting/CallSubject.cs](src/ProtoCross.LanguageServer/Hosting/CallSubject.cs), [Hosting/SignatureHelpProvider.cs](src/ProtoCross.LanguageServer/Hosting/SignatureHelpProvider.cs) |
-| What the pointer resting somewhere says | `HoverProvider`, `HoverCard` | [Hosting/HoverProvider.cs](src/ProtoCross.LanguageServer/Hosting/HoverProvider.cs), [Hosting/HoverCard.cs](src/ProtoCross.LanguageServer/Hosting/HoverCard.cs) |
-| Where a name leads | `DefinitionProvider` | [Hosting/DefinitionProvider.cs](src/ProtoCross.LanguageServer/Hosting/DefinitionProvider.cs) |
-| The shape of a file | `DocumentOutline` | [Hosting/DocumentOutline.cs](src/ProtoCross.LanguageServer/Hosting/DocumentOutline.cs) |
-| Compiler coordinates ↔ editor coordinates | `EditorPositions` | [Protocol/Lsp/EditorPositions.cs](src/ProtoCross.LanguageServer/Protocol/Lsp/EditorPositions.cs) |
-| What a descriptor load produced | `DescriptorBundle`, `SchemaFile` | [Binding/DescriptorBundle.cs](src/ProtoCross.Core/Binding/DescriptorBundle.cs) |
-| What decides a load, and keys it | `DescriptorRequest` | [Binding/DescriptorRequest.cs](src/ProtoCross.Core/Binding/DescriptorRequest.cs) |
-| Whether a load can be reused | `DescriptorCache`, `SchemaClosure` | [Binding/DescriptorCache.cs](src/ProtoCross.Core/Binding/DescriptorCache.cs) |
-| Which `protoc` runs, why that one, and what it is | `ProtocSelection`, `ProtocSource`, `ProtocVersion` | [Binding/ProtocSelection.cs](src/ProtoCross.Core/Binding/ProtocSelection.cs) |
-| What the server says about itself when asked | `StatusReporter`, `ServerStatus`, `StatusFact` | [Hosting/StatusReporter.cs](src/ProtoCross.LanguageServer/Hosting/StatusReporter.cs), [Hosting/ServerStatus.cs](src/ProtoCross.LanguageServer/Hosting/ServerStatus.cs) |
-| How long an answer may take, and how long they have been taking | `PerformanceBudgets`, `RequestTimings`, `LatencySample` | [Hosting/PerformanceBudgets.cs](src/ProtoCross.LanguageServer/Hosting/PerformanceBudgets.cs), [Hosting/RequestTimings.cs](src/ProtoCross.LanguageServer/Hosting/RequestTimings.cs) |
-| Which way a load failed | `DescriptorLoadFailureKind`, `SchemaLoadFailure` | [Binding/DescriptorLoadFailureKind.cs](src/ProtoCross.Core/Binding/DescriptorLoadFailureKind.cs) |
-| When a document is compiled, and whether the answer still counts | `CompileScheduler` | [Hosting/CompileScheduler.cs](src/ProtoCross.LanguageServer/Hosting/CompileScheduler.cs) |
-| Which files on disk move a compilation, and what the client is asked to watch | `WatchedFiles` | [Hosting/WatchedFiles.cs](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs) |
-| What an editor user with no protoc is told | `MissingProtoc` | [Hosting/MissingProtoc.cs](src/ProtoCross.LanguageServer/Hosting/MissingProtoc.cs) |
-| What `protoc` said, and about where | `ProtocDiagnostic`, `SchemaLoadFailure` | [Binding/ProtocDiagnostic.cs](src/ProtoCross.Core/Binding/ProtocDiagnostic.cs), [SchemaLoadFailure.cs](src/ProtoCross.Core/SchemaLoadFailure.cs) |
-| Offset ↔ line/column | `LineMap` | [Diagnostics/LineMap.cs](src/ProtoCross.Core/Diagnostics/LineMap.cs) |
-| Messages | `Diagnostic`, `DiagnosticBag` | [Diagnostics/Diagnostic.cs](src/ProtoCross.Core/Diagnostics/Diagnostic.cs) |
-| Type system | `PlType` and friends | [Types/PlType.cs](src/ProtoCross.Core/Types/PlType.cs) |
-| Typed IR | `IrNode`, `IrModule` … `IrLiteral` | [Ir/Ir.cs](src/ProtoCross.Core/Ir/Ir.cs) |
-| Position and reference queries | `SemanticModel` | [Semantics/SemanticModel.cs](src/ProtoCross.Core/Semantics/SemanticModel.cs) |
-| What is here, and what holds it | `SyntaxLocation`, `IrLocation` | [Semantics/NodePath.cs](src/ProtoCross.Core/Semantics/NodePath.cs) |
-| Down through a tree | `SyntaxWalk`, `IrWalk` | [Semantics/SyntaxWalk.cs](src/ProtoCross.Core/Semantics/SyntaxWalk.cs) |
-| Where a declaration is | `DeclarationSite` | [Symbols/DeclarationSite.cs](src/ProtoCross.Core/Symbols/DeclarationSite.cs) |
-| Where a `.proto` declared it, and what it said | `SchemaDeclaration`, `SchemaSite`, `SchemaComments` | [Symbols/SchemaDeclaration.cs](src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) |
-| Everything a schema declares, once | `SchemaSymbols` | [Binding/SchemaSymbols.cs](src/ProtoCross.Core/Binding/SchemaSymbols.cs) |
-| Which fields a name reaches on a message, never an extension | `MessageFields` | [Binding/MessageFields.cs](src/ProtoCross.Core/Binding/MessageFields.cs) |
-| Which symbol a reference means | `SymbolId` | [Symbols/SymbolId.cs](src/ProtoCross.Core/Symbols/SymbolId.cs) |
-| Where a symbol is used | `SymbolReference`, `ReferenceKind` | [Symbols/SymbolReference.cs](src/ProtoCross.Core/Symbols/SymbolReference.cs) |
-| What a name is in scope over | `ScopeEntry` | [Symbols/ScopeEntry.cs](src/ProtoCross.Core/Symbols/ScopeEntry.cs) |
-| What a bare name may mean here | `ScopeAtPosition`, `VisibleName` | [Semantics/ScopeAtPosition.cs](src/ProtoCross.Core/Semantics/ScopeAtPosition.cs) |
-| What kind of symbol it is | `SymbolKind` | [Symbols/SymbolKind.cs](src/ProtoCross.Core/Symbols/SymbolKind.cs) |
-| Emission behavior | `ArithmeticBehavior`, `ConversionBehavior` | [Ir/ArithmeticBehavior.cs](src/ProtoCross.Core/Ir/ArithmeticBehavior.cs) |
-| What a change reaches, and what a backend copies for it | `IrMutation` | [Semantics/IrMutation.cs](src/ProtoCross.Core/Semantics/IrMutation.cs) |
-| Whether control can reach the end of a statement | `IrFlow` | [Semantics/IrFlow.cs](src/ProtoCross.Core/Semantics/IrFlow.cs) |
-| An expression built again, sharing no node | `IrCopy` | [Semantics/IrCopy.cs](src/ProtoCross.Core/Semantics/IrCopy.cs) |
-| What a map's methods are called, take and give | `MapMethod`, `MapMethods` | [Ir/MapMethods.cs](src/ProtoCross.Core/Ir/MapMethods.cs) |
-| Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](src/ProtoCross.Core/Ir/NumericPolicy.cs) |
-| What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](src/ProtoCross.Core/Ir/Ir.cs) |
-| Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](src/ProtoCross.Core/Types/EnumOpenness.cs) |
-| Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](src/ProtoCross.Core/Backend/IBackend.cs) |
-| Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](src/ProtoCross.Core/Backend/NameConventions.cs) |
+| Location | `SourceSpan`, `SourcePosition` | [Diagnostics/SourceSpan.cs](../src/ProtoCross.Core/Diagnostics/SourceSpan.cs) |
+| Whether two paths are one path | `PathIdentity` | [PathIdentity.cs](../src/ProtoCross.Core/PathIdentity.cs) |
+| A document, to an editor and to the compiler | `DocumentUri` | [Workspace/DocumentUri.cs](../src/ProtoCross.LanguageServer/Workspace/DocumentUri.cs) |
+| What an editor may configure, and where it wins | `WorkspaceConfiguration`, `ProtoCrossSettings` | [Workspace/WorkspaceConfiguration.cs](../src/ProtoCross.LanguageServer/Workspace/WorkspaceConfiguration.cs) |
+| What one document compiles under | `DocumentConfiguration`, `ConfigurationSource` | [Workspace/DocumentConfiguration.cs](../src/ProtoCross.LanguageServer/Workspace/DocumentConfiguration.cs) |
+| Which settings an untrusted workspace may not state, and what it stated anyway | `SettingDefinition`, `SettingTrust`, `WorkspaceTrust`, `WithheldSetting` | [Workspace/SettingDefinition.cs](../src/ProtoCross.LanguageServer/Workspace/SettingDefinition.cs), [Workspace/WorkspaceTrust.cs](../src/ProtoCross.LanguageServer/Workspace/WorkspaceTrust.cs) |
+| One JSON-RPC conversation | `JsonRpcConnection`, `MessageReader` | [Protocol/JsonRpcConnection.cs](../src/ProtoCross.LanguageServer/Protocol/JsonRpcConnection.cs) |
+| The server itself | `LanguageServerHost` | [Hosting/LanguageServerHost.cs](../src/ProtoCross.LanguageServer/Hosting/LanguageServerHost.cs) |
+| Who is told what is wrong with which file | `DiagnosticRouter`, `DiagnosticContribution` | [Hosting/DiagnosticRouter.cs](../src/ProtoCross.LanguageServer/Hosting/DiagnosticRouter.cs) |
+| What the compiler tells an editor to colour | `SemanticTokenLegend`, `SemanticTokenEncoder` | [Hosting/SemanticTokenLegend.cs](../src/ProtoCross.LanguageServer/Hosting/SemanticTokenLegend.cs) |
+| Who serves that, and what this client can paint | `ClassificationProvider`, `ClientLegend`, `SemanticTokenDiff` | [Hosting/ClassificationProvider.cs](../src/ProtoCross.LanguageServer/Hosting/ClassificationProvider.cs), [Hosting/ClientLegend.cs](../src/ProtoCross.LanguageServer/Hosting/ClientLegend.cs) |
+| Where a comment was | `Comment` | [Syntax/Comment.cs](../src/ProtoCross.Core/Syntax/Comment.cs) |
+| Written or not-yet-written names | `SyntaxName` | [Syntax/SyntaxName.cs](../src/ProtoCross.Core/Syntax/SyntaxName.cs) |
+| Words that are keywords in one position only (`new`, `mut`), for the parser and the colouring alike | `ContextualKeywords` | [Syntax/ContextualKeywords.cs](../src/ProtoCross.Core/Syntax/ContextualKeywords.cs) |
+| What became of an import | `ImportResolution` | [ImportResolution.cs](../src/ProtoCross.Core/ImportResolution.cs) |
+| Which file a schema path names | `SchemaLookup` | [Binding/SchemaLookup.cs](../src/ProtoCross.Core/Binding/SchemaLookup.cs) |
+| Which roots are searched, and what they hold | `SchemaCatalog`, `SchemaCandidate` | [Binding/SchemaCatalog.cs](../src/ProtoCross.Core/Binding/SchemaCatalog.cs) |
+| What could be typed at a position | `CompletionProvider`, `ImportPathContext` | [Hosting/CompletionProvider.cs](../src/ProtoCross.LanguageServer/Hosting/CompletionProvider.cs) |
+| What a request is about, and what it owes for leaving the process | `DocumentRequest`, `DeferredAnswers` | [Hosting/DocumentRequest.cs](../src/ProtoCross.LanguageServer/Hosting/DocumentRequest.cs), [Hosting/DeferredAnswers.cs](../src/ProtoCross.LanguageServer/Hosting/DeferredAnswers.cs) |
+| What the caret names, and where that was declared | `DeclaredSymbol` | [Hosting/DeclaredSymbol.cs](../src/ProtoCross.LanguageServer/Hosting/DeclaredSymbol.cs) |
+| Everywhere that symbol is written | `SymbolOccurrences`, `ReferenceProvider`, `HighlightProvider` | [Hosting/SymbolOccurrences.cs](../src/ProtoCross.LanguageServer/Hosting/SymbolOccurrences.cs), [Hosting/ReferenceProvider.cs](../src/ProtoCross.LanguageServer/Hosting/ReferenceProvider.cs) |
+| Which document a span is in, as the client spells it | `SymbolLocations` | [Hosting/SymbolLocations.cs](../src/ProtoCross.LanguageServer/Hosting/SymbolLocations.cs) |
+| The call being typed, and what it expects next | `CallSubject`, `SignatureHelpProvider` | [Hosting/CallSubject.cs](../src/ProtoCross.LanguageServer/Hosting/CallSubject.cs), [Hosting/SignatureHelpProvider.cs](../src/ProtoCross.LanguageServer/Hosting/SignatureHelpProvider.cs) |
+| What the pointer resting somewhere says | `HoverProvider`, `HoverCard` | [Hosting/HoverProvider.cs](../src/ProtoCross.LanguageServer/Hosting/HoverProvider.cs), [Hosting/HoverCard.cs](../src/ProtoCross.LanguageServer/Hosting/HoverCard.cs) |
+| Where a name leads | `DefinitionProvider` | [Hosting/DefinitionProvider.cs](../src/ProtoCross.LanguageServer/Hosting/DefinitionProvider.cs) |
+| The shape of a file | `DocumentOutline` | [Hosting/DocumentOutline.cs](../src/ProtoCross.LanguageServer/Hosting/DocumentOutline.cs) |
+| Compiler coordinates ↔ editor coordinates | `EditorPositions` | [Protocol/Lsp/EditorPositions.cs](../src/ProtoCross.LanguageServer/Protocol/Lsp/EditorPositions.cs) |
+| What a descriptor load produced | `DescriptorBundle`, `SchemaFile` | [Binding/DescriptorBundle.cs](../src/ProtoCross.Core/Binding/DescriptorBundle.cs) |
+| What decides a load, and keys it | `DescriptorRequest` | [Binding/DescriptorRequest.cs](../src/ProtoCross.Core/Binding/DescriptorRequest.cs) |
+| Whether a load can be reused | `DescriptorCache`, `SchemaClosure` | [Binding/DescriptorCache.cs](../src/ProtoCross.Core/Binding/DescriptorCache.cs) |
+| Which `protoc` runs, why that one, and what it is | `ProtocSelection`, `ProtocSource`, `ProtocVersion` | [Binding/ProtocSelection.cs](../src/ProtoCross.Core/Binding/ProtocSelection.cs) |
+| What the server says about itself when asked | `StatusReporter`, `ServerStatus`, `StatusFact` | [Hosting/StatusReporter.cs](../src/ProtoCross.LanguageServer/Hosting/StatusReporter.cs), [Hosting/ServerStatus.cs](../src/ProtoCross.LanguageServer/Hosting/ServerStatus.cs) |
+| How long an answer may take, and how long they have been taking | `PerformanceBudgets`, `RequestTimings`, `LatencySample` | [Hosting/PerformanceBudgets.cs](../src/ProtoCross.LanguageServer/Hosting/PerformanceBudgets.cs), [Hosting/RequestTimings.cs](../src/ProtoCross.LanguageServer/Hosting/RequestTimings.cs) |
+| Which way a load failed | `DescriptorLoadFailureKind`, `SchemaLoadFailure` | [Binding/DescriptorLoadFailureKind.cs](../src/ProtoCross.Core/Binding/DescriptorLoadFailureKind.cs) |
+| When a document is compiled, and whether the answer still counts | `CompileScheduler` | [Hosting/CompileScheduler.cs](../src/ProtoCross.LanguageServer/Hosting/CompileScheduler.cs) |
+| Which files on disk move a compilation, and what the client is asked to watch | `WatchedFiles` | [Hosting/WatchedFiles.cs](../src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs) |
+| What an editor user with no protoc is told | `MissingProtoc` | [Hosting/MissingProtoc.cs](../src/ProtoCross.LanguageServer/Hosting/MissingProtoc.cs) |
+| What `protoc` said, and about where | `ProtocDiagnostic`, `SchemaLoadFailure` | [Binding/ProtocDiagnostic.cs](../src/ProtoCross.Core/Binding/ProtocDiagnostic.cs), [SchemaLoadFailure.cs](../src/ProtoCross.Core/SchemaLoadFailure.cs) |
+| Offset ↔ line/column | `LineMap` | [Diagnostics/LineMap.cs](../src/ProtoCross.Core/Diagnostics/LineMap.cs) |
+| Messages | `Diagnostic`, `DiagnosticBag` | [Diagnostics/Diagnostic.cs](../src/ProtoCross.Core/Diagnostics/Diagnostic.cs) |
+| Type system | `PlType` and friends | [Types/PlType.cs](../src/ProtoCross.Core/Types/PlType.cs) |
+| Typed IR | `IrNode`, `IrModule` … `IrLiteral` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
+| Position and reference queries | `SemanticModel` | [Semantics/SemanticModel.cs](../src/ProtoCross.Core/Semantics/SemanticModel.cs) |
+| What is here, and what holds it | `SyntaxLocation`, `IrLocation` | [Semantics/NodePath.cs](../src/ProtoCross.Core/Semantics/NodePath.cs) |
+| Down through a tree | `SyntaxWalk`, `IrWalk` | [Semantics/SyntaxWalk.cs](../src/ProtoCross.Core/Semantics/SyntaxWalk.cs) |
+| Where a declaration is | `DeclarationSite` | [Symbols/DeclarationSite.cs](../src/ProtoCross.Core/Symbols/DeclarationSite.cs) |
+| Where a `.proto` declared it, and what it said | `SchemaDeclaration`, `SchemaSite`, `SchemaComments` | [Symbols/SchemaDeclaration.cs](../src/ProtoCross.Core/Symbols/SchemaDeclaration.cs) |
+| Everything a schema declares, once | `SchemaSymbols` | [Binding/SchemaSymbols.cs](../src/ProtoCross.Core/Binding/SchemaSymbols.cs) |
+| Which fields a name reaches on a message, never an extension | `MessageFields` | [Binding/MessageFields.cs](../src/ProtoCross.Core/Binding/MessageFields.cs) |
+| Which symbol a reference means | `SymbolId` | [Symbols/SymbolId.cs](../src/ProtoCross.Core/Symbols/SymbolId.cs) |
+| Where a symbol is used | `SymbolReference`, `ReferenceKind` | [Symbols/SymbolReference.cs](../src/ProtoCross.Core/Symbols/SymbolReference.cs) |
+| What a name is in scope over | `ScopeEntry` | [Symbols/ScopeEntry.cs](../src/ProtoCross.Core/Symbols/ScopeEntry.cs) |
+| What a bare name may mean here | `ScopeAtPosition`, `VisibleName` | [Semantics/ScopeAtPosition.cs](../src/ProtoCross.Core/Semantics/ScopeAtPosition.cs) |
+| What kind of symbol it is | `SymbolKind` | [Symbols/SymbolKind.cs](../src/ProtoCross.Core/Symbols/SymbolKind.cs) |
+| Emission behavior | `ArithmeticBehavior`, `ConversionBehavior` | [Ir/ArithmeticBehavior.cs](../src/ProtoCross.Core/Ir/ArithmeticBehavior.cs) |
+| What a change reaches, and what a backend copies for it | `IrMutation` | [Semantics/IrMutation.cs](../src/ProtoCross.Core/Semantics/IrMutation.cs) |
+| Whether control can reach the end of a statement | `IrFlow` | [Semantics/IrFlow.cs](../src/ProtoCross.Core/Semantics/IrFlow.cs) |
+| An expression built again, sharing no node | `IrCopy` | [Semantics/IrCopy.cs](../src/ProtoCross.Core/Semantics/IrCopy.cs) |
+| What a map's methods are called, take and give | `MapMethod`, `MapMethods` | [Ir/MapMethods.cs](../src/ProtoCross.Core/Ir/MapMethods.cs) |
+| Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](../src/ProtoCross.Core/Ir/NumericPolicy.cs) |
+| What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
+| Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](../src/ProtoCross.Core/Types/EnumOpenness.cs) |
+| Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](../src/ProtoCross.Core/Backend/IBackend.cs) |
+| Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](../src/ProtoCross.Core/Backend/NameConventions.cs) |
 
 ### Diagnostics
 
 `Diagnostic` is `(Code, Severity, Title, Message, Span, Help?)` — very nearly the LSP diagnostic
 shape already, `Help` included. Codes are `PC####`, and a raise site names a `DiagnosticDescriptor`
 rather than spelling one: the code, the severity and the title belong to the rule and live in
-[DiagnosticCodes](src/ProtoCross.Core/Diagnostics/DiagnosticCodes.cs), or in `HostDiagnosticCodes`
+[DiagnosticCodes](../src/ProtoCross.Core/Diagnostics/DiagnosticCodes.cs), or in `HostDiagnosticCodes`
 for the editor host's own `PC21##` range. The message and the help belong to the occurrence and stay
 at the site. Rendering is
 `CODE: title` / `file:line:column` / message / optional `help:` line, per spec 26. **That rendering
@@ -312,7 +316,7 @@ The client reports whether the user trusts the workspace — `workspaceTrusted` 
 every setting that could make the machine run a program is withheld from folder and workspace scope
 before the walk begins. Today that is `protocross.protocPath` alone. Which settings require trust is not
 a list beside the settings but part of declaring one:
-[`ProtoCrossSettings.Definitions`](src/ProtoCross.LanguageServer/Workspace/ProtoCrossSettings.cs) is the
+[`ProtoCrossSettings.Definitions`](../src/ProtoCross.LanguageServer/Workspace/ProtoCrossSettings.cs) is the
 only list of settings there is, and a row cannot be written without its classification. Trust is
 applied in one place, as `WorkspaceConfiguration` admits each scope, so compilation, import completion
 and the status report cannot disagree about what was withheld. Two consequences are easy to
@@ -327,35 +331,35 @@ the setting needs editing.
 A `.pcproj` (spec 5.4) says which sources one compilation is made of and which of them hold its
 tests, and names the `protocross.config.xml` its policy comes from: two files, because what is
 compiled and what it means are two questions.
-[`ProtoCrossProject.Load`](src/ProtoCross.Projects/ProtoCrossProject.cs) reads the project file
-alone, through the same [`XmlInput`](src/ProtoCross.Core/Config/XmlInput.cs) the configuration
+[`ProtoCrossProject.Load`](../src/ProtoCross.Projects/ProtoCrossProject.cs) reads the project file
+alone, through the same [`XmlInput`](../src/ProtoCross.Core/Config/XmlInput.cs) the configuration
 file is read with, so a position in either is placed the same way.
-[`ProjectSources.Expand`](src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
+[`ProjectSources.Expand`](../src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
 directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
 an element whose patterns match nothing is a warning (`PC2010`).
-[`ProjectFiles`](src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
-role, and [`ProjectPolicy`](src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
+[`ProjectFiles`](../src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
+role, and [`ProjectPolicy`](../src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
 file the compilation runs under, warning about a member whose own search finds another (`PC2011`).
 Both live here rather than in the command line, because an editor compiling a project has to answer
 the same two questions the same way.
-[`ProjectDiscovery`](src/ProtoCross.Projects/ProjectDiscovery.cs) finds the project a document
+[`ProjectDiscovery`](../src/ProtoCross.Projects/ProjectDiscovery.cs) finds the project a document
 compiles with, asking each candidate's patterns with the document's path through
 `ProjectSources.RoleOf` rather than listing the project's tree, since it runs whenever a document's
 settings are resolved; `RoleOf` asks the matcher expansion asks, over a directory that holds only
-that one path ([`PathToOneFile`](src/ProtoCross.Projects/PathToOneFile.cs)), so the two cannot
+that one path ([`PathToOneFile`](../src/ProtoCross.Projects/PathToOneFile.cs)), so the two cannot
 disagree. Discovery runs whenever a document's settings are resolved, so what each directory held
 and what each project said are kept while a stat says the entry has not changed
-([`StampedFacts`](src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
+([`StampedFacts`](../src/ProtoCross.Projects/StampedFacts.cs)); a host that is told a project changed
 drops them, and a project that could not be read is never kept, since releasing a lock moves no
 stamp. The command line builds a project it is named. An editor resolves each document's settings
 through its project and compiles each document with it; see *Serving an editor*.
 
 ### Serving an editor
 
-[`LanguageServerHost`](src/ProtoCross.LanguageServer/Hosting/LanguageServerHost.cs) is the whole
+[`LanguageServerHost`](../src/ProtoCross.LanguageServer/Hosting/LanguageServerHost.cs) is the whole
 server: `protocross-server`, LSP over stdin and stdout, driven by VS Code and Visual Studio alike.
 There is **no LSP framework**. Everything below
-[`JsonRpcConnection`](src/ProtoCross.LanguageServer/Protocol/JsonRpcConnection.cs) is transport —
+[`JsonRpcConnection`](../src/ProtoCross.LanguageServer/Protocol/JsonRpcConnection.cs) is transport —
 `Content-Length` framing, correlation, a writer gate — and nothing above it knows how a message is
 framed, so the decision is one file wide.
 
@@ -405,7 +409,7 @@ you type is worse than a stale one. The status report is about the server rather
 and is described below. Everything else can only be answered by the binder, so each
 compiles through `DocumentSemantics` and each is concurrent, and everything the architecture above
 demands of a concurrent handler is stated once in
-[`DeferredAnswers`](src/ProtoCross.LanguageServer/Hosting/DeferredAnswers.cs) rather than once per
+[`DeferredAnswers`](../src/ProtoCross.LanguageServer/Hosting/DeferredAnswers.cs) rather than once per
 handler: supersession per document, a bounded gate, abandoning work nobody waits for, and the
 staleness refusal. One instance per request kind, because a passing mouse must not cancel a
 deliberate click — and a caret sliding through a file must not cancel the reference list somebody
@@ -458,13 +462,13 @@ The rule is not only about diagnostics: every answer describes the version it re
 that could only answer about a superseded one refuses instead.
 
 **A document with a project is compiled with it** (spec 26.1). `DocumentSemantics` keys what it holds
-by [`CompilationKey`](src/ProtoCross.LanguageServer/Hosting/CompilationKey.cs) — the project, or the
+by [`CompilationKey`](../src/ProtoCross.LanguageServer/Hosting/CompilationKey.cs) — the project, or the
 document when it has none — so the open documents of one project share one compilation: the
 project's test build, each open source read from its buffer and each closed one from its file. Each
 document gets a view of it whose `SemanticModel` is opened on that document with `In`, sharing one
 reference index, so position questions measure offsets in the document's own text while
 find-references and go-to-definition cross into the others. Which files a project compiles is part of
-a document's settings, found by [`ProjectCatalog`](src/ProtoCross.Projects/ProjectCatalog.cs) through
+a document's settings, found by [`ProjectCatalog`](../src/ProtoCross.Projects/ProjectCatalog.cs) through
 the rule the command line asks (`ProjectSources.ExpandForBuild`), so a project the build refuses is
 refused in the editor too, and remembered until the project file changes or a watched source is
 created or deleted, because a walk of every directory a pattern searches is too much to repeat per
@@ -494,7 +498,7 @@ cold loads cost roughly two pool threads each — measured on sixteen processors
 case rather than the typical one.
 
 `protocross/status` is the server answering for itself, and is this server's own method rather than
-one of LSP's. [`StatusReporter`](src/ProtoCross.LanguageServer/Hosting/StatusReporter.cs) assembles
+one of LSP's. [`StatusReporter`](../src/ProtoCross.LanguageServer/Hosting/StatusReporter.cs) assembles
 which `protoc` was chosen **and by which probe**, what it says its version is, every setting resolved
 for the active document **with the layer that supplied it**, what the descriptor cache has done and
 how many bytes it is holding, the last error with a timestamp, and what recent requests have cost
@@ -513,7 +517,7 @@ disk, stats the directories beside `protoc`, and starts `protoc` to ask its vers
 order, a wedged executable would freeze the editor the command exists to diagnose.
 
 The latency budgets live here rather than beside the benchmark that first wrote them, in
-[`PerformanceBudgets`](src/ProtoCross.LanguageServer/Hosting/PerformanceBudgets.cs), with the
+[`PerformanceBudgets`](../src/ProtoCross.LanguageServer/Hosting/PerformanceBudgets.cs), with the
 nearest-rank percentile beside them in `RequestTimings`. Two readers want both now — the benchmark,
 and this report — and a status figure whose p95 meant something subtly different from the documented
 one would be a number somebody compares and is misled by. Timings are always on: one stopwatch and
@@ -527,7 +531,7 @@ answer once any of them has moved. What nothing did was *ask*: diagnostics are p
 compile runs, and saving a `.proto` in another tab is not a keystroke in this one. So once initialized
 the server asks a client that can watch files to report `**/*.proto`, `**/protocross.config.xml`,
 `**/*.pcproj` and `**/*.pcross`
-([`WatchedFiles`](src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to any of them
+([`WatchedFiles`](../src/ProtoCross.LanguageServer/Hosting/WatchedFiles.cs)), and a change to any of them
 reschedules every open document. A project file changed, or a source created or deleted, also makes
 the server forget which files each project compiles, since no stamp shows that. So does the client agreeing to watch, since a save before its watcher
 was running was reported to nobody. Each compile asks `DocumentSemantics` first, so a document whose
@@ -536,7 +540,7 @@ source that another directory shadows: protoc never reads it, but `PC0087` was d
 an extension choosing them, so a second editor gets the behaviour by speaking the protocol.
 
 When discovery finds no protoc, the editor is not given the command line's sentence, which suggests
-restoring a NuGet package. [`MissingProtoc`](src/ProtoCross.LanguageServer/Hosting/MissingProtoc.cs)
+restoring a NuGet package. [`MissingProtoc`](../src/ProtoCross.LanguageServer/Hosting/MissingProtoc.cs)
 says where the server looked, where protoc is published and which setting names one, and the same
 sentence goes on the import line, in the one-time message and in the status report. The client reports
 the relative `PATH` entries it removed before starting the server, and they are named only when there
@@ -550,7 +554,7 @@ A client's trace value of `off` returns the log to the level the process was sta
 
 Diagnostics are published *per file* and produced *per compilation*, and the two stop lining up as
 soon as a `.proto` can be blamed, so
-[`DiagnosticRouter`](src/ProtoCross.LanguageServer/Hosting/DiagnosticRouter.cs) publishes the union of
+[`DiagnosticRouter`](../src/ProtoCross.LanguageServer/Hosting/DiagnosticRouter.cs) publishes the union of
 what every open document says about a file. Two buffers importing one broken schema both report it,
 identical reports collapse, and closing one does not withdraw the other's. Spec 26.1 has the rest:
 severities mapped rather than invented, help text kept as its own thing, a locationless diagnostic
@@ -567,7 +571,7 @@ mean. What the second layer costs, and why it never costs colour, is in *Serving
 
 Completion is the same bargain and one step further out. `CompletionProvider` decides which context
 the caret is in before it asks what belongs there, from the token stream
-([`CompletionSubject`](src/ProtoCross.LanguageServer/Hosting/CompletionSubject.cs)), because the state
+([`CompletionSubject`](../src/ProtoCross.LanguageServer/Hosting/CompletionSubject.cs)), because the state
 it is invoked in is nearly always one the parser has already recovered from. There are two contexts.
 
 **A schema name** is anywhere a name could be written: after a dot, on a bare identifier, in a type
@@ -580,7 +584,7 @@ accepting every item offered at every caret worth asking at in the corpus, and c
 
 **An import path** is inside an `import proto` string, found by `ImportPathContext`, because the tree
 does not carry the path's own span. What is offered comes from
-[`SchemaCatalog`](src/ProtoCross.Core/Binding/SchemaCatalog.cs), which is also where "the roots an
+[`SchemaCatalog`](../src/ProtoCross.Core/Binding/SchemaCatalog.cs), which is also where "the roots an
 import is resolved against" now lives for everyone who asks: the include paths, then the source's own
 directory, then whatever the loader adds. One directory listing per root, on demand, no index and no
 cache — so progressive completion falls out of the shape rather than being built, and a schema that
@@ -601,19 +605,19 @@ it meant.
 
 ### The VS Code extension
 
-[editors/vscode](editors/vscode) is a thin client over the server, and it deliberately brings no
+[editors/vscode](../editors/vscode) is a thin client over the server, and it deliberately brings no
 toolchain. The server ships inside it framework-dependent and without an app host, so one package
 serves every platform and runs on the user's own .NET 10 or newer. `protoc` is whichever one the server
 already finds. A user who does not want .NET at all keeps the grammar, the brackets and the comments, and
 is told once. Its README is the user-facing account; what follows is the shape.
 
-- **[`launch.ts`](editors/vscode/src/launch.ts) decides how the server starts, with no VS Code in it**,
+- **[`launch.ts`](../editors/vscode/src/launch.ts) decides how the server starts, with no VS Code in it**,
   so every rule is a Node test. The rules exist so that nothing the server looks up resolves into the
   workspace. The server is started by absolute path, through a `dotnet` also found by absolute path. It
   runs in the extension's global storage directory, with relative and empty `PATH` entries removed and
   `PROTOCROSS_PROTOC` and `NUGET_PACKAGES` passed only when absolute. Spec 10.4.1 states it as the
   client's obligation.
-- **[`serverController.ts`](editors/vscode/src/serverController.ts) owns the process**: launches
+- **[`serverController.ts`](../editors/vscode/src/serverController.ts) owns the process**: launches
   serialized through one queue, crash restarts bounded at four in three minutes, a counted restart for
   the status report, and every reason not to start turned into a named failure with one offer of what to
   do about it. The client's own view of itself is what the state follows, so a restart that fails to
@@ -624,9 +628,9 @@ is told once. Its README is the user-facing account; what follows is the shape.
   live under `protocross` beside the settings the server reads, and the server reports anything in that
   section it does not understand, which is how a typo gets noticed. A `workspace/configuration`
   middleware takes the extension's keys out of each answer. The list is in
-  [`contract.json`](editors/vscode/src/contract.json), with the privacy note a report the extension
+  [`contract.json`](../editors/vscode/src/contract.json), with the privacy note a report the extension
   writes itself must share with the server's.
-- **[`status.ts`](editors/vscode/src/status.ts) asks the server for its report and writes one when it
+- **[`status.ts`](../editors/vscode/src/status.ts) asks the server for its report and writes one when it
   cannot**, whether the server failed to start or did not answer in time. The report is copied only
   after the privacy note has been shown.
 - **The grammar colours every token the server's lexical layer classifies with the TextMate scope VS
@@ -647,7 +651,7 @@ operation is emitted comes from the behavior annotation the binder stamped on th
 reaches a backend only as prose for the generated file's header.
 
 Copies and mutability come from the IR as well. `IrExpression.IsCopiedWhenStored` says that a stored
-value has to be a copy. [`IrMutation`](src/ProtoCross.Core/Semantics/IrMutation.cs) answers four
+value has to be a copy. [`IrMutation`](../src/ProtoCross.Core/Semantics/IrMutation.cs) answers four
 questions: which place a node changes, whether a method changes any message, whether a loop changes
 its elements, and whether an argument is passed as a copy. C++ binds a loop element as `auto&` only
 where the body changes it, and C# clones into a local only in a method that changes a message, where
@@ -655,7 +659,7 @@ a copy and a share could be told apart. A receiver is `T&` in C++ exactly when t
 `IsMutating`, and `const T&` otherwise. Neither backend works out for itself what changes, so the
 two cannot disagree about it. Reachability is asked the same way. Each backend writes a `switch` as
 the target's own, and an arm's section ends in `break;` exactly where
-[`IrFlow`](src/ProtoCross.Core/Semantics/IrFlow.cs) says the arm can reach its end. That is the
+[`IrFlow`](../src/ProtoCross.Core/Semantics/IrFlow.cs) says the arm can reach its end. That is the
 predicate the binder's missing-return check uses, moved out of the binder so that the binder and
 both backends ask one question. A map is read only through a lookup, `IrMapLookup`, which carries what
 a missing key gives, and written only through an element as a place, `IrMapElement`, which is never
@@ -682,7 +686,7 @@ declared changes every generated name and nothing a program means.
 
 ## Tests
 
-One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized by layer:
+One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organized by layer:
 `LexerTests`, `ParserTests`, `ParserResilienceTests` and `BinderResilienceTests` (fuzz),
 `SourceSpanTests`, `CompilationTests`, `InMemoryCompilationTests`, `PartialBindingTests`,
 `SymbolIdentityTests`, `PositionQueryTests`, `ReferenceIndexTests`, `ScopeQueryTests`,
@@ -699,17 +703,17 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
 `ProductionSchemaClosureTests`, `BackendTests`, `NameMappingTests`,
 `CliTests` (which runs the built `protocross` as a process), and the scaffolding and smoke suites.
 
-- **Conformance corpus** — [tests/conformance/vectors](tests/conformance/vectors) holds `.pcross`
+- **Conformance corpus** — [tests/conformance/vectors](../tests/conformance/vectors) holds `.pcross`
   files whose `test` blocks *are* the vectors, compiled and executed in both backends. This is the
   semantic gate: spec 25.2 left the vector format open and this repository answers it with the
   language's own `test` declaration, so a vector with a wrong-typed expectation is a compile error.
   A directory under `multi/` is one vector written across several files and compiled as one
   program, which is where what happens between sources is pinned.
-- **Harness** — [tests/ProtoCross.Tests/Harness](tests/ProtoCross.Tests/Harness) builds and runs real
+- **Harness** — [tests/ProtoCross.Tests/Harness](../tests/ProtoCross.Tests/Harness) builds and runs real
   generated projects. Needs `protoc`, the .NET SDK, and a C++ toolchain.
-- **Paths** — [TestPaths.cs](tests/ProtoCross.Tests/TestPaths.cs) finds the repository root and the
+- **Paths** — [TestPaths.cs](../tests/ProtoCross.Tests/TestPaths.cs) finds the repository root and the
   fixture protos; use it rather than hand-rolling paths.
-- **The server is driven over the wire** — [LanguageServerClient.cs](tests/ProtoCross.Tests/LanguageServerClient.cs)
+- **The server is driven over the wire** — [LanguageServerClient.cs](../tests/ProtoCross.Tests/LanguageServerClient.cs)
   speaks framed JSON-RPC at a real host over a pair of in-memory streams, so the framing, the
   lifecycle gate and the dispatch order are under test rather than bypassed.
 
@@ -720,7 +724,7 @@ One project, [tests/ProtoCross.Tests](tests/ProtoCross.Tests), roughly organized
   `test/e2e/vscode-version.json`, so a release that breaks the extension turns the suite red in the
   commit that moves that number rather than on the day it ships.
 
-`dotnet test` locally is the gate. [.github/workflows/ci.yml](.github/workflows/ci.yml) runs the same
+`dotnet test` locally is the gate. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs the same
 suite, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
 every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
 required checks pass after checking the changed paths, without building or running the suites.
