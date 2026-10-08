@@ -5,6 +5,9 @@ and read their local documentation and callers. Expand to another guide when the
 contract. [ARCHITECTURE.md](ARCHITECTURE.md) explains the full pipeline and its invariants;
 [the specification](../ProtoCross_Spec/README.md) defines the language.
 
+The binder, parser, and backends use partial files grouped by responsibility. The topic guides link
+to each group's actual home; central files hold dispatch and shared state rather than every feature.
+
 ## Find the feature
 
 | Feature or question | Topic guide | First symbols to find |

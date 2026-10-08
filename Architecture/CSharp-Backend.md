@@ -7,17 +7,22 @@
 | Topic | Source and entry symbols | Relevant tests |
 | --- | --- | --- |
 | Production entry and files | [Emitter]: `CSharpBackend.Emit`, `EmitExtensionClass`, `EmitMethod`; extension methods in `<stem>.g.cs`, plus `ProtoCrossArithmetic.g.cs`. [Dispatch]: `SourceEmission.Emit` partitions sources and collects `GeneratedFile`. | [Backend tests]; [multiple sources] |
-| Statements and control flow | [Emitter]: `EmitStatement`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
-| Calls and placement | [Emitter]: `EmitCall`, `Placement.NamespaceOf`, `ClassOf`, `MethodNameOf`; project namespace and partial class select call targets. | [project placement]; [multiple sources] |
-| Numeric operations and conversions | [Emitter]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`, `EmitLiteral`. | [Backend tests]; [arithmetic sweep]; [conformance] |
+| Statements and control flow | [Statements]: `EmitStatement`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
+| Calls and placement | [Emitter]: `Expression`, `EmitCall`; [Context]: `Placement.NamespaceOf`, `ClassOf`, `MethodNameOf`; project namespace and partial class select call targets. | [project placement]; [multiple sources] |
+| Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`; [Formatting]: `EmitLiteral`, `FormatFloatingPoint`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
-| Mutation, copies and append | [Emitter]: `Body.ForLocal`, `Body.Collection`, `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
+| Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MapEntries`. | [map emission] |
 | Runtime support | [Runtime]: `CSharpRuntime.Source`, `Stem`, `EmitMaps`, `EmitEnums`, `EmitFloatToInteger`, `EmitFail`; IR behavior selects helpers. | [Backend tests]; [conformance] |
-| Schema type and property names | [Names]: `NameConventions.GetCSharpNamespace`, `GetCSharpTypeName`, `GetCSharpPropertyName`, `GetCSharpValueName`; [Emitter]: `TypeName`. | [namespaces]; [properties] |
-| Generated tests and projects | [Emitter]: `EmitTests`, `EmitTest`, `EmitFailTestDispatcher`, `EmitTestProject`; [Test runtime]: `CSharpTestRuntime.Source`; [Project]: `CSharpTestProject.Build` writes `ProtoCrossTests.csproj`. | [Backend tests]; [scaffolds]; [scaffold execution] |
+| Schema type and property names | [Names]: `NameConventions.GetCSharpNamespace`, `GetCSharpTypeName`, `GetCSharpPropertyName`, `GetCSharpValueName`; [Context]: `TypeName`, `EnumValue`, `Escape`. | [namespaces]; [properties] |
+| Generated tests and projects | [Tests]: `EmitTests`, `EmitTest`, `EmitFailTestDispatcher`, `EmitTestProject`, `UniqueTestMethodName`; [Test runtime]: `CSharpTestRuntime.Source`; [Project]: `CSharpTestProject.Build` writes `ProtoCrossTests.csproj`. | [Backend tests]; [scaffolds]; [scaffold execution] |
 
 [Emitter]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.cs
+[Statements]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Statements.cs
+[Numeric]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Numeric.cs
+[Formatting]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.LiteralFormatting.cs
+[Context]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.EmissionContext.cs
+[Tests]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Tests.cs
 [Dispatch]: ../src/ProtoCross.Core/Backend/SourceEmission.cs
 [flow]: ../src/ProtoCross.Core/Semantics/IrFlow.cs
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs
