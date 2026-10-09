@@ -453,9 +453,19 @@ public sealed partial class Binder
     /// told it has no value (<c>PC0100</c>). Using it where a value goes is the one mistake, and being
     /// inside an expression is that same mistake told a second time.
     /// </para>
+    /// <para>
+    /// Each call is reported once, where it is written. A compound store's place is a copy of what it
+    /// reads (<see cref="IrCopy"/>), so a call in a key it reads through is in the statement twice,
+    /// once in the read and once in the place, and was reported twice. A copy keeps the span it was
+    /// copied from, and two calls written apart never share one, so the span is what says a call has
+    /// been reported already. Leaving the place out of the question was rejected: a store that is not
+    /// a compound has a place of its own, whose calls are reported nowhere else.
+    /// </para>
     /// </remarks>
     private void ReportMutatingCallsInsideExpressions(IrStatement statement)
     {
+        var reported = new HashSet<SourceSpan>();
+
         foreach (var (expression, mayBeOne) in ExpressionsOf(statement))
         {
             // Gathered only once a mutating call turns up, since a call with no value exists only in a
@@ -473,7 +483,7 @@ public sealed partial class Binder
                     .OfType<IrValuelessCall>()
                     .Select(refused => refused.Call)
                     .ToHashSet(ReferenceEqualityComparer.Instance);
-                if (valueless.Contains(call))
+                if (valueless.Contains(call) || !reported.Add(call.Span))
                 {
                     continue;
                 }

@@ -94,6 +94,17 @@ public partial class MapTests
         Assert.Equal(nodes.Count, nodes.Distinct(ReferenceEqualityComparer.Instance).Count());
     }
 
+    /// <summary>
+    /// A call in the key a compound reads through is written once, so it is reported once, although
+    /// the place stored to is a copy of the read and holds the call too.
+    /// </summary>
+    [Fact]
+    public void AMutatingCallInACompoundStoresKeyIsReportedOnce()
+        => Assert.Equal(
+            DiagnosticCodes.MutatingCallInsideAnExpression.Code,
+            SingleError(Compile("mut fn sku() -> string {\n    prices[\"z\"] = 1;\n    return \"a\";\n}\n\n"
+                + "mut fn f() {\n    prices[sku()] on_missing 0 += 1;\n}")).Code);
+
     /// <summary>A compound written through a lookup reads with the clause and stores into the element at that key.</summary>
     [Fact]
     public void ACompoundThroughALookupStoresIntoTheElement()
