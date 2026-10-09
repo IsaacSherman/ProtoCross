@@ -296,6 +296,17 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static string FieldRead(string receiver, FieldDescriptor field)
         => $"{receiver}.{NameConventions.GetCppFieldName(field)}()";
 
+    /// <summary>
+    /// A fallback, as a lambda the runtime calls only where it needs the value:
+    /// <c>[&amp;] { return fallback; }</c>.
+    /// </summary>
+    /// <remarks>
+    /// Every clause's fallback is passed this way, <c>on_zero</c>'s, <c>on_unknown</c>'s and
+    /// <c>on_missing</c>'s, because an argument is evaluated before the helper looks at anything, and a
+    /// fallback that can end the program would end one that never needed it (spec 9.3).
+    /// </remarks>
+    private static string Deferred(string fallback) => $"[&] {{ return {fallback}; }}";
+
     /// <remarks>
     /// A <c>mut fn</c> takes its receiver as <c>T&amp;</c>, so it is handed the message through the
     /// mutable accessors (<see cref="MutableMessage"/>). Its arguments are passed as every other call's

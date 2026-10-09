@@ -63,6 +63,11 @@ public sealed partial class CSharpBackend
             ? $"({emitted} & {mask})"
             : $"(int)({emitted} & {mask})";
 
+    /// <remarks>
+    /// A fallback is written after <c>??</c>, which evaluates it only where the helper found a zero
+    /// divisor, so a fallback that can end the program does not end one whose divisor was not zero
+    /// (spec 10.2.1).
+    /// </remarks>
     private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement, string receiverName)
     {
         var left = Expression(division.Left, placement, receiverName);
@@ -77,7 +82,7 @@ public sealed partial class CSharpBackend
             ZeroDivisorBehavior.Unreachable => $"{CSharpRuntime.TypeName}.{stem}({left}, {right})",
             ZeroDivisorBehavior.Fail => $"{CSharpRuntime.TypeName}.{stem}OrFail({left}, {right})",
             ZeroDivisorBehavior.Fallback =>
-                $"{CSharpRuntime.TypeName}.{stem}Or({left}, {right}, {Expression(division.OnZero!, placement, receiverName)})",
+                $"({CSharpRuntime.TypeName}.{stem}OrNull({left}, {right}) ?? {Expression(division.OnZero!, placement, receiverName)})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
@@ -145,7 +150,8 @@ public sealed partial class CSharpBackend
     /// C# stores any <c>int</c> in an enum, so keeping a number needs only the cast. A fallback and a
     /// failure go through the runtime, which asks <c>Enum.IsDefined</c> whether the schema names the
     /// number. protoc's C# enum declares exactly the values the schema does, aliases included, so the
-    /// answer is the one C++'s <c>_IsValid</c> gives.
+    /// answer is the one C++'s <c>_IsValid</c> gives. A fallback is written after <c>??</c>, so it is
+    /// evaluated only for a number the schema does not name (spec 12.1).
     /// </remarks>
     private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement, string receiverName)
     {
@@ -155,7 +161,7 @@ public sealed partial class CSharpBackend
         {
             UnnamedNumberBehavior.Keep => value,
             UnnamedNumberBehavior.Fallback =>
-                $"{CSharpRuntime.EnumsTypeName}.NamedOr({value}, {FallbackOf(conversion, placement, receiverName)})",
+                $"({CSharpRuntime.EnumsTypeName}.NamedOrNull({value}) ?? {FallbackOf(conversion, placement, receiverName)})",
             UnnamedNumberBehavior.Fail =>
                 $"{CSharpRuntime.EnumsTypeName}.NamedOrFail({value}, {FormatString(conversion.EnumType.DisplayName)})",
             _ => throw new ArgumentOutOfRangeException(

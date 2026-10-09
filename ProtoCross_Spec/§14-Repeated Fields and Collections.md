@@ -202,8 +202,8 @@ is by `has` (13.1), was the alternative; it would have needed a second set of fa
 every `remove`, `clear` and store, and it can still be added later without breaking a clause anyone
 wrote. Methods were preferred to keywords for the changes because `append` is already spelled that
 way, and the names say what happens when the key is there and when it is not. The fallback is lazy
-because an eager one ends a program whose key was present; `on_zero`'s fallback is eager in both
-backends today, and #173 brings it into line.
+because an eager one ends a program whose key was present, and `on_zero`'s and `on_unknown`'s are
+lazy for the same reason ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause), [12.1](./§12-Enums.md#121-an-enums-number)).
 
 Open Questions:
 

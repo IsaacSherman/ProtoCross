@@ -161,6 +161,11 @@ public sealed partial class CppBackend
     private static bool UsesFoldableFloatingDivision(IrModule module)
         => IrWalk.DescendantsAndSelf(module).OfType<IrBinary>().Any(IsFoldableFloatingDivision);
 
+    /// <remarks>
+    /// A fallback is handed over as a lambda (<see cref="Deferred"/>), so the helper calls it only for
+    /// a zero divisor, and a fallback that can end the program does not end one whose divisor was not
+    /// zero (spec 10.2.1).
+    /// </remarks>
     private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement)
     {
         if (division.ResultType is not ScalarType scalar)
@@ -180,7 +185,7 @@ public sealed partial class CppBackend
             ZeroDivisorBehavior.Unreachable => $"{RuntimeNamespace}::{stem}_{suffix}({left}, {right})",
             ZeroDivisorBehavior.Fail => $"{RuntimeNamespace}::{stem}_or_fail_{suffix}({left}, {right})",
             ZeroDivisorBehavior.Fallback =>
-                $"{RuntimeNamespace}::{stem}_or_{suffix}({left}, {right}, {Expression(division.OnZero!, placement)})",
+                $"{RuntimeNamespace}::{stem}_or_{suffix}({left}, {right}, {Deferred(Expression(division.OnZero!, placement))})",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
@@ -269,7 +274,8 @@ public sealed partial class CppBackend
     /// number, and keeping one needs nothing more. A fallback and a failure ask protoc's
     /// <c>_IsValid</c> whether the schema names the number, passed to the runtime by address. That
     /// answer is the one the generated code would give, rather than a list of numbers this backend
-    /// wrote out and could get wrong.
+    /// wrote out and could get wrong. A fallback is handed over as a lambda (<see cref="Deferred"/>),
+    /// so it is evaluated only for a number the schema does not name (spec 12.1).
     /// </remarks>
     private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement)
     {
@@ -281,7 +287,7 @@ public sealed partial class CppBackend
         {
             UnnamedNumberBehavior.Keep => value,
             UnnamedNumberBehavior.Fallback =>
-                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {FallbackOf(conversion, placement)})",
+                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {Deferred(FallbackOf(conversion, placement))})",
             UnnamedNumberBehavior.Fail =>
                 $"{RuntimeNamespace}::named_or_fail({value}, {isNamed}, {FormatString(conversion.EnumType.DisplayName)})",
             _ => throw new ArgumentOutOfRangeException(

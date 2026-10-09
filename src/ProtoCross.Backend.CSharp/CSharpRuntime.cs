@@ -306,6 +306,11 @@ public static class CSharpRuntime
     /// enum a module converts to and the cast at the call site is the only thing that names it.
     /// </para>
     /// <para>
+    /// A fallback is written after <c>NamedOrNull</c>'s <c>??</c> rather than passed to it, so it is
+    /// evaluated only for a number the schema does not name, as an <c>on_zero</c> fallback is only for
+    /// a zero divisor (<see cref="EmitDivision"/>).
+    /// </para>
+    /// <para>
     /// The failure names the enum by its protobuf name, passed in by the call site, rather than by
     /// <see cref="Type.Name"/>. The C++ runtime writes the same line, and protoc gives the two targets
     /// different names for the same enum.
@@ -328,11 +333,11 @@ public static class CSharpRuntime
             }
 
             writer.WriteLine();
-            writer.WriteLine("/// <summary>The value, or the fallback where the schema does not name it.</summary>");
-            writer.WriteLine("public static T NamedOr<T>(T value, T fallback)");
+            writer.WriteLine("/// <summary>The value, or null where the schema does not name it. Reached from 'on_unknown', whose fallback follows it after '??'.</summary>");
+            writer.WriteLine("public static T? NamedOrNull<T>(T value)");
             using (writer.Block("    where T : struct, global::System.Enum"))
             {
-                writer.WriteLine("return IsNamed(value) ? value : fallback;");
+                writer.WriteLine("return IsNamed(value) ? value : null;");
             }
 
             writer.WriteLine();
@@ -529,10 +534,19 @@ public static class CSharpRuntime
     /// zero-divisor shapes.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The zero divisor and the overflow are separate questions, and this is the only operation
     /// where both arise at once: <c>MIN / -1</c> overflows although neither operand is zero, and a
     /// zero divisor is a failure of the value rather than of the range. The <c>on_zero</c> clause
     /// answers the first; the project's overflow policy answers the second.
+    /// </para>
+    /// <para>
+    /// The fallback form gives null for a zero divisor rather than taking the fallback, and the call
+    /// site writes <c>?? fallback</c> after it, as a map lookup does (<see cref="EmitMaps"/>). A
+    /// fallback passed in is evaluated before the divisor is looked at, so one that would end the
+    /// program ended it whatever the divisor was, and the language evaluates it only for a zero one
+    /// (spec 10.2.1).
+    /// </para>
     /// </remarks>
     private static void EmitDivision(SourceWriter writer, string type, bool isSigned, ArithmeticBehavior behavior)
     {
@@ -545,12 +559,12 @@ public static class CSharpRuntime
         foreach (var (name, word) in new[] { ("Divide", "division"), ("Modulo", "modulo") })
         {
             writer.WriteLine();
-            writer.WriteLine($"/// <summary>{char.ToUpperInvariant(word[0])}{word[1..]} that yields <paramref name=\"onZero\"/> instead of failing.</summary>");
-            using (writer.Block($"public static {type} {stem}{name}Or({type} left, {type} right, {type} onZero)"))
+            writer.WriteLine($"/// <summary>{char.ToUpperInvariant(word[0])}{word[1..]}, or null for a zero divisor. Reached from 'on_zero', whose fallback follows it after '??'.</summary>");
+            using (writer.Block($"public static {type}? {stem}{name}OrNull({type} left, {type} right)"))
             {
                 using (writer.Block("if (right == 0)"))
                 {
-                    writer.WriteLine("return onZero;");
+                    writer.WriteLine("return null;");
                 }
 
                 writer.WriteLine();

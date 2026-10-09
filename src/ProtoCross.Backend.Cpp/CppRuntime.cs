@@ -522,10 +522,15 @@ public static class CppRuntime
     }
 
     /// <summary>
-    /// Emits the form used when the author supplied an <c>on_zero</c> fallback. The fallback is
-    /// evaluated eagerly at the call site; ProtoCross expressions have no side effects, so this is
-    /// indistinguishable from lazy evaluation.
+    /// Emits the form used when the author supplied an <c>on_zero</c> fallback, which takes the
+    /// fallback as something to call.
     /// </summary>
+    /// <remarks>
+    /// The call site writes the fallback as a lambda, so it is evaluated only for a zero divisor, as a
+    /// map lookup's is only for a missing key (<see cref="EmitMapHelpers"/>). A fallback passed as a
+    /// value is evaluated before the divisor is looked at, so one that would end the program ended it
+    /// whatever the divisor was (spec 10.2.1).
+    /// </remarks>
     private static void EmitDivideOrHelper(
         SourceWriter writer,
         ArithmeticBehavior behavior,
@@ -534,13 +539,14 @@ public static class CppRuntime
     {
         var stem = Stem(behavior);
 
-        writer.WriteLine("// Division that yields on_zero instead of failing.");
+        writer.WriteLine("// Division that yields on_zero() instead of failing, calling it only for a zero divisor.");
+        writer.WriteLine("template <typename OnZero>");
         using (writer.Block(
-            $"inline {signed} {stem}_div_or_{suffix}({signed} a, {signed} b, {signed} on_zero)"))
+            $"inline {signed} {stem}_div_or_{suffix}({signed} a, {signed} b, OnZero on_zero)"))
         {
             using (writer.Block("if (b == 0)"))
             {
-                writer.WriteLine("return on_zero;");
+                writer.WriteLine("return on_zero();");
             }
 
             writer.WriteLine();
@@ -558,13 +564,14 @@ public static class CppRuntime
     {
         var stem = Stem(behavior);
 
-        writer.WriteLine("// Remainder that yields on_zero instead of failing.");
+        writer.WriteLine("// Remainder that yields on_zero() instead of failing, calling it only for a zero divisor.");
+        writer.WriteLine("template <typename OnZero>");
         using (writer.Block(
-            $"inline {signed} {stem}_mod_or_{suffix}({signed} a, {signed} b, {signed} on_zero)"))
+            $"inline {signed} {stem}_mod_or_{suffix}({signed} a, {signed} b, OnZero on_zero)"))
         {
             using (writer.Block("if (b == 0)"))
             {
-                writer.WriteLine("return on_zero;");
+                writer.WriteLine("return on_zero();");
             }
 
             writer.WriteLine();
@@ -689,6 +696,11 @@ public static class CppRuntime
     /// to the enum, which protoc declares with <c>int</c> beneath it, so any number survives the cast.
     /// </para>
     /// <para>
+    /// A fallback is taken as something to call, which the call site writes as a lambda, so it is
+    /// evaluated only for a number the schema does not name, as an <c>on_zero</c> fallback is only for
+    /// a zero divisor (<see cref="EmitDivideOrHelper"/>).
+    /// </para>
+    /// <para>
     /// The failure writes the line the C# runtime writes, naming the enum by its protobuf name, since
     /// protoc gives the two targets different names for it.
     /// </para>
@@ -707,10 +719,10 @@ public static class CppRuntime
         }
 
         writer.WriteLine();
-        writer.WriteLine("template <typename E>");
-        using (writer.Block("inline E named_or(E value, bool (*is_named)(int), E fallback)"))
+        writer.WriteLine("template <typename E, typename Fallback>");
+        using (writer.Block("inline E named_or(E value, bool (*is_named)(int), Fallback fallback)"))
         {
-            writer.WriteLine("return is_named(static_cast<int>(value)) ? value : fallback;");
+            writer.WriteLine("return is_named(static_cast<int>(value)) ? value : fallback();");
         }
 
         writer.WriteLine();

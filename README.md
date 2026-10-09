@@ -122,7 +122,8 @@ Implemented:
 - An enum's number, `status as int32`, and an enum from a number, `n as OrderStatus`. A number the
   enum does not name is kept by an open enum and ends the program for a closed one, unless the
   conversion says otherwise with `on_unknown OrderStatus.UNSPECIFIED` or `on_unknown fail`, or the
-  project says it once for the enum in `protocross.config.xml`.
+  project says it once for the enum in `protocross.config.xml`. The fallback is evaluated only for a
+  number with no name, as an `on_zero` fallback is only for a zero divisor.
   `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
   and 12.2.
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
