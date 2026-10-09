@@ -124,4 +124,31 @@ public partial class RefusedPartTests
             [DiagnosticCodes.UnknownLiteralField.Code, DiagnosticCodes.MutatingCallInsideAnExpression.Code],
             result.Diagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).Select(diagnostic => diagnostic.Code));
     }
+
+    // ------- the refusal is reported where the mistake is
+
+    public static TheoryData<string, string, DiagnosticDescriptor> NameRefusals => new()
+    {
+        { InLiteral("nosuch: " + Kept), "nosuch", DiagnosticCodes.UnknownLiteralField },
+        { InLiteral("held: new Item { }, held: " + Kept), "held", DiagnosticCodes.DuplicateLiteralField },
+        { InFixture("nosuch: " + Kept), "nosuch", DiagnosticCodes.UnknownLiteralField },
+        { InLiteral("items: [{ key: \"a\", value: new Item { }, extra: " + Kept + " }]"), "extra", DiagnosticCodes.UnknownLiteralField },
+    };
+
+    /// <summary>
+    /// A field refused for its name is reported at that name, the second one written for a field
+    /// written twice, and not over the value kept beside it, which may be right in every part.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(NameRefusals))]
+    public void AFieldRefusedForItsNameIsReportedAtTheName(string body, string name, DiagnosticDescriptor refusal)
+    {
+        var (text, _, result) = Compile(body);
+        AssertTheOnlyErrorIs(refusal, result);
+
+        var reported = Assert.Single(result.Diagnostics, diagnostic => diagnostic.Code == refusal.Code).Span;
+        var written = text.LastIndexOf(name + ":", StringComparison.Ordinal);
+
+        Assert.Equal((written, written + name.Length), (reported.Start.Offset, reported.End.Offset));
+    }
 }

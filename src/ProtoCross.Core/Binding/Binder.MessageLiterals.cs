@@ -139,6 +139,13 @@ public sealed partial class Binder
 
     /// <summary>Binds one field, or returns null for one that is refused before its value is read.</summary>
     /// <param name="written">The fields written before this one, which this one joins.</param>
+    /// <remarks>
+    /// A field refused for its name -- one the message does not have, or one written again -- is
+    /// reported at that name, as a literal of the wrong message is at the type it names
+    /// (<see cref="MismatchAt"/>). Its value may be right in every part, and is bound and kept all
+    /// the same, so a diagnostic spanning the whole field would underline it too, through every
+    /// keystroke of someone completing inside it.
+    /// </remarks>
     private IrFieldInitializer? BindFieldInitializer(
         FieldInitializer field,
         MessageDescriptor descriptor,
@@ -152,7 +159,7 @@ public sealed partial class Binder
             _diagnostics.Report(
                 DiagnosticCodes.UnknownLiteralField,
                 $"'{descriptor.FullName}' has no field named '{field.Name}'.",
-                field.Span);
+                field.Name.Span);
             return null;
         }
 
@@ -167,7 +174,7 @@ public sealed partial class Binder
             _diagnostics.Report(
                 DiagnosticCodes.DuplicateLiteralField,
                 $"Field '{descriptorField.Name}' is set more than once.",
-                field.Span,
+                field.Name.Span,
                 descriptorField.IsRepeated
                     ? $"A repeated field takes all of its values in one list: '{descriptorField.Name}: [first, second]'."
                     : "Set each field once.");

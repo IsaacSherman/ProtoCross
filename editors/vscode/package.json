@@ -2,7 +2,7 @@
   "name": "protocross",
   "displayName": "ProtoCross",
   "description": "Language support for ProtoCross: live diagnostics, completion, hover and navigation, driven by the ProtoCross compiler.",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "publisher": "isaacsherman",
   "license": "MIT",
   "icon": "images/icon.png",
