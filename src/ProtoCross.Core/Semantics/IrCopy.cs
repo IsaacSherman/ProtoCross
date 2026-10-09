@@ -41,7 +41,7 @@ public static class IrCopy
             IrThis or IrLocalReference or IrParameterReference or IrLiteral or IrEnumValue => expression with { },
             IrFieldAccess field => field with { Receiver = Of(field.Receiver) },
             IrFieldPresence presence => presence with { Receiver = Of(presence.Receiver) },
-            IrMethodCall call => CallOf(call),
+            IrMethodCall call => call with { Receiver = Of(call.Receiver), Arguments = [.. call.Arguments.Select(Of)] },
             IrBinary binary => binary with { Left = Of(binary.Left), Right = Of(binary.Right) },
             IrIntegerDivision division => division with
             {
@@ -85,13 +85,11 @@ public static class IrCopy
                 Receiver = OrNull(call.Receiver),
                 Arguments = [.. call.Arguments.Select(Of)],
             },
-            IrValuelessCall valueless => valueless with { Call = CallOf(valueless.Call) },
+            // Through Of, as any expression, so the call's refused parts are copied with it.
+            IrValuelessCall valueless => valueless with { Call = (IrMethodCall)Of(valueless.Call) },
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "An expression IrCopy does not know."),
         };
     }
-
-    private static IrMethodCall CallOf(IrMethodCall call)
-        => call with { Receiver = Of(call.Receiver), Arguments = [.. call.Arguments.Select(Of)] };
 
     private static IrExpression? OrNull(IrExpression? expression) => expression is null ? null : Of(expression);
 
