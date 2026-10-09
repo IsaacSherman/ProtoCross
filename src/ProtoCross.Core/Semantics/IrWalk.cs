@@ -103,12 +103,24 @@ public static class IrWalk
     /// In source order wherever the source had an order. A receiver comes before what is read from
     /// it and an argument list follows its callee. A node standing for something nobody has written
     /// yet -- an <see cref="IrMissingMemberAccess"/> -- ends at the empty point where it would be
-    /// written and holds what was written before that, which is source order like any other.
+    /// written and holds what was written before that, which is source order like any other. What a
+    /// node refused (<see cref="IrNode.Refused"/>) is merged in by position, since a refused field
+    /// stands between the fields kept around it.
     /// </remarks>
     public static IReadOnlyList<IrNode> ChildrenOf(IrNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
 
+        var held = HeldBy(node);
+
+        return node.Refused.Count == 0
+            ? held
+            : [.. held.Concat(node.Refused).OrderBy(child => child.Span.Start.Offset)];
+    }
+
+    /// <summary>What a node holds in the places its record declares for them.</summary>
+    private static IReadOnlyList<IrNode> HeldBy(IrNode node)
+    {
         return node switch
         {
             IrMethod method => [method.Body],

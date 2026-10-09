@@ -139,6 +139,12 @@ The IR preserves:
   check asks, so the two cannot disagree.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
   diagnostics.
+- What was written in a construct the binder refused, bound and kept by the node standing where it
+  was written. That covers the value of a field a literal or an entry refused, an element where a
+  map's entry goes, and the parts of a construct refused whole, such as a lookup of something that is
+  not a map, which an error then stands for. So it is there to ask about while it is being typed,
+  and every rule that applies to anything bound applies to it: a mutating call there is still one
+  inside an expression ([18](./§18-Mutability.md#18-mutability)).
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
 all of it, which is what a backend or a host may write code against instead of checking. Each is

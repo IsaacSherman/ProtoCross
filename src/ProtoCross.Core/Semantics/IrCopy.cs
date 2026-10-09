@@ -17,6 +17,10 @@ namespace ProtoCross.Semantics;
 /// copy to sharing no node with what it copied, so a kind added later and forgotten here fails a test
 /// rather than throwing for the first author who writes it.
 /// </para>
+/// <para>
+/// What a node refused is copied with it (<see cref="IrNode.Refused"/>). A record copied with
+/// <c>with</c> keeps the list it had, and the parts in it would then stand in two places.
+/// </para>
 /// </remarks>
 public static class IrCopy
 {
@@ -26,12 +30,18 @@ public static class IrCopy
     {
         ArgumentNullException.ThrowIfNull(expression);
 
+        return WithRefusedOf(expression, KindOf(expression));
+    }
+
+    /// <summary><paramref name="expression"/> copied by its kind, still holding what it refused.</summary>
+    private static IrExpression KindOf(IrExpression expression)
+    {
         return expression switch
         {
             IrThis or IrLocalReference or IrParameterReference or IrLiteral or IrEnumValue => expression with { },
             IrFieldAccess field => field with { Receiver = Of(field.Receiver) },
             IrFieldPresence presence => presence with { Receiver = Of(presence.Receiver) },
-            IrMethodCall call => CallOf(call),
+            IrMethodCall call => call with { Receiver = Of(call.Receiver), Arguments = [.. call.Arguments.Select(Of)] },
             IrBinary binary => binary with { Left = Of(binary.Left), Right = Of(binary.Right) },
             IrIntegerDivision division => division with
             {
@@ -50,12 +60,15 @@ public static class IrCopy
             IrEnumMembership membership => membership with { Value = Of(membership.Value) },
             IrMessageLiteral literal => literal with
             {
-                Fields = [.. literal.Fields.Select(field => field with { Value = Of(field.Value) })],
+                Fields = [.. literal.Fields.Select(field => WithRefusedOf(field, field with { Value = Of(field.Value) }))],
             },
             IrList list => list with { Elements = [.. list.Elements.Select(Of)] },
             IrMapEntries entries => entries with
             {
-                Entries = [.. entries.Entries.Select(entry => entry with { Key = Of(entry.Key), Value = Of(entry.Value) })],
+                Entries =
+                [
+                    .. entries.Entries.Select(entry => WithRefusedOf(entry, entry with { Key = Of(entry.Key), Value = Of(entry.Value) })),
+                ],
             },
             IrMapLookup lookup => lookup with
             {
@@ -72,13 +85,16 @@ public static class IrCopy
                 Receiver = OrNull(call.Receiver),
                 Arguments = [.. call.Arguments.Select(Of)],
             },
-            IrValuelessCall valueless => valueless with { Call = CallOf(valueless.Call) },
+            // Through Of, as any expression, so the call's refused parts are copied with it.
+            IrValuelessCall valueless => valueless with { Call = (IrMethodCall)Of(valueless.Call) },
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "An expression IrCopy does not know."),
         };
     }
 
-    private static IrMethodCall CallOf(IrMethodCall call)
-        => call with { Receiver = Of(call.Receiver), Arguments = [.. call.Arguments.Select(Of)] };
-
     private static IrExpression? OrNull(IrExpression? expression) => expression is null ? null : Of(expression);
+
+    /// <summary><paramref name="copy"/> holding copies of what <paramref name="original"/> refused, rather than the parts themselves.</summary>
+    private static TNode WithRefusedOf<TNode>(TNode original, TNode copy)
+        where TNode : IrNode
+        => original.Refused.Count == 0 ? copy : (TNode)(((IrNode)copy) with { Refused = [.. original.Refused.Select(Of)] });
 }

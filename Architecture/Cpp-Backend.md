@@ -7,17 +7,22 @@
 | Topic | Source and entry symbols | Relevant tests |
 | --- | --- | --- |
 | Production files | [Emitter]: `CppBackend.Emit`, `WriteDeclarations`, `WriteDefinitions`; inline functions in `<stem>.pc.h`, plus `protocross_runtime.h`. [Dispatch]: `SourceEmission.Emit` collects files per source. | [Backend tests] |
-| Calls and placement | [Emitter]: `EmitCall`, `WriteAroundSiblings`, `SiblingHeadersCalledFrom`, `Placement.QualifiedFunctionOf`, `IncludeGuardOf`; sibling includes follow declarations. | [multiple sources]; [project placement] |
-| Statements and control flow | [Emitter]: `EmitStatement`, `EmitForEach`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
-| Numeric operations and conversions | [Emitter]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`, `EmitLiteral`. | [Backend tests]; [arithmetic sweep]; [conformance] |
-| Message literals and fixtures | [Literals]: `MessageLiteral`, `EmitConstruction`, `EmitFields`, `NamesFor`; immediate lambdas or construction in place. | [literal emission] |
-| Mutation, copies and append | [Emitter]: `Signature`, `EmitFieldAssignment`, `EmitAppend`, `EmitFieldWrite`, `StoredValue`, `MutableMessage`; [mutation]: `IrMutation.ChangesElementsOf`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
+| Calls and placement | [Emitter]: `Expression`, `EmitCall`, `WriteAroundSiblings`, `SiblingHeadersCalledFrom`; [Context]: `Placement.QualifiedFunctionOf`, `IncludeGuardOf`; sibling includes follow declarations. | [multiple sources]; [project placement] |
+| Statements and control flow | [Statements]: `EmitStatement`, `EmitForEach`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
+| Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`, `UsesFloatingRemainder`, `UsesFoldableFloatingDivision`; [Formatting]: `EmitLiteral`, `FormatDouble`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
+| Message literals and fixtures | [Literals]: `MessageLiteral`, `EmitConstruction`, `EmitFields`; [Context]: `NamesFor`, `NameAllocator`; immediate lambdas or construction in place use shared name allocation. | [literal emission] |
+| Mutation, copies and append | [Emitter]: `Signature`; [Statements]: `EmitFieldAssignment`, `EmitAppend`, `EmitFieldWrite`, `StoredValue`, `MutableMessage`; [mutation]: `IrMutation.ChangesElementsOf`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MutableElement`. | [map emission] |
 | Runtime support | [Runtime]: `CppRuntime.Source`, `Stem`, `EmitFloatToIntegerHelper`, `EmitEnumHelpers`, `EmitMapHelpers`, `EmitFailHelper`. | [Backend tests]; [conformance] |
-| Schema includes and type names | [Schemas]: `SchemasNamedBeyond`, `SchemasNamedBy`, `ProtoHeadersOf`; [Names]: `NameConventions.GetCppProtoHeader`, `GetCppTypeName`, `GetCppFieldName`, `GetCppValueName`; [Emitter]: `TypeName`. | [schema includes]; [type names]; [field names] |
-| Tests and projects | [Emitter]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitExpectFailHelpers`, `EmitTestProject`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`. | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
+| Schema includes and type names | [Schemas]: `SchemasNamedBeyond`, `SchemasNamedBy`, `ProtoHeadersOf`; [Names]: `NameConventions.GetCppProtoHeader`, `GetCppTypeName`, `GetCppFieldName`, `GetCppValueName`; [Context]: `TypeName`, `QualifiedTypeName`, `QualifiedEnumName`, `Escape`. | [schema includes]; [type names]; [field names] |
+| Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`. | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
 
 [Emitter]: ../src/ProtoCross.Backend.Cpp/CppBackend.cs
+[Statements]: ../src/ProtoCross.Backend.Cpp/CppBackend.Statements.cs
+[Numeric]: ../src/ProtoCross.Backend.Cpp/CppBackend.Numeric.cs
+[Formatting]: ../src/ProtoCross.Backend.Cpp/CppBackend.LiteralFormatting.cs
+[Context]: ../src/ProtoCross.Backend.Cpp/CppBackend.EmissionContext.cs
+[Tests]: ../src/ProtoCross.Backend.Cpp/CppBackend.Tests.cs
 [Dispatch]: ../src/ProtoCross.Core/Backend/SourceEmission.cs
 [flow]: ../src/ProtoCross.Core/Semantics/IrFlow.cs
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs

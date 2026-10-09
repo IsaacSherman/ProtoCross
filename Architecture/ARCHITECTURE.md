@@ -68,6 +68,9 @@ each with a form that takes a list of sources.
    to it by height, because every later stage recurses over what the parser builds. A name it
    expected and did not find is a [`SyntaxName`](../src/ProtoCross.Core/Syntax/SyntaxName.cs) that
    says so, carrying the empty range where the name would go.
+   Shared parser state, token operations and budgets stay in `Parser.cs`; declarations, tests,
+   literals, statements and expressions have their own `Parser.*.cs` partials. The
+   [language lookup](Language.md) maps each grammar entry and its recovery to those files.
 5. **No gate.** Parse errors do not stop the pipeline. A buffer being typed into is broken most of
    the time an editor asks anything about it, and what it most often asks — what may follow this
    dot — only the binder can answer.
@@ -109,7 +112,10 @@ each with a form that takes a list of sources.
    That is what lets go-to-definition and hover cross the file boundary, which is where most of what a
    ProtoCross file talks about lives.
 7. **Bind.** [`Binder.Bind`](../src/ProtoCross.Core/Binding/Binder.cs) resolves names against the
-   descriptors and produces typed IR. It binds several sources, each a
+   descriptors and produces typed IR. `Binder.cs` keeps shared state, two-pass orchestration,
+   expression dispatch and scope/context types. Its `Tests`, `Statements`, `Presence`,
+   `NamesAndCalls` and `Operators` partials sit beside the existing feature partials; the
+   [language lookup](Language.md) names their entry symbols. It binds several sources, each a
    [`SourceTree`](../src/ProtoCross.Core/SourceTree.cs), into one module as readily as one: every source's methods are declared before any body is bound,
    so a call or a test may reach from one source into another, and `IrModule.DeclaredIn` divides the
    module back into what each source declares. Sugar ends here: a compound assignment `x += y` is bound as the
@@ -649,6 +655,12 @@ Per spec 23 a backend consumes only the typed IR, never the AST, and rejects wha
 rather than emitting something that quietly differs. A backend **cannot branch on policy**: how an
 operation is emitted comes from the behavior annotation the binder stamped on the IR node. Policy
 reaches a backend only as prose for the generated file's header.
+
+Each backend keeps production orchestration and expression dispatch in its central file. `Tests`,
+`Statements`, `Numeric`, `LiteralFormatting` and `EmissionContext` partials separate test generation,
+control flow and writes, arithmetic, scalar spelling, and shared placement/name/body context.
+`Maps`, `MessageLiterals` and C++ `Schemas` retain their feature homes. The [C#](CSharp-Backend.md)
+and [C++](Cpp-Backend.md) lookups map the symbols; runtime generators stay in their existing files.
 
 Copies and mutability come from the IR as well. `IrExpression.IsCopiedWhenStored` says that a stored
 value has to be a copy. [`IrMutation`](../src/ProtoCross.Core/Semantics/IrMutation.cs) answers four

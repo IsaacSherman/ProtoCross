@@ -26,9 +26,7 @@ public sealed partial class Binder
 
         if (!IsAMap(map, index, out var mapType))
         {
-            BindDiscarded(index.Key, scope, context);
-            BindDiscardedClause(index.OnMissing, scope, context);
-            return new IrLiteral(null, ErrorType.Instance, index.Span);
+            return RefusedIndex(map, index, scope, context);
         }
 
         var key = BindKey(index.Key, map, mapType, scope, context);
@@ -137,14 +135,21 @@ public sealed partial class Binder
         return mapType is not null;
     }
 
-    /// <summary>Binds the fallback of a clause nothing will use, for the names in it and its mistakes.</summary>
-    private void BindDiscardedClause(OnMissingClause? clause, Scope scope, MethodContext context)
-    {
-        if (clause?.Fallback is { } fallback)
-        {
-            BindDiscarded(fallback, scope, context);
-        }
-    }
+    /// <summary>
+    /// An error standing for an index into something that is not a map, holding what was written in
+    /// it: the collection, the key, and any fallback.
+    /// </summary>
+    private IrLiteral RefusedIndex(IrExpression collection, IndexExpression index, Scope scope, MethodContext context)
+        => Refusal(
+            [collection, BindRefused(index.Key, scope, context), .. BindRefusedClause(index.OnMissing, scope, context)],
+            index.Span);
+
+    /// <summary>
+    /// Binds the fallback of a clause nothing will use, for the names in it and its mistakes, to be
+    /// kept among what was refused.
+    /// </summary>
+    private IReadOnlyList<IrExpression> BindRefusedClause(OnMissingClause? clause, Scope scope, MethodContext context)
+        => clause?.Fallback is { } fallback ? [BindRefused(fallback, scope, context)] : [];
 
     /// <summary>
     /// Binds <c>value in something</c> whose right side begins with a name: a key looked for in a map
@@ -190,8 +195,7 @@ public sealed partial class Binder
                     + "is one its enum names, as in 'status in OrderStatus' (spec 12.2).");
             }
 
-            BindDiscarded(membership.Value, scope, context);
-            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+            return Refusal([BindRefused(membership.Value, scope, context), map], membership.Span);
         }
 
         var key = BindKey(membership.Value, map, mapType, scope, context);
@@ -201,7 +205,7 @@ public sealed partial class Binder
     /// <summary>Reports an entry, <c>{ key: k, value: v }</c>, written where no map field's list is.</summary>
     /// <remarks>
     /// The parser reads braces in any list as an entry, because which lists are a map field's is the
-    /// schema's to say. Its values are still bound, for the names written in them.
+    /// schema's to say. Its values are still bound, for the names written in them, and kept.
     /// </remarks>
     private IrExpression BindStrayEntry(MapEntryExpression entry, Scope scope, MethodContext context)
     {
@@ -211,8 +215,7 @@ public sealed partial class Binder
             entry.Span,
             "A map field takes '[{ key: k, value: v }, …]'. Any other field is given its values as they are (spec 13.2).");
 
-        BindDiscarded(entry, scope, context);
-        return new IrLiteral(null, ErrorType.Instance, entry.Span);
+        return BindRefused(entry, scope, context);
     }
 
     // ------- calling
@@ -478,11 +481,10 @@ public sealed partial class Binder
 
         if (!IsAMap(map, index, out var mapType))
         {
-            BindDiscarded(index.Key, scope, context);
-            BindDiscardedClause(index.OnMissing, scope, context);
-            return new IrLiteral(null, ErrorType.Instance, index.Span);
+            return RefusedIndex(map, index, scope, context);
         }
 
+        IReadOnlyList<IrExpression> refused = [];
         if (index.OnMissing is { } clause)
         {
             _diagnostics.Report(
@@ -491,11 +493,11 @@ public sealed partial class Binder
                 clause.Span,
                 "An element stored to, or written through, is put in the map where the key is missing. Delete "
                 + "the clause (spec 14.2).");
-            BindDiscardedClause(clause, scope, context);
+            refused = BindRefusedClause(clause, scope, context);
         }
 
         var key = BindKey(index.Key, map, mapType, scope, AfterReaching(index.Collection, scope, context));
-        return new IrMapElement(map, key, mapType.ValueType, index.Span);
+        return new IrMapElement(map, key, mapType.ValueType, index.Span) { Refused = refused };
     }
 
     /// <summary>
@@ -530,10 +532,11 @@ public sealed partial class Binder
 
         if (field.Value is ListExpression list)
         {
-            return new IrMapEntries(
-                mapType,
-                [.. list.Elements.Select(element => BindEntry(descriptorField, element, scope, context)).OfType<IrMapEntry>()],
-                list.Span);
+            var elements = list.Elements.Select(element => BindEntry(descriptorField, element, scope, context)).ToList();
+            return new IrMapEntries(mapType, [.. elements.OfType<IrMapEntry>()], list.Span)
+            {
+                Refused = [.. elements.OfType<IrExpression>()],
+            };
         }
 
         var bound = BindExpression(field.Value, scope, context, null);
@@ -552,7 +555,10 @@ public sealed partial class Binder
         return bound;
     }
 
-    /// <summary>One entry of a map field's list, or null for an element that is not one.</summary>
+    /// <summary>
+    /// One entry of a map field's list, or an element that is not one, bound to be kept among what the
+    /// list refused.
+    /// </summary>
     /// <remarks>
     /// <para>
     /// An entry is the message protobuf models it as, with the key as its field 1 and the value as its
@@ -570,10 +576,12 @@ public sealed partial class Binder
     /// hole). The error spans the entry, which is the only place what is missing could be said to be.
     /// </para>
     /// <para>
-    /// An element that is not an entry is refused, and still bound for the names written in it.
+    /// An element that is not an entry is refused, and still bound for the names written in it. The
+    /// list keeps it among what it refused, as an entry keeps a field that is neither its key nor its
+    /// value.
     /// </para>
     /// </remarks>
-    private IrMapEntry? BindEntry(FieldDescriptor map, Expression element, Scope scope, MethodContext context)
+    private IrNode BindEntry(FieldDescriptor map, Expression element, Scope scope, MethodContext context)
     {
         if (element is not MapEntryExpression entry)
         {
@@ -582,17 +590,16 @@ public sealed partial class Binder
                 $"Field '{map.Name}' is a map, so its list holds entries, not values.",
                 element.Span,
                 "Write each entry with its key and its value: '{ key: k, value: v }' (spec 13.2).");
-            BindDiscarded(element, scope, context);
-            return null;
+            return BindRefused(element, scope, context);
         }
 
-        var fields = BindFieldInitializers(entry.Fields, map.MessageType, scope, context);
+        var (fields, refused) = BindFieldInitializers(entry.Fields, map.MessageType, scope, context);
         var key = fields.FirstOrDefault(field => field.Field.FieldNumber == TypeFactory.MapKeyOf(map).FieldNumber)?.Value;
         var value = fields.FirstOrDefault(field => field.Field.FieldNumber == TypeFactory.MapValueOf(map).FieldNumber)?.Value;
 
         if (key is not null && value is not null)
         {
-            return new IrMapEntry(key, value, entry.Span);
+            return new IrMapEntry(key, value, entry.Span) { Refused = refused };
         }
 
         // Said only of an entry whose fields all bound, since one refused has been reported already and
@@ -615,6 +622,9 @@ public sealed partial class Binder
         return new IrMapEntry(
             key ?? new IrLiteral(null, ErrorType.Instance, entry.Span),
             value ?? new IrLiteral(null, ErrorType.Instance, entry.Span),
-            entry.Span);
+            entry.Span)
+        {
+            Refused = refused,
+        };
     }
 }

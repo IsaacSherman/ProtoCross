@@ -1,4 +1,3 @@
-using System.Globalization;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
 
@@ -6,9 +5,6 @@ namespace ProtoCross.Backend.Cpp;
 
 public sealed partial class CppBackend
 {
-    /// <summary>The local a generated test builds its receiver in, and calls its method on.</summary>
-    private const string TestReceiverName = "receiver";
-
     /// <summary>
     /// A message literal (spec 13.2) in expression position: a lambda that builds the message,
     /// called where the literal is written.
@@ -134,76 +130,4 @@ public sealed partial class CppBackend
     private static bool SetsAnything(IrMessageLiteral literal)
         => literal.Fields.Any(field => field.Value is not (IrList { Elements.Count: 0 } or IrMapEntries { Entries.Count: 0 }));
 
-    /// <summary>
-    /// Names for what generated code declares inside <paramref name="node"/>. None of them is a name
-    /// the node reads or declares, or <c>self</c>, or any of <paramref name="taken"/>.
-    /// </summary>
-    /// <remarks>
-    /// Those are the only names a declaration there can meet. A name declared in generated code
-    /// shadows only within the code that declares it, and the only names that code holds besides its
-    /// own are the ones the IR under it reads. Asking the IR, rather than tracking every name in scope,
-    /// keeps <see cref="Expression"/> a function of the node it is given.
-    /// </remarks>
-    private static NameAllocator NamesFor(IrNode node, params string[] taken)
-    {
-        var names = new NameAllocator();
-        names.Reserve(ReceiverName);
-        foreach (var name in taken)
-        {
-            names.Reserve(name);
-        }
-
-        foreach (var descendant in IrWalk.DescendantsAndSelf(node))
-        {
-            switch (descendant)
-            {
-                case IrLocalReference reference:
-                    names.Reserve(Escape(reference.Local.Name));
-                    break;
-                case IrParameterReference reference:
-                    names.Reserve(Escape(reference.Parameter.Name));
-                    break;
-                case IrVariableDeclaration declaration:
-                    names.Reserve(Escape(declaration.Local.Name));
-                    break;
-                case IrForEach forEach:
-                    names.Reserve(Escape(forEach.Loop.Name));
-                    break;
-            }
-        }
-
-        return names;
-    }
-
-    /// <summary>
-    /// Names for what generated code declares, each different from every other it has given and from
-    /// every one it was told is taken.
-    /// </summary>
-    private sealed class NameAllocator
-    {
-        private readonly HashSet<string> _taken = new(StringComparer.Ordinal);
-
-        public void Reserve(string name) => _taken.Add(name);
-
-        /// <summary>
-        /// <paramref name="stem"/>, escaped, or else the first of <c>stem1</c>, <c>stem2</c> and so on
-        /// that is free.
-        /// </summary>
-        /// <remarks>
-        /// It checks the whole name rather than counting per stem. A count per stem gave a field
-        /// <c>a</c>'s second pointer the name <c>a1</c> even when a field named <c>a1</c> already had
-        /// it.
-        /// </remarks>
-        public string Next(string stem)
-        {
-            var escaped = Escape(stem);
-            var name = escaped;
-            for (var suffix = 1; !_taken.Add(name); suffix++)
-            {
-                name = escaped + suffix.ToString(CultureInfo.InvariantCulture);
-            }
-
-            return name;
-        }
-    }
 }
