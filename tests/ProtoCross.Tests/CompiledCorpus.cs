@@ -91,8 +91,10 @@ internal static class CompiledCorpus
     /// <see cref="Ir.IrValuelessCall"/> there. A literal is given a field its message does not have,
     /// and a list an entry where no map is, so the walk meets what a node refused
     /// (<see cref="Ir.IrNode.Refused"/>) both in a literal kept around it and in an error standing for
-    /// it. The refused field's value names nothing, because <c>PC0059</c> spans the whole field, and
-    /// the completion sweep would take any name accepted inside it for the name that did not bind.
+    /// it. The refused field's value is a literal of its own, so the completion sweep accepts names
+    /// inside what a literal refused. It can because <c>PC0059</c> is reported at the field's name:
+    /// spanning the whole field, it would overlap every name accepted in the value, and the sweep
+    /// would blame each of them for it.
     /// </summary>
     public const string BrokenText =
         """
@@ -114,7 +116,7 @@ internal static class CompiledCorpus
 
             fn h() -> int64 { return 1(2); }
 
-            fn r() -> InvoiceItem { return new InvoiceItem { quantity: 1, nosuch: [2, 3] }; }
+            fn r() -> InvoiceItem { return new InvoiceItem { quantity: 1, nosuch: new InvoiceItem { quantity: 2 } }; }
 
             fn s() -> Invoice { return new Invoice { items: [{ key: 1, value: new InvoiceItem { } }] }; }
         }

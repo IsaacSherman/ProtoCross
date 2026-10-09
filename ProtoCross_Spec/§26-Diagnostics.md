@@ -88,6 +88,14 @@ Normative Requirements:
   named file cannot be resolved to a document, the diagnostic goes to the document being compiled at
   its start rather than at that position: a range that is honestly wrong is worse than one that admits
   it knows nothing, and the message names the file either way.
+- **A field refused for its name is published at that name.** `PC0059`, a field the literal's
+  message does not have, and `PC0061`, a field written twice
+  ([13.2](./§13-Messages.md#132-message-construction)), cover the field's name and not its value.
+  A field written twice is reported at its later occurrence, the one refused. The value is still
+  bound and kept ([22.2](./§22-IR%20and%20Compiler%20Architecture.md#222-typed-ir-requirements)),
+  may be right in every part, and is where completion is asked while it is typed, so a range over
+  the whole field would underline it the whole time for a mistake to its left. The command line
+  prints the same line and column, since the name is where the field starts.
 - A configuration diagnostic with no position ([10.4.1](./§10-Numeric%20Semantics.md#1041-host-configuration)) is published against **every** open document,
   because that is the extent of what it affects. The ones with positions belong to the configuration
   file, and are published once however many documents that file governs.
