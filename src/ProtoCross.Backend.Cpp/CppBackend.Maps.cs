@@ -26,7 +26,7 @@ public sealed partial class CppBackend
         return lookup.OnMissing switch
         {
             MissingKeyBehavior.Fallback =>
-                $"{RuntimeNamespace}::value_or({map}, {key}, [&] {{ return {Expression(lookup.Fallback!, placement)}; }})",
+                $"{RuntimeNamespace}::value_or({map}, {key}, {Deferred(Expression(lookup.Fallback!, placement))})",
             MissingKeyBehavior.Fail =>
                 $"{RuntimeNamespace}::found_or_fail({map}, {key}, {FormatString(lookup.MapName)})",
             _ => throw new ArgumentOutOfRangeException(

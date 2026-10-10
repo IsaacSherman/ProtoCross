@@ -138,6 +138,10 @@ Normative Requirements:
   is a literal that is provably non-zero.
 - `on_zero <expression>` substitutes that value. It must already have the type the division
   produces; no implicit conversion is applied ([10.3](#103-numeric-conversions)).
+- **The fallback is evaluated only when the divisor is zero**, and after both operands. So
+  `total / count on_zero (other / divisor on_zero fail)` does not end the program while `count` is
+  not zero, whatever `divisor` is. A map lookup's `on_missing` fallback is evaluated the same way
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - `on_zero fail` terminates the program deterministically, with a diagnostic naming the operation
   written to standard error. It is not catchable and not recoverable. The process exit code is
   **70** (`EX_SOFTWARE`) in every backend.

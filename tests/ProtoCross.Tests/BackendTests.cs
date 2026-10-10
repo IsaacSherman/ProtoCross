@@ -359,8 +359,9 @@ public partial class BackendTests
     {
         var source = EmitDivisionSample(new CSharpBackend(), "test.g.cs");
 
+        // The fallback follows '??', so it is evaluated only for a zero divisor.
         Assert.Contains(
-            "WrapDivideOr(self.Quantity, self.UnitPriceCents, 0L)",
+            "WrapDivideOrNull(self.Quantity, self.UnitPriceCents) ?? 0L)",
             source,
             StringComparison.Ordinal);
 
@@ -373,8 +374,9 @@ public partial class BackendTests
     {
         var source = EmitDivisionSample(new CppBackend(), "test.pc.h");
 
+        // The fallback is a lambda, so it is evaluated only for a zero divisor.
         Assert.Contains(
-            "wrap_div_or_i64(self.quantity(), self.unit_price_cents(), 0LL)",
+            "wrap_div_or_i64(self.quantity(), self.unit_price_cents(), [&] { return 0LL; })",
             source,
             StringComparison.Ordinal);
         Assert.Contains("wrap_div_i64(self.quantity(), 2LL)", source, StringComparison.Ordinal);
@@ -443,8 +445,8 @@ public partial class BackendTests
         var cpp = Emit(new CppBackend(), TestPaths.SimpleScript, out _)
             .Single(f => f.RelativePath == CppRuntime.FileName).Contents;
 
-        Assert.Contains("WrapDivideOr", csharp, StringComparison.Ordinal);
-        Assert.Contains("WrapModuloOr", csharp, StringComparison.Ordinal);
+        Assert.Contains("WrapDivideOrNull", csharp, StringComparison.Ordinal);
+        Assert.Contains("WrapModuloOrNull", csharp, StringComparison.Ordinal);
         Assert.Contains("wrap_div_or_i64", cpp, StringComparison.Ordinal);
         Assert.Contains("wrap_mod_or_i64", cpp, StringComparison.Ordinal);
     }

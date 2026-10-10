@@ -99,7 +99,10 @@ Normative Requirements:
 - A number the enum does not name is a value of the enum too, equal to none of its names. What a
   conversion makes of one is said by an `on_unknown` clause after the type:
   - `on_unknown <value>` substitutes that value. It must already be a value of the enum converted to
-    (`PC0103`), and it may be any expression of that type: a named value, a parameter, a field.
+    (`PC0103`), and it may be any expression of that type: a named value, a parameter, a field, a
+    call. It is evaluated only when the enum does not name the number, as an `on_zero` fallback is
+    only for a zero divisor ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)), so a fallback that would end the program does not end one
+    whose number had a name.
   - `on_unknown fail` terminates the program exactly as `on_zero fail` does
     ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)), with a diagnostic on standard error naming the enum and the number, and exit
     code 70.
@@ -135,7 +138,7 @@ Backend obligations:
 |---|---|---|
 | `status as int32` | `(int)status` | `static_cast<std::int32_t>(status)` |
 | `n as Level`, kept | `(Level)n` | `static_cast<Level>(n)` |
-| `on_unknown <value>` | `ProtoCrossEnums.NamedOr((Level)n, value)` | `protocross_runtime::named_or(static_cast<Level>(n), &Level_IsValid, value)` |
+| `on_unknown <value>` | `(ProtoCrossEnums.NamedOrNull((Level)n) ?? value)` | `protocross_runtime::named_or(static_cast<Level>(n), &Level_IsValid, [&] { return value; })` |
 | `on_unknown fail` | `ProtoCrossEnums.NamedOrFail((Level)n, "pkg.Level")` | `protocross_runtime::named_or_fail(static_cast<Level>(n), &Level_IsValid, "pkg.Level")` |
 
 - Whether a number is named is asked of what protoc generated: `Enum.IsDefined` over the C# enum, and
@@ -143,6 +146,9 @@ Backend obligations:
   declares, aliases included, so the backends agree without either writing the list out.
 - C# stores any `int` in an enum, and protoc declares every C++ enum over `int`, so a kept number
   survives the cast in both.
+- A fallback is evaluated only where it is needed: after `??`, which C# evaluates only where
+  `NamedOrNull` gave null, and in C++ in a lambda `named_or` calls only for a number with no name. A
+  fallback the project's configuration names is written the same way.
 - What a conversion does with such a number is stamped on it by the binder. A backend never works
   out for itself whether an enum is closed.
 

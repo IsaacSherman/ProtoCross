@@ -13,7 +13,7 @@
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
 | Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MapEntries`. | [map emission] |
-| Runtime support | [Runtime]: `CSharpRuntime.Source`, `Stem`, `EmitMaps`, `EmitEnums`, `EmitFloatToInteger`, `EmitFail`; IR behavior selects helpers. | [Backend tests]; [conformance] |
+| Runtime support | [Runtime]: `CSharpRuntime.Source`, `Stem`, `EmitDivision`, `EmitMaps`, `EmitEnums`, `EmitFloatToInteger`, `EmitFail`; IR behavior selects helpers, and a fallback follows a helper that gives null after `??`, so it is evaluated only where needed. | [Backend tests]; [conformance] |
 | Schema type and property names | [Names]: `NameConventions.GetCSharpNamespace`, `GetCSharpTypeName`, `GetCSharpPropertyName`, `GetCSharpValueName`; [Context]: `TypeName`, `EnumValue`, `Escape`. | [namespaces]; [properties] |
 | Generated tests and projects | [Tests]: `EmitTests`, `EmitTest`, `EmitFailTestDispatcher`, `EmitTestProject`, `UniqueTestMethodName`; [Test runtime]: `CSharpTestRuntime.Source`; [Project]: `CSharpTestProject.Build` writes `ProtoCrossTests.csproj`. | [Backend tests]; [scaffolds]; [scaffold execution] |
 

@@ -4,7 +4,7 @@
 // does not name is where the two backends could part ways, so every way of meeting one is here:
 //
 // - kept, which is what an open enum does with nothing written;
-// - replaced by an `on_unknown` fallback;
+// - replaced by an `on_unknown` fallback, which is evaluated only for such a number;
 // - refused with `on_unknown fail`;
 // - refused by default, which is what a closed enum does.
 //
@@ -47,6 +47,12 @@ extend EnumNumberCase {
 
     fn fruit_or_fail(n: int32) -> NumberedFruit {
         return n as NumberedFruit on_unknown fail;
+    }
+
+    // The fallback is evaluated only for a number the enum does not name, so a fallback that would
+    // end the program does not end it for one the enum names.
+    fn lazy_fruit(n: int32, other: int32) -> NumberedFruit {
+        return n as NumberedFruit on_unknown fruit_or_fail(other);
     }
 
     fn shape_or_circle(n: int32) -> NumberedShape {
@@ -197,6 +203,26 @@ test EnumNumberCase.fruit_or_fail "a number no value names ends the program unde
     }
 
     arg n = 42;
+    expect fail;
+}
+
+test EnumNumberCase.lazy_fruit "a fallback that would fail is not evaluated for a named number" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 1;
+    arg other = 42;
+    expect return NumberedFruit.NUMBERED_FRUIT_APPLE;
+}
+
+test EnumNumberCase.lazy_fruit "a fallback that fails is evaluated for a number no value names" {
+    receiver {
+        number: 0,
+    }
+
+    arg n = 42;
+    arg other = 43;
     expect fail;
 }
 

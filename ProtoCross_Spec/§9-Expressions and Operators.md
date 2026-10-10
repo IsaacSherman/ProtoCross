@@ -179,6 +179,9 @@ Current defined subset:
   the value are evaluated, and the change is made last ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The key and the value are evaluated in
   the order this section leaves open for an operator's operands, and so are a map entry's in a literal.
 - A lookup evaluates its map and its key, and its `on_missing` fallback only when the key is missing.
+- An integer division evaluates both its operands, and its `on_zero` fallback only when the divisor
+  is zero ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). A conversion to an enum evaluates its number, and its `on_unknown` fallback only
+  when the enum does not name it ([12.1](./§12-Enums.md#121-an-enums-number)).
 - A compound assignment written through an element of a map evaluates its read, clause and all,
   before its target is reached, since reaching it puts a message at a missing key that the read must
   not find ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
