@@ -52,8 +52,10 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// In front of one of a map's methods, a name is offered only where it has that member: a map, or a
-    /// message declaring a field or a method of that name. A message without one would not bind there.
+    /// In front of one of a map's methods, a name is offered only where it has that member and the call
+    /// binds: a map, or a message declaring a method of that name. A message without one would not bind
+    /// there, and nor would one whose field has the name, since a field is not called: <c>m.count()</c>
+    /// is <c>PC0044</c> (#162).
     /// </summary>
     [Fact]
     public async Task InFrontOfAMapsMethodOnlyWhatHasThatMemberIsOffered()
@@ -63,7 +65,7 @@ public partial class SchemaCompletionTests
             "return ta"));
 
         Assert.Contains("tags", offered);
-        Assert.Contains("m", offered);
+        Assert.DoesNotContain("m", offered);
         Assert.DoesNotContain("inner", offered);
     }
 

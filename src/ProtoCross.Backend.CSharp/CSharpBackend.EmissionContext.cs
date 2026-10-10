@@ -3,6 +3,7 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Symbols;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -67,6 +68,16 @@ public sealed partial class CSharpBackend
         /// that would give another meaning to a name used anywhere in an enclosing scope (CS0136).
         /// </remarks>
         public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+
+        /// <summary>
+        /// The element each enclosing loop over wrappers is on, by the loop's binding, where the loop
+        /// writes through the binding: <c>self.Limits[index]</c>.
+        /// </summary>
+        /// <remarks>
+        /// C# holds the element as its value, and the binding holds a copy of it, so a store through the
+        /// binding stores to the element too (<see cref="EmitForEach"/>).
+        /// </remarks>
+        public IReadOnlyDictionary<SymbolId, string> Elements { get; init; } = new Dictionary<SymbolId, string>();
 
         /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
         public string Unused(string stem)
@@ -216,9 +227,9 @@ public sealed partial class CSharpBackend
         MessageType message => "global::" + NameConventions.GetCSharpTypeName(message.Descriptor),
         EnumPlType enumType => "global::" + NameConventions.GetCSharpTypeName(enumType.Descriptor),
         RepeatedType repeated =>
-            $"global::Google.Protobuf.Collections.RepeatedField<{TypeName(repeated.ElementType)}>",
+            $"global::Google.Protobuf.Collections.RepeatedField<{HeldTypeName(repeated.ElementType)}>",
         MapType map =>
-            $"global::Google.Protobuf.Collections.MapField<{TypeName(map.KeyType)}, {TypeName(map.ValueType)}>",
+            $"global::Google.Protobuf.Collections.MapField<{TypeName(map.KeyType)}, {HeldTypeName(map.ValueType)}>",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unhandled type."),
     };
 

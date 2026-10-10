@@ -1,6 +1,7 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Symbols;
 
 namespace ProtoCross.Backend.CSharp;
 
@@ -17,6 +18,12 @@ public sealed partial class CSharpBackend
     private static void EmitStatement(SourceWriter writer, IrStatement statement, Body body)
     {
         var placement = body.Placement;
+
+        if (ChangeToAHeldWrapper(statement) is { } change)
+        {
+            EmitChangeThroughACopy(writer, statement, change, body);
+            return;
+        }
 
         switch (statement)
         {
@@ -41,15 +48,15 @@ public sealed partial class CSharpBackend
                 EmitValueFirstWhereItReadsAnElement(
                     writer,
                     assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
-                    StoredValue(assignment.Value, placement, ReceiverName),
+                    FieldValue(assignment.Value, placement, ReceiverName),
                     body,
-                    value => $"{WritableField(assignment.Target, placement)} = {value};");
+                    value => $"{AssignedPlace(assignment.Target, body)} = {value};");
                 break;
 
             case IrAppend append:
                 writer.WriteLine(
                     $"{WritableCollection(append.Collection, placement)}."
-                    + $"Add({StoredValue(append.Value, placement, ReceiverName)});");
+                    + $"Add({FieldValue(append.Value, placement, ReceiverName)});");
                 break;
 
             case IrElementAssignment assignment:
@@ -69,12 +76,8 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrForEach forEach:
-            {
-                using var scope = writer.Block(
-                    $"foreach (var {Escape(forEach.Loop.Name)} in {body.Collection(forEach)})");
-                EmitStatements(writer, forEach.Body.Statements, body);
+                EmitForEach(writer, forEach, body);
                 break;
-            }
 
             case IrIf ifStatement:
                 EmitIf(writer, ifStatement, body);
@@ -105,6 +108,46 @@ public sealed partial class CSharpBackend
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement.");
+        }
+    }
+
+    /// <summary>A loop over a repeated value: C#'s <c>foreach</c>, or a loop by index where it has to be.</summary>
+    /// <remarks>
+    /// <para>
+    /// C# holds a wrapper element as its value (spec 24.1), which a <c>foreach</c> binding is a copy of,
+    /// so a loop whose body writes through a binding over wrappers would change only the copy. That
+    /// loop goes by index instead, and a store through the binding stores to the element too
+    /// (<see cref="HeldPlace"/>). Indexing is sound because nothing in the loop may change the field's
+    /// membership or order (spec 18). Every other loop is a <c>foreach</c>, as it always was.
+    /// </para>
+    /// <para>
+    /// The collection is read on each pass, which is safe because a loop that writes through its binding
+    /// traverses something the method may change, a field or a local, which reads the same each time,
+    /// and never a call's result (spec 18).
+    /// </para>
+    /// </remarks>
+    private static void EmitForEach(SourceWriter writer, IrForEach loop, Body body)
+    {
+        var binding = Escape(loop.Loop.Name);
+        var collection = body.Collection(loop);
+
+        if (WrappedScalar(loop.Loop.Type) is null || !IrMutation.ChangesElementsOf(loop))
+        {
+            using var scope = writer.Block($"foreach (var {binding} in {collection})");
+            EmitStatements(writer, loop.Body.Statements, body);
+            return;
+        }
+
+        var index = body.Unused("index");
+        var element = $"{collection}[{index}]";
+        using (writer.Block($"for (var {index} = 0; {index} < {collection}.Count; {index}++)"))
+        {
+            writer.WriteLine($"var {binding} = {element};");
+            EmitStatements(writer, loop.Body.Statements, body with
+            {
+                Taken = new HashSet<string>(body.Taken, StringComparer.Ordinal) { index },
+                Elements = new Dictionary<SymbolId, string>(body.Elements) { [loop.Loop.Id] = element },
+            });
         }
     }
 

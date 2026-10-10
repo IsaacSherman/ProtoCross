@@ -126,6 +126,11 @@ public static class CSharpRuntime
     /// map's value type.
     /// </para>
     /// <para>
+    /// A third, <c>FindNullable</c>, is for a map whose values are a <see cref="Nullable{T}"/> already,
+    /// which neither constraint admits. protoc's C# gives a map of a wrapper such as <c>Int64Value</c>
+    /// such values (spec 24.1).
+    /// </para>
+    /// <para>
     /// Equality compares each value by its own <c>==</c>, which is the language's: a NaN equals nothing.
     /// <c>double</c> and <c>float</c> have overloads of their own that say so, since their
     /// <c>Equals</c>, which <c>MapField.Equals</c> uses, calls two NaNs equal. Overloads rather than a
@@ -148,6 +153,14 @@ public static class CSharpRuntime
         {
             writer.WriteLine("/// <summary>The value at the key, or null where the key is missing.</summary>");
             writer.WriteLine($"public static TValue? FindValue<TKey, TValue>({MapField} map, TKey key)");
+            using (writer.Block("    where TValue : struct"))
+            {
+                writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value at the key, or null where the key is missing, from a map whose values can be null already.</summary>");
+            writer.WriteLine("public static TValue? FindNullable<TKey, TValue>(global::Google.Protobuf.Collections.MapField<TKey, TValue?> map, TKey key)");
             using (writer.Block("    where TValue : struct"))
             {
                 writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");

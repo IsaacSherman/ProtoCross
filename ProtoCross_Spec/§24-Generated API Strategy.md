@@ -124,6 +124,41 @@ copies each one. Two maps are compared by `AreEqual`, with overloads for `double
 compare by `==`, because their `Equals`, which `MapField.Equals` uses, calls two NaNs equal. A literal's
 entries are index initializers, `Prices = { ["a"] = 1L, }`, stored in the order written.
 
+**A field of one of protobuf's wrapper types is the value the wrapper holds, because that is what
+protoc declares.** protoc's C# generator gives a field whose type is a message from
+`google/protobuf/wrappers.proto` (`Int64Value`, `StringValue` and the other seven) the type of the
+value the wrapper holds rather than the message: `long?`, `string`, `ByteString`, nullable where it is a
+struct, so that null is an unset field. A member of a `oneof` is the same, a repeated field is a
+`RepeatedField<long?>`, and a map's values are `long?`. A repeated value or a map of wrappers held in a
+local or a parameter is protoc's type too. The language keeps the message the schema declares, which
+is what C++ holds, so C# changes a wrapper's shape where it moves between a field and a message:
+
+- `has limit` is `self.Limit != null`, as for any message field.
+- `limit.value` is `self.Limit.GetValueOrDefault()`, and a string or bytes wrapper's value is the
+  field itself, `self.Label`. It is `GetValueOrDefault()` rather than `.Value` because generated code
+  builds with warnings as errors, and C# warns at `.Value` wherever it cannot see the guard, which for a
+  loop's binding or a lookup is everywhere. The value is read only where it is set
+  ([13.1](./§13-Messages.md#131-field-access)), and were it ever unset, the zero is what C++ reads.
+- A wrapper stored in a field, an element or a map's value is stored as its value: `Limit = 5L` for a
+  literal, `Limit = wrapper.Value` for a message. Writing `limit.value` stores the field itself,
+  `self.Limit = n`, which sets it where it was unset, as writing through any message field does.
+- A loop whose body writes through a binding over wrappers goes by index, because a `foreach` binding
+  is a copy of the value, and the store reaches the element too: `each = self.Limits[index] = …`.
+  Nothing in the loop may change the field's membership or order ([18](./§18-Mutability.md#18-mutability)), so the
+  index is sound. Every other loop is a `foreach`.
+- A wrapper used as a message anywhere else, held in a local, passed, returned, or called on, is made
+  into one: `new Int64Value { Value = self.Limit.GetValueOrDefault() }`. It is new, so it is already
+  the copy storing it would make.
+- A `mut fn` called on a wrapper held as its value is called on such a message, and the message's value
+  is stored back as soon as the call returns. No argument may share the receiver
+  ([18](./§18-Mutability.md#18-mutability)), so nothing can tell this from C++, which changes the field in place.
+- A lookup in a map of wrappers is `ProtoCrossMaps.FindNullable(map, key) ?? fallback`, the fallback
+  given as its value, because a `long?` meets neither `FindValue`'s constraint nor `FindReference`'s.
+  A merge is `Merge`, since the values need no `Clone`.
+
+A wrapper is asked for by file, as protoc asks: every message in `wrappers.proto` is one, and no
+message anywhere else is, whatever its name.
+
 **Generated C# suspends CS0162, C#'s warning about unreachable code, around one line only: the
 `break;` that ends a switch arm C# may judge unreachable.** Each arm of a switch is a section of C#'s own `switch` ([15.3](./§15-Control%20Flow.md#153-switch)), and C# refuses
 a section whose end can be reached (CS0163), so a section ends in `break;` wherever its arm can reach

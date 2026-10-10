@@ -51,9 +51,9 @@ public sealed partial class CSharpBackend
         var property = NameConventions.GetCSharpPropertyName(field.Field);
         var value = field.Value switch
         {
-            IrList list => Braced(header: null, list.Elements.Select(element => StoredValue(element, placement, receiverName))),
+            IrList list => Braced(header: null, list.Elements.Select(element => FieldValue(element, placement, receiverName))),
             IrMapEntries entries => MapEntries(entries, placement, receiverName),
-            _ => StoredValue(field.Value, placement, receiverName),
+            _ => FieldValue(field.Value, placement, receiverName),
         };
 
         return value.Contains('\n', StringComparison.Ordinal)
@@ -74,11 +74,15 @@ public sealed partial class CSharpBackend
     /// The value is self-delimiting, as every expression this backend writes is, so <c>.Clone()</c>
     /// applies to all of it.
     /// </para>
+    /// <para>
+    /// A wrapper C# holds as its value is written as a new message (<see cref="MessageOf"/>), which is a
+    /// copy already.
+    /// </para>
     /// </remarks>
     private static string StoredValue(IrExpression value, Placement placement, string receiverName)
     {
         var written = Expression(value, placement, receiverName);
-        return value.IsCopiedWhenStored ? written + ".Clone()" : written;
+        return value.IsCopiedWhenStored && !IsHeldAsItsValue(value) ? written + ".Clone()" : written;
     }
 
     /// <summary>Whether a field of a literal sets anything, which one given no elements does not.</summary>
