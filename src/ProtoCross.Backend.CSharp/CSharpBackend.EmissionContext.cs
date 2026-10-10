@@ -3,7 +3,6 @@ using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
-using ProtoCross.Symbols;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -68,16 +67,6 @@ public sealed partial class CSharpBackend
         /// that would give another meaning to a name used anywhere in an enclosing scope (CS0136).
         /// </remarks>
         public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
-
-        /// <summary>
-        /// The element each enclosing loop over wrappers is on, by the loop's binding, where the loop
-        /// writes through the binding: <c>self.Limits[index]</c>.
-        /// </summary>
-        /// <remarks>
-        /// C# holds the element as its value, and the binding holds a copy of it, so a store through the
-        /// binding stores to the element too (<see cref="EmitForEach"/>).
-        /// </remarks>
-        public IReadOnlyDictionary<SymbolId, string> Elements { get; init; } = new Dictionary<SymbolId, string>();
 
         /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
         public string Unused(string stem)

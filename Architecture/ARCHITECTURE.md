@@ -686,7 +686,9 @@ A field of one of protobuf's wrapper types, such as `Int64Value`, is a message i
 protoc's C# declares the value it holds instead, so the C# backend alone changes its shape
 ([`CSharpBackend.Wrappers.cs`](../src/ProtoCross.Backend.CSharp/CSharpBackend.Wrappers.cs)). It reads
 the value where the field is held, makes a new message wherever the language uses the wrapper as one,
-and stores a value into a field, a list or a map. Nothing in the IR or the binder knows about it, because
+and stores a value into a field, a list or a map. A loop over wrappers binds each element as a place in
+the list, `ProtoCrossWrappers` in the support file, so the binding is the element, as it is over
+messages. Nothing in the IR or the binder knows about it, because
 it is a fact about one target's generated code rather than about the language (spec 24.1).
 
 A backend is handed one source's part of the module, and a call in it may name a method another

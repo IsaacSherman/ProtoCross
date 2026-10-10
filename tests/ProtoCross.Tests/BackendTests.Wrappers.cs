@@ -94,20 +94,64 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// A <c>foreach</c> binding is a copy of a value, so a loop that writes through a binding over wrappers
-    /// goes by index and stores the element too. A loop that only reads stays a <c>foreach</c>.
+    /// A <c>foreach</c> over the values would bind a copy, so every loop over wrappers binds each element
+    /// as a place in the list, read and written where it is, whether the loop writes through it or not.
     /// </summary>
     [Fact]
-    public void ALoopThatWritesThroughAWrapperBindingGoesByIndex()
+    public void ALoopOverWrappersBindsEachElementAsAPlace()
     {
         var csharp = WrapperCSharp("""
             mut fn a() { for each in limits { each.value = 1; } }
             fn b() -> int64 { var total: int64 = 0; for each in limits { total += each.value; } return total; }
             """);
 
-        Assert.Contains("for (var index = 0; index < self.Limits.Count; index++)", csharp, StringComparison.Ordinal);
-        Assert.Contains("each = self.Limits[index] = 1L;", csharp, StringComparison.Ordinal);
-        Assert.Contains("foreach (var each in self.Limits)", csharp, StringComparison.Ordinal);
+        const string loop = "foreach (var each in global::ProtoCross.Runtime.ProtoCrossWrappers.Elements(self.Limits))";
+        Assert.Equal(2, csharp.Split(loop).Length - 1);
+        Assert.Contains("each.Value = 1L;", csharp, StringComparison.Ordinal);
+        Assert.Contains("total = unchecked(total + each.Value.GetValueOrDefault());", csharp, StringComparison.Ordinal);
+        Assert.DoesNotContain("foreach (var each in self.Limits)", csharp, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A value that could see whether the wrapper was reached is evaluated after it is: the field is set to
+    /// its zero first, and the zero is put at a missing key. A value that reads nothing is stored as it is.
+    /// </summary>
+    [Fact]
+    public void AWriteWhoseValueCouldSeeTheWrapperReachesItFirst()
+    {
+        var csharp = WrapperCSharp("""
+            fn seen() -> int64 { return 1; }
+            mut fn a() { limit.value = seen(); }
+            mut fn b() { limits_by_name["k"].value = seen(); }
+            mut fn c(n: int64) { label.value = "x"; limit.value = n * 2; }
+            """);
+
+        Assert.Contains("self.Limit ??= 0L;", csharp, StringComparison.Ordinal);
+        Assert.Contains(
+            "global::ProtoCross.Runtime.ProtoCrossMaps.AddIfAbsent(self.LimitsByName, \"k\", 0L);",
+            csharp,
+            StringComparison.Ordinal);
+        Assert.Equal(1, csharp.Split("??=").Length - 1);
+        Assert.Contains("self.Limit = unchecked(n * 2L);", csharp, StringComparison.Ordinal);
+    }
+
+    /// <summary>A wrapper that leaves its value out holds the zero, written as the scalar's own.</summary>
+    [Fact]
+    public void AnEmptyWrapperIsTheZeroOfItsScalar()
+    {
+        var csharp = WrapperCSharp("""
+            mut fn f() {
+                limit = new google.protobuf.Int64Value { };
+                label = new google.protobuf.StringValue { };
+                enabled = new google.protobuf.BoolValue { };
+                blob = new google.protobuf.BytesValue { };
+            }
+            """);
+
+        Assert.Contains("self.Limit = 0L;", csharp, StringComparison.Ordinal);
+        Assert.Contains("self.Label = \"\";", csharp, StringComparison.Ordinal);
+        Assert.Contains("self.Enabled = false;", csharp, StringComparison.Ordinal);
+        Assert.Contains("self.Blob = global::Google.Protobuf.ByteString.Empty;", csharp, StringComparison.Ordinal);
     }
 
     /// <summary>

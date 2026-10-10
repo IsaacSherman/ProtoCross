@@ -60,13 +60,9 @@ public partial class SchemaCompletionTests
     [Fact]
     public async Task InFrontOfAMapsMethodOnlyWhatHasThatMemberIsOffered()
     {
-        var offered = Labels(await OfferedAsync(
-            "extend Outer {\n    fn f(m: Mapped) -> int32 {\n        var tags = m.tags;\n        return tags.count();\n    }\n}\n",
-            "return ta"));
+        var applied = await AcceptedReceiverItemsAsync(MapReceiverBody, "return ta");
 
-        Assert.Contains("tags", offered);
-        Assert.DoesNotContain("m", offered);
-        Assert.DoesNotContain("inner", offered);
+        Assert.Equal(new[] { "tags" }, applied.Select(attempt => attempt.Item.Label));
     }
 
     /// <summary>Only a map is looked up by a key, so in front of one nothing else is offered.</summary>

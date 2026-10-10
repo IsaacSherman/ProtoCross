@@ -140,12 +140,22 @@ is what C++ holds, so C# changes a wrapper's shape where it moves between a fiel
   loop's binding or a lookup is everywhere. The value is read only where it is set
   ([13.1](./§13-Messages.md#131-field-access)), and were it ever unset, the zero is what C++ reads.
 - A wrapper stored in a field, an element or a map's value is stored as its value: `Limit = 5L` for a
-  literal, `Limit = wrapper.Value` for a message. Writing `limit.value` stores the field itself,
-  `self.Limit = n`, which sets it where it was unset, as writing through any message field does.
-- A loop whose body writes through a binding over wrappers goes by index, because a `foreach` binding
-  is a copy of the value, and the store reaches the element too: `each = self.Limits[index] = …`.
-  Nothing in the loop may change the field's membership or order ([18](./§18-Mutability.md#18-mutability)), so the
-  index is sound. Every other loop is a `foreach`.
+  literal, `Limit = 0L` for one that leaves its value out, `Limit = wrapper.Value` for a message.
+  Writing `limit.value` stores the field itself, `self.Limit = n`, which sets it where it was unset, as
+  writing through any message field does.
+- Writing `limit.value` reaches `limit` before the value is evaluated, as any assignment reaches its
+  target ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). Where the value could tell, because it reads a message, asks a map or
+  calls a method, the wrapper is reached by a statement of its own first: `self.Limit ??= 0L;`, which
+  also unsets the other member of its `oneof`, or `ProtoCrossMaps.AddIfAbsent(map, key, 0L);` for a
+  missing key. A value that could not tell, `limit.value = n * 2`, is a single store. A compound
+  assignment reads its target first and needs no reach.
+- A loop over wrappers binds each element as a place in the list,
+  `foreach (var each in ProtoCrossWrappers.Elements(self.Limits))`, whose `each.Value` reads and
+  writes the element where it is. A `foreach` over the values would bind a copy, and a binding is the
+  element: a store through it changes the list, and a change made to the element any other way, by a
+  loop inside it over the same field, is seen through it. Nothing in the loop may change the field's
+  membership or order ([18](./§18-Mutability.md#18-mutability)), so the place stays sound, and the loop is still a
+  `foreach`, so a body that always returns or breaks leaves nothing unreachable.
 - A wrapper used as a message anywhere else, held in a local, passed, returned, or called on, is made
   into one: `new Int64Value { Value = self.Limit.GetValueOrDefault() }`. It is new, so it is already
   the copy storing it would make.

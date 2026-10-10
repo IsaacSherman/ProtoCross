@@ -53,7 +53,8 @@ public sealed partial class CSharpBackend
     /// </summary>
     /// <remarks>
     /// Every repeated value C# holds is protoc's <c>RepeatedField</c> of values, a local's and a
-    /// parameter's too (<see cref="HeldTypeName"/>), so every binding over a repeated wrapper is a value.
+    /// parameter's too (<see cref="HeldTypeName"/>), so every binding over a repeated wrapper is one of
+    /// its elements, bound as a place in it (<see cref="CSharpRuntime.WrappersTypeName"/>).
     /// </remarks>
     private static bool IsHeldAsItsValue(IrExpression expression)
         => WrappedScalar(expression.Type) is not null
@@ -79,7 +80,7 @@ public sealed partial class CSharpBackend
         var held = wrapper switch
         {
             IrFieldAccess field => PropertyRead(field, placement, receiverName),
-            IrLocalReference binding => Escape(binding.Local.Name),
+            IrLocalReference binding => ElementOf(binding),
             IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
             _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "An element is a place, and is never read."),
         };
@@ -102,14 +103,28 @@ public sealed partial class CSharpBackend
     /// <remarks>
     /// A literal is its <c>value</c>'s expression, which is what a C# author would write for the field,
     /// and is evaluated where the literal would have been. One that leaves <c>value</c> out holds the
-    /// scalar's zero, read from a new message rather than spelled per type.
+    /// scalar's zero.
     /// </remarks>
     private static string WrappedValue(IrExpression wrapper, Placement placement, string receiverName) => wrapper switch
     {
         _ when IsHeldAsItsValue(wrapper) => HeldValue(wrapper, placement, receiverName),
         IrMessageLiteral { Fields: [var value] } => Expression(value.Value, placement, receiverName),
+        IrMessageLiteral => ZeroOf(WrappedScalar(wrapper.Type)!),
         _ => Expression(wrapper, placement, receiverName) + ".Value",
     };
+
+    /// <summary>The value a new wrapper holding a <paramref name="scalar"/> holds: its zero.</summary>
+    private static string ZeroOf(ScalarType scalar) => scalar.Kind switch
+    {
+        ScalarKind.Bytes => "global::Google.Protobuf.ByteString.Empty",
+        ScalarKind.String => FormatString(string.Empty),
+        ScalarKind.Bool => "false",
+        ScalarKind.Double or ScalarKind.Float => FormatFloatingPoint(0, scalar),
+        _ => FormatInteger(0L, scalar),
+    };
+
+    /// <summary>The element a loop's binding over wrappers is, read and written where it is: <c>each.Value</c>.</summary>
+    private static string ElementOf(IrLocalReference binding) => Escape(binding.Local.Name) + ".Value";
 
     /// <summary>
     /// A value as a field, an element of a repeated value or a map's value stores it: a wrapper as the
@@ -122,26 +137,78 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// Where a wrapper held as its value is held, as the target of a store that gives it a new value:
-    /// the field, set first where it is unset; the map's element; or the element a loop binds, which
-    /// the binding is given too.
+    /// the field, on a message set first where it is unset; the map's element; or the element a loop
+    /// binds.
     /// </summary>
     /// <remarks>
     /// The value is the whole of a wrapper, so writing <c>limit.value</c> stores <c>limit</c>, which also
     /// sets it where it was unset, as writing through any message field does (spec 18).
     /// </remarks>
-    private static string HeldPlace(IrExpression wrapper, Body body) => wrapper switch
+    private static string HeldPlace(IrExpression wrapper, Placement placement) => wrapper switch
     {
-        IrFieldAccess field => WritableField(field, body.Placement),
-        IrMapElement element => ElementPlace(element, body.Placement),
-        IrLocalReference binding => $"{Escape(binding.Local.Name)} = {body.Elements[binding.Local.Id]}",
+        IrFieldAccess field => WritableField(field, placement),
+        IrMapElement element => ElementPlace(element, placement),
+        IrLocalReference binding => ElementOf(binding),
         _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "Not a place a wrapper is held in."),
     };
 
     /// <summary>The field an assignment stores to, or where the wrapper is held when it stores a wrapper's <c>value</c>.</summary>
-    private static string AssignedPlace(IrFieldAccess target, Body body)
+    private static string AssignedPlace(IrFieldAccess target, Placement placement)
         => IsHeldAsItsValue(target.Receiver)
-            ? HeldPlace(target.Receiver, body)
-            : WritableField(target, body.Placement);
+            ? HeldPlace(target.Receiver, placement)
+            : WritableField(target, placement);
+
+    /// <summary>
+    /// Before a store to a wrapper's <c>value</c>, the statement that reaches the wrapper, where the value
+    /// could tell when that happened: the field set to its zero where unset, or the zero put at a missing
+    /// key.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An assignment reaches its target, setting any unset message on the way, before it evaluates its
+    /// value (spec 9.3). Through a message field C# does that within the one statement,
+    /// <c>(self.Customer ??= new Customer()).Name = x</c>, because it evaluates what a property is set on
+    /// before the value. A wrapper's <c>value</c> is the field itself, set last, so a value that asked
+    /// whether <c>limit</c> was set, whether the other member of its <c>oneof</c> still was, or whether
+    /// the map had the key, would see each as it was before. So the wrapper is reached by a statement of
+    /// its own first, and set to its zero, which is what C++'s mutable accessor does.
+    /// </para>
+    /// <para>
+    /// Only where the value could see it. One that reads no message, asks no map and calls nothing,
+    /// <c>limit.value = n * 2</c>, cannot, and is written as a C# author would write it. A compound
+    /// assignment reads its target before reaching it (spec 9.3), and storing it sets it, so it needs no
+    /// reach. A loop's element is always there. A key is evaluated once for the reach and once for the
+    /// store, which nothing can see, since evaluating an expression changes nothing.
+    /// </para>
+    /// </remarks>
+    private static void EmitReachWhereTheValueCouldSeeIt(SourceWriter writer, IrFieldAssignment assignment, Placement placement)
+    {
+        if (assignment.ReadsItsTarget || !IsHeldAsItsValue(assignment.Target.Receiver) || !CouldSeeAReach(assignment.Value))
+        {
+            return;
+        }
+
+        var zero = ZeroOf(WrappedScalar(assignment.Target.Receiver.Type)!);
+        switch (assignment.Target.Receiver)
+        {
+            case IrFieldAccess field:
+                writer.WriteLine($"{WritableField(field, placement)} ??= {zero};");
+                break;
+
+            case IrMapElement element:
+                writer.WriteLine(
+                    $"{CSharpRuntime.MapsTypeName}.AddIfAbsent({WritableCollection(element.Map, placement)}, "
+                    + $"{Expression(element.Key, placement)}, {zero});");
+                break;
+        }
+    }
+
+    /// <summary>Whether evaluating <paramref name="value"/> could read a message, ask a map, or call a method.</summary>
+    /// <remarks>Asked of what it is built from, so that anything not known to be inert is taken to see.</remarks>
+    private static bool CouldSeeAReach(IrExpression value)
+        => IrWalk.DescendantsAndSelf(value).Any(node => node is not (IrLiteral or IrParameterReference
+            or IrLocalReference or IrBinary or IrIntegerDivision or IrUnary or IrConversion
+            or IrEnumValue or IrEnumToNumber or IrNumberToEnum or IrEnumMembership));
 
     /// <summary>
     /// The call a statement makes to a <c>mut fn</c> on a wrapper held as its value, or null where it
@@ -183,7 +250,7 @@ public sealed partial class CSharpBackend
         var placement = body.Placement;
         var copy = new HeldCopy(body.Unused("wrapper"), call.Receiver.Type);
         var changed = call with { Receiver = copy };
-        var storeBack = $"{HeldPlace(call.Receiver, body)} = {copy.Name}.Value;";
+        var storeBack = $"{HeldPlace(call.Receiver, placement)} = {copy.Name}.Value;";
 
         if (statement is IrVariableDeclaration declared)
         {

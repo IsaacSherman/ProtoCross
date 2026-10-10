@@ -1,0 +1,7 @@
+syntax = "proto3";
+package protocross.conformance;
+import "google/protobuf/wrappers.proto";
+
+message WrapperTerminalReviewCase {
+  repeated google.protobuf.Int64Value limits = 1;
+}

@@ -1419,7 +1419,8 @@ public partial class SchemaCompletionTests
     /// The whole list is the assertion rather than a sample of it. At each caret there is an exact
     /// set of names that could stand there -- every name in scope whose value has the members written
     /// after it, and nothing else -- so a scalar creeping back in fails this even if nobody thought to
-    /// name it. At the first caret that is <c>other</c> alone: <c>inner</c> and <c>other_inner</c> are
+    /// name it. At the first caret both <c>Outer</c> parameters fit. Requiring the alternative as well
+    /// catches a list that merely repeats the written name. <c>inner</c> and <c>other_inner</c> are
     /// messages too, but an <c>Inner</c> has no <c>inner</c>, so either would be <c>PC0041</c> (#162).
     /// </para>
     /// <para>
@@ -1430,32 +1431,15 @@ public partial class SchemaCompletionTests
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("return ((oth", new[] { "other" })]
+    [InlineData("return ((oth", new[] { "another", "other" })]
     [InlineData("return ((other).inn", new[] { "inner", "other_inner" })]
     [Trait("ReviewRegression", "ParenthesizedReceiverCompletion")]
     public async Task OnlySomethingWithMembersIsOfferedWhereParenthesesStandBeforeTheDot(
         string marker, string[] expected)
     {
-        const string body = "extend Outer {\n"
-            + "    fn f(other: Outer) -> bool {\n"
-            + "        if has (other).inner and has (other).other_inner {\n"
-            + "            return ((other).inner).deep == ((other).other_inner).deep;\n"
-            + "        }\n"
-            + "\n"
-            + "        return false;\n"
-            + "    }\n"
-            + "}\n";
+        var applied = await AcceptedReceiverItemsAsync(ParenthesizedReceiverBody, marker);
 
-        var (_, uri, text) = Beside(body);
-        var source = new SourceDocument(SourceIdentity.FromPath(uri.Path!), text);
-        var compilation = new Compilation(source, new CompilationOptions { Loader = Loader() });
-
-        Assert.True(compilation.Compile(CancellationToken.None).Success,
-            "the parenthesized receivers must already compile, or this is measuring the fixture");
-
-        var offered = await OfferedAsync(body, marker);
-
-        Assert.Equal(expected.Order(), Labels(offered).Order());
+        Assert.Equal(expected.Order(), applied.Select(attempt => attempt.Item.Label).Order());
     }
 
     /// <summary>

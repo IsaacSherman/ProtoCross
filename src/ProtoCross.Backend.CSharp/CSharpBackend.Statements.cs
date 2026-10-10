@@ -1,7 +1,6 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
-using ProtoCross.Symbols;
 
 namespace ProtoCross.Backend.CSharp;
 
@@ -45,12 +44,13 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrFieldAssignment assignment:
+                EmitReachWhereTheValueCouldSeeIt(writer, assignment, placement);
                 EmitValueFirstWhereItReadsAnElement(
                     writer,
                     assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
                     FieldValue(assignment.Value, placement, ReceiverName),
                     body,
-                    value => $"{AssignedPlace(assignment.Target, body)} = {value};");
+                    value => $"{AssignedPlace(assignment.Target, placement)} = {value};");
                 break;
 
             case IrAppend append:
@@ -76,8 +76,11 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrForEach forEach:
-                EmitForEach(writer, forEach, body);
+            {
+                using var scope = writer.Block($"foreach (var {Escape(forEach.Loop.Name)} in {Traversed(forEach, body)})");
+                EmitStatements(writer, forEach.Body.Statements, body);
                 break;
+            }
 
             case IrIf ifStatement:
                 EmitIf(writer, ifStatement, body);
@@ -111,45 +114,22 @@ public sealed partial class CSharpBackend
         }
     }
 
-    /// <summary>A loop over a repeated value: C#'s <c>foreach</c>, or a loop by index where it has to be.</summary>
+    /// <summary>
+    /// What a loop traverses: the collection, or, where it is a repeated value of wrappers, each of its
+    /// elements as a place in it.
+    /// </summary>
     /// <remarks>
-    /// <para>
-    /// C# holds a wrapper element as its value (spec 24.1), which a <c>foreach</c> binding is a copy of,
-    /// so a loop whose body writes through a binding over wrappers would change only the copy. That
-    /// loop goes by index instead, and a store through the binding stores to the element too
-    /// (<see cref="HeldPlace"/>). Indexing is sound because nothing in the loop may change the field's
-    /// membership or order (spec 18). Every other loop is a <c>foreach</c>, as it always was.
-    /// </para>
-    /// <para>
-    /// The collection is read on each pass, which is safe because a loop that writes through its binding
-    /// traverses something the method may change, a field or a local, which reads the same each time,
-    /// and never a call's result (spec 18).
-    /// </para>
+    /// protoc's C# holds a wrapper element as its value, which a <c>foreach</c> would bind a copy of, and a
+    /// binding is the element itself in the language: a store through it changes the list, and a change
+    /// to the element made any other way, by a loop inside it over the same field, is seen through it.
+    /// So the loop binds a place in the list (<see cref="CSharpRuntime.WrappersTypeName"/>) whose value is
+    /// read and written where it is (<see cref="ElementOf"/>). It is still a <c>foreach</c>, so a body that
+    /// always returns or breaks leaves nothing unreachable.
     /// </remarks>
-    private static void EmitForEach(SourceWriter writer, IrForEach loop, Body body)
-    {
-        var binding = Escape(loop.Loop.Name);
-        var collection = body.Collection(loop);
-
-        if (WrappedScalar(loop.Loop.Type) is null || !IrMutation.ChangesElementsOf(loop))
-        {
-            using var scope = writer.Block($"foreach (var {binding} in {collection})");
-            EmitStatements(writer, loop.Body.Statements, body);
-            return;
-        }
-
-        var index = body.Unused("index");
-        var element = $"{collection}[{index}]";
-        using (writer.Block($"for (var {index} = 0; {index} < {collection}.Count; {index}++)"))
-        {
-            writer.WriteLine($"var {binding} = {element};");
-            EmitStatements(writer, loop.Body.Statements, body with
-            {
-                Taken = new HashSet<string>(body.Taken, StringComparer.Ordinal) { index },
-                Elements = new Dictionary<SymbolId, string>(body.Elements) { [loop.Loop.Id] = element },
-            });
-        }
-    }
+    private static string Traversed(IrForEach loop, Body body)
+        => WrappedScalar(loop.Loop.Type) is null
+            ? body.Collection(loop)
+            : $"{CSharpRuntime.WrappersTypeName}.Elements({body.Collection(loop)})";
 
     /// <summary>
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the

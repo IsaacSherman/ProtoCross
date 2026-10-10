@@ -1,0 +1,32 @@
+// A terminal wrapper-loop body must not introduce an unreachable C# iterator (§24.1).
+import proto "wrapper_terminal_review.proto";
+
+extend WrapperTerminalReviewCase {
+    mut fn returning() -> int64 {
+        for element in limits {
+            element.value += 1;
+            return element.value;
+        }
+        return -1;
+    }
+
+    mut fn breaking() -> int64 {
+        for element in limits {
+            element.value += 1;
+            break;
+        }
+        var total: int64 = 0;
+        for element in limits { total += element.value; }
+        return total;
+    }
+}
+
+test WrapperTerminalReviewCase.returning "a mutating wrapper loop may return" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 1 }] }
+    expect return 2;
+}
+
+test WrapperTerminalReviewCase.breaking "a mutating wrapper loop may break" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 1 }] }
+    expect return 2;
+}
