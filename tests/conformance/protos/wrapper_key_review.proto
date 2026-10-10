@@ -1,0 +1,13 @@
+syntax = "proto3";
+package protocross.conformance;
+import "google/protobuf/wrappers.proto";
+
+message WrapperKeyReviewCase {
+  map<int32, google.protobuf.Int64Value> limits = 1;
+  map<int32, WrapperKeyReviewBox> boxes = 2;
+}
+
+message WrapperKeyReviewBox {
+  google.protobuf.Int64Value limit = 1;
+  map<int32, google.protobuf.Int64Value> limits = 2;
+}

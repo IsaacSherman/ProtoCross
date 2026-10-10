@@ -43,8 +43,11 @@ public sealed partial class CSharpBackend
                 writer.WriteLine($"{Expression(assignment.Target, placement)} = {body.ForLocal(assignment.Value)};");
                 break;
 
+            case IrFieldAssignment assignment when StoresThroughAReach(assignment):
+                EmitStoreThroughAReach(writer, assignment, body);
+                break;
+
             case IrFieldAssignment assignment:
-                EmitReachWhereTheValueCouldSeeIt(writer, assignment, placement);
                 EmitValueFirstWhereItReadsAnElement(
                     writer,
                     assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),

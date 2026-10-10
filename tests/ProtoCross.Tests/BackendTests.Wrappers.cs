@@ -119,20 +119,44 @@ public partial class BackendTests
     [Fact]
     public void AWriteWhoseValueCouldSeeTheWrapperReachesItFirst()
     {
-        var csharp = WrapperCSharp("""
+        var csharp = Squashed(WrapperCSharp("""
             fn seen() -> int64 { return 1; }
             mut fn a() { limit.value = seen(); }
             mut fn b() { limits_by_name["k"].value = seen(); }
             mut fn c(n: int64) { label.value = "x"; limit.value = n * 2; }
-            """);
+            """));
 
-        Assert.Contains("self.Limit ??= 0L;", csharp, StringComparison.Ordinal);
         Assert.Contains(
-            "global::ProtoCross.Runtime.ProtoCrossMaps.AddIfAbsent(self.LimitsByName, \"k\", 0L);",
+            "self.Limit ??= 0L; self.Limit = global::Protocross.Conformance.WrapperCaseProtoCrossExtensions.Seen(self);",
+            csharp,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "global::ProtoCross.Runtime.ProtoCrossMaps.AddIfAbsent(map, key, 0L); map[key] = ",
             csharp,
             StringComparison.Ordinal);
         Assert.Equal(1, csharp.Split("??=").Length - 1);
         Assert.Contains("self.Limit = unchecked(n * 2L);", csharp, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Reaching a wrapper can change what reaching it again would find, so the message holding it, or the
+    /// map and the key, are evaluated once, into locals the reach and the store share.
+    /// </summary>
+    [Fact]
+    public void AReachedWrapperIsStoredWhereTheReachWent()
+    {
+        var csharp = Squashed(WrapperCSharp("""
+            fn seen() -> int64 { return 1; }
+            mut fn a() { limits_by_name["k"].value = seen(); }
+            mut fn b() { holder.limit.value = seen(); }
+            """));
+
+        Assert.Contains("{ var map = self.LimitsByName; var key = \"k\";", csharp, StringComparison.Ordinal);
+        Assert.Contains(
+            "{ var message = (self.Holder ??= new global::Protocross.Conformance.WrapperHolder()); "
+            + "message.Limit ??= 0L; message.Limit = ",
+            csharp,
+            StringComparison.Ordinal);
     }
 
     /// <summary>A wrapper that leaves its value out holds the zero, written as the scalar's own.</summary>

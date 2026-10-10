@@ -159,9 +159,8 @@ public sealed partial class CSharpBackend
             : WritableField(target, placement);
 
     /// <summary>
-    /// Before a store to a wrapper's <c>value</c>, the statement that reaches the wrapper, where the value
-    /// could tell when that happened: the field set to its zero where unset, or the zero put at a missing
-    /// key.
+    /// Whether a store to a wrapper's <c>value</c> has to reach the wrapper by a statement of its own
+    /// first: where it is a field or a map's element, and the value could tell when it was reached.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -170,37 +169,78 @@ public sealed partial class CSharpBackend
     /// <c>(self.Customer ??= new Customer()).Name = x</c>, because it evaluates what a property is set on
     /// before the value. A wrapper's <c>value</c> is the field itself, set last, so a value that asked
     /// whether <c>limit</c> was set, whether the other member of its <c>oneof</c> still was, or whether
-    /// the map had the key, would see each as it was before. So the wrapper is reached by a statement of
-    /// its own first, and set to its zero, which is what C++'s mutable accessor does.
+    /// the map had the key, would see each as it was before.
     /// </para>
     /// <para>
     /// Only where the value could see it. One that reads no message, asks no map and calls nothing,
     /// <c>limit.value = n * 2</c>, cannot, and is written as a C# author would write it. A compound
     /// assignment reads its target before reaching it (spec 9.3), and storing it sets it, so it needs no
-    /// reach. A loop's element is always there. A key is evaluated once for the reach and once for the
-    /// store, which nothing can see, since evaluating an expression changes nothing.
+    /// reach. A loop's element is always there.
     /// </para>
     /// </remarks>
-    private static void EmitReachWhereTheValueCouldSeeIt(SourceWriter writer, IrFieldAssignment assignment, Placement placement)
+    private static bool StoresThroughAReach(IrFieldAssignment assignment)
+        => !assignment.ReadsItsTarget
+            && assignment.Target.Receiver is IrFieldAccess or IrMapElement
+            && IsHeldAsItsValue(assignment.Target.Receiver)
+            && CouldSeeAReach(assignment.Value);
+
+    /// <summary>
+    /// A store to a wrapper's <c>value</c> that reaches the wrapper first: the field set to its zero where
+    /// unset, which is what C++'s mutable accessor does, or the zero put at a missing key. Then the value
+    /// is evaluated, and stored where the reach went.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// What is reached is reached once. The message holding the field, or the map and the key, are held
+    /// in locals and both statements use them, because reaching can change what reaching again would
+    /// find: a key of <c>limits.count()</c> is one more once the reach has put an entry there, and the
+    /// store would go to a second entry, leaving the first at its zero. Reaching through a link, a
+    /// message field or a map's element, can change the same way.
+    /// </para>
+    /// <para>
+    /// A field of the receiver or of a local is reached through nothing, and is written as it stands. The
+    /// rest is written in a block of its own, so two such stores in one scope do not declare one name
+    /// twice.
+    /// </para>
+    /// </remarks>
+    private static void EmitStoreThroughAReach(SourceWriter writer, IrFieldAssignment assignment, Body body)
     {
-        if (assignment.ReadsItsTarget || !IsHeldAsItsValue(assignment.Target.Receiver) || !CouldSeeAReach(assignment.Value))
+        var placement = body.Placement;
+        var zero = ZeroOf(WrappedScalar(assignment.Target.Receiver.Type)!);
+        var value = FieldValue(assignment.Value, placement, ReceiverName);
+
+        if (assignment.Target.Receiver is IrFieldAccess { Receiver: IrThis or IrLocalReference } direct)
         {
+            EmitFieldReachedThenStored(writer, WritableField(direct, placement), zero, value);
             return;
         }
 
-        var zero = ZeroOf(WrappedScalar(assignment.Target.Receiver.Type)!);
+        using var scope = writer.Block(string.Empty);
         switch (assignment.Target.Receiver)
         {
             case IrFieldAccess field:
-                writer.WriteLine($"{WritableField(field, placement)} ??= {zero};");
+                var message = body.Unused("message");
+                writer.WriteLine($"var {message} = {WritableMessage(field.Receiver, placement)};");
+                EmitFieldReachedThenStored(
+                    writer, $"{message}.{NameConventions.GetCSharpPropertyName(field.Field)}", zero, value);
                 break;
 
             case IrMapElement element:
-                writer.WriteLine(
-                    $"{CSharpRuntime.MapsTypeName}.AddIfAbsent({WritableCollection(element.Map, placement)}, "
-                    + $"{Expression(element.Key, placement)}, {zero});");
+                var map = body.Unused("map");
+                var key = body.Unused("key");
+                writer.WriteLine($"var {map} = {WritableCollection(element.Map, placement)};");
+                writer.WriteLine($"var {key} = {Expression(element.Key, placement)};");
+                writer.WriteLine($"{CSharpRuntime.MapsTypeName}.AddIfAbsent({map}, {key}, {zero});");
+                writer.WriteLine($"{map}[{key}] = {value};");
                 break;
         }
+    }
+
+    /// <summary>A wrapper field set to its zero where it is unset, then given its value.</summary>
+    private static void EmitFieldReachedThenStored(SourceWriter writer, string field, string zero, string value)
+    {
+        writer.WriteLine($"{field} ??= {zero};");
+        writer.WriteLine($"{field} = {value};");
     }
 
     /// <summary>Whether evaluating <paramref name="value"/> could read a message, ask a map, or call a method.</summary>

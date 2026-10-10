@@ -147,8 +147,12 @@ is what C++ holds, so C# changes a wrapper's shape where it moves between a fiel
   target ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). Where the value could tell, because it reads a message, asks a map or
   calls a method, the wrapper is reached by a statement of its own first: `self.Limit ??= 0L;`, which
   also unsets the other member of its `oneof`, or `ProtoCrossMaps.AddIfAbsent(map, key, 0L);` for a
-  missing key. A value that could not tell, `limit.value = n * 2`, is a single store. A compound
-  assignment reads its target first and needs no reach.
+  missing key. What is reached is reached once: the message holding the field, or the map and the key,
+  is held in a local that the reach and the store both use, because reaching can change what reaching
+  again would find. A key of `limits.count()` is one more once the reach has put an entry there. A field
+  of the receiver or of a local is reached through nothing, and needs no local. A value that could not
+  tell, `limit.value = n * 2`, is a single store. A compound assignment reads its target first and needs
+  no reach.
 - A loop over wrappers binds each element as a place in the list,
   `foreach (var each in ProtoCrossWrappers.Elements(self.Limits))`, whose `each.Value` reads and
   writes the element where it is. A `foreach` over the values would bind a copy, and a binding is the

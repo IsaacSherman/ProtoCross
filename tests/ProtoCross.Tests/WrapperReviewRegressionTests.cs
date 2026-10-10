@@ -34,6 +34,7 @@ public class WrapperReviewRegressionTests
     [Theory]
     [InlineData("wrapper_review", 8)]
     [InlineData("wrapper_terminal_review", 2)]
+    [InlineData("wrapper_key_review", 6)]
     [Trait("ReviewRegression", "WrapperFields")]
     public void CSharpWrapperLoopsAndStoresPreserveTheMessageSemantics(string vector, int testCount)
     {
@@ -57,6 +58,7 @@ public class WrapperReviewRegressionTests
     [Theory]
     [InlineData("wrapper_review", 8)]
     [InlineData("wrapper_terminal_review", 2)]
+    [InlineData("wrapper_key_review", 6)]
     [Trait("ReviewRegression", "WrapperFields")]
     public void CppWrapperLoopsAndStoresPreserveTheMessageSemantics(string vector, int testCount)
     {
