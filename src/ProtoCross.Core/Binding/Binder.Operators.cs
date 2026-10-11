@@ -30,13 +30,19 @@ public sealed partial class Binder
             return BindNumberToEnum(cast, operand, enumType, scope, context);
         }
 
-        ReportStrayOnUnknown(cast, target, scope, context);
+        var refused = BindStrayOnUnknown(cast, target, scope, context);
+        var result = BindNonEnumCast(cast, operand, target);
+        return refused.Count == 0 ? result : result with { Refused = [.. result.Refused, .. refused] };
+    }
 
+    /// <summary>Binds a conversion whose target is not an enum, keeping the operand of one it refuses.</summary>
+    private IrExpression BindNonEnumCast(CastExpression cast, IrExpression operand, PlType target)
+    {
         // ResolveTypeReference has already reported an unknown or ambiguous target, and a failed
         // operand has already reported whatever went wrong there.
         if (operand.Type is ErrorType || target is ErrorType)
         {
-            return new IrLiteral(null, ErrorType.Instance, cast.Span);
+            return Refusal([operand], cast.Span);
         }
 
         if (operand.Type is EnumPlType enumOperand)
@@ -52,7 +58,7 @@ public sealed partial class Binder
                 $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
                 cast.Span,
                 "'as' converts between numeric scalar types only (spec 10.3).");
-            return new IrLiteral(null, ErrorType.Instance, cast.Span);
+            return Refusal([operand], cast.Span);
         }
 
         return new IrConversion(

@@ -31,7 +31,7 @@ public sealed partial class Binder
             target is ScalarType { IsNumeric: true }
                 ? $"An enum converts only to 'int32', the width of its number (spec 12.1). Convert that: 'x as int32 as {target.DisplayName}'."
                 : "An enum converts only to 'int32', the width of its number (spec 12.1).");
-        return new IrLiteral(null, ErrorType.Instance, cast.Span);
+        return Refusal([operand], cast.Span);
     }
 
     /// <summary>Binds <c>n as OrderStatus</c>, an enum value made from a number.</summary>
@@ -71,21 +71,20 @@ public sealed partial class Binder
 
         var onUnnamed = BindOnUnknown(cast, target, scope, context);
 
-        if (operand.Type is ErrorType)
-        {
-            return new IrLiteral(null, ErrorType.Instance, cast.Span);
-        }
-
         if (operand.Type is not ScalarType { Kind: ScalarKind.Int32 })
         {
-            _diagnostics.Report(
-                DiagnosticCodes.InvalidConversion,
-                $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
-                cast.Span,
-                operand.Type is ScalarType { IsInteger: true } or EnumPlType
-                    ? $"Only an 'int32' converts to an enum, the width of its number (spec 12.1). Convert to that first: 'x as int32 as {cast.TargetType.Name.Text}'."
-                    : "Only an 'int32' converts to an enum, the width of its number (spec 12.1).");
-            return new IrLiteral(null, ErrorType.Instance, cast.Span);
+            if (operand.Type is not ErrorType)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.InvalidConversion,
+                    $"Cannot convert '{operand.Type.DisplayName}' to '{target.DisplayName}'.",
+                    cast.Span,
+                    operand.Type is ScalarType { IsInteger: true } or EnumPlType
+                        ? $"Only an 'int32' converts to an enum, the width of its number (spec 12.1). Convert to that first: 'x as int32 as {cast.TargetType.Name.Text}'."
+                        : "Only an 'int32' converts to an enum, the width of its number (spec 12.1).");
+            }
+
+            return Refusal(onUnnamed.Fallback is { } fallback ? [operand, fallback] : [operand], cast.Span);
         }
 
         if (onUnnamed.Source is UnnamedNumberSource.Default)
@@ -218,7 +217,7 @@ public sealed partial class Binder
 
         if (value.Type is ErrorType || named is ErrorType)
         {
-            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+            return Refusal([value], membership.Span);
         }
 
         if (named is not EnumPlType enumType)
@@ -228,7 +227,7 @@ public sealed partial class Binder
                 $"'{named.DisplayName}' is not an enum, so it has no names for 'in' to look among.",
                 membership.EnumType.Span,
                 "'in' asks whether a value is one its enum names, as in 'status in OrderStatus' (spec 12.2).");
-            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+            return Refusal([value], membership.Span);
         }
 
         if (!TypesMatch(enumType, value.Type))
@@ -242,7 +241,7 @@ public sealed partial class Binder
                 value.Type is ScalarType { Kind: ScalarKind.Int32 }
                     ? $"Ask about the value the number makes: 'x as {written} in {written}' (spec 12.2)."
                     : "'in' asks about a value of the enum it names (spec 12.2).");
-            return new IrLiteral(null, ErrorType.Instance, membership.Span);
+            return Refusal([value], membership.Span);
         }
 
         return new IrEnumMembership(value, enumType, membership.Span);
@@ -275,30 +274,31 @@ public sealed partial class Binder
 
     /// <summary>
     /// Reports an <c>on_unknown</c> clause on a conversion whose target is not an enum, and binds its
-    /// fallback anyway, so a name inside it is still found and still checked.
+    /// fallback to be kept among what the conversion refused.
     /// </summary>
     /// <remarks>
     /// Not reported where the target failed to resolve. That has been reported already, and the type
-    /// the author meant may well have been an enum.
+    /// the author meant may well have been an enum. Its fallback is still bound and kept, so editor
+    /// queries work inside it while the target is corrected (spec 22.2).
     /// </remarks>
-    private void ReportStrayOnUnknown(CastExpression cast, PlType target, Scope scope, MethodContext context)
+    private IReadOnlyList<IrExpression> BindStrayOnUnknown(CastExpression cast, PlType target, Scope scope, MethodContext context)
     {
-        if (cast.OnUnknown is not { } clause || target is ErrorType)
+        if (cast.OnUnknown is not { } clause)
         {
-            return;
+            return [];
         }
 
-        _diagnostics.Report(
-            DiagnosticCodes.OnUnknownOutsideEnumConversion,
-            $"'on_unknown' says what becomes of a number an enum does not name, and '{target.DisplayName}' "
-            + "is not an enum.",
-            clause.Span,
-            "Delete the clause (spec 12.1).");
-
-        if (clause.Fallback is { } fallback)
+        if (target is not ErrorType)
         {
-            BindExpression(fallback, scope, context, null);
+            _diagnostics.Report(
+                DiagnosticCodes.OnUnknownOutsideEnumConversion,
+                $"'on_unknown' says what becomes of a number an enum does not name, and '{target.DisplayName}' "
+                + "is not an enum.",
+                clause.Span,
+                "Delete the clause (spec 12.1).");
         }
+
+        return clause.Fallback is { } fallback ? [BindRefused(fallback, scope, context)] : [];
     }
 
     // --- what the project says about an enum's numbers ---

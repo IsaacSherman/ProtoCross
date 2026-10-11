@@ -8,7 +8,8 @@ namespace ProtoCross.Tests;
 /// <summary>
 /// What is written inside something the binder refused: a field its message does not have, a field
 /// written twice, an element where a map's entry goes, an entry where no map is, a literal of a type
-/// that is not a message, and an index or an <c>in</c> on something that is not a map.
+/// that is not a message, an index or an <c>in</c> on something that is not a map, and a conversion
+/// or an enum's <c>in</c> that cannot be made.
 /// </summary>
 /// <remarks>
 /// <para>

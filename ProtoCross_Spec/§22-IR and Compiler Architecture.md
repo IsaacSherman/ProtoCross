@@ -141,9 +141,11 @@ The IR preserves:
   diagnostics.
 - What was written in a construct the binder refused, bound and kept by the node standing where it
   was written. That covers the value of a field a literal or an entry refused, an element where a
-  map's entry goes, and the parts of a construct refused whole, such as a lookup of something that is
-  not a map, which an error then stands for. So it is there to ask about while it is being typed,
-  and every rule that applies to anything bound applies to it: a mutating call there is still one
+  map's entry goes, an `on_unknown` fallback on a conversion whose target is not an enum, and the
+  parts of a construct refused whole, such as a lookup of something that is not a map, a conversion
+  that cannot be made, or an `in` asked of a value its enum cannot hold, which an error then stands
+  for. A conversion's fallback is kept even where its target did not resolve, since the type meant
+  may well have been an enum. So it is there to ask about while it is being typed, and every rule that applies to anything bound applies to it: a mutating call there is still one
   inside an expression ([18](./§18-Mutability.md#18-mutability)).
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
