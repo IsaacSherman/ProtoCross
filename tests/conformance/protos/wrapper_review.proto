@@ -1,0 +1,19 @@
+syntax = "proto3";
+package protocross.conformance;
+import "google/protobuf/wrappers.proto";
+
+message WrapperReviewCase {
+  google.protobuf.Int64Value limit = 1;
+  repeated google.protobuf.Int64Value limits = 2;
+  repeated google.protobuf.StringValue labels = 3;
+  oneof choice {
+    google.protobuf.Int64Value chosen = 4;
+    string note = 5;
+  }
+  repeated WrapperReviewPlain plain = 6;
+  map<string, google.protobuf.Int64Value> limits_by_name = 7;
+}
+
+message WrapperReviewPlain {
+  int64 value = 1;
+}

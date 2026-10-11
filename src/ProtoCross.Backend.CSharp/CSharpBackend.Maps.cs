@@ -15,8 +15,14 @@ public sealed partial class CSharpBackend
 
     /// <summary>A lookup: the value at the key, or what its clause says a missing key gives.</summary>
     /// <remarks>
+    /// <para>
     /// A fallback is written after <c>??</c>, which evaluates it only where the helper found nothing,
     /// so a fallback that can end the program does not end one whose key was there (spec 14.2).
+    /// </para>
+    /// <para>
+    /// A map of wrappers holds values, so its lookup is a value too, and its fallback is given as one
+    /// (<see cref="HeldValue"/>).
+    /// </para>
     /// </remarks>
     private static string EmitMapLookup(IrMapLookup lookup, Placement placement, string receiverName)
     {
@@ -27,7 +33,9 @@ public sealed partial class CSharpBackend
         {
             MissingKeyBehavior.Fallback =>
                 $"({CSharpRuntime.MapsTypeName}.{FindHelper(lookup.ValueType)}({map}, {key}) ?? "
-                + $"{Expression(lookup.Fallback!, placement, receiverName)})",
+                + $"{(WrappedScalar(lookup.ValueType) is null
+                    ? Expression(lookup.Fallback!, placement, receiverName)
+                    : WrappedValue(lookup.Fallback!, placement, receiverName))})",
             MissingKeyBehavior.Fail =>
                 $"{CSharpRuntime.MapsTypeName}.FoundOrFail({map}, {key}, {FormatString(lookup.MapName)})",
             _ => throw new ArgumentOutOfRangeException(
@@ -37,12 +45,16 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// The helper that gives a map's value or null: <c>FindValue</c> for a value type, which comes back as
-    /// a <see cref="Nullable{T}"/>, and <c>FindReference</c> for anything else.
+    /// a <see cref="Nullable{T}"/>, <c>FindNullable</c> for a value C# holds as one already, which a
+    /// wrapper of a value type is, and <c>FindReference</c> for anything else.
     /// </summary>
-    private static string FindHelper(PlType valueType)
-        => valueType is EnumPlType or ScalarType { Kind: not (ScalarKind.String or ScalarKind.Bytes) }
-            ? "FindValue"
-            : "FindReference";
+    private static string FindHelper(PlType valueType) => valueType switch
+    {
+        _ when WrappedScalar(valueType) is { } wrapped => IsAStruct(wrapped) ? "FindNullable" : "FindReference",
+        EnumPlType => "FindValue",
+        ScalarType scalar when IsAStruct(scalar) => "FindValue",
+        _ => "FindReference",
+    };
 
     /// <summary><c>count()</c> or <c>is_empty()</c>.</summary>
     private static string EmitMapQuery(IrMapQuery query, Placement placement, string receiverName)
@@ -61,6 +73,10 @@ public sealed partial class CSharpBackend
         return binary.Operator == IrBinaryOperator.NotEqual ? $"(!{equal})" : equal;
     }
 
+    /// <summary>A map's element as the target of a store: <c>prices[sku]</c>, through <c>MapField</c>'s indexer.</summary>
+    private static string ElementPlace(IrMapElement element, Placement placement)
+        => $"{WritableCollection(element.Map, placement)}[{Expression(element.Key, placement)}]";
+
     /// <summary>The message at a key, put there first where the key is missing, so it can be written through.</summary>
     private static string WritableElement(IrMapElement element, Placement placement)
         => $"{CSharpRuntime.MapsTypeName}.Entry({WritableCollection(element.Map, placement)}, "
@@ -75,10 +91,9 @@ public sealed partial class CSharpBackend
         => EmitValueFirstWhereItReadsAnElement(
             writer,
             assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
-            StoredValue(assignment.Value, body.Placement, ReceiverName),
+            FieldValue(assignment.Value, body.Placement, ReceiverName),
             body,
-            value => $"{WritableCollection(assignment.Target.Map, body.Placement)}"
-                + $"[{Expression(assignment.Target.Key, body.Placement)}] = {value};");
+            value => $"{ElementPlace(assignment.Target, body.Placement)} = {value};");
 
     /// <summary>
     /// Writes a store, <paramref name="store"/> given the value's text, with the value evaluated into a
@@ -113,12 +128,13 @@ public sealed partial class CSharpBackend
     /// <summary>A change one of a map's methods makes.</summary>
     /// <remarks>
     /// A message merged from another map is copied, as a stored one is, through <c>MergeMessages</c>. A
-    /// value <c>add_if_absent</c> or <c>replace_if_present</c> stores is copied the same way.
+    /// value <c>add_if_absent</c> or <c>replace_if_present</c> stores is copied the same way. A map of
+    /// wrappers holds values, which <c>Merge</c> copies as it copies any other.
     /// </remarks>
     private static void EmitMapUpdate(SourceWriter writer, IrMapUpdate update, Placement placement)
     {
         var map = WritableCollection(update.Map, placement);
-        var arguments = update.Arguments.Select(argument => StoredValue(argument, placement, ReceiverName)).ToList();
+        var arguments = update.Arguments.Select(argument => FieldValue(argument, placement, ReceiverName)).ToList();
 
         writer.WriteLine(update.Method switch
         {
@@ -126,7 +142,7 @@ public sealed partial class CSharpBackend
             MapMethod.Clear => $"{map}.Clear();",
             MapMethod.AddIfAbsent => $"{CSharpRuntime.MapsTypeName}.AddIfAbsent({map}, {arguments[0]}, {arguments[1]});",
             MapMethod.ReplaceIfPresent => $"{CSharpRuntime.MapsTypeName}.ReplaceIfPresent({map}, {arguments[0]}, {arguments[1]});",
-            MapMethod.Merge when update.Map.Type is MapType { ValueType: MessageType } =>
+            MapMethod.Merge when update.Map.Type is MapType { ValueType: MessageType valueType } && WrappedScalar(valueType) is null =>
                 $"{CSharpRuntime.MapsTypeName}.MergeMessages({map}, {Expression(update.Arguments[0], placement)});",
             MapMethod.Merge => $"{CSharpRuntime.MapsTypeName}.Merge({map}, {Expression(update.Arguments[0], placement)});",
             _ => throw new ArgumentOutOfRangeException(nameof(update), update.Method, "Not a change to a map."),
@@ -142,5 +158,5 @@ public sealed partial class CSharpBackend
         => Braced(
             header: null,
             entries.Entries.Select(entry =>
-                $"[{Expression(entry.Key, placement, receiverName)}] = {StoredValue(entry.Value, placement, receiverName)}"));
+                $"[{Expression(entry.Key, placement, receiverName)}] = {FieldValue(entry.Value, placement, receiverName)}"));
 }

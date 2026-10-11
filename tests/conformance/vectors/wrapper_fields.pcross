@@ -1,0 +1,837 @@
+// Conformance vectors for fields of protobuf's wrapper types (spec 24.1).
+//
+// protoc's C# generator holds a field of a wrapper type, such as Int64Value, as the value the wrapper
+// holds: a long?, a string or a ByteString, null where the field is unset. A repeated field and a map
+// hold such values too. C++ holds the message the schema declares, and so does the language. So C#
+// changes a wrapper's shape wherever it moves between a field and a message, and these are the places
+// the two targets could go their own way:
+//
+// - the value and the presence of each of the nine wrappers, a oneof's included;
+// - the whole wrapper, held in a local, passed to a method, and returned;
+// - a literal that gives a field a wrapper, an empty wrapper, and a parameter;
+// - a write of the value, which sets an unset field, a compound write, a whole wrapper, a write
+//   through a nested message, and a write to a oneof's member, which unsets the others;
+// - a repeated field: a literal, a loop, an append, a loop that writes through its binding, and a
+//   local's copy;
+// - a map: a lookup with a fallback and with 'fail', a store, a write and a compound write through a
+//   missing key, and each method that changes one;
+// - a 'mut fn' on Int64Value, called on a field and on a loop's binding, which C# calls on a copy and
+//   stores back.
+
+import proto "wrapper_fields.proto";
+
+// Extending a wrapper is PC0077, a warning: the consumer already has Int64Value from the runtime. It is
+// here because a 'mut fn' is the one change C# cannot make to the value it holds in place.
+extend google.protobuf.Int64Value {
+    mut fn raise(by: int64) {
+        value += by;
+    }
+
+    mut fn raised(by: int64) -> int64 {
+        value += by;
+        return value;
+    }
+}
+
+extend WrapperCase {
+    // ------- reading
+
+    fn limit_or(otherwise: int64) -> int64 {
+        if has limit {
+            return limit.value;
+        }
+
+        return otherwise;
+    }
+
+    fn label_or(otherwise: string) -> string {
+        if has label {
+            return label.value;
+        }
+
+        return otherwise;
+    }
+
+    // A wrapper set to false is set, so presence and the value are told apart.
+    fn enabled_state() -> int32 {
+        if not has enabled {
+            return 0;
+        }
+
+        if enabled.value {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    fn ratio_doubled() -> double {
+        if has ratio {
+            return ratio.value * 2.0;
+        }
+
+        return -1.0;
+    }
+
+    fn small_and_big() -> uint64 {
+        if has small and has big {
+            return (small.value as uint64) + big.value;
+        }
+
+        return 0;
+    }
+
+    fn count_or(otherwise: int32) -> int32 {
+        if has count {
+            return count.value;
+        }
+
+        return otherwise;
+    }
+
+    fn weight_or(otherwise: float) -> float {
+        if has weight {
+            return weight.value;
+        }
+
+        return otherwise;
+    }
+
+    // ------- the whole wrapper
+
+    fn value_of(wrapper: google.protobuf.Int64Value) -> int64 {
+        return wrapper.value;
+    }
+
+    fn limit_passed() -> int64 {
+        if has limit {
+            return value_of(limit);
+        }
+
+        return -1;
+    }
+
+    fn limit_itself() -> google.protobuf.Int64Value {
+        if has limit {
+            return limit;
+        }
+
+        return new google.protobuf.Int64Value { value: -1 };
+    }
+
+    fn limit_returned() -> int64 {
+        return limit_itself().value;
+    }
+
+    // A local holds a wrapper of its own, so a change to it leaves the field as it was.
+    mut fn local_copy_changed() -> int64 {
+        if not has limit {
+            return -1;
+        }
+
+        var copy = limit;
+        copy.value = 99;
+        return limit.value * 1000 + copy.value;
+    }
+
+    // ------- literals
+
+    fn built() -> int64 {
+        var built = new WrapperCase {
+            limit: new google.protobuf.Int64Value { value: 5 },
+            label: new google.protobuf.StringValue { value: "five" },
+        };
+
+        if has built.limit and has built.label and built.label.value == "five" {
+            return built.limit.value;
+        }
+
+        return -1;
+    }
+
+    // A wrapper that leaves its value out still sets the field, to the zero.
+    fn built_empty() -> int64 {
+        var built = new WrapperCase { limit: new google.protobuf.Int64Value { } };
+
+        if has built.limit {
+            return built.limit.value + 1;
+        }
+
+        return 0;
+    }
+
+    fn built_from(wrapper: google.protobuf.Int64Value) -> int64 {
+        var built = new WrapperCase {
+            limit: wrapper,
+            limits: [wrapper, new google.protobuf.Int64Value { value: 2 }],
+        };
+
+        var total: int64 = 0;
+        for each in built.limits {
+            total += each.value;
+        }
+
+        if has built.limit {
+            return built.limit.value * 100 + total;
+        }
+
+        return -1;
+    }
+
+    // ------- writing
+
+    // Writing the value sets a field that was unset.
+    mut fn limit_set(n: int64) -> int64 {
+        limit.value = n;
+        return limit_or(-1);
+    }
+
+    mut fn limit_raised_by(n: int64) -> int64 {
+        if has limit {
+            limit.value += n;
+        }
+
+        return limit_or(-1);
+    }
+
+    mut fn limit_replaced(wrapper: google.protobuf.Int64Value) -> int64 {
+        limit = wrapper;
+        return limit_or(-1);
+    }
+
+    mut fn label_set(text: string) -> string {
+        label.value = text;
+        return label_or("unset");
+    }
+
+    mut fn holder_limit_set(n: int64) -> int64 {
+        holder.limit.value = n;
+
+        if has holder {
+            if has holder.limit {
+                return holder.limit.value;
+            }
+        }
+
+        return -1;
+    }
+
+    // Writing one member of a oneof unsets the others.
+    mut fn count_set(n: int32) -> int32 {
+        weight.value = 1.5;
+        count.value = n;
+
+        if has weight {
+            return -1;
+        }
+
+        return count_or(-2);
+    }
+
+    // Bytes have no literal, so a blob is copied from one the fixture sets to its zero.
+    mut fn blob_copied() -> bool {
+        if not has blob {
+            return false;
+        }
+
+        spare_blob = blob;
+        return has spare_blob and spare_blob.value == blob.value;
+    }
+
+    // ------- repeated
+
+    fn limit_total() -> int64 {
+        var total: int64 = 0;
+        for each in limits {
+            total += each.value;
+        }
+
+        return total;
+    }
+
+    fn label_count(text: string) -> int32 {
+        var found: int32 = 0;
+        for each in labels {
+            if each.value == text {
+                found += 1;
+            }
+        }
+
+        return found;
+    }
+
+    mut fn limits_appended(wrapper: google.protobuf.Int64Value) -> int64 {
+        limits.append(new google.protobuf.Int64Value { value: 10 });
+        limits.append(wrapper);
+
+        if has limit {
+            limits.append(limit);
+        }
+
+        return limit_total();
+    }
+
+    // A loop that writes through its binding writes the element itself.
+    mut fn limits_doubled() -> int64 {
+        for each in limits {
+            each.value = each.value * 2;
+        }
+
+        return limit_total();
+    }
+
+    // A binding passed on is a wrapper of its own.
+    fn largest_limit() -> int64 {
+        var largest: int64 = 0;
+        for each in limits {
+            if value_of(each) > largest {
+                largest = value_of(each);
+            }
+        }
+
+        return largest;
+    }
+
+    // A local holds a repeated value of its own.
+    mut fn local_limits_appended() -> int64 {
+        var copy = limits;
+        copy.append(new google.protobuf.Int64Value { value: 100 });
+
+        var total: int64 = 0;
+        for each in copy {
+            total += each.value;
+        }
+
+        return total * 1000 + limit_total();
+    }
+
+    // ------- maps
+
+    fn limit_named(name: string) -> int64 {
+        return (limits_by_name[name] on_missing new google.protobuf.Int64Value { value: -1 }).value;
+    }
+
+    fn limit_named_or_fail(name: string) -> int64 {
+        return (limits_by_name[name] on_missing fail).value;
+    }
+
+    // A lookup's fallback can be a wrapper field too.
+    fn limit_named_or_limit(name: string) -> int64 {
+        if has limit {
+            return (limits_by_name[name] on_missing limit).value;
+        }
+
+        return -1;
+    }
+
+    fn limit_named_passed(name: string) -> int64 {
+        return value_of(limits_by_name[name] on_missing fail);
+    }
+
+    fn label_with_id(id: int32) -> string {
+        return (labels_by_id[id] on_missing new google.protobuf.StringValue { value: "none" }).value;
+    }
+
+    fn has_limit_named(name: string) -> bool {
+        return name in limits_by_name;
+    }
+
+    mut fn limit_stored(name: string, n: int64) -> int64 {
+        limits_by_name[name] = new google.protobuf.Int64Value { value: n };
+        return limit_named(name);
+    }
+
+    // A wrapper written through at a missing key is put there first.
+    mut fn limit_written_through(name: string, n: int64) -> int64 {
+        limits_by_name[name].value = n;
+        return limit_named(name);
+    }
+
+    // A compound write reads with its clause before the wrapper is put at a missing key.
+    mut fn limit_raised_through(name: string, n: int64) -> int64 {
+        (limits_by_name[name] on_missing new google.protobuf.Int64Value { value: 10 }).value += n;
+        return limit_named(name);
+    }
+
+    mut fn limit_added(name: string, n: int64) -> int64 {
+        limits_by_name.add_if_absent(name, new google.protobuf.Int64Value { value: n });
+        return limit_named(name);
+    }
+
+    mut fn limit_replaced_if_present(name: string, n: int64) -> int64 {
+        limits_by_name.replace_if_present(name, new google.protobuf.Int64Value { value: n });
+        return limit_named(name);
+    }
+
+    // The other map's value wins where both hold a key.
+    mut fn limits_merged(name: string) -> int64 {
+        limits_by_name.merge(other_limits_by_name);
+        return limit_named(name) * 10 + limits_by_name.count() as int64;
+    }
+
+    mut fn limit_removed(name: string) -> bool {
+        limits_by_name.remove(name);
+        return name in limits_by_name;
+    }
+
+    fn built_map(name: string) -> int64 {
+        var built = new WrapperCase {
+            limits_by_name: [
+                { key: "a", value: new google.protobuf.Int64Value { value: 1 } },
+                { key: "b", value: new google.protobuf.Int64Value { } },
+            ],
+        };
+
+        return (built.limits_by_name[name] on_missing new google.protobuf.Int64Value { value: -1 }).value;
+    }
+
+    // ------- a mut fn on a wrapper
+
+    mut fn limit_raised(by: int64) -> int64 {
+        if has limit {
+            limit.raise(by);
+        }
+
+        return limit_or(-1);
+    }
+
+    // A 'mut fn' with a value: a local's initializer, a local's new value, and a return's value.
+    mut fn limit_raised_twice(by: int64) -> int64 {
+        if not has limit {
+            return -1;
+        }
+
+        var first = limit.raised(by);
+        var second: int64 = 0;
+        second = limit.raised(by);
+        return first * 1000 + second;
+    }
+
+    mut fn limit_raised_and_returned(by: int64) -> int64 {
+        if has limit {
+            return limit.raised(by);
+        }
+
+        return -1;
+    }
+
+    mut fn limits_raised(by: int64) -> int64 {
+        for each in limits {
+            each.raise(by);
+        }
+
+        return limit_total();
+    }
+}
+
+// ------- reading
+
+test WrapperCase.limit_or "a set wrapper gives its value" {
+    receiver { limit: new google.protobuf.Int64Value { value: 42 } }
+    arg otherwise = -1;
+    expect return 42;
+}
+
+test WrapperCase.limit_or "an unset wrapper is not there" {
+    receiver { }
+    arg otherwise = -1;
+    expect return -1;
+}
+
+test WrapperCase.label_or "a string wrapper gives its value" {
+    receiver { label: new google.protobuf.StringValue { value: "wrapped" } }
+    arg otherwise = "unset";
+    expect return "wrapped";
+}
+
+test WrapperCase.label_or "an empty string wrapper is set" {
+    receiver { label: new google.protobuf.StringValue { } }
+    arg otherwise = "unset";
+    expect return "";
+}
+
+test WrapperCase.enabled_state "an unset bool wrapper" {
+    receiver { }
+    expect return 0;
+}
+
+test WrapperCase.enabled_state "a bool wrapper set to false is set" {
+    receiver { enabled: new google.protobuf.BoolValue { value: false } }
+    expect return 1;
+}
+
+test WrapperCase.enabled_state "a bool wrapper set to true" {
+    receiver { enabled: new google.protobuf.BoolValue { value: true } }
+    expect return 2;
+}
+
+test WrapperCase.ratio_doubled "a double wrapper" {
+    receiver { ratio: new google.protobuf.DoubleValue { value: 1.25 } }
+    expect return 2.5;
+}
+
+test WrapperCase.small_and_big "the unsigned wrappers" {
+    receiver {
+        small: new google.protobuf.UInt32Value { value: 4000000000 },
+        big: new google.protobuf.UInt64Value { value: 10000000000 },
+    }
+
+    expect return 14000000000;
+}
+
+test WrapperCase.count_or "an int32 wrapper in a oneof" {
+    receiver { count: new google.protobuf.Int32Value { value: -7 } }
+    arg otherwise = 0;
+    expect return -7;
+}
+
+test WrapperCase.count_or "another member of the oneof is set" {
+    receiver { note: "noted" }
+    arg otherwise = 0;
+    expect return 0;
+}
+
+test WrapperCase.weight_or "a float wrapper in a oneof" {
+    receiver { weight: new google.protobuf.FloatValue { value: 0.75 } }
+    arg otherwise = 0.0;
+    expect return 0.75;
+}
+
+// ------- the whole wrapper
+
+test WrapperCase.limit_passed "a wrapper field passed to a parameter" {
+    receiver { limit: new google.protobuf.Int64Value { value: 8 } }
+    expect return 8;
+}
+
+test WrapperCase.limit_returned "a wrapper field returned" {
+    receiver { limit: new google.protobuf.Int64Value { value: 9 } }
+    expect return 9;
+}
+
+test WrapperCase.limit_returned "a wrapper literal returned" {
+    receiver { }
+    expect return -1;
+}
+
+test WrapperCase.local_copy_changed "a local's wrapper is its own" {
+    receiver { limit: new google.protobuf.Int64Value { value: 3 } }
+    expect return 3099;
+}
+
+// ------- literals
+
+test WrapperCase.built "a literal gives fields wrappers" {
+    receiver { }
+    expect return 5;
+}
+
+test WrapperCase.built_empty "an empty wrapper sets the field to the zero" {
+    receiver { }
+    expect return 1;
+}
+
+test WrapperCase.built_from "a parameter given to a field and to a list" {
+    receiver { }
+    arg wrapper = new google.protobuf.Int64Value { value: 4 };
+    expect return 406;
+}
+
+// ------- writing
+
+test WrapperCase.limit_set "writing the value sets an unset field" {
+    receiver { }
+    arg n = 12;
+    expect return 12;
+}
+
+test WrapperCase.limit_set "writing the value replaces it" {
+    receiver { limit: new google.protobuf.Int64Value { value: 3 } }
+    arg n = 12;
+    expect return 12;
+}
+
+test WrapperCase.limit_raised_by "a compound write" {
+    receiver { limit: new google.protobuf.Int64Value { value: 3 } }
+    arg n = 4;
+    expect return 7;
+}
+
+test WrapperCase.limit_replaced "a whole wrapper stored" {
+    receiver { limit: new google.protobuf.Int64Value { value: 3 } }
+    arg wrapper = new google.protobuf.Int64Value { value: 30 };
+    expect return 30;
+}
+
+test WrapperCase.label_set "a string wrapper written" {
+    receiver { }
+    arg text = "written";
+    expect return "written";
+}
+
+test WrapperCase.holder_limit_set "writing through an unset message sets it and the wrapper" {
+    receiver { }
+    arg n = 6;
+    expect return 6;
+}
+
+test WrapperCase.count_set "writing a oneof's wrapper unsets the other member" {
+    receiver { note: "noted" }
+    arg n = 5;
+    expect return 5;
+}
+
+test WrapperCase.blob_copied "a bytes wrapper stored from another" {
+    receiver { blob: new google.protobuf.BytesValue { } }
+    expect return true;
+}
+
+// ------- repeated
+
+test WrapperCase.limit_total "a loop over wrappers" {
+    receiver {
+        limits: [
+            new google.protobuf.Int64Value { value: 1 },
+            new google.protobuf.Int64Value { value: 20 },
+            new google.protobuf.Int64Value { },
+        ],
+    }
+
+    expect return 21;
+}
+
+test WrapperCase.label_count "a loop over string wrappers" {
+    receiver {
+        labels: [
+            new google.protobuf.StringValue { value: "a" },
+            new google.protobuf.StringValue { value: "b" },
+            new google.protobuf.StringValue { value: "a" },
+        ],
+    }
+
+    arg text = "a";
+    expect return 2;
+}
+
+test WrapperCase.limits_appended "a literal, a parameter and a field appended" {
+    receiver {
+        limit: new google.protobuf.Int64Value { value: 300 },
+        limits: [new google.protobuf.Int64Value { value: 1 }],
+    }
+
+    arg wrapper = new google.protobuf.Int64Value { value: 20 };
+    expect return 331;
+}
+
+test WrapperCase.limits_doubled "a loop writes through its binding" {
+    receiver {
+        limits: [
+            new google.protobuf.Int64Value { value: 1 },
+            new google.protobuf.Int64Value { value: 20 },
+        ],
+    }
+
+    expect return 42;
+}
+
+test WrapperCase.largest_limit "a binding passed to a parameter" {
+    receiver {
+        limits: [
+            new google.protobuf.Int64Value { value: 7 },
+            new google.protobuf.Int64Value { value: 70 },
+            new google.protobuf.Int64Value { value: 17 },
+        ],
+    }
+
+    expect return 70;
+}
+
+test WrapperCase.local_limits_appended "a local's repeated wrappers are its own" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 5 }] }
+    expect return 105005;
+}
+
+// ------- maps
+
+test WrapperCase.limit_named "a lookup of a key that is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 11 } }] }
+    arg name = "a";
+    expect return 11;
+}
+
+test WrapperCase.limit_named "a lookup of a missing key gives the fallback" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 11 } }] }
+    arg name = "b";
+    expect return -1;
+}
+
+test WrapperCase.limit_named_or_fail "a lookup with fail of a key that is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 11 } }] }
+    arg name = "a";
+    expect return 11;
+}
+
+test WrapperCase.limit_named_or_fail "a lookup with fail of a missing key" {
+    receiver { }
+    arg name = "a";
+    expect fail;
+}
+
+test WrapperCase.limit_named_or_limit "a wrapper field as a lookup's fallback" {
+    receiver { limit: new google.protobuf.Int64Value { value: 50 } }
+    arg name = "a";
+    expect return 50;
+}
+
+test WrapperCase.limit_named_passed "a lookup passed to a parameter" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 13 } }] }
+    arg name = "a";
+    expect return 13;
+}
+
+test WrapperCase.label_with_id "a map of string wrappers" {
+    receiver { labels_by_id: [{ key: 3, value: new google.protobuf.StringValue { value: "three" } }] }
+    arg id = 3;
+    expect return "three";
+}
+
+test WrapperCase.label_with_id "a map of string wrappers, missing the key" {
+    receiver { }
+    arg id = 3;
+    expect return "none";
+}
+
+test WrapperCase.has_limit_named "a key is in a map of wrappers" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { } }] }
+    arg name = "a";
+    expect return true;
+}
+
+test WrapperCase.limit_stored "a wrapper stored at a key" {
+    receiver { }
+    arg name = "a";
+    arg n = 14;
+    expect return 14;
+}
+
+test WrapperCase.limit_written_through "a wrapper written through at a missing key" {
+    receiver { }
+    arg name = "a";
+    arg n = 15;
+    expect return 15;
+}
+
+test WrapperCase.limit_written_through "a wrapper written through at a key that is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 1 } }] }
+    arg name = "a";
+    arg n = 15;
+    expect return 15;
+}
+
+test WrapperCase.limit_raised_through "a compound write at a missing key starts from the fallback" {
+    receiver { }
+    arg name = "a";
+    arg n = 5;
+    expect return 15;
+}
+
+test WrapperCase.limit_raised_through "a compound write at a key that is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 1 } }] }
+    arg name = "a";
+    arg n = 5;
+    expect return 6;
+}
+
+test WrapperCase.limit_added "added where the key is missing" {
+    receiver { }
+    arg name = "a";
+    arg n = 16;
+    expect return 16;
+}
+
+test WrapperCase.limit_added "not added where the key is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 1 } }] }
+    arg name = "a";
+    arg n = 16;
+    expect return 1;
+}
+
+test WrapperCase.limit_replaced_if_present "replaced where the key is there" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 1 } }] }
+    arg name = "a";
+    arg n = 17;
+    expect return 17;
+}
+
+test WrapperCase.limit_replaced_if_present "not replaced where the key is missing" {
+    receiver { }
+    arg name = "a";
+    arg n = 17;
+    expect return -1;
+}
+
+test WrapperCase.limits_merged "a merge of wrappers" {
+    receiver {
+        limits_by_name: [
+            { key: "a", value: new google.protobuf.Int64Value { value: 1 } },
+            { key: "b", value: new google.protobuf.Int64Value { value: 2 } },
+        ],
+        other_limits_by_name: [
+            { key: "b", value: new google.protobuf.Int64Value { value: 5 } },
+            { key: "c", value: new google.protobuf.Int64Value { value: 6 } },
+        ],
+    }
+
+    arg name = "b";
+    expect return 53;
+}
+
+test WrapperCase.limit_removed "a key removed from a map of wrappers" {
+    receiver { limits_by_name: [{ key: "a", value: new google.protobuf.Int64Value { value: 1 } }] }
+    arg name = "a";
+    expect return false;
+}
+
+test WrapperCase.built_map "a map literal of wrappers" {
+    receiver { }
+    arg name = "a";
+    expect return 1;
+}
+
+test WrapperCase.built_map "an empty wrapper in a map literal" {
+    receiver { }
+    arg name = "b";
+    expect return 0;
+}
+
+// ------- a mut fn on a wrapper
+
+test WrapperCase.limit_raised "a mut fn on a wrapper field" {
+    receiver { limit: new google.protobuf.Int64Value { value: 2 } }
+    arg by = 3;
+    expect return 5;
+}
+
+test WrapperCase.limit_raised_twice "a mut fn with a value, given to a local" {
+    receiver { limit: new google.protobuf.Int64Value { value: 2 } }
+    arg by = 3;
+    expect return 5008;
+}
+
+test WrapperCase.limit_raised_and_returned "a mut fn with a value, returned" {
+    receiver { limit: new google.protobuf.Int64Value { value: 2 } }
+    arg by = 3;
+    expect return 5;
+}
+
+test WrapperCase.limits_raised "a mut fn on a loop's binding" {
+    receiver {
+        limits: [
+            new google.protobuf.Int64Value { value: 1 },
+            new google.protobuf.Int64Value { value: 2 },
+        ],
+    }
+
+    arg by = 10;
+    expect return 23;
+}

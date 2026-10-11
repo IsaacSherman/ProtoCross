@@ -163,10 +163,13 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static string Expression(
         IrExpression expression, Placement placement, string receiverName = ReceiverName) => expression switch
     {
+        _ when IsHeldAsItsValue(expression) => MessageOf(expression, placement, receiverName),
         IrThis => receiverName,
         IrLocalReference local => Escape(local.Local.Name),
         IrParameterReference parameter => Escape(parameter.Parameter.Name),
-        IrFieldAccess field => $"{Expression(field.Receiver, placement, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}",
+        HeldCopy copy => copy.Name,
+        IrFieldAccess { Receiver: var wrapper } when IsHeldAsItsValue(wrapper) => HeldValue(wrapper, placement, receiverName),
+        IrFieldAccess field => PropertyRead(field, placement, receiverName),
             IrFieldPresence presence => EmitPresence(presence, placement, receiverName),
         IrMethodCall call => EmitCall(call, placement, receiverName),
         IrBinary binary => EmitBinary(binary, placement, receiverName),
@@ -186,6 +189,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrMapQuery query => EmitMapQuery(query, placement, receiverName),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
+
+    /// <summary>A field read through the property protoc's C# generator declares for it.</summary>
+    private static string PropertyRead(IrFieldAccess field, Placement placement, string receiverName)
+        => $"{Expression(field.Receiver, placement, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}";
 
     private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
     {

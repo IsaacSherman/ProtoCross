@@ -350,6 +350,37 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
+    /// Before a member, a message stands only where it has that member: <c>inner</c> has no
+    /// <c>count</c>, so <c>inner.count</c> would be <c>PC0041</c>. The completion sweep found this
+    /// beside a wrapper's <c>value</c> (#162).
+    /// </summary>
+    [Fact]
+    public async Task AMessageIsOfferedBeforeAMemberOnlyWhereItHasThatMember()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend Outer {\n    fn f(other: Outer) -> int64 {\n        return other.count;\n    }\n}\n",
+            "return oth"));
+
+        Assert.Contains("other", offered);
+        Assert.DoesNotContain("inner", offered);
+        Assert.DoesNotContain("other_inner", offered);
+    }
+
+    /// <summary>A method a source declares on a message is a member of it too, and lets the message stand there.</summary>
+    [Fact]
+    public async Task AMessageDeclaringTheMemberAsAMethodIsOfferedBeforeIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend protocross.tests.Outer.Inner {\n    fn weight() -> int64 {\n        return 1;\n    }\n}\n\n"
+                + "extend Outer {\n    fn f(other: Outer) -> int64 {\n        return inner.weight();\n    }\n}\n",
+            "return inn"));
+
+        Assert.Contains("inner", offered);
+        Assert.Contains("other_inner", offered);
+        Assert.DoesNotContain("other", offered);
+    }
+
+    /// <summary>
     /// Before any member but <c>append</c>, a repeated value is the receiver of nothing it has, so it
     /// would be offered only to be refused, as <c>nested_values.deep</c> is.
     /// </summary>
@@ -1386,8 +1417,11 @@ public partial class SchemaCompletionTests
     /// <remarks>
     /// <para>
     /// The whole list is the assertion rather than a sample of it. At each caret there is an exact
-    /// set of names that could stand there -- every message-valued name in scope, and nothing else --
-    /// so a scalar creeping back in fails this even if nobody thought to name it.
+    /// set of names that could stand there -- every name in scope whose value has the members written
+    /// after it, and nothing else -- so a scalar creeping back in fails this even if nobody thought to
+    /// name it. At the first caret both <c>Outer</c> parameters fit. Requiring the alternative as well
+    /// catches a list that merely repeats the written name. <c>inner</c> and <c>other_inner</c> are
+    /// messages too, but an <c>Inner</c> has no <c>inner</c>, so either would be <c>PC0041</c> (#162).
     /// </para>
     /// <para>
     /// Both carets were wrong before the tree was asked, and wrong in the way that matters. Every
@@ -1397,32 +1431,15 @@ public partial class SchemaCompletionTests
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("return ((oth", new[] { "other", "inner", "other_inner" })]
+    [InlineData("return ((oth", new[] { "another", "other" })]
     [InlineData("return ((other).inn", new[] { "inner", "other_inner" })]
     [Trait("ReviewRegression", "ParenthesizedReceiverCompletion")]
     public async Task OnlySomethingWithMembersIsOfferedWhereParenthesesStandBeforeTheDot(
         string marker, string[] expected)
     {
-        const string body = "extend Outer {\n"
-            + "    fn f(other: Outer) -> bool {\n"
-            + "        if has (other).inner and has (other).other_inner {\n"
-            + "            return ((other).inner).deep == ((other).other_inner).deep;\n"
-            + "        }\n"
-            + "\n"
-            + "        return false;\n"
-            + "    }\n"
-            + "}\n";
+        var applied = await AcceptedReceiverItemsAsync(ParenthesizedReceiverBody, marker);
 
-        var (_, uri, text) = Beside(body);
-        var source = new SourceDocument(SourceIdentity.FromPath(uri.Path!), text);
-        var compilation = new Compilation(source, new CompilationOptions { Loader = Loader() });
-
-        Assert.True(compilation.Compile(CancellationToken.None).Success,
-            "the parenthesized receivers must already compile, or this is measuring the fixture");
-
-        var offered = await OfferedAsync(body, marker);
-
-        Assert.Equal(expected.Order(), Labels(offered).Order());
+        Assert.Equal(expected.Order(), applied.Select(attempt => attempt.Item.Label).Order());
     }
 
     /// <summary>
