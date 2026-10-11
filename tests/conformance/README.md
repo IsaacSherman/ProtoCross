@@ -205,11 +205,6 @@ The harness is written so a third backend is a small addition, not a third copy:
 
 ## Not covered yet
 
-- **Enum values with no declared name.** proto3 enums are open, so a field can hold a number the
-  schema does not name, but a fixture can only set a value that exists. What happens to an unknown
-  value is undecided (spec 12), so there is nothing to pin.
-- **Maps, oneof, and mutation** are not implemented in the language, so there is
-  nothing to write a vector against.
 - **The compiler's refusals** are not here and cannot be: a vector has to compile. `PC0078`,
   `PC0079`, and `PC0080` are covered by `PresenceTests`, and the configuration diagnostics by
   `ProjectConfigTests`.
