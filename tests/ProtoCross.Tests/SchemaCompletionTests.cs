@@ -1815,20 +1815,17 @@ public partial class SchemaCompletionTests
             .Concat(CompletionProbe.AtEveryNameAndStatementStart(source.Text))
             .Distinct();
 
-        var applied = await CompletionProbe.SweepAsync(
-            provider, uri, source.Text, carets, path, Loader());
-
-        Assert.True(
-            applied.Count > 50,
-            $"'{name}' must offer something worth checking; it applied {applied.Count} items");
-
-        foreach (var attempt in applied)
+        var applied = 0;
+        await CompletionProbe.SweepEachAsync(provider, uri, source.Text, carets, path, Loader(), attempt =>
         {
+            applied++;
             Assert.True(
                 attempt.Refused.Count == 0,
                 $"in '{name}', accepting '{attempt.Item.Label}' at offset {attempt.Caret} produced "
                     + attempt.Describe());
-        }
+        });
+
+        Assert.True(applied > 50, $"'{name}' must offer something worth checking; it applied {applied} items");
     }
 
     /// <summary>The name of every corpus source that is a compilation on its own.</summary>

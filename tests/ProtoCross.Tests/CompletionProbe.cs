@@ -390,8 +390,31 @@ internal static class CompletionProbe
         string path,
         DescriptorLoader loader)
     {
-        var lines = new LineMap(text);
         var applied = new List<AppliedItem>();
+        await SweepEachAsync(provider, uri, text, carets, path, loader, applied.Add);
+        return applied;
+    }
+
+    /// <summary>
+    /// Offers at every caret, accepts every item, recompiles each result, and hands it to
+    /// <paramref name="check"/> rather than keeping it.
+    /// </summary>
+    /// <remarks>
+    /// For a sweep over a whole source. Each item holds a compilation of its own, so keeping a
+    /// source's items to check at the end kept every one of those compilations alive at once: the
+    /// corpus sweep alone grew the test process to nearly eight gigabytes. Checked as they are made,
+    /// one caret's items are alive at a time.
+    /// </remarks>
+    public static async Task SweepEachAsync(
+        CompletionProvider provider,
+        DocumentUri uri,
+        string text,
+        IEnumerable<int> carets,
+        string path,
+        DescriptorLoader loader,
+        Action<AppliedItem> check)
+    {
+        var lines = new LineMap(text);
         var written = Written(text, path, loader);
 
         foreach (var caret in carets)
@@ -408,10 +431,8 @@ internal static class CompletionProbe
             }
 
             RequireTheWrittenNameIsOffered(written, text, caret, here);
-            applied.AddRange(here);
+            here.ForEach(check);
         }
-
-        return applied;
     }
 
     /// <summary>The buffer as it stands, so the sweep can ask what the names in it already mean.</summary>
