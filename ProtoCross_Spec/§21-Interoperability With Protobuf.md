@@ -103,7 +103,10 @@ The current implementation defines:
   namespace is the one that generator declares for it. [24.1](./§24-Generated%20API%20Strategy.md#241-c)
   states the C# rule and [24.2](./§24-Generated%20API%20Strategy.md#242-c) the C++ one.
 - Fields are read and written through the accessors the target's protobuf generator declares, spelled
-  as that generator spells them. A field name the target language cannot use as it stands, such as
+  as that generator spells them, and in the shape it declares them: protoc's C# gives a field of one of
+  protobuf's wrapper types, such as `Int64Value`, the value the wrapper holds rather than the message,
+  and the backend changes its shape where it moves between the field and a message
+  ([24.1](./§24-Generated%20API%20Strategy.md#241-c)). A field name the target language cannot use as it stands, such as
   `class`, is an ordinary field in ProtoCross: the backend reaches it through the generator's escaped
   accessor, and does not reject it. [24.2](./§24-Generated%20API%20Strategy.md#242-c) states the C++ rule.
 - Behavior extended onto a message that comes from the protobuf runtime -- a well-known type such as

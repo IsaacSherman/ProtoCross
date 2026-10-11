@@ -18,6 +18,12 @@ public sealed partial class CSharpBackend
     {
         var placement = body.Placement;
 
+        if (ChangeToAHeldWrapper(statement) is { } change)
+        {
+            EmitChangeThroughACopy(writer, statement, change, body);
+            return;
+        }
+
         switch (statement)
         {
             case IrBlock block:
@@ -37,19 +43,23 @@ public sealed partial class CSharpBackend
                 writer.WriteLine($"{Expression(assignment.Target, placement)} = {body.ForLocal(assignment.Value)};");
                 break;
 
+            case IrFieldAssignment assignment when StoresThroughAReach(assignment):
+                EmitStoreThroughAReach(writer, assignment, body);
+                break;
+
             case IrFieldAssignment assignment:
                 EmitValueFirstWhereItReadsAnElement(
                     writer,
                     assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
-                    StoredValue(assignment.Value, placement, ReceiverName),
+                    FieldValue(assignment.Value, placement, ReceiverName),
                     body,
-                    value => $"{WritableField(assignment.Target, placement)} = {value};");
+                    value => $"{AssignedPlace(assignment.Target, placement)} = {value};");
                 break;
 
             case IrAppend append:
                 writer.WriteLine(
                     $"{WritableCollection(append.Collection, placement)}."
-                    + $"Add({StoredValue(append.Value, placement, ReceiverName)});");
+                    + $"Add({FieldValue(append.Value, placement, ReceiverName)});");
                 break;
 
             case IrElementAssignment assignment:
@@ -70,8 +80,7 @@ public sealed partial class CSharpBackend
 
             case IrForEach forEach:
             {
-                using var scope = writer.Block(
-                    $"foreach (var {Escape(forEach.Loop.Name)} in {body.Collection(forEach)})");
+                using var scope = writer.Block($"foreach (var {Escape(forEach.Loop.Name)} in {Traversed(forEach, body)})");
                 EmitStatements(writer, forEach.Body.Statements, body);
                 break;
             }
@@ -107,6 +116,23 @@ public sealed partial class CSharpBackend
                 throw new ArgumentOutOfRangeException(nameof(statement), statement, "Unhandled statement.");
         }
     }
+
+    /// <summary>
+    /// What a loop traverses: the collection, or, where it is a repeated value of wrappers, each of its
+    /// elements as a place in it.
+    /// </summary>
+    /// <remarks>
+    /// protoc's C# holds a wrapper element as its value, which a <c>foreach</c> would bind a copy of, and a
+    /// binding is the element itself in the language: a store through it changes the list, and a change
+    /// to the element made any other way, by a loop inside it over the same field, is seen through it.
+    /// So the loop binds a place in the list (<see cref="CSharpRuntime.WrappersTypeName"/>) whose value is
+    /// read and written where it is (<see cref="ElementOf"/>). It is still a <c>foreach</c>, so a body that
+    /// always returns or breaks leaves nothing unreachable.
+    /// </remarks>
+    private static string Traversed(IrForEach loop, Body body)
+        => WrappedScalar(loop.Loop.Type) is null
+            ? body.Collection(loop)
+            : $"{CSharpRuntime.WrappersTypeName}.Elements({body.Collection(loop)})";
 
     /// <summary>
     /// Emits an if/else chain. The chain is flattened rather than nested, so an 'else if' in the

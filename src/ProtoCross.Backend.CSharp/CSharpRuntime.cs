@@ -105,6 +105,8 @@ public static class CSharpRuntime
             EmitEnums(writer);
             writer.WriteLine();
             EmitMaps(writer);
+            writer.WriteLine();
+            EmitWrappers(writer);
         }
 
         return writer.ToString();
@@ -112,6 +114,69 @@ public static class CSharpRuntime
 
     /// <summary>The class <see cref="EmitMaps"/> declares, as generated code names it.</summary>
     public const string MapsTypeName = "global::ProtoCross.Runtime.ProtoCrossMaps";
+
+    /// <summary>The class <see cref="EmitWrappers"/> declares, as generated code names it.</summary>
+    public const string WrappersTypeName = "global::ProtoCross.Runtime.ProtoCrossWrappers";
+
+    /// <summary>Emits what a loop over a repeated wrapper field binds: each element as a place in the list (spec 24.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// protoc's C# holds a repeated wrapper field as a <c>RepeatedField&lt;long?&gt;</c> of values, so a
+    /// <c>foreach</c> over it binds a copy of each value. A binding is the element in the language, as
+    /// it is in C++ and as a binding over messages is in C#: a change through it is a change to the
+    /// list, and a change made to the element any other way, by a loop inside it over the same field,
+    /// is seen through it. A copy is neither. So a loop binds an <c>Element</c>, whose <c>Value</c>
+    /// reads and writes the list where the element is, every time.
+    /// </para>
+    /// <para>
+    /// A class rather than a struct, because a loop's binding is read-only in C#, and a struct's
+    /// setter could not be called through it. The index is sound because nothing in a loop may change
+    /// the field's membership or order (spec 18), and the loop stays a <c>foreach</c>, so a body that
+    /// always returns or breaks leaves no step unreachable.
+    /// </para>
+    /// </remarks>
+    private static void EmitWrappers(SourceWriter writer)
+    {
+        const string list = "global::Google.Protobuf.Collections.RepeatedField<T>";
+
+        writer.WriteLine("/// <summary>");
+        writer.WriteLine("/// The elements of a repeated wrapper field, which protoc's C# holds as values, each as a place");
+        writer.WriteLine("/// in the list, so that a loop's binding is the element rather than a copy of its value.");
+        writer.WriteLine("/// </summary>");
+        using (writer.Block("internal static class ProtoCrossWrappers"))
+        {
+            writer.WriteLine("/// <summary>Each element of the list, as a place in it.</summary>");
+            using (writer.Block($"public static global::System.Collections.Generic.IEnumerable<Element<T>> Elements<T>({list} list)"))
+            {
+                using (writer.Block("for (var index = 0; index < list.Count; index++)"))
+                {
+                    writer.WriteLine("yield return new Element<T>(list, index);");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>One element of a list, read and written where it is.</summary>");
+            using (writer.Block("public sealed class Element<T>"))
+            {
+                writer.WriteLine($"private readonly {list} _list;");
+                writer.WriteLine("private readonly int _index;");
+                writer.WriteLine();
+                using (writer.Block($"public Element({list} list, int index)"))
+                {
+                    writer.WriteLine("_list = list;");
+                    writer.WriteLine("_index = index;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>The element's value, as the list holds it now.</summary>");
+                using (writer.Block("public T Value"))
+                {
+                    writer.WriteLine("get => _list[_index];");
+                    writer.WriteLine("set => _list[_index] = value;");
+                }
+            }
+        }
+    }
 
     private const string MapField = "global::Google.Protobuf.Collections.MapField<TKey, TValue>";
 
@@ -124,6 +189,11 @@ public static class CSharpRuntime
     /// to name. Two, because C# cannot overload on a constraint, and a value of a struct type has to
     /// come back as a <see cref="Nullable{T}"/> to have a null at all. The backend picks one by the
     /// map's value type.
+    /// </para>
+    /// <para>
+    /// A third, <c>FindNullable</c>, is for a map whose values are a <see cref="Nullable{T}"/> already,
+    /// which neither constraint admits. protoc's C# gives a map of a wrapper such as <c>Int64Value</c>
+    /// such values (spec 24.1).
     /// </para>
     /// <para>
     /// Equality compares each value by its own <c>==</c>, which is the language's: a NaN equals nothing.
@@ -148,6 +218,14 @@ public static class CSharpRuntime
         {
             writer.WriteLine("/// <summary>The value at the key, or null where the key is missing.</summary>");
             writer.WriteLine($"public static TValue? FindValue<TKey, TValue>({MapField} map, TKey key)");
+            using (writer.Block("    where TValue : struct"))
+            {
+                writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value at the key, or null where the key is missing, from a map whose values can be null already.</summary>");
+            writer.WriteLine("public static TValue? FindNullable<TKey, TValue>(global::Google.Protobuf.Collections.MapField<TKey, TValue?> map, TKey key)");
             using (writer.Block("    where TValue : struct"))
             {
                 writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");

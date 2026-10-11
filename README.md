@@ -276,6 +276,12 @@ found automatically beside whichever protoc is used, so a schema that imports on
 its own. They are resolved for the compiler without being generated: both runtimes already ship
 them, so they never appear in an emitted project.
 
+A field of one of the wrapper types, such as `google.protobuf.Int64Value`, is the message the schema
+declares, in ProtoCross and in C++. protoc's C# declares the value instead, `long?` for an
+`Int64Value`, so the generated C# turns one into the other wherever a wrapper moves between a field
+and a message. `has limit`, `limit.value`, literals, writes, loops, maps and a `mut fn` called on one
+all behave the same in both backends. The spec has the rules in section 24.1.
+
 ### Project Configuration
 
 Some questions have more than one defensible answer, and which one you want is a property of your

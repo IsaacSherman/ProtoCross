@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// Nothing names where this lives: both protoc runs are expected to find it on their own.
+import "google/protobuf/wrappers.proto";
+
+// wrapper_fields.pcross -- fields of protobuf's wrapper types, which protoc's C# generator holds as the
+// value each wrapper holds, and C++ as the message the schema declares. All nine wrappers are here.
+message WrapperCase {
+  google.protobuf.Int64Value limit = 1;
+  google.protobuf.StringValue label = 2;
+  google.protobuf.BoolValue enabled = 3;
+  google.protobuf.DoubleValue ratio = 4;
+  google.protobuf.BytesValue blob = 5;
+  google.protobuf.BytesValue spare_blob = 6;
+  google.protobuf.UInt32Value small = 7;
+  google.protobuf.UInt64Value big = 8;
+
+  oneof choice {
+    google.protobuf.Int32Value count = 9;
+    google.protobuf.FloatValue weight = 10;
+    string note = 11;
+  }
+
+  repeated google.protobuf.Int64Value limits = 12;
+  repeated google.protobuf.StringValue labels = 13;
+
+  map<string, google.protobuf.Int64Value> limits_by_name = 14;
+  map<string, google.protobuf.Int64Value> other_limits_by_name = 15;
+  map<int32, google.protobuf.StringValue> labels_by_id = 16;
+
+  WrapperHolder holder = 17;
+}
+
+message WrapperHolder {
+  google.protobuf.Int64Value limit = 1;
+}

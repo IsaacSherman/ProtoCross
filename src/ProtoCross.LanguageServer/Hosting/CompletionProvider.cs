@@ -1898,6 +1898,14 @@ public sealed class CompletionProvider
         => Reaches(type, links, 0, module);
 
     /// <summary>Whether a value of <paramref name="type"/> can have <paramref name="links"/> from <paramref name="index"/> on written after it.</summary>
+    /// <remarks>
+    /// A message has a member only where it declares one, a field or a method, and what the member gives
+    /// has to take the links after it, as a map's method's result does. So before <c>label.value</c> a
+    /// name is offered only where its message has a <c>value</c>. Any message used to be taken before
+    /// any member but <c>append</c> and a map's methods, since nothing had needed the question: a message
+    /// field whose message has no <c>value</c>, offered there, is <c>PC0041</c>, and the completion sweep
+    /// found one beside a wrapper's <c>value</c> (#162).
+    /// </remarks>
     private static bool Reaches(PlType type, IReadOnlyList<Link> links, int index, IrModule? module)
     {
         if (index >= links.Count)
@@ -1914,8 +1922,7 @@ public sealed class CompletionProvider
             (LinkKind.Member, MapType) when link.Member is null => true,
             (LinkKind.Member, MapType) => MapMethods.Named(link.Member!) is { } method
                 && Reaches(MapMethods.ResultOf(method), links, AfterACall(links, index + 1), module),
-            (LinkKind.Member, MessageType message)
-                => link.Member is null || !IsTheLanguagesMethod(link.Member) || Declares(message, link.Member, module),
+            (LinkKind.Member, MessageType message) => link.Member is null || MemberReaches(message, link.Member, links, index + 1, module),
             _ => false,
         };
     }
@@ -1924,14 +1931,16 @@ public sealed class CompletionProvider
     private static int AfterACall(IReadOnlyList<Link> links, int index)
         => index < links.Count && links[index].Kind == LinkKind.Call ? index + 1 : index;
 
-    /// <summary>Whether <paramref name="member"/> is a method the language gives a repetition or a map.</summary>
-    private static bool IsTheLanguagesMethod(string member)
-        => member == IrAppend.MethodName || MapMethods.Named(member) is not null;
-
-    /// <summary>Whether <paramref name="message"/> declares a field or a ProtoCross method called <paramref name="member"/>.</summary>
-    private static bool Declares(MessageType message, string member, IrModule? module)
-        => MessageFields.Named(message.Descriptor, member) is not null
-            || module?.MethodsOn(message.Descriptor.FullName).Any(method => method.Name == member) == true;
+    /// <summary>
+    /// Whether <paramref name="message"/> declares a field or a ProtoCross method called
+    /// <paramref name="member"/>, and what it gives can have <paramref name="links"/> from
+    /// <paramref name="next"/> on written after it.
+    /// </summary>
+    private static bool MemberReaches(MessageType message, string member, IReadOnlyList<Link> links, int next, IrModule? module)
+        => MessageFields.Named(message.Descriptor, member) is { } field
+            ? Reaches(TypeFactory.FromField(field), links, next, module)
+            : module?.MethodsOn(message.Descriptor.FullName).FirstOrDefault(method => method.Name == member) is { } method
+                && Reaches(method.ReturnType, links, AfterACall(links, next), module);
 
     /// <summary>What may be written after a dot on a value of this type.</summary>
     /// <remarks>

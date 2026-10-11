@@ -216,9 +216,9 @@ public sealed partial class CSharpBackend
         MessageType message => "global::" + NameConventions.GetCSharpTypeName(message.Descriptor),
         EnumPlType enumType => "global::" + NameConventions.GetCSharpTypeName(enumType.Descriptor),
         RepeatedType repeated =>
-            $"global::Google.Protobuf.Collections.RepeatedField<{TypeName(repeated.ElementType)}>",
+            $"global::Google.Protobuf.Collections.RepeatedField<{HeldTypeName(repeated.ElementType)}>",
         MapType map =>
-            $"global::Google.Protobuf.Collections.MapField<{TypeName(map.KeyType)}, {TypeName(map.ValueType)}>",
+            $"global::Google.Protobuf.Collections.MapField<{TypeName(map.KeyType)}, {HeldTypeName(map.ValueType)}>",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unhandled type."),
     };
 
