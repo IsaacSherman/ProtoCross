@@ -201,4 +201,27 @@ public class MapParsingTests
         var entry = SyntaxWalk.DescendantsAndSelf(unit).OfType<MapEntryExpression>().Single();
         Assert.Equal(["key", "value"], entry.Fields.Select(field => field.Name.Text));
     }
+
+    /// <summary>
+    /// An entry too tall to keep is read through its own brace and nothing further. Given up the way
+    /// an expression is, it was stepped over to where an expression ends, which took the bracket that
+    /// closes its list and reported the list unclosed: two diagnostics for one construct. How deep
+    /// entries are kept from overflowing the stack is <c>MapEntryNestingSprintReviewTests</c>'s.
+    /// </summary>
+    [Fact]
+    public void AnEntryTooTallToKeepLeavesItsListTheBracketThatClosesIt()
+    {
+        // As tall as anything may be, so the entry holding it is one level too tall.
+        var tallest = "1" + string.Concat(Enumerable.Repeat(" + 1", Parser.MaxNestingDepth - 1));
+        var body = $"var made = new M {{ prices: [{{ key: 2, value: 3 }}, {{ key: 1, value: {tallest} }}] }};\nreturn 2;";
+
+        var unit = Parse(Method(body), out var diagnostics);
+
+        Assert.Equal(DiagnosticCodes.NestingIsTooDeep.Code, Assert.Single(diagnostics).Code);
+        var method = unit.Extends[0].Methods[0];
+        Assert.Equal(2, method.Body.Statements.Count);
+        var list = SyntaxWalk.DescendantsAndSelf(method).OfType<ListExpression>().Single();
+        Assert.IsType<MapEntryExpression>(list.Elements[0]);
+        Assert.IsType<ErrorExpression>(list.Elements[1]);
+    }
 }

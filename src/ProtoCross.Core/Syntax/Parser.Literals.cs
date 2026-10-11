@@ -261,24 +261,51 @@ public sealed partial class Parser
     /// brace as the current token.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The fields are read as a literal's are, recovery and all, because an entry is the message
     /// protobuf models it as. Which fields it may have is the binder's to say, as it is for a literal.
-    /// It takes no nesting budget of its own, for the reason <see cref="ParseMessageLiteral"/> gives.
+    /// </para>
+    /// <para>
+    /// Unlike a literal, it takes a level of nesting budget (<see cref="TryEnterNesting"/>). A
+    /// literal's values are expressions, each of which takes one, but an entry's value may be a list
+    /// of entries, <c>[{ value: [{ value: ... }] }]</c>, which recurses from entry to entry without
+    /// passing through an expression. Without a level here, the budget never ran out on that path,
+    /// and enough of them overflowed the stack, ending the compiler and the language server. Out of
+    /// budget, the entry is stepped over whole, braces counted, and one error stands in for it.
+    /// </para>
     /// </remarks>
     private Expression ParseMapEntry(out int height)
     {
-        var start = Advance().Span;
-        var fields = ParseFieldInitializers(out var tallest);
-        var end = Expect(TokenKind.CloseBrace).Span;
+        height = 1;
 
-        if (!TryReachHeight(tallest + 1, start))
+        // Asked with the brace still current, so the diagnostic is reported at the entry it refuses.
+        if (!TryEnterNesting())
         {
-            height = 1;
-            return AbandonTallExpression(start);
+            var brace = Advance().Span;
+            TrySkipBalancedBlock(out var closer);
+            return new ErrorExpression(Spanning(brace, closer));
         }
 
-        height = tallest + 1;
-        return new MapEntryExpression(fields, Spanning(start, end));
+        try
+        {
+            var start = Advance().Span;
+            var fields = ParseFieldInitializers(out var tallest);
+            var end = Expect(TokenKind.CloseBrace).Span;
+
+            // Nothing after the closing brace belongs to the entry, so nothing is skipped. What
+            // AbandonTallExpression skips would take the bracket that closes the list around it.
+            if (!TryReachHeight(tallest + 1, start))
+            {
+                return new ErrorExpression(Spanning(start, end));
+            }
+
+            height = tallest + 1;
+            return new MapEntryExpression(fields, Spanning(start, end));
+        }
+        finally
+        {
+            ExitNesting();
+        }
     }
 
     /// <inheritdoc cref="ContextualKeywords.BeginsAMessageLiteral"/>
