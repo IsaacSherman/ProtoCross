@@ -143,7 +143,8 @@ Implemented:
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
-  element to a repeated value. Nothing is cleared or removed. A mutating call stands on its own rather
+  element to a repeated value. Nothing clears a repeated value or removes its elements, though a map
+  has `remove` and `clear`, as above. A mutating call stands on its own rather
   than inside a larger expression, and nothing inside a `for` may change the field it traverses. The
   spec has the rules in section 18.
 - Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
