@@ -4,9 +4,11 @@ syntax = "proto3";
 // (spec 24.2).
 //
 // protoc's C++ generator escapes each component of a package on its own, so everything declared
-// here lives in ::protocross::conformance::namespace_::default_. C# PascalCases the same components
-// into Protocross.Conformance.Namespace.Default, which needs no escaping at all.
-package protocross.conformance.namespace.default;
+// here lives in ::protocross::conformance::namespace_::private_. C# PascalCases the same components
+// into Protocross.Conformance.Namespace.Private, which needs no escaping at all. The last component
+// was 'default' until ProtoCross reserved that word for switch (spec 6.4), which made the package's
+// full name impossible to write in a ProtoCross source.
+package protocross.conformance.namespace.private;
 
 enum PackageLevel {
   PACKAGE_LEVEL_UNSPECIFIED = 0;

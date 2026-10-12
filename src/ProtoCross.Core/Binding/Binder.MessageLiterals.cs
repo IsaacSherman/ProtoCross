@@ -23,10 +23,7 @@ public sealed partial class Binder
         TestReceiverFixture receiver,
         MessageDescriptor descriptor,
         MethodContext context)
-        => new(
-            new MessageType(descriptor),
-            BindFieldInitializers(receiver.Fields, descriptor, NoNames(), context),
-            receiver.Span);
+        => BindLiteral(new MessageType(descriptor), receiver.Fields, receiver.Span, NoNames(), context);
 
     /// <summary>Binds <c>new T { ... }</c> (spec 13.2).</summary>
     /// <param name="expectedType">
@@ -43,7 +40,8 @@ public sealed partial class Binder
     /// </para>
     /// <para>
     /// Where nothing is expected either, there is no message to read the fields against, so their
-    /// values are bound on their own and the literal is an error. See <see cref="BindDiscarded"/>.
+    /// values are bound on their own and the literal is an error holding them. See
+    /// <see cref="BindRefused"/>.
     /// </para>
     /// <para>
     /// A literal of a message other than the one expected is a literal of the message it names. The
@@ -61,10 +59,7 @@ public sealed partial class Binder
 
         if (written is MessageType named)
         {
-            return new IrMessageLiteral(
-                named,
-                BindFieldInitializers(literal.Fields, named.Descriptor, scope, context),
-                literal.Span);
+            return BindLiteral(named, literal.Fields, literal.Span, scope, context);
         }
 
         if (written is not ErrorType)
@@ -78,23 +73,30 @@ public sealed partial class Binder
 
         if (expectedType is MessageType expected)
         {
-            return new IrMessageLiteral(
-                expected,
-                BindFieldInitializers(literal.Fields, expected.Descriptor, scope, context),
-                literal.Span);
+            return BindLiteral(expected, literal.Fields, literal.Span, scope, context);
         }
 
-        foreach (var field in literal.Fields)
-        {
-            BindDiscarded(field.Value, scope, context);
-        }
+        return Refusal([.. literal.Fields.Select(field => BindRefused(field.Value, scope, context))], literal.Span);
+    }
 
-        return new IrLiteral(null, ErrorType.Instance, literal.Span);
+    /// <summary>
+    /// A literal of <paramref name="type"/> written with <paramref name="fields"/>, holding the values
+    /// of the fields it refused.
+    /// </summary>
+    private IrMessageLiteral BindLiteral(
+        MessageType type,
+        IReadOnlyList<FieldInitializer> fields,
+        SourceSpan span,
+        Scope scope,
+        MethodContext context)
+    {
+        var (bound, refused) = BindFieldInitializers(fields, type.Descriptor, scope, context);
+        return new IrMessageLiteral(type, bound, span) { Refused = refused };
     }
 
     /// <summary>
     /// Binds the fields written for the message <paramref name="descriptor"/> describes, in the order
-    /// they are written (spec 9.3).
+    /// they are written (spec 9.3), and the values of those it refuses.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -106,41 +108,44 @@ public sealed partial class Binder
     /// A field refused here -- unknown, a map, or written again -- still has its value bound, and
     /// what binding it reports is reported. A value names things the way any expression does, and a
     /// local written there is still a use of that local, which is the one someone renaming it must be
-    /// shown. There is no field to hold it in the IR, so a position inside it finds the literal.
+    /// shown. There is no field to hold it, so what holds the fields keeps it among what it refused,
+    /// where a position inside it finds it (<see cref="IrNode.Refused"/>).
     /// </para>
     /// </remarks>
-    private IReadOnlyList<IrFieldInitializer> BindFieldInitializers(
+    private (IReadOnlyList<IrFieldInitializer> Fields, IReadOnlyList<IrExpression> Refused) BindFieldInitializers(
         IReadOnlyList<FieldInitializer> fields,
         MessageDescriptor descriptor,
         Scope scope,
         MethodContext context)
     {
         var initializers = new List<IrFieldInitializer>();
+        var refused = new List<IrExpression>();
         var written = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var field in fields)
         {
-            if (field.Name.IsMissing)
-            {
-                BindDiscarded(field.Value, scope, context);
-                continue;
-            }
-
-            if (BindFieldInitializer(field, descriptor, written, scope, context) is { } initializer)
+            if (!field.Name.IsMissing && BindFieldInitializer(field, descriptor, written, scope, context) is { } initializer)
             {
                 initializers.Add(initializer);
             }
             else
             {
-                BindDiscarded(field.Value, scope, context);
+                refused.Add(BindRefused(field.Value, scope, context));
             }
         }
 
-        return initializers;
+        return (initializers, refused);
     }
 
     /// <summary>Binds one field, or returns null for one that is refused before its value is read.</summary>
     /// <param name="written">The fields written before this one, which this one joins.</param>
+    /// <remarks>
+    /// A field refused for its name -- one the message does not have, or one written again -- is
+    /// reported at that name, as a literal of the wrong message is at the type it names
+    /// (<see cref="MismatchAt"/>). Its value may be right in every part, and is bound and kept all
+    /// the same, so a diagnostic spanning the whole field would underline it too, through every
+    /// keystroke of someone completing inside it.
+    /// </remarks>
     private IrFieldInitializer? BindFieldInitializer(
         FieldInitializer field,
         MessageDescriptor descriptor,
@@ -154,7 +159,7 @@ public sealed partial class Binder
             _diagnostics.Report(
                 DiagnosticCodes.UnknownLiteralField,
                 $"'{descriptor.FullName}' has no field named '{field.Name}'.",
-                field.Span);
+                field.Name.Span);
             return null;
         }
 
@@ -164,29 +169,21 @@ public sealed partial class Binder
         // renaming it must be shown.
         Use(SymbolId.ForField(descriptorField), field.Name.Span);
 
-        if (descriptorField.IsMap)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.MapsAreNotSupportedInLiterals,
-                $"Field '{descriptorField.Name}' is a map, which this compiler version does not support.",
-                field.Span);
-            return null;
-        }
-
         if (!written.Add(descriptorField.Name))
         {
             _diagnostics.Report(
                 DiagnosticCodes.DuplicateLiteralField,
                 $"Field '{descriptorField.Name}' is set more than once.",
-                field.Span,
+                field.Name.Span,
                 descriptorField.IsRepeated
                     ? $"A repeated field takes all of its values in one list: '{descriptorField.Name}: [first, second]'."
                     : "Set each field once.");
             return null;
         }
 
-        var value = descriptorField.IsRepeated
-            ? BindRepeatedValue(descriptorField, field, scope, context)
+        // A map before a repeated field, because protobuf declares a map as a repeated field of entries.
+        var value = descriptorField.IsMap ? BindMapValue(descriptorField, field, scope, context)
+            : descriptorField.IsRepeated ? BindRepeatedValue(descriptorField, field, scope, context)
             : BindSingularValue(descriptorField, field, scope, context);
 
         return new IrFieldInitializer(descriptorField, value, field.Span);
@@ -286,8 +283,7 @@ public sealed partial class Binder
                 DiagnosticCodes.LiteralFieldTypeMismatch,
                 $"Field '{descriptorField.Name}' holds '{expectedType.DisplayName}' values, not lists.",
                 nested.Span);
-            BindDiscarded(nested, scope, context);
-            return new IrLiteral(null, ErrorType.Instance, nested.Span);
+            return BindRefused(nested, scope, context);
         }
 
         if (value is MessageLiteralExpression && expectedType is not MessageType)
@@ -324,27 +320,28 @@ public sealed partial class Binder
         => value is MessageLiteralExpression literal ? literal.Type.Span : value.Span;
 
     /// <summary>
-    /// Binds a value nothing will hold, for what binding it records and reports: the names written in
-    /// it, and the mistakes.
+    /// Binds a value written where nothing takes one, for what binding it records and reports, and to
+    /// be kept among what the node standing there refused (<see cref="IrNode.Refused"/>).
     /// </summary>
     /// <remarks>
     /// A list is bound element by element, because no expression binder is handed one: a list is only
-    /// ever a repeated field's value, and this one has no field.
+    /// ever a repeated field's value, and this one has no field. An entry of a map is bound field by
+    /// field, for the same reason: it is only ever an element of a map field's list. Either is an
+    /// error holding what was written in it.
     /// </remarks>
-    private void BindDiscarded(Expression value, Scope scope, MethodContext context)
+    private IrExpression BindRefused(Expression value, Scope scope, MethodContext context) => value switch
     {
-        if (value is ListExpression list)
-        {
-            foreach (var element in list.Elements)
-            {
-                BindExpression(element, scope, context, null);
-            }
+        ListExpression list => Refusal([.. list.Elements.Select(element => BindRefused(element, scope, context))], list.Span),
+        MapEntryExpression entry => Refusal([.. entry.Fields.Select(field => BindRefused(field.Value, scope, context))], entry.Span),
+        _ => BindExpression(value, scope, context, null),
+    };
 
-            return;
-        }
-
-        BindExpression(value, scope, context, null);
-    }
+    /// <summary>
+    /// An error standing for a construct refused whole, holding what was bound of what was written
+    /// in it (spec 22.2).
+    /// </summary>
+    private static IrLiteral Refusal(IReadOnlyList<IrExpression> parts, SourceSpan span)
+        => new(null, ErrorType.Instance, span) { Refused = parts };
 
     /// <summary>The shortest name that resolves to <paramref name="message"/> where a type is written.</summary>
     /// <remarks>

@@ -100,9 +100,347 @@ public static class CSharpRuntime
                     EmitFloatToInteger(writer, target);
                 }
             }
+
+            writer.WriteLine();
+            EmitEnums(writer);
+            writer.WriteLine();
+            EmitMaps(writer);
+            writer.WriteLine();
+            EmitWrappers(writer);
         }
 
         return writer.ToString();
+    }
+
+    /// <summary>The class <see cref="EmitMaps"/> declares, as generated code names it.</summary>
+    public const string MapsTypeName = "global::ProtoCross.Runtime.ProtoCrossMaps";
+
+    /// <summary>The class <see cref="EmitWrappers"/> declares, as generated code names it.</summary>
+    public const string WrappersTypeName = "global::ProtoCross.Runtime.ProtoCrossWrappers";
+
+    /// <summary>Emits what a loop over a repeated wrapper field binds: each element as a place in the list (spec 24.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// protoc's C# holds a repeated wrapper field as a <c>RepeatedField&lt;long?&gt;</c> of values, so a
+    /// <c>foreach</c> over it binds a copy of each value. A binding is the element in the language, as
+    /// it is in C++ and as a binding over messages is in C#: a change through it is a change to the
+    /// list, and a change made to the element any other way, by a loop inside it over the same field,
+    /// is seen through it. A copy is neither. So a loop binds an <c>Element</c>, whose <c>Value</c>
+    /// reads and writes the list where the element is, every time.
+    /// </para>
+    /// <para>
+    /// A class rather than a struct, because a loop's binding is read-only in C#, and a struct's
+    /// setter could not be called through it. The index is sound because nothing in a loop may change
+    /// the field's membership or order (spec 18), and the loop stays a <c>foreach</c>, so a body that
+    /// always returns or breaks leaves no step unreachable.
+    /// </para>
+    /// </remarks>
+    private static void EmitWrappers(SourceWriter writer)
+    {
+        const string list = "global::Google.Protobuf.Collections.RepeatedField<T>";
+
+        writer.WriteLine("/// <summary>");
+        writer.WriteLine("/// The elements of a repeated wrapper field, which protoc's C# holds as values, each as a place");
+        writer.WriteLine("/// in the list, so that a loop's binding is the element rather than a copy of its value.");
+        writer.WriteLine("/// </summary>");
+        using (writer.Block("internal static class ProtoCrossWrappers"))
+        {
+            writer.WriteLine("/// <summary>Each element of the list, as a place in it.</summary>");
+            using (writer.Block($"public static global::System.Collections.Generic.IEnumerable<Element<T>> Elements<T>({list} list)"))
+            {
+                using (writer.Block("for (var index = 0; index < list.Count; index++)"))
+                {
+                    writer.WriteLine("yield return new Element<T>(list, index);");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>One element of a list, read and written where it is.</summary>");
+            using (writer.Block("public sealed class Element<T>"))
+            {
+                writer.WriteLine($"private readonly {list} _list;");
+                writer.WriteLine("private readonly int _index;");
+                writer.WriteLine();
+                using (writer.Block($"public Element({list} list, int index)"))
+                {
+                    writer.WriteLine("_list = list;");
+                    writer.WriteLine("_index = index;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>The element's value, as the list holds it now.</summary>");
+                using (writer.Block("public T Value"))
+                {
+                    writer.WriteLine("get => _list[_index];");
+                    writer.WriteLine("set => _list[_index] = value;");
+                }
+            }
+        }
+    }
+
+    private const string MapField = "global::Google.Protobuf.Collections.MapField<TKey, TValue>";
+
+    /// <summary>Emits the map operations whose ProtoCross semantics <c>MapField</c> does not already provide (spec 14.2).</summary>
+    /// <remarks>
+    /// <para>
+    /// A lookup is two helpers, <c>FindValue</c> and <c>FindReference</c>, which give the value or null.
+    /// The call site writes <c>?? fallback</c> after it, so the fallback is evaluated only when the key
+    /// is missing, as the language says it is, without a delegate or a local the call site would have
+    /// to name. Two, because C# cannot overload on a constraint, and a value of a struct type has to
+    /// come back as a <see cref="Nullable{T}"/> to have a null at all. The backend picks one by the
+    /// map's value type.
+    /// </para>
+    /// <para>
+    /// A third, <c>FindNullable</c>, is for a map whose values are a <see cref="Nullable{T}"/> already,
+    /// which neither constraint admits. protoc's C# gives a map of a wrapper such as <c>Int64Value</c>
+    /// such values (spec 24.1).
+    /// </para>
+    /// <para>
+    /// Equality compares each value by its own <c>==</c>, which is the language's: a NaN equals nothing.
+    /// <c>double</c> and <c>float</c> have overloads of their own that say so, since their
+    /// <c>Equals</c>, which <c>MapField.Equals</c> uses, calls two NaNs equal. Overloads rather than a
+    /// comparison passed from the call site, which would put a lambda in generated code whose
+    /// parameters could meet an author's names.
+    /// </para>
+    /// <para>
+    /// A merged message is cloned, because a message held in two maps would change in both. Merging a
+    /// map into itself changes nothing, and does nothing.
+    /// </para>
+    /// </remarks>
+    private static void EmitMaps(SourceWriter writer)
+    {
+        writer.WriteLine("/// <summary>");
+        writer.WriteLine("/// Map operations whose ProtoCross semantics MapField does not already provide: a lookup");
+        writer.WriteLine("/// that says what a missing key gives, the conditional writes, a merge that copies its");
+        writer.WriteLine("/// messages, and equality under which a NaN equals nothing.");
+        writer.WriteLine("/// </summary>");
+        using (writer.Block("internal static class ProtoCrossMaps"))
+        {
+            writer.WriteLine("/// <summary>The value at the key, or null where the key is missing.</summary>");
+            writer.WriteLine($"public static TValue? FindValue<TKey, TValue>({MapField} map, TKey key)");
+            using (writer.Block("    where TValue : struct"))
+            {
+                writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value at the key, or null where the key is missing, from a map whose values can be null already.</summary>");
+            writer.WriteLine("public static TValue? FindNullable<TKey, TValue>(global::Google.Protobuf.Collections.MapField<TKey, TValue?> map, TKey key)");
+            using (writer.Block("    where TValue : struct"))
+            {
+                writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value at the key, or null where the key is missing.</summary>");
+            writer.WriteLine($"public static TValue? FindReference<TKey, TValue>({MapField} map, TKey key)");
+            using (writer.Block("    where TValue : class"))
+            {
+                writer.WriteLine("return map.TryGetValue(key, out var value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value at the key, or termination where the key is missing. Reached from 'on_missing fail'.</summary>");
+            using (writer.Block($"public static TValue FoundOrFail<TKey, TValue>({MapField} map, TKey key, string mapName)"))
+            {
+                using (writer.Block("if (!map.TryGetValue(key, out var value))"))
+                {
+                    writer.WriteLine($"global::System.Console.Error.WriteLine(\"{FailMarker}\" + mapName + \" has no such key\");");
+                    writer.WriteLine("global::System.Console.Error.Flush();");
+                    writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return value!;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The message at the key, a new one put there first where the key is missing.</summary>");
+            writer.WriteLine($"public static TValue Entry<TKey, TValue>({MapField} map, TKey key)");
+            using (writer.Block("    where TValue : class, global::Google.Protobuf.IMessage<TValue>, new()"))
+            {
+                using (writer.Block("if (!map.TryGetValue(key, out var value))"))
+                {
+                    writer.WriteLine("value = new TValue();");
+                    writer.WriteLine("map[key] = value;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return value;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Stores the value at the key, unless the key already holds one.</summary>");
+            using (writer.Block($"public static void AddIfAbsent<TKey, TValue>({MapField} map, TKey key, TValue value)"))
+            {
+                using (writer.Block("if (!map.ContainsKey(key))"))
+                {
+                    writer.WriteLine("map[key] = value;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Stores the value at the key, if the key already holds one.</summary>");
+            using (writer.Block($"public static void ReplaceIfPresent<TKey, TValue>({MapField} map, TKey key, TValue value)"))
+            {
+                using (writer.Block("if (map.ContainsKey(key))"))
+                {
+                    writer.WriteLine("map[key] = value;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Stores every value of the source at its key in the target, the source's winning.</summary>");
+            using (writer.Block($"public static void Merge<TKey, TValue>({MapField} target, {MapField} source)"))
+            {
+                using (writer.Block("if (ReferenceEquals(target, source))"))
+                {
+                    writer.WriteLine("return;");
+                }
+
+                writer.WriteLine();
+                using (writer.Block("foreach (var entry in source)"))
+                {
+                    writer.WriteLine("target[entry.Key] = entry.Value;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Stores a copy of every message of the source at its key in the target, the source's winning.</summary>");
+            writer.WriteLine($"public static void MergeMessages<TKey, TValue>({MapField} target, {MapField} source)");
+            using (writer.Block("    where TValue : global::Google.Protobuf.IDeepCloneable<TValue>"))
+            {
+                using (writer.Block("if (ReferenceEquals(target, source))"))
+                {
+                    writer.WriteLine("return;");
+                }
+
+                writer.WriteLine();
+                using (writer.Block("foreach (var entry in source)"))
+                {
+                    writer.WriteLine("target[entry.Key] = entry.Value.Clone();");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Whether the two hold the same keys, each with an equal value.</summary>");
+            using (writer.Block($"public static bool AreEqual<TKey, TValue>({MapField} left, {MapField} right)"))
+            {
+                writer.WriteLine("return AreEqual(left, right, global::System.Collections.Generic.EqualityComparer<TValue>.Default.Equals);");
+            }
+
+            // double and float are compared by ==, under which a NaN equals nothing. Their Equals calls
+            // two NaNs equal, and every other value type's Equals is its ==.
+            foreach (var floating in new[] { "double", "float" })
+            {
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>Whether the two hold the same keys, each with a value == calls equal.</summary>");
+                using (writer.Block(
+                    $"public static bool AreEqual<TKey>("
+                    + $"global::Google.Protobuf.Collections.MapField<TKey, {floating}> left, "
+                    + $"global::Google.Protobuf.Collections.MapField<TKey, {floating}> right)"))
+                {
+                    writer.WriteLine("return AreEqual(left, right, static (a, b) => a == b);");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("private static bool AreEqual<TKey, TValue>(");
+            writer.WriteLine($"    {MapField} left,");
+            writer.WriteLine($"    {MapField} right,");
+            using (writer.Block("    global::System.Func<TValue, TValue, bool> equal)"))
+            {
+                using (writer.Block("if (left.Count != right.Count)"))
+                {
+                    writer.WriteLine("return false;");
+                }
+
+                writer.WriteLine();
+                using (writer.Block("foreach (var entry in left)"))
+                {
+                    using (writer.Block("if (!right.TryGetValue(entry.Key, out var other) || !equal(entry.Value, other))"))
+                    {
+                        writer.WriteLine("return false;");
+                    }
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return true;");
+            }
+        }
+    }
+
+    /// <summary>The class <see cref="EmitEnums"/> declares, as generated code names it.</summary>
+    public const string EnumsTypeName = "global::ProtoCross.Runtime.ProtoCrossEnums";
+
+    /// <summary>
+    /// Emits whether a number is one an enum names, and what a conversion to an enum makes of one that
+    /// is not (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A class of its own rather than more members of the arithmetic one, which says what it is for in
+    /// its name. Generic over the enum, constrained to <see cref="Enum"/>, so one member serves every
+    /// enum a module converts to and the cast at the call site is the only thing that names it.
+    /// </para>
+    /// <para>
+    /// A fallback is written after <c>NamedOrNull</c>'s <c>??</c> rather than passed to it, so it is
+    /// evaluated only for a number the schema does not name, as an <c>on_zero</c> fallback is only for
+    /// a zero divisor (<see cref="EmitDivision"/>).
+    /// </para>
+    /// <para>
+    /// The failure names the enum by its protobuf name, passed in by the call site, rather than by
+    /// <see cref="Type.Name"/>. The C++ runtime writes the same line, and protoc gives the two targets
+    /// different names for the same enum.
+    /// </para>
+    /// </remarks>
+    private static void EmitEnums(SourceWriter writer)
+    {
+        writer.WriteLine("/// <summary>");
+        writer.WriteLine("/// Enum operations whose ProtoCross semantics C# does not already provide: whether a");
+        writer.WriteLine("/// number is one the schema names, and what a conversion to an enum makes of one that");
+        writer.WriteLine("/// is not.");
+        writer.WriteLine("/// </summary>");
+        using (writer.Block("internal static class ProtoCrossEnums"))
+        {
+            writer.WriteLine("/// <summary>Whether the schema names the number <paramref name=\"value\"/> holds.</summary>");
+            writer.WriteLine("public static bool IsNamed<T>(T value)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                writer.WriteLine("return global::System.Enum.IsDefined(typeof(T), value);");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The value, or null where the schema does not name it. Reached from 'on_unknown', whose fallback follows it after '??'.</summary>");
+            writer.WriteLine("public static T? NamedOrNull<T>(T value)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                writer.WriteLine("return IsNamed(value) ? value : null;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>");
+            writer.WriteLine("/// The value, or termination where the schema does not name it. Reached from an");
+            writer.WriteLine("/// 'on_unknown fail' clause, and from a conversion to a closed enum that states no");
+            writer.WriteLine("/// fallback.");
+            writer.WriteLine("/// </summary>");
+            writer.WriteLine("public static T NamedOrFail<T>(T value, string enumName)");
+            using (writer.Block("    where T : struct, global::System.Enum"))
+            {
+                using (writer.Block("if (!IsNamed(value))"))
+                {
+                    writer.WriteLine("var number = ((global::System.IConvertible)value).ToInt32(global::System.Globalization.CultureInfo.InvariantCulture);");
+                    writer.WriteLine(
+                        $"global::System.Console.Error.WriteLine(\"{FailMarker}\" + enumName + \" has no value numbered \" "
+                        + "+ number.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
+                    writer.WriteLine("global::System.Console.Error.Flush();");
+                    writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return value;");
+            }
+        }
     }
 
     private static readonly (string Type, bool IsSigned)[] IntegerTypes =
@@ -274,10 +612,19 @@ public static class CSharpRuntime
     /// zero-divisor shapes.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The zero divisor and the overflow are separate questions, and this is the only operation
     /// where both arise at once: <c>MIN / -1</c> overflows although neither operand is zero, and a
     /// zero divisor is a failure of the value rather than of the range. The <c>on_zero</c> clause
     /// answers the first; the project's overflow policy answers the second.
+    /// </para>
+    /// <para>
+    /// The fallback form gives null for a zero divisor rather than taking the fallback, and the call
+    /// site writes <c>?? fallback</c> after it, as a map lookup does (<see cref="EmitMaps"/>). A
+    /// fallback passed in is evaluated before the divisor is looked at, so one that would end the
+    /// program ended it whatever the divisor was, and the language evaluates it only for a zero one
+    /// (spec 10.2.1).
+    /// </para>
     /// </remarks>
     private static void EmitDivision(SourceWriter writer, string type, bool isSigned, ArithmeticBehavior behavior)
     {
@@ -290,12 +637,12 @@ public static class CSharpRuntime
         foreach (var (name, word) in new[] { ("Divide", "division"), ("Modulo", "modulo") })
         {
             writer.WriteLine();
-            writer.WriteLine($"/// <summary>{char.ToUpperInvariant(word[0])}{word[1..]} that yields <paramref name=\"onZero\"/> instead of failing.</summary>");
-            using (writer.Block($"public static {type} {stem}{name}Or({type} left, {type} right, {type} onZero)"))
+            writer.WriteLine($"/// <summary>{char.ToUpperInvariant(word[0])}{word[1..]}, or null for a zero divisor. Reached from 'on_zero', whose fallback follows it after '??'.</summary>");
+            using (writer.Block($"public static {type}? {stem}{name}OrNull({type} left, {type} right)"))
             {
                 using (writer.Block("if (right == 0)"))
                 {
-                    writer.WriteLine("return onZero;");
+                    writer.WriteLine("return null;");
                 }
 
                 writer.WriteLine();

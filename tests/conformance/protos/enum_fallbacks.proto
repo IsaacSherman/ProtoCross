@@ -1,0 +1,24 @@
+edition = "2023";
+
+package protocross.conformance;
+
+// enum_fallbacks.pcross -- what protocross.config.xml says a number an enum does not name becomes.
+//
+// An edition, as enum_numbers.proto is, so that one schema holds an open enum and a closed one: the
+// configuration overrides what each would do by default, a kept number and a failure.
+enum ConfiguredFruit {
+  CONFIGURED_FRUIT_UNSPECIFIED = 0;
+  CONFIGURED_FRUIT_APPLE = 1;
+  CONFIGURED_FRUIT_PLUM = 7;
+}
+
+enum ConfiguredShape {
+  option features.enum_type = CLOSED;
+
+  CONFIGURED_SHAPE_CIRCLE = 1;
+  CONFIGURED_SHAPE_SQUARE = 2;
+}
+
+message EnumFallbackCase {
+  int32 number = 1;
+}

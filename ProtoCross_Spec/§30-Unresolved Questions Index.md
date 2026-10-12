@@ -53,23 +53,32 @@ This section should be maintained as the authoritative list of open decisions.
   Whether there is a `bytes` literal remains open ([8.2](./§8-Type%20System.md#82-protobuf-scalar-mapping)).
 - String indexing and comparison semantics.
 - ~~How protobuf enum values are referenced.~~ Decided: `EnumType.VALUE_NAME` ([12](./§12-Enums.md#12-enums)).
-- Enum unknown-value behavior, and whether an enum converts to or from an integer.
+- ~~Enum unknown-value behavior, and whether an enum converts to or from an integer.~~ Decided: an
+  enum converts to and from `int32` with `as`. A number the enum does not name is kept by an open
+  enum, with a note, and ends the program for a closed one, with a warning, unless an `on_unknown`
+  clause or the project's `<Enums>` says otherwise ([12.1](./§12-Enums.md#121-an-enums-number), [10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)). `value in Enum` asks whether a value has a name
+  ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)).
 - ~~Message construction support.~~ Decided: a literal, `new T { field: value, … }`, which is an
   expression wherever one may be written and is how a fixture's fields are written too; its values
   evaluate in the order written, and storing a message that is not a literal stores a copy
   ([13.2](./§13-Messages.md#132-message-construction), [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). ~~Whether a repeated field may be given a whole repeated value,
   `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
   ([13.2](./§13-Messages.md#132-message-construction)).
-- Message equality semantics.
+- Message equality semantics. Until they are decided, `==` and `!=` refuse two messages and two
+  repeated values ([13.3](./§13-Messages.md#133-equality)).
 - ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
   the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; an
   element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
   and nothing inside a `for` may change the field it traverses, an append to it included
   ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations), [18](./§18-Mutability.md#18-mutability)).
-- Map support and map iteration order.
+- ~~Map support and map iteration order.~~ Decided: maps are read and changed by key, and never
+  iterated ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - Reading protobuf extensions. **Post-1.0.** Until then an extension is not a field of any message,
   and no name reaches one ([13.4](./§13-Messages.md#134-extensions)).
-- Switch support.
+- ~~Switch support.~~ Decided: a statement over an integer or an enum, with braced arms listing
+  constants that never fall into the next, and an optional `default` arm written last. A `break`
+  leaves the innermost switch or loop, and no switch is checked for exhaustiveness
+  ([15.3](./§15-Control%20Flow.md#153-switch), [15.2](./§15-Control%20Flow.md#152-loops)).
 - ~~Method overloading.~~ Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 - ~~Receiver mutation and possible const/mut method split.~~ Decided: a method declared `mut fn` may
   change its receiver, every other method is read-only, and nothing may change a parameter

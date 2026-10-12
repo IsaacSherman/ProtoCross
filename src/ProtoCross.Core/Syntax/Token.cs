@@ -59,6 +59,7 @@ public static class TokenKindExtensions
         [TokenKind.CaretEquals] = "^=",
         [TokenKind.LessLessEquals] = "<<=",
         [TokenKind.GreaterGreaterEquals] = ">>=",
+        [TokenKind.OnMissing] = "on_missing",
         [TokenKind.OnZero] = "on_zero",
         [TokenKind.Identifier] = "identifier",
         [TokenKind.IntegerLiteral] = "integer literal",

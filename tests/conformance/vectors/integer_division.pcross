@@ -8,6 +8,8 @@
 //     instruction traps rather than wrapping, in both C# and C++.
 //   * A zero divisor. There is no target-independent answer, so ProtoCross makes the author state
 //     one: a fallback value, or 'fail', which stops the program.
+//   * When the fallback is evaluated. A helper that takes it as an argument evaluates it whatever
+//     the divisor is, so a fallback that would stop the program stopped one that never needed it.
 //
 // The divisor comes from a fixture field rather than a literal, so the zero path is genuinely
 // reachable: a non-zero literal divisor is proof the on_zero clause is dead, and the compiler
@@ -31,6 +33,16 @@ extend DivisionCase {
 
     fn strict_remainder() -> int64 {
         return numerator % divisor on_zero fail;
+    }
+
+    // The fallback is evaluated only for a zero divisor, so a fallback that would stop the program
+    // does not stop it while the divisor is not zero.
+    fn lazy_quotient(other: int64) -> int64 {
+        return numerator / divisor on_zero (numerator / other on_zero fail);
+    }
+
+    fn lazy_remainder(other: int64) -> int64 {
+        return numerator % divisor on_zero (numerator % other on_zero fail);
     }
 }
 
@@ -139,5 +151,45 @@ test DivisionCase.strict_remainder "stops the program on a zero divisor" {
         divisor: 0,
     }
 
+    expect fail;
+}
+
+test DivisionCase.lazy_quotient "a fallback that would fail is not evaluated while the divisor is not zero" {
+    receiver {
+        numerator: -7,
+        divisor: 2,
+    }
+
+    arg other = 0;
+    expect return -3;
+}
+
+test DivisionCase.lazy_quotient "a fallback that fails is evaluated for a zero divisor" {
+    receiver {
+        numerator: -7,
+        divisor: 0,
+    }
+
+    arg other = 0;
+    expect fail;
+}
+
+test DivisionCase.lazy_remainder "a fallback that would fail is not evaluated while the divisor is not zero" {
+    receiver {
+        numerator: -7,
+        divisor: 2,
+    }
+
+    arg other = 0;
+    expect return -1;
+}
+
+test DivisionCase.lazy_remainder "a fallback that fails is evaluated for a zero divisor" {
+    receiver {
+        numerator: -7,
+        divisor: 0,
+    }
+
+    arg other = 0;
     expect fail;
 }

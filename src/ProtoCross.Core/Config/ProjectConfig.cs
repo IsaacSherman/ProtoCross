@@ -44,6 +44,35 @@ public enum UnsetMessageReadPolicy
 }
 
 /// <summary>
+/// What a conversion to one enum makes of a number the enum does not name, stated once for every
+/// conversion the project writes:
+/// <c>&lt;UnknownFallback Type="shop.Flower"&gt;PETUNIA&lt;/UnknownFallback&gt;</c> (spec 10.4, 12.1).
+/// </summary>
+/// <remarks>
+/// Held as written, because what either half means depends on the schemas a compilation loads, and
+/// the file is read before any are. The binder resolves both, and reports what does not resolve at
+/// these spans.
+/// </remarks>
+/// <param name="Type">The enum, by full name or by an unambiguous simple name.</param>
+/// <param name="Value">One of the enum's value names as the schema spells it, or <c>fail</c>.</param>
+/// <param name="TypeSpan">Where the enum is named, in the configuration file.</param>
+/// <param name="ValueSpan">Where the value is written, in the configuration file.</param>
+public sealed record EnumUnknownFallback(string Type, string Value, SourceSpan TypeSpan, SourceSpan ValueSpan)
+{
+    /// <summary>The value that ends the program, as <c>on_unknown fail</c> does.</summary>
+    public const string Fail = "fail";
+
+    /// <summary>Whether a number the enum does not name ends the program.</summary>
+    public bool IsFail => Value == Fail;
+
+    /// <summary>What a generated file's header says about this setting.</summary>
+    public string DescribeForHeader()
+        => IsFail
+            ? $"A number {Type} does not name ends the program (spec 12.1)."
+            : $"A number {Type} does not name becomes {Value} (spec 12.1).";
+}
+
+/// <summary>
 /// The project's language-dependent preferences, as read from <c>protocross.config.xml</c>.
 /// </summary>
 /// <remarks>
@@ -84,6 +113,17 @@ public sealed record ProjectConfig(
     /// <summary>The file this came from, or null for <see cref="Default"/>.</summary>
     public string? Path { get; init; }
 
+    /// <summary>
+    /// What a conversion to each enum the file names makes of a number the enum does not name, in the
+    /// order the file states them (spec 12.1).
+    /// </summary>
+    /// <remarks>
+    /// A list of settings rather than one, since each names its enum, and an init-only property
+    /// rather than another positional member, since a project states as many as it has enums to
+    /// speak for and most state none.
+    /// </remarks>
+    public IReadOnlyList<EnumUnknownFallback> EnumFallbacks { get; init; } = [];
+
     /// <summary>Whether two configurations state the same policy, read from the same file.</summary>
     /// <remarks>
     /// Written out rather than left to the record, for one member, exactly as
@@ -100,10 +140,12 @@ public sealed record ProjectConfig(
             && DivideByZero == other.DivideByZero
             && UnsetMessageRead == other.UnsetMessageRead
             && string.Equals(Path, other.Path, StringComparison.Ordinal)
-            && ExplicitKeys.SetEquals(other.ExplicitKeys);
+            && ExplicitKeys.SetEquals(other.ExplicitKeys)
+            && EnumFallbacks.SequenceEqual(other.EnumFallbacks);
 
     public override int GetHashCode()
-        => HashCode.Combine(Overflow, Conversion, DivideByZero, UnsetMessageRead, Path, ExplicitKeys.Count);
+        => HashCode.Combine(
+            Overflow, Conversion, DivideByZero, UnsetMessageRead, Path, ExplicitKeys.Count, EnumFallbacks.Count);
 
     /// <summary>
     /// The policy lines a generated file's header carries, so a reader can tell which policy
@@ -124,12 +166,17 @@ public sealed record ProjectConfig(
     /// be noise. No path is included: an absolute path would make otherwise identical output differ
     /// between machines.
     /// </para>
+    /// <para>
+    /// Each enum fallback is a line of its own after those, as the file states it. A project that
+    /// states none gets the header it always had, so its generated files do not move.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<string> DescribeForHeader() =>
     [
         $"Language policy (spec 10.4): integer overflow = {DescribeOverflow(Overflow)},",
         $"numeric conversions = {Conversion}. Both are emitted explicitly, so a",
         "consumer's build settings cannot change what this code does.",
+        .. EnumFallbacks.Select(fallback => fallback.DescribeForHeader()),
     ];
 
     private static string DescribeOverflow(OverflowPolicy overflow) => overflow switch
@@ -212,12 +259,13 @@ public sealed record ProjectConfig(
 
         var config = Default with { Path = path };
         var explicitKeys = new HashSet<string>(StringComparer.Ordinal);
+        var enumFallbacks = new List<EnumUnknownFallback>();
         var failed = false;
 
         foreach (var section in file.Root.Elements())
         {
             var sectionName = section.Name.LocalName;
-            if (sectionName is not ("Arithmetic" or "Presence"))
+            if (!KnownSections.Contains(sectionName))
             {
                 UnknownElement(diagnostics, file, section, sectionName, "ProtoCross", KnownSections);
                 failed = true;
@@ -228,6 +276,14 @@ public sealed record ProjectConfig(
             {
                 var key = $"{sectionName}/{setting.Name.LocalName}";
                 var text = setting.Value.Trim();
+
+                // One per enum rather than one per file, so it is told apart by the enum it names
+                // rather than by its key, and is stated twice only when one enum is named twice.
+                if (key == EnumFallbackKey)
+                {
+                    failed |= !TryReadEnumFallback(diagnostics, file, setting, text, enumFallbacks);
+                    continue;
+                }
 
                 switch (key)
                 {
@@ -303,10 +359,117 @@ public sealed record ProjectConfig(
             }
         }
 
-        return failed ? null : config with { ExplicitKeys = explicitKeys };
+        return failed ? null : config with { ExplicitKeys = explicitKeys, EnumFallbacks = enumFallbacks };
     }
 
-    private static readonly string[] KnownSections = ["Arithmetic", "Presence"];
+    /// <summary>The key of an <see cref="EnumUnknownFallback"/>, of which a file may state several.</summary>
+    private const string EnumFallbackKey = "Enums/UnknownFallback";
+
+    /// <summary>
+    /// Reads one <c>&lt;UnknownFallback&gt;</c>, as far as the file alone can tell: that it names an
+    /// enum and a value, says nothing else, and names no enum another one already named.
+    /// </summary>
+    /// <remarks>
+    /// Whether the enum exists and has the value is the binder's to say, since only it has the schemas
+    /// (spec 10.4). A second setting for the same enum spelled another way is caught there too, where
+    /// the two spellings resolve to one enum.
+    /// </remarks>
+    private static bool TryReadEnumFallback(
+        DiagnosticBag diagnostics,
+        XmlInput file,
+        XElement setting,
+        string value,
+        List<EnumUnknownFallback> read)
+    {
+        if (setting.Attributes().FirstOrDefault(attribute => attribute.Name.LocalName != "Type") is { } stray)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"<UnknownFallback> has no attribute '{stray.Name.LocalName}'.",
+                file.Span(stray),
+                "It takes one, Type, naming the enum.");
+            return false;
+        }
+
+        if (setting.Attribute("Type") is not { } named || named.Value.Trim().Length == 0)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                "<UnknownFallback> names no enum.",
+                file.Span(setting),
+                "Name it with Type, as in <UnknownFallback Type=\"shop.Flower\">PETUNIA</UnknownFallback>.");
+            return false;
+        }
+
+        var type = named.Value.Trim();
+
+        if (!IsProtobufName(type, qualified: true))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{type}' is not the name of an enum.",
+                file.Span(named),
+                "Write its full name, such as shop.Flower, or its simple name, such as Flower.");
+            return false;
+        }
+
+        if (value.Length == 0)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"<UnknownFallback Type=\"{type}\"> does not say what a number the enum does not name becomes.",
+                file.Span(setting),
+                $"Write one of the enum's value names, or {EnumUnknownFallback.Fail}.");
+            return false;
+        }
+
+        if (value != EnumUnknownFallback.Fail && !IsProtobufName(value, qualified: false))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.InvalidEnumFallback,
+                $"'{value}' is not the name of a value.",
+                file.Span(setting),
+                $"Write one of the enum's value names as the schema spells it, or {EnumUnknownFallback.Fail}.");
+            return false;
+        }
+
+        if (read.Any(earlier => earlier.Type == type))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.DuplicateConfigurationSetting,
+                $"'{EnumFallbackKey}' is stated more than once for '{type}'.",
+                file.Span(setting),
+                "Two answers to one question is not a configuration, it is a coin toss. Keep one.");
+            return false;
+        }
+
+        var written = setting.Nodes().OfType<XText>().FirstOrDefault(node => node.Value.Trim().Length > 0);
+        read.Add(new EnumUnknownFallback(
+            type,
+            value,
+            file.Span(named),
+            written is null ? file.Span(setting) : file.SpanOfText(written)));
+        return true;
+    }
+
+    /// <summary>Whether <paramref name="text"/> is a protobuf name, or, if qualified, several joined by dots.</summary>
+    /// <remarks>
+    /// Asked of the file because only the binder can say whether a name names anything, and a setting
+    /// about an enum a compilation never loads is never asked there. Its text still goes into every
+    /// generated file's header, where a line break, which an XML character reference can write,
+    /// would end the comment and leave the rest of the setting as code.
+    /// </remarks>
+    private static bool IsProtobufName(string text, bool qualified)
+    {
+        var parts = text.Split('.');
+
+        return (qualified || parts.Length == 1)
+            && parts.All(part => part.Length > 0
+                && (char.IsAsciiLetter(part[0]) || part[0] == '_')
+                && part.All(character => char.IsAsciiLetterOrDigit(character) || character == '_'));
+    }
+
+    private static readonly string[] KnownSections = ["Arithmetic", "Presence", "Enums"];
 
     /// <summary>Every setting this file may state, as <c>Section/Setting</c>.</summary>
     /// <remarks>
@@ -325,6 +488,7 @@ public sealed record ProjectConfig(
     {
         "Arithmetic" => ["Overflow", "Conversion", "DivideByZero"],
         "Presence" => ["UnsetMessageRead"],
+        "Enums" => ["UnknownFallback"],
         _ => [],
     };
 

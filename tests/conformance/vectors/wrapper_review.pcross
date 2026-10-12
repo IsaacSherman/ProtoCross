@@ -1,0 +1,126 @@
+// Review regressions for wrapper fields: live loop aliases (§14.1), and target-first stores (§9.3).
+import proto "wrapper_review.proto";
+
+extend WrapperReviewCase {
+    mut fn read_outer() -> int64 {
+        var observed: int64 = -1;
+        for outer in limits {
+            for inner in limits { inner.value += 10; }
+            observed = outer.value;
+        }
+        return observed;
+    }
+
+    mut fn read_changed_outer() -> int64 {
+        var observed: int64 = -1;
+        for outer in limits {
+            outer.value += 1;
+            for inner in limits { inner.value += 10; }
+            observed = outer.value;
+        }
+        return observed;
+    }
+
+    mut fn compound_outer() -> int64 {
+        var observed: int64 = -1;
+        for outer in limits {
+            outer.value += 1;
+            for inner in limits { inner.value += 10; }
+            outer.value += 1;
+            observed = outer.value;
+        }
+        return observed;
+    }
+
+    mut fn read_outer_label() -> string {
+        var observed: string = "empty";
+        for outer in labels {
+            for inner in labels { inner.value = "changed"; }
+            observed = outer.value;
+        }
+        return observed;
+    }
+
+    // An ordinary message binding has the same alias contract as a wrapper binding.
+    mut fn plain_control() -> int64 {
+        var observed: int64 = -1;
+        for outer in plain {
+            outer.value += 1;
+            for inner in plain { inner.value += 10; }
+            observed = outer.value;
+        }
+        return observed;
+    }
+
+    fn limit_presence() -> int64 {
+        if has limit { return 1; }
+        return 0;
+    }
+
+    mut fn write_unset_limit() -> int64 {
+        limit.value = limit_presence();
+        if has limit { return limit.value; }
+        return -1;
+    }
+
+    fn note_presence() -> int64 {
+        if has note { return 1; }
+        return 0;
+    }
+
+    mut fn write_oneof_wrapper() -> int64 {
+        chosen.value = note_presence();
+        if has chosen { return chosen.value; }
+        return -1;
+    }
+
+    fn named_presence() -> int64 {
+        if "key" in limits_by_name { return 1; }
+        return 0;
+    }
+
+    mut fn write_missing_entry() -> int64 {
+        limits_by_name["key"].value = named_presence();
+        return (limits_by_name["key"] on_missing fail).value;
+    }
+}
+
+test WrapperReviewCase.read_outer "a read-only outer binding sees the inner loop change" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 1 }] }
+    expect return 11;
+}
+
+test WrapperReviewCase.read_changed_outer "a mutable outer binding sees the inner loop change" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 1 }] }
+    expect return 12;
+}
+
+test WrapperReviewCase.compound_outer "an outer compound store preserves the inner loop change" {
+    receiver { limits: [new google.protobuf.Int64Value { value: 1 }] }
+    expect return 13;
+}
+
+test WrapperReviewCase.read_outer_label "a string wrapper binding sees the inner loop change" {
+    receiver { labels: [new google.protobuf.StringValue { value: "before" }] }
+    expect return "changed";
+}
+
+test WrapperReviewCase.plain_control "ordinary message bindings remain live" {
+    receiver { plain: [new WrapperReviewPlain { value: 1 }] }
+    expect return 12;
+}
+
+test WrapperReviewCase.write_unset_limit "reaching an unset wrapper precedes evaluating its value" {
+    receiver { }
+    expect return 1;
+}
+
+test WrapperReviewCase.write_oneof_wrapper "reaching a wrapper clears the sibling before evaluating its value" {
+    receiver { note: "before" }
+    expect return 0;
+}
+
+test WrapperReviewCase.write_missing_entry "reaching a missing wrapper entry precedes evaluating its value" {
+    receiver { }
+    expect return 1;
+}

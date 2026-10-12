@@ -107,12 +107,46 @@ The IR preserves:
 - Assignment intent. A compound assignment is not a node of its own: `x += y` is the
   assignment of `x + y` to `x`, whose operation reads the target at the target's own span. It is
   the one place two nodes share a span without one standing inside the other, and a position query
-  there answers with the target, which comes first. Which form was written is the syntax tree's to
-  say.
+  there answers with the target, which comes first. A compound store to a map's element is the
+  same, its target holding the element where its read looked the key up
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The one thing the IR says of a
+  compound is that its value reads its own target, because where that target is written through an
+  element the read has to be evaluated before the target is reached. Which form was written is
+  otherwise the syntax tree's to say.
 - Terminal-failure behavior for `on_zero fail`.
+- **An enum's number.** A conversion between an enum and its `int32` is a node of its own in each
+  direction rather than a numeric conversion, since no conversion policy governs it. One to an enum
+  carries what it makes of a number the enum does not name: keep it, a fallback, or fail. That is
+  stamped by the binder, the default included, so a backend never asks whether an enum is closed
+  ([12.1](./§12-Enums.md#121-an-enums-number)). A test of whether a value has a name carries the enum it asks about
+  ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)).
 - Evaluation order.
+- **A map's reads and writes, each as a node of its own.** A lookup holds the map, the key and what a
+  missing key gives: a fallback, which it holds too, or `fail`. Whether a map holds a key, `count()`,
+  `is_empty()` and two maps compared are nodes of their own or an operator on two maps. An element as a
+  place, which is never read, is a node apart from a lookup: the target of a store, or a link of a
+  chain of places, written through. A store to one, and the change each of a map's methods makes, are
+  statements, and a literal's entries are a node holding them in the order written ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+  An entry missing its key or its value is refused and still kept, with an error in place of each part
+  it lacks, so what was written in it is there to ask about while it is being typed.
+  A compound store's place is a copy of what it reads, node for node, with each lookup made the
+  element it looked up, so no node stands in two places.
+- **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
+  constants it lists, of the subject's type, and its block, and the default arm is the one listing
+  none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the
+  shape of the tree around it. Whether an arm can reach its end, where a target writes its own
+  `break`, is asked of the IR rather than recorded beside it. It is the question the missing-return
+  check asks, so the two cannot disagree.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
   diagnostics.
+- What was written in a construct the binder refused, bound and kept by the node standing where it
+  was written. That covers the value of a field a literal or an entry refused, an element where a
+  map's entry goes, an `on_unknown` fallback on a conversion whose target is not an enum, and the
+  parts of a construct refused whole, such as a lookup of something that is not a map, a conversion
+  that cannot be made, or an `in` asked of a value its enum cannot hold, which an error then stands
+  for. A conversion's fallback is kept even where its target did not resolve, since the type meant
+  may well have been an enum. So it is there to ask about while it is being typed, and every rule that applies to anything bound applies to it: a mutating call there is still one
+  inside an expression ([18](./§18-Mutability.md#18-mutability)).
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
 all of it, which is what a backend or a host may write code against instead of checking. Each is

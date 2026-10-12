@@ -25,6 +25,12 @@ public static class ContextualKeywords
     public const string Mut = "mut";
 
     /// <summary>
+    /// The word that says what a conversion to an enum makes of a number the enum does not name
+    /// (spec 12).
+    /// </summary>
+    public const string OnUnknown = "on_unknown";
+
+    /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
     /// </summary>
@@ -44,9 +50,34 @@ public static class ContextualKeywords
         => token is { Kind: TokenKind.Identifier, Text: Mut } && next.Kind == TokenKind.Fn;
 
     /// <summary>
+    /// Whether <paramref name="token"/> is an <c>on_unknown</c> that begins a conversion's clause: one
+    /// with <c>fail</c> or a name straight after it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is never followed by <c>fail</c> anywhere else, and by another name only where
+    /// <c>new</c> begins a literal. The clause follows a conversion's type, and nothing else can, so a
+    /// field named <c>on_unknown</c> keeps its name everywhere a field can be read.
+    /// </para>
+    /// <para>
+    /// That leaves out a fallback that begins with something other than a name, such as
+    /// <c>(Level.LOW)</c>, which the parser therefore does not read as a clause. Nothing is lost.
+    /// A fallback is a value of an enum, and the language spells every one of those starting with a
+    /// name: a value, a parameter, a local, a field, or a call. Letting a parenthesis in as well would
+    /// make the word a keyword after <c>as</c> and a name everywhere else. That is a rule only the
+    /// parser can apply, and the colouring that has only the two tokens to go on would disagree with it.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsAnOnUnknownClause(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: OnUnknown }
+            && next.Kind is TokenKind.Identifier or TokenKind.Fail;
+
+    /// <summary>
     /// Whether <paramref name="token"/>, with <paramref name="next"/> after it, is one of these words
     /// where it is a keyword.
     /// </summary>
     public static bool IsAKeywordHere(Token token, Token next)
-        => BeginsAMessageLiteral(token, next) || MarksAMutatingMethod(token, next);
+        => BeginsAMessageLiteral(token, next)
+            || MarksAMutatingMethod(token, next)
+            || BeginsAnOnUnknownClause(token, next);
 }

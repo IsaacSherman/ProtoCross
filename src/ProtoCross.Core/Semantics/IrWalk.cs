@@ -103,12 +103,24 @@ public static class IrWalk
     /// In source order wherever the source had an order. A receiver comes before what is read from
     /// it and an argument list follows its callee. A node standing for something nobody has written
     /// yet -- an <see cref="IrMissingMemberAccess"/> -- ends at the empty point where it would be
-    /// written and holds what was written before that, which is source order like any other.
+    /// written and holds what was written before that, which is source order like any other. What a
+    /// node refused (<see cref="IrNode.Refused"/>) is merged in by position, since a refused field
+    /// stands between the fields kept around it.
     /// </remarks>
     public static IReadOnlyList<IrNode> ChildrenOf(IrNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
 
+        var held = HeldBy(node);
+
+        return node.Refused.Count == 0
+            ? held
+            : [.. held.Concat(node.Refused).OrderBy(child => child.Span.Start.Offset)];
+    }
+
+    /// <summary>What a node holds in the places its record declares for them.</summary>
+    private static IReadOnlyList<IrNode> HeldBy(IrNode node)
+    {
         return node switch
         {
             IrMethod method => [method.Body],
@@ -118,12 +130,16 @@ public static class IrWalk
             IrAssignment assignment => [assignment.Target, assignment.Value],
             IrFieldAssignment assignment => [assignment.Target, assignment.Value],
             IrAppend append => [append.Collection, append.Value],
+            IrElementAssignment assignment => [assignment.Target, assignment.Value],
+            IrMapUpdate update => [update.Map, .. update.Arguments],
             IrReturn { Value: { } returned } => [returned],
             IrForEach loop => [loop.Collection, loop.Body],
             IrIf branch => branch.Else is { } otherwise
                 ? [branch.Condition, branch.Then, otherwise]
                 : [branch.Condition, branch.Then],
             IrWhile loop => [loop.Condition, loop.Body],
+            IrSwitch choice => [choice.Subject, .. choice.Arms],
+            IrSwitchArm arm => [.. arm.Values, arm.Body],
             IrExpressionStatement statement => [statement.Expression],
 
             IrFieldAccess field => [field.Receiver],
@@ -133,12 +149,26 @@ public static class IrWalk
                 ? [receiver, .. call.Arguments]
                 : [.. call.Arguments],
             IrMissingMemberAccess awaiting => [awaiting.Receiver],
+            IrValuelessCall valueless => [valueless.Call],
             IrBinary binary => [binary.Left, binary.Right],
             IrIntegerDivision division => division.OnZero is { } onZero
                 ? [division.Left, division.Right, onZero]
                 : [division.Left, division.Right],
             IrUnary unary => [unary.Operand],
             IrConversion conversion => [conversion.Operand],
+            IrEnumToNumber conversion => [conversion.Operand],
+            IrEnumMembership membership => [membership.Value],
+            IrMapLookup lookup => lookup.Fallback is { } fallback
+                ? [lookup.Map, lookup.Key, fallback]
+                : [lookup.Map, lookup.Key],
+            IrMapContains contains => [contains.Key, contains.Map],
+            IrMapQuery query => [query.Map],
+            IrMapElement element => [element.Map, element.Key],
+            IrMapEntries entries => [.. entries.Entries],
+            IrMapEntry entry => [entry.Key, entry.Value],
+            IrNumberToEnum conversion => conversion.Fallback is { } fallback
+                ? [conversion.Operand, fallback]
+                : [conversion.Operand],
             IrMessageLiteral literal => [.. literal.Fields],
             IrFieldInitializer field => [field.Value],
             IrList list => [.. list.Elements],

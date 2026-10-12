@@ -114,8 +114,27 @@ Implemented:
 - Name resolution and type checking against real descriptors, including enum types and values
 - Typed IR carrying resolved types, source locations, and per-operation arithmetic behavior
 - Control flow: `if` / `else if` / `else`, `while`, `break`, `continue`, and `for`-`in`
+- `switch` on an integer or an enum. Its arms are braced, `case A, B { ... }`, none falls into the
+  next, and `default { ... }` is optional and comes last. A case lists literals and enum values, each
+  number once. A `break` in an arm leaves the switch, never the loop around it. The spec has the
+  rules in section 15.3, and `default` is now a reserved word.
 - Explicit numeric conversions, `x as int64`, which is what makes mixed-width arithmetic writable
+- An enum's number, `status as int32`, and an enum from a number, `n as OrderStatus`. A number the
+  enum does not name is kept by an open enum and ends the program for a closed one, unless the
+  conversion says otherwise with `on_unknown OrderStatus.UNSPECIFIED` or `on_unknown fail`, or the
+  project says it once for the enum in `protocross.config.xml`. The fallback is evaluated only for a
+  number with no name, as an `on_zero` fallback is only for a zero divisor.
+  `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
+  and 12.2.
 - Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
+- Maps, read and changed by key and never iterated. Every read says what a missing key gives,
+  `prices[sku] on_missing 0` or `on_missing fail`, and the fallback is evaluated only when the key is
+  missing. `sku in prices`, `count()` and `is_empty()` ask about a map; `prices[sku] = 5;`,
+  `counts[word] on_missing 0 += 1;`, `remove`, `clear`, `add_if_absent`, `replace_if_present` and
+  `merge` change one; and writing through a missing key, `items[id].label = "x";`, puts a message
+  there first. Two maps compare by keys and values, in any order. A literal gives a map its entries,
+  `prices: [{ key: "apple", value: 3 }]`. The spec has the rules in section 14.2, and `on_missing` is
+  now a reserved word.
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
   `items: [a, b]`, and the values are evaluated in the order written. A literal shows no field to be
@@ -124,14 +143,15 @@ Implemented:
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
-  element to a repeated value. Nothing is cleared or removed. A mutating call stands on its own rather
+  element to a repeated value. Nothing clears a repeated value or removes its elements, though a map
+  has `remove` and `clear`, as above. A mutating call stands on its own rather
   than inside a larger expression, and nothing inside a `for` may change the field it traverses. The
   spec has the rules in section 18.
 - Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
   list or an append. A local holds a copy of the message or repeated value it is given, so changing
   the local never changes what it was copied from, in either backend.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
-  integer overflow
+  integer overflow, and what each enum's unnamed numbers become
 - C# backend (extension methods) and C++ backend (header-only free functions)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
@@ -142,10 +162,11 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: maps, `switch`, `Result` types, asking which member of a `oneof` is set, and the
-Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read, tested with
-`has` and assigned, and assigning one unsets the others. The compiler refuses what it does not
-implement, such as a map field, rather than emitting something whose semantics differ from the spec.
+Not implemented: `Result` types, `==` between two messages, asking which member of a `oneof` is
+set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
+tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
+does not implement, such as iterating a map, rather than emitting something whose semantics differ
+from the spec.
 
 ### Building
 
@@ -256,6 +277,12 @@ found automatically beside whichever protoc is used, so a schema that imports on
 its own. They are resolved for the compiler without being generated: both runtimes already ship
 them, so they never appear in an emitted project.
 
+A field of one of the wrapper types, such as `google.protobuf.Int64Value`, is the message the schema
+declares, in ProtoCross and in C++. protoc's C# declares the value instead, `long?` for an
+`Int64Value`, so the generated C# turns one into the other wherever a wrapper moves between a field
+and a message. `has limit`, `limit.value`, literals, writes, loops, maps and a `mut fn` called on one
+all behave the same in both backends. The spec has the rules in section 24.1.
+
 ### Project Configuration
 
 Some questions have more than one defensible answer, and which one you want is a property of your
@@ -278,6 +305,10 @@ project's with a warning.
   <Presence>
     <UnsetMessageRead>RequireGuard</UnsetMessageRead>
   </Presence>
+  <Enums>
+    <!-- What a number an enum does not name becomes: a value name, or fail -->
+    <UnknownFallback Type="shop.OrderStatus">ORDER_STATUS_UNSPECIFIED</UnknownFallback>
+  </Enums>
 </ProtoCross>
 ```
 
@@ -288,7 +319,7 @@ Three of those settings have exactly one legal value today. They are listed anyw
 language-dependent contract is readable in one file rather than spread between a specification and
 a set of defaults nobody wrote down.
 
-**The file wins.** Every setting also has a command-line flag, for trying something without
+**The file wins.** Overflow also has a command-line flag, for trying something without
 committing to it, but a flag that contradicts the file is refused rather than quietly applied:
 
 ```

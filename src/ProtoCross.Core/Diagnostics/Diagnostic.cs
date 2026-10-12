@@ -3,10 +3,21 @@ using System.Text;
 
 namespace ProtoCross.Diagnostics;
 
+/// <summary>How much a diagnostic matters: only an error fails a compilation (spec 26).</summary>
+/// <remarks>
+/// <see cref="Information"/> is last rather than first, although it matters least, so that the two
+/// severities that came before it keep the numbers a caller outside this repository may have stored.
+/// </remarks>
 public enum DiagnosticSeverity
 {
     Warning,
     Error,
+
+    /// <summary>
+    /// Something true about the code that the author may not have meant, where nothing is wrong:
+    /// a number an enum does not name, kept as it is (spec 12).
+    /// </summary>
+    Information,
 }
 
 /// <summary>

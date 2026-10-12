@@ -31,7 +31,9 @@ Normative Requirements:
   - a singular field of either, at any depth, and an element of a repeated field of either, through
     the name a `for` binds to it;
   - a repeated field of either, at any depth, and a repeated value held in a local, by appending to
-    it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+    it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations));
+  - a map field of either, at any depth, and a map held in a local, by storing to its elements,
+    writing through them, or through its methods ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 
   It may change nothing else. A parameter, and anything reached through one, is read-only, and so is
   the receiver of a method that is not `mut`. A call's result and a literal are held by nothing once
@@ -59,6 +61,12 @@ Normative Requirements:
   (`PC0094`, `PC0096`), writes through an unset message as an assignment does, stores a message as a
   copy unless it is a literal, and is ordered as an assignment is: the target, then the value, then
   the element added. It has no value, so it is only ever a statement (`PC0095`).
+- **Maps.** `m[k] = v;`, a compound store to `m[k]`, and `remove`, `clear`, `add_if_absent`,
+  `replace_if_present` and `merge` change a map the method may change ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). Each is refused where
+  an assignment to the map would be (`PC0094`, `PC0096`), writes through an unset message as an
+  assignment does, and stores a message as a copy unless it is a literal. A message written through at
+  a missing key is put there first. Each is ordered as an assignment is: the map, then the key and the
+  value, then the change.
 - **Mutating calls.** A `mut fn` may be called only on a message the calling method may change
   (`PC0094`). Calling one on a message field of the receiver needs that field's guard, as any call on
   a message field does ([13.1](./§13-Messages.md#131-field-access)).
@@ -78,7 +86,8 @@ Normative Requirements:
 - **Locals.** A local holds a message of its own. Initializing or assigning one with a message, or
   with a repeated value, that is not a literal stores a copy
   ([13.2](./§13-Messages.md#132-message-construction)).
-- No field can be cleared, and no element can be removed from a repeated field. So nothing a guard has
+- No field can be cleared, and no element can be removed from a repeated field. A map's keys can be
+  removed, and nothing a guard shows is ever about one. So nothing a guard has
   shown to be set becomes unset, except by setting another member of its `oneof`, which an assignment
   or an append writing through it does, or by the message holding it being replaced
   ([13.1](./§13-Messages.md#131-field-access)).

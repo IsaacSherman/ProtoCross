@@ -13,7 +13,7 @@ namespace ProtoCross.Semantics;
 /// </para>
 /// <para>
 /// A <em>place</em> is what a change can be made to: the receiver, a local, a parameter or a loop
-/// binding, or a chain of field accesses from one of those. Whether a place may be changed is the
+/// binding, or a chain of field accesses and map elements from one of those. Whether a place may be changed is the
 /// binder's question, and it has answered it before any of these are asked.
 /// </para>
 /// </remarks>
@@ -21,7 +21,8 @@ public static class IrMutation
 {
     /// <summary>
     /// The place <paramref name="node"/> changes: the field an assignment writes, what an append adds
-    /// to, or the receiver of a call to a <c>mut fn</c>. Null for anything that changes no message.
+    /// to, the element a store writes or the map a map's method changes, or the receiver of a call to a
+    /// <c>mut fn</c>. Null for anything that changes no message.
     /// </summary>
     /// <remarks>
     /// An assignment to a local is not here. It gives the name another value and changes no message,
@@ -35,41 +36,92 @@ public static class IrMutation
         {
             IrFieldAssignment assignment => assignment.Target,
             IrAppend append => append.Collection,
+            IrElementAssignment assignment => assignment.Target,
+            IrMapUpdate update => update.Map,
             IrMethodCall { Target.IsMutating: true } call => call.Receiver,
             _ => null,
         };
     }
 
-    /// <summary>What a chain of field accesses begins at, or <paramref name="place"/> itself when it is not one.</summary>
+    /// <summary>
+    /// What a chain of field accesses and map elements begins at, or <paramref name="place"/> itself
+    /// when it is not one.
+    /// </summary>
+    /// <remarks>
+    /// A lookup ends the chain rather than continuing it. What it gives is a value, the map's or the
+    /// fallback, and nothing done to it reaches the map (spec 14.2).
+    /// </remarks>
     public static IrExpression RootOf(IrExpression place)
     {
         ArgumentNullException.ThrowIfNull(place);
 
-        while (place is IrFieldAccess field)
+        while (true)
         {
-            place = field.Receiver;
-        }
+            switch (place)
+            {
+                case IrFieldAccess field:
+                    place = field.Receiver;
+                    break;
 
-        return place;
+                case IrMapElement element:
+                    place = element.Map;
+                    break;
+
+                default:
+                    return place;
+            }
+        }
     }
 
     /// <summary>
-    /// The temporary message a chain of field reads begins at, when it begins at one: a literal, or a
-    /// call's result.
+    /// The temporary message a chain of field reads begins at, when it begins at one: a literal, a
+    /// call's result, or what a lookup gives.
     /// </summary>
     /// <remarks>
     /// A loop over a field of one has to keep the message for as long as it runs, and keeps a message
     /// of its own. C++ keeps it in a local, since an accessor's reference into a temporary outlives
     /// the temporary. C# keeps a copy in a method that changes a message, since a call's result may be
-    /// part of the receiver the loop changes (spec 24).
+    /// part of the receiver the loop changes (spec 24), and a lookup gives the message the map holds,
+    /// which the loop may change through the map.
     /// </remarks>
     public static IrExpression? TemporaryOwnerOf(IrExpression collection)
     {
         ArgumentNullException.ThrowIfNull(collection);
 
         var root = RootOf(collection);
-        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall ? root : null;
+        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall or IrMapLookup ? root : null;
     }
+
+    /// <summary>
+    /// Whether reaching <paramref name="place"/> writes through an element of a map, which puts a message
+    /// at a missing key: an element anywhere among the links it is reached through, not the place itself.
+    /// </summary>
+    /// <remarks>
+    /// A store to an element puts nothing there until it stores, which both targets do last. Reaching a
+    /// field of an element, or an element of a map inside one, puts the message there first.
+    /// </remarks>
+    public static bool ReachesThroughAnElement(IrExpression place)
+    {
+        ArgumentNullException.ThrowIfNull(place);
+
+        for (var link = Above(place); link is not null; link = Above(link))
+        {
+            if (link is IrMapElement)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The link a place is reached through: a field's message, or an element's map; null at the root.</summary>
+    private static IrExpression? Above(IrExpression place) => place switch
+    {
+        IrFieldAccess field => field.Receiver,
+        IrMapElement element => element.Map,
+        _ => null,
+    };
 
     /// <summary>Whether <paramref name="expression"/> names a place, rather than a value nothing holds.</summary>
     /// <remarks>

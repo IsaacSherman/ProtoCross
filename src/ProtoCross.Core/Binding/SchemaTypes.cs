@@ -227,6 +227,51 @@ public sealed class SchemaTypes
         return candidates.Count == 1 ? candidates[0] : null;
     }
 
+    /// <summary>
+    /// The type <paramref name="name"/> names in a type position, or null when it names none or names
+    /// more than one.
+    /// </summary>
+    /// <remarks>
+    /// The rule for a type position, as <see cref="ResolveReceiver"/> is the rule for a receiver: a full
+    /// name wins outright, and a simple name resolves only where it reaches exactly one type, message
+    /// or enum. Which of the two ways it can fail is <see cref="IsAmbiguousAsATypeName"/>'s to say. The
+    /// binder asks it of every type written in a method, and of every enum the project's
+    /// configuration names, so a setting means what the same name written in a conversion would.
+    /// </remarks>
+    /// <exception cref="ArgumentNullException"><paramref name="name"/> is null.</exception>
+    public SchemaTypeName? ResolveTypeName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+
+        if (FindMessage(name) is { } message)
+        {
+            return new SchemaMessageName(message);
+        }
+
+        if (FindEnum(name) is { } enumType)
+        {
+            return new SchemaEnumName(enumType);
+        }
+
+        if (IsAmbiguousAsATypeName(name))
+        {
+            return null;
+        }
+
+        return (MessagesNamed(name), EnumsNamed(name)) switch
+        {
+            ([var only], _) => new SchemaMessageName(only),
+            (_, [var only]) => new SchemaEnumName(only),
+            _ => null,
+        };
+    }
+
+    /// <summary>The full name of every type <paramref name="simpleName"/> reaches, in ordinal order, for a report that it is ambiguous.</summary>
+    public IReadOnlyList<string> FullNamesOfTypesNamed(string simpleName)
+        => [.. MessagesNamed(simpleName).Select(message => message.FullName)
+            .Concat(EnumsNamed(simpleName).Select(enumType => enumType.FullName))
+            .Order(StringComparer.Ordinal)];
+
     private void IndexMessage(MessageDescriptor message)
     {
         _byIdentity[SymbolId.ForType(message)] = new SchemaMessageName(message);

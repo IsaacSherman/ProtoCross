@@ -5,6 +5,8 @@ ProtoCross has no exceptions. The implemented failure model is:
 - Compile-time rejection where portability cannot be guaranteed.
 - `on_zero <fallback>` for recoverable integer division and modulo by zero.
 - `on_zero fail` for deterministic terminal failure with exit code 70.
+- `on_unknown <fallback>` for a number a conversion's enum does not name, and `on_unknown fail`,
+  or a closed enum's default, for the same terminal failure ([12.1](./§12-Enums.md#121-an-enums-number)).
 
 No built-in `Result` type, generated status type, or catchable runtime error model exists today.
 

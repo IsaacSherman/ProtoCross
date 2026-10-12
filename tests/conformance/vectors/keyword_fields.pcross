@@ -46,9 +46,9 @@ extend KeywordFieldCase {
         return total;
     }
 
-    // Explicit presence on a scalar, so 'has' reaches the escaped has_default_() as well.
-    fn default_is_set() -> bool {
-        return has default;
+    // Explicit presence on a scalar, so 'has' reaches the escaped has_union_() as well.
+    fn union_is_set() -> bool {
+        return has union;
     }
 
     fn friend_value() -> int64 {
@@ -107,15 +107,15 @@ test KeywordFieldCase.template_total "iterates a repeated message field named te
     expect return 30;
 }
 
-test KeywordFieldCase.default_is_set "has default is true for an explicit zero" {
+test KeywordFieldCase.union_is_set "has union is true for an explicit zero" {
     receiver {
-        default: 0,
+        union: 0,
     }
 
     expect return true;
 }
 
-test KeywordFieldCase.default_is_set "has default is false when it was never set" {
+test KeywordFieldCase.union_is_set "has union is false when it was never set" {
     receiver {
         class: 1,
     }

@@ -277,18 +277,18 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// Reading a map is PC0038, so a map field is a name that resolves and is then refused. Offering
-    /// it would be the completion list breaking its one promise.
+    /// A map field is read by key (spec 14.2), so it is a field like any other after a dot. It was
+    /// withheld until #11, while reading one was refused outright.
     /// </summary>
     [Fact]
-    public async Task AMapFieldIsNeverOfferedAfterADot()
+    public async Task AMapFieldIsOfferedAfterADot()
     {
         var offered = await OfferedAsync(
             "extend Outer {\n    fn f(m: Mapped) -> int64 {\n        return m.\n    }\n}\n",
             "return m.");
 
         Assert.Contains("count", Labels(offered));
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>
@@ -347,6 +347,37 @@ public partial class SchemaCompletionTests
 
         Assert.Contains("nested_values", offered);
         Assert.Contains("inner", offered);
+    }
+
+    /// <summary>
+    /// Before a member, a message stands only where it has that member: <c>inner</c> has no
+    /// <c>count</c>, so <c>inner.count</c> would be <c>PC0041</c>. The completion sweep found this
+    /// beside a wrapper's <c>value</c> (#162).
+    /// </summary>
+    [Fact]
+    public async Task AMessageIsOfferedBeforeAMemberOnlyWhereItHasThatMember()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend Outer {\n    fn f(other: Outer) -> int64 {\n        return other.count;\n    }\n}\n",
+            "return oth"));
+
+        Assert.Contains("other", offered);
+        Assert.DoesNotContain("inner", offered);
+        Assert.DoesNotContain("other_inner", offered);
+    }
+
+    /// <summary>A method a source declares on a message is a member of it too, and lets the message stand there.</summary>
+    [Fact]
+    public async Task AMessageDeclaringTheMemberAsAMethodIsOfferedBeforeIt()
+    {
+        var offered = Labels(await OfferedAsync(
+            "extend protocross.tests.Outer.Inner {\n    fn weight() -> int64 {\n        return 1;\n    }\n}\n\n"
+                + "extend Outer {\n    fn f(other: Outer) -> int64 {\n        return inner.weight();\n    }\n}\n",
+            "return inn"));
+
+        Assert.Contains("inner", offered);
+        Assert.Contains("other_inner", offered);
+        Assert.DoesNotContain("other", offered);
     }
 
     /// <summary>
@@ -708,18 +739,18 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// ScopeAt already drops a map field, for the reason the binder refuses one. Asserted here as
-    /// well as after a dot because the two contexts reach the field set by different routes.
+    /// ScopeAt offers a map field as it offers any field. Asserted here as well as after a dot because
+    /// the two contexts reach the field set by different routes.
     /// </summary>
     [Fact]
-    public async Task ABareIdentifierNeverOffersAMapField()
+    public async Task ABareIdentifierOffersAMapField()
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 {\n        return count;\n    }\n}\n",
             "return cou");
 
         Assert.Contains("count", Labels(offered));
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>
@@ -1055,9 +1086,9 @@ public partial class SchemaCompletionTests
         Assert.DoesNotContain("count", Labels(offered));
     }
 
-    /// <summary>A map in a fixture is PC0060 rather than PC0038 -- a different code, the same refusal.</summary>
+    /// <summary>A fixture gives a map field its entries (spec 13.2), so it is offered as any field is.</summary>
     [Fact]
-    public async Task ATestFixtureNeverOffersAMapField()
+    public async Task ATestFixtureOffersAMapField()
     {
         var offered = await OfferedAsync(
             "extend Mapped {\n    fn f() -> int64 { return count; }\n}\n"
@@ -1065,7 +1096,7 @@ public partial class SchemaCompletionTests
                 + "    expect return 1;\n}\n",
             "        count: 1,\n");
 
-        Assert.DoesNotContain("tags", Labels(offered));
+        Assert.Contains("tags", Labels(offered));
     }
 
     /// <summary>
@@ -1386,8 +1417,11 @@ public partial class SchemaCompletionTests
     /// <remarks>
     /// <para>
     /// The whole list is the assertion rather than a sample of it. At each caret there is an exact
-    /// set of names that could stand there -- every message-valued name in scope, and nothing else --
-    /// so a scalar creeping back in fails this even if nobody thought to name it.
+    /// set of names that could stand there -- every name in scope whose value has the members written
+    /// after it, and nothing else -- so a scalar creeping back in fails this even if nobody thought to
+    /// name it. At the first caret both <c>Outer</c> parameters fit. Requiring the alternative as well
+    /// catches a list that merely repeats the written name. <c>inner</c> and <c>other_inner</c> are
+    /// messages too, but an <c>Inner</c> has no <c>inner</c>, so either would be <c>PC0041</c> (#162).
     /// </para>
     /// <para>
     /// Both carets were wrong before the tree was asked, and wrong in the way that matters. Every
@@ -1397,32 +1431,15 @@ public partial class SchemaCompletionTests
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("return ((oth", new[] { "other", "inner", "other_inner" })]
+    [InlineData("return ((oth", new[] { "another", "other" })]
     [InlineData("return ((other).inn", new[] { "inner", "other_inner" })]
     [Trait("ReviewRegression", "ParenthesizedReceiverCompletion")]
     public async Task OnlySomethingWithMembersIsOfferedWhereParenthesesStandBeforeTheDot(
         string marker, string[] expected)
     {
-        const string body = "extend Outer {\n"
-            + "    fn f(other: Outer) -> bool {\n"
-            + "        if has (other).inner and has (other).other_inner {\n"
-            + "            return ((other).inner).deep == ((other).other_inner).deep;\n"
-            + "        }\n"
-            + "\n"
-            + "        return false;\n"
-            + "    }\n"
-            + "}\n";
+        var applied = await AcceptedReceiverItemsAsync(ParenthesizedReceiverBody, marker);
 
-        var (_, uri, text) = Beside(body);
-        var source = new SourceDocument(SourceIdentity.FromPath(uri.Path!), text);
-        var compilation = new Compilation(source, new CompilationOptions { Loader = Loader() });
-
-        Assert.True(compilation.Compile(CancellationToken.None).Success,
-            "the parenthesized receivers must already compile, or this is measuring the fixture");
-
-        var offered = await OfferedAsync(body, marker);
-
-        Assert.Equal(expected.Order(), Labels(offered).Order());
+        Assert.Equal(expected.Order(), applied.Select(attempt => attempt.Item.Label).Order());
     }
 
     /// <summary>
@@ -1798,20 +1815,17 @@ public partial class SchemaCompletionTests
             .Concat(CompletionProbe.AtEveryNameAndStatementStart(source.Text))
             .Distinct();
 
-        var applied = await CompletionProbe.SweepAsync(
-            provider, uri, source.Text, carets, path, Loader());
-
-        Assert.True(
-            applied.Count > 50,
-            $"'{name}' must offer something worth checking; it applied {applied.Count} items");
-
-        foreach (var attempt in applied)
+        var applied = 0;
+        await CompletionProbe.SweepEachAsync(provider, uri, source.Text, carets, path, Loader(), attempt =>
         {
+            applied++;
             Assert.True(
                 attempt.Refused.Count == 0,
                 $"in '{name}', accepting '{attempt.Item.Label}' at offset {attempt.Caret} produced "
                     + attempt.Describe());
-        }
+        });
+
+        Assert.True(applied > 50, $"'{name}' must offer something worth checking; it applied {applied} items");
     }
 
     /// <summary>The name of every corpus source that is a compilation on its own.</summary>

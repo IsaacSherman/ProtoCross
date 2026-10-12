@@ -103,7 +103,7 @@ internal static class CompletionProbe
     /// <para>
     /// Every way the binder can say "what you wrote here names nothing": an unknown or ambiguous
     /// message (<c>PC0020</c>, <c>PC0021</c>) or type (<c>PC0025</c>, <c>PC0074</c>), an unknown name
-    /// (<c>PC0037</c>), a member that is not there or cannot be reached (<c>PC0038</c> to
+    /// (<c>PC0037</c>), a member that is not there or cannot be reached (<c>PC0039</c> to
     /// <c>PC0041</c>), a call that cannot resolve (<c>PC0042</c> to <c>PC0044</c>), a test target
     /// that names no method of its receiver or no receiver at all (<c>PC0057</c>, <c>PC0058</c>), an
     /// unknown enum value (<c>PC0076</c>), a fixture field or argument that names nothing
@@ -128,7 +128,7 @@ internal static class CompletionProbe
     /// </remarks>
     public static readonly IReadOnlyList<string> DidNotBind =
     [
-        "PC0020", "PC0021", "PC0025", "PC0037", "PC0038", "PC0039", "PC0040", "PC0041",
+        "PC0020", "PC0021", "PC0025", "PC0037", "PC0039", "PC0040", "PC0041",
         "PC0042", "PC0043", "PC0044", "PC0057", "PC0058", "PC0059", "PC0068", "PC0074", "PC0076",
         "PC0080",
     ];
@@ -206,6 +206,14 @@ internal static class CompletionProbe
     /// too broken to build a member access still has a dot sitting after a name, and there the text
     /// is the only thing left to ask.
     /// </para>
+    /// <para>
+    /// <b>A statement start in front of a statement that opens with a parenthesis is left out</b>, for
+    /// the reason a caret inside a keyword is. A name accepted there, with no semicolon after it, is
+    /// read as calling the parenthesis: <c>price_of</c> in front of
+    /// <c>(items[id] on_missing new MapItem {}).quantity += 5;</c> becomes a call taking the lookup as
+    /// its argument. Every name fails there, a correct one included, so the caret measures the
+    /// fixture. #11 wrote the corpus's first such statement, a compound store through a lookup.
+    /// </para>
     /// </remarks>
     public static IEnumerable<int> AtEveryNameAndStatementStart(string text)
     {
@@ -235,11 +243,23 @@ internal static class CompletionProbe
 
             // A literal's closing brace ends an expression and not a statement, so what follows it is
             // the rest of that expression, where no name can go: the caret after a call's ')'.
-            if (previous is ';' or '{' or '}' && !literalEnds.Contains(offset))
+            if (previous is ';' or '{' or '}' && !literalEnds.Contains(offset) && !BeforeAParenthesis(text, offset))
             {
                 yield return offset;
             }
         }
+    }
+
+    /// <summary>Whether the next thing after <paramref name="offset"/>, past any whitespace, is an open parenthesis.</summary>
+    private static bool BeforeAParenthesis(string text, int offset)
+    {
+        var next = offset;
+        while (next < text.Length && char.IsWhiteSpace(text[next]))
+        {
+            next++;
+        }
+
+        return next < text.Length && text[next] == '(';
     }
 
     private static bool Covers(SourceSpan span, int offset)
@@ -370,8 +390,31 @@ internal static class CompletionProbe
         string path,
         DescriptorLoader loader)
     {
-        var lines = new LineMap(text);
         var applied = new List<AppliedItem>();
+        await SweepEachAsync(provider, uri, text, carets, path, loader, applied.Add);
+        return applied;
+    }
+
+    /// <summary>
+    /// Offers at every caret, accepts every item, recompiles each result, and hands it to
+    /// <paramref name="check"/> rather than keeping it.
+    /// </summary>
+    /// <remarks>
+    /// For a sweep over a whole source. Each item holds a compilation of its own, so keeping a
+    /// source's items to check at the end kept every one of those compilations alive at once: the
+    /// corpus sweep alone grew the test process to nearly eight gigabytes. Checked as they are made,
+    /// one caret's items are alive at a time.
+    /// </remarks>
+    public static async Task SweepEachAsync(
+        CompletionProvider provider,
+        DocumentUri uri,
+        string text,
+        IEnumerable<int> carets,
+        string path,
+        DescriptorLoader loader,
+        Action<AppliedItem> check)
+    {
+        var lines = new LineMap(text);
         var written = Written(text, path, loader);
 
         foreach (var caret in carets)
@@ -388,10 +431,8 @@ internal static class CompletionProbe
             }
 
             RequireTheWrittenNameIsOffered(written, text, caret, here);
-            applied.AddRange(here);
+            here.ForEach(check);
         }
-
-        return applied;
     }
 
     /// <summary>The buffer as it stands, so the sweep can ask what the names in it already mean.</summary>

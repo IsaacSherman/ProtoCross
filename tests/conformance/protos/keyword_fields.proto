@@ -6,7 +6,7 @@ package protocross.conformance;
 //
 // protoc's C++ generator lowercases a field name, then appends an underscore when the result is a
 // C++ keyword or names a member every generated message already declares, and builds every accessor
-// from that one name: class_(), set_class_(), has_default_(), mutable_new_(), add_delete_(). Each
+// from that one name: class_(), set_class_(), has_union_(), mutable_new_(), add_delete_(). Each
 // field below reaches that rule by a different path. C# needs none of it, because a PascalCased
 // name never spells a C# keyword, so the same schema is the check that the two sides agree.
 message KeywordFieldCase {
@@ -14,6 +14,9 @@ message KeywordFieldCase {
   KeywordFieldInner new = 2;
   repeated int64 delete = 3;
   repeated KeywordFieldInner template = 4;
+
+  // Reserved by ProtoCross since switch arrived (spec 6.4), so no method can name it. It stays, as
+  // the check that a message holding such a field still compiles and the rest of it can be used.
   optional int64 default = 5;
 
   // Lowercased before the keyword test, so this is friend_() rather than Friend().
@@ -24,6 +27,9 @@ message KeywordFieldCase {
 
   // Not a keyword either, but a macro, and protoc's list escapes it all the same.
   int64 assert = 8;
+
+  // Explicit presence, so 'has' reaches an escaped has_union_().
+  optional int64 union = 9;
 }
 
 message KeywordFieldInner {

@@ -65,7 +65,8 @@ To pin behavior under a non-default language policy, put the vector in a subdire
 `protocross.config.xml`. Config discovery walks up from the source file and stops at the nearest
 match, so the file governs that directory and nothing else -- which means the corpus exercises real
 discovery rather than a hook that exists only for tests. `vectors/checked/` and
-`vectors/saturating/` are the two that do this today. Vectors compiled under different policies
+`vectors/saturating/` do this for overflow, and `vectors/enum_fallbacks/` for what an enum's unnamed
+numbers become. Vectors compiled under different policies
 still build into the one C# assembly and the one C++ link, because both generated runtime files
 carry every policy and are therefore identical whichever one was selected.
 
@@ -159,10 +160,16 @@ failing. A fully equipped machine should report no skips.
 | `constant_divisor` | Floating-point division whose operands are both written into the source, which the C++ front end works out while compiling rather than leaving to run: a literal, negated, converted, and computed zero divisor, and the field-over-constant divisions that cannot be folded (spec 10.2, 23.1) |
 | `ordinary_names` | `virtual` as a parameter, a local, a method, and a test target: an ordinary name in ProtoCross that both targets reserve, so each has to escape it (spec 17) |
 | `control_flow` | `if` / `else if` / `else`, `while`, `while true` with `break`, `continue`, and `for`-`in` (spec 15) |
+| `map_fields` | Maps of every kind of key and value: a key that is there and one that is not, under a fallback and under `fail`; a fallback that would fail and is never evaluated; `in`, `count()` and `is_empty()`; equality in any order, and a NaN that equals nothing; a store, a compound store, and every method that changes a map; a message written through at a missing key, and a map inside one; a key written twice in a literal; and a loop over what a lookup gave while the loop changes the map (spec 14.2) |
+| `switch_statement` | `switch` on an enum and on each integer width at its edges: several values in one arm, a default and none, an empty arm, a number no value names, a case matching a value set by another name for its number, a `break` in an arm leaving the switch and never the loop around it, a `continue` in an arm, a `return` from every arm, an arm a constant condition ends, a nested switch, and a switch on a repeated enum's elements and on a call's result (spec 15.3) |
 | `strings` | String equality, string returns, and literals containing characters both backends must escape (spec 11) |
 | `enum_types` | Enum-typed locals, parameters, and returns, and named enum values in comparisons, returns, branches, and fixtures (spec 12) |
 | `casts` | Explicit conversions: mixed-width arithmetic, integer narrowing and signedness, int-to-float rounding, and float-to-integer truncation, saturation, and NaN (spec 10.3) |
 | `whimsy_math` | A larger end-to-end fixture with repeated protobuf objects, method calls, arguments, mixed numeric widths, explicit casts, unsigned wrapping, float/double math, strings, booleans, and compound control flow |
+| `wrapper_fields` | Fields of all nine wrapper types, which protoc's C# holds as their values and C++ as messages: presence and the value, a `oneof`'s member, the whole wrapper held, passed and returned, literals, writes that set an unset field, repeated and map fields with every operation on them, a loop that writes through its binding, and a `mut fn` called on a field and on a binding (spec 24.1) |
+| `wrapper_review` | Review regressions for wrapper fields: a binding that sees an inner loop's change to its element, over numbers, strings and messages, and a write to a wrapper's value that reaches it, its `oneof` and a missing key before the value is evaluated (spec 9.3, 24.1) |
+| `wrapper_key_review` | A write to a wrapper's value whose key counts the map it is in, directly, through a message at that key, and through a map inside one: the key reached is the key stored to, and only one entry is made (spec 9.3, 24.1) |
+| `wrapper_terminal_review` | A loop that writes through a wrapper binding and always returns or breaks, which must leave nothing unreachable in C# (spec 24.1) |
 | `presence` | `has` over the three presence kinds a proto3 schema can carry, every guard shape, and the cases that separate explicit presence from a comparison against the default (spec 8.4, 13.1) |
 | `keyword_fields` | Fields whose names C++ cannot use as they stand -- keywords, a capitalized keyword, a macro, and a generated member's name -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.2) |
 | `keyword_types` | Messages, enums, and enum values whose names C++ cannot use as they stand -- a keyword, a generated member's name, a nested type under an escaped parent, and keyword and macro values of a top-level and a nested enum -- as receivers, locals, parameters, returns, and fixture values (spec 24.2) |
@@ -198,11 +205,6 @@ The harness is written so a third backend is a small addition, not a third copy:
 
 ## Not covered yet
 
-- **Enum values with no declared name.** proto3 enums are open, so a field can hold a number the
-  schema does not name, but a fixture can only set a value that exists. What happens to an unknown
-  value is undecided (spec 12), so there is nothing to pin.
-- **Maps, oneof, and mutation** are not implemented in the language, so there is
-  nothing to write a vector against.
 - **The compiler's refusals** are not here and cannot be: a vector has to compile. `PC0078`,
   `PC0079`, and `PC0080` are covered by `PresenceTests`, and the configuration diagnostics by
   `ProjectConfigTests`.

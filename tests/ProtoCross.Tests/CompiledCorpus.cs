@@ -85,8 +85,16 @@ internal static class CompiledCorpus
     /// <summary>
     /// A file with several distinct mistakes in it: a member name never written, a parameter list
     /// that was abandoned, a call to a method that is not there, and a call through something that
-    /// could never be one -- the last two being the shapes that put an
-    /// <see cref="Ir.IrUncallableInvocation"/> in the tree with each of its two halves.
+    /// could never be one -- those two being the shapes that put an
+    /// <see cref="Ir.IrUncallableInvocation"/> in the tree with each of its two halves -- and a call
+    /// to a method that returns nothing, taken as a value, which puts an
+    /// <see cref="Ir.IrValuelessCall"/> there. A literal is given a field its message does not have,
+    /// and a list an entry where no map is, so the walk meets what a node refused
+    /// (<see cref="Ir.IrNode.Refused"/>) both in a literal kept around it and in an error standing for
+    /// it. The refused field's value is a literal of its own, so the completion sweep accepts names
+    /// inside what a literal refused. It can because <c>PC0059</c> is reported at the field's name:
+    /// spanning the whole field, it would overlap every name accepted in the value, and the sweep
+    /// would blame each of them for it.
     /// </summary>
     public const string BrokenText =
         """
@@ -100,9 +108,17 @@ internal static class CompiledCorpus
                 return items.
             }
 
+            fn done() { }
+
+            fn k() -> int64 { var x = done(); return 0; }
+
             fn g( -> int64 { return nosuchmethod(1, 2); }
 
             fn h() -> int64 { return 1(2); }
+
+            fn r() -> InvoiceItem { return new InvoiceItem { quantity: 1, nosuch: new InvoiceItem { quantity: 2 } }; }
+
+            fn s() -> Invoice { return new Invoice { items: [{ key: 1, value: new InvoiceItem { } }] }; }
         }
         """;
 

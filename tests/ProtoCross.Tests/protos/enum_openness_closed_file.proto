@@ -1,0 +1,23 @@
+edition = "2023";
+
+package protocross.tests.openness.closedfile;
+
+// The file states the feature, so every enum in it is closed unless one says otherwise (spec 12.1),
+// nested ones included.
+option features.enum_type = CLOSED;
+
+enum FileClosed {
+  FILE_CLOSED_ONE = 1;
+}
+
+enum FileClosedReopened {
+  option features.enum_type = OPEN;
+
+  FILE_CLOSED_REOPENED_ZERO = 0;
+}
+
+message FileClosedScope {
+  enum Nested {
+    NESTED_ONE = 1;
+  }
+}

@@ -78,7 +78,7 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutAppend(model, offset) ?? AboutExpression(model, offset);
+        return card ?? AboutAppend(model, offset) ?? AboutMapMethod(model, offset) ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -231,6 +231,42 @@ internal static class HoverCard
             append.NameSpan);
     }
 
+    /// <summary>The card for one of a map's methods, written as the method it reads as (spec 14.2).</summary>
+    /// <remarks>
+    /// For the reason <see cref="AboutAppend"/> gives: none of them is a symbol, so the symbol arm has
+    /// nothing to say, and the card is the signature with a line on what it does. On the name only.
+    /// </remarks>
+    private static Hover? AboutMapMethod(SemanticModel model, int offset)
+    {
+        var (method, map, name) = model.IrAt(offset)?.Node switch
+        {
+            IrMapQuery { Map.Type: MapType queried } query => (query.Method, queried, query.NameSpan),
+            IrMapUpdate { Map.Type: MapType changed } update => (update.Method, changed, update.NameSpan),
+            _ => default((MapMethod, MapType?, SourceSpan)),
+        };
+
+        if (map is null || !EditorPositions.Covers(name, offset))
+        {
+            return null;
+        }
+
+        return Card([Signature(MapMethods.DisplayNameFor(method, map)), MapMethodSummary(method)], name);
+    }
+
+    /// <summary>What each of a map's methods does, in the words of its card.</summary>
+    private static string MapMethodSummary(MapMethod method) => method switch
+    {
+        MapMethod.Count => "How many keys the map holds (spec 14.2).",
+        MapMethod.IsEmpty => "Whether the map holds no key (spec 14.2).",
+        MapMethod.Remove => "Removes `key`, whether or not the map holds it (spec 14.2).",
+        MapMethod.Clear => "Removes every key (spec 14.2).",
+        MapMethod.AddIfAbsent => "Stores `value` at `key`, unless `key` already holds a value (spec 14.2).",
+        MapMethod.ReplaceIfPresent => "Stores `value` at `key`, if `key` already holds a value (spec 14.2).",
+        MapMethod.Merge => "Stores every value of `other` at its key, `other`'s winning where both hold one. "
+            + "A message is stored as a copy of its own (spec 14.2).",
+        _ => throw new ArgumentOutOfRangeException(nameof(method), method, "Not a map's method."),
+    };
+
     /// <summary>What the innermost expression covering the caret is, where no name is.</summary>
     /// <remarks>
     /// <para>
@@ -296,8 +332,42 @@ internal static class HoverCard
             case IrConversion conversion:
                 yield return Conversion(conversion);
                 break;
+
+            case IrNumberToEnum conversion:
+                yield return OnUnnamed(conversion);
+                break;
         }
     }
+
+    /// <summary>What this conversion makes of a number its enum does not name, and who says so (spec 12.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// Said whether or not a clause is written, because the default is the part a reader cannot see:
+    /// the same <c>n as Level</c> keeps the number for an open enum and ends the program for a closed
+    /// one. An enum's number going the other way, <c>status as int32</c>, has nothing to say beyond its
+    /// type, which is exactly what it is.
+    /// </para>
+    /// <para>
+    /// Where the answer comes from <c>protocross.config.xml</c>, the card says so, as spec 10.4 asks of
+    /// any operation a project's policy governs. Nothing on the line shows it.
+    /// </para>
+    /// </remarks>
+    private static string OnUnnamed(IrNumberToEnum conversion)
+        => "A number the enum does not name " + (conversion.OnUnnamed, conversion.Source) switch
+        {
+            (UnnamedNumberBehavior.Keep, _) => "is kept, as a value equal to none of its names (spec 12.1).",
+            (UnnamedNumberBehavior.Fallback, UnnamedNumberSource.Configuration) =>
+                $"becomes `{conversion.ConfiguredFallback!.Name}`, as `{ProjectConfig.FileName}` states "
+                    + "(spec 10.4, 12.1).",
+            (UnnamedNumberBehavior.Fallback, _) => "yields the declared `on_unknown` value (spec 12.1).",
+            (UnnamedNumberBehavior.Fail, UnnamedNumberSource.Configuration) =>
+                $"terminates the program, exit code 70, as `{ProjectConfig.FileName}` states (spec 10.4, 12.1).",
+            (UnnamedNumberBehavior.Fail, UnnamedNumberSource.Default) =>
+                "terminates the program, exit code 70, because the enum is closed (spec 12.1).",
+            (UnnamedNumberBehavior.Fail, _) => "terminates the program, exit code 70 (spec 12.1).",
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
+        };
 
     /// <remarks>
     /// Spelt out here rather than shared with <see cref="ProjectConfig.DescribeForHeader"/>, which

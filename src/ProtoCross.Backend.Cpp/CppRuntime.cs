@@ -95,6 +95,16 @@ public static class CppRuntime
             }
 
             EmitNarrowToFloatHelper(writer);
+
+            writer.WriteLine("// --- enums (12) ---");
+            writer.WriteLine();
+
+            EmitEnumHelpers(writer);
+
+            writer.WriteLine("// --- maps (14.2) ---");
+            writer.WriteLine();
+
+            EmitMapHelpers(writer);
         }
 
         writer.WriteLine();
@@ -512,10 +522,15 @@ public static class CppRuntime
     }
 
     /// <summary>
-    /// Emits the form used when the author supplied an <c>on_zero</c> fallback. The fallback is
-    /// evaluated eagerly at the call site; ProtoCross expressions have no side effects, so this is
-    /// indistinguishable from lazy evaluation.
+    /// Emits the form used when the author supplied an <c>on_zero</c> fallback, which takes the
+    /// fallback as something to call.
     /// </summary>
+    /// <remarks>
+    /// The call site writes the fallback as a lambda, so it is evaluated only for a zero divisor, as a
+    /// map lookup's is only for a missing key (<see cref="EmitMapHelpers"/>). A fallback passed as a
+    /// value is evaluated before the divisor is looked at, so one that would end the program ended it
+    /// whatever the divisor was (spec 10.2.1).
+    /// </remarks>
     private static void EmitDivideOrHelper(
         SourceWriter writer,
         ArithmeticBehavior behavior,
@@ -524,13 +539,14 @@ public static class CppRuntime
     {
         var stem = Stem(behavior);
 
-        writer.WriteLine("// Division that yields on_zero instead of failing.");
+        writer.WriteLine("// Division that yields on_zero() instead of failing, calling it only for a zero divisor.");
+        writer.WriteLine("template <typename OnZero>");
         using (writer.Block(
-            $"inline {signed} {stem}_div_or_{suffix}({signed} a, {signed} b, {signed} on_zero)"))
+            $"inline {signed} {stem}_div_or_{suffix}({signed} a, {signed} b, OnZero on_zero)"))
         {
             using (writer.Block("if (b == 0)"))
             {
-                writer.WriteLine("return on_zero;");
+                writer.WriteLine("return on_zero();");
             }
 
             writer.WriteLine();
@@ -548,13 +564,14 @@ public static class CppRuntime
     {
         var stem = Stem(behavior);
 
-        writer.WriteLine("// Remainder that yields on_zero instead of failing.");
+        writer.WriteLine("// Remainder that yields on_zero() instead of failing, calling it only for a zero divisor.");
+        writer.WriteLine("template <typename OnZero>");
         using (writer.Block(
-            $"inline {signed} {stem}_mod_or_{suffix}({signed} a, {signed} b, {signed} on_zero)"))
+            $"inline {signed} {stem}_mod_or_{suffix}({signed} a, {signed} b, OnZero on_zero)"))
         {
             using (writer.Block("if (b == 0)"))
             {
-                writer.WriteLine("return on_zero;");
+                writer.WriteLine("return on_zero();");
             }
 
             writer.WriteLine();
@@ -668,6 +685,192 @@ public static class CppRuntime
     /// atexit handlers, and reports the exit code chosen here rather than a signal.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Emits what a conversion to an enum makes of a number the enum does not name: a fallback, or
+    /// termination (spec 12).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Templates over the enum, given protoc's <c>_IsValid</c> for it by address, so one helper serves
+    /// every enum and the call site is the only thing that names one. The value is taken already cast
+    /// to the enum, which protoc declares with <c>int</c> beneath it, so any number survives the cast.
+    /// </para>
+    /// <para>
+    /// A fallback is taken as something to call, which the call site writes as a lambda, so it is
+    /// evaluated only for a number the schema does not name, as an <c>on_zero</c> fallback is only for
+    /// a zero divisor (<see cref="EmitDivideOrHelper"/>).
+    /// </para>
+    /// <para>
+    /// The failure writes the line the C# runtime writes, naming the enum by its protobuf name, since
+    /// protoc gives the two targets different names for it.
+    /// </para>
+    /// </remarks>
+    private static void EmitEnumHelpers(SourceWriter writer)
+    {
+        writer.WriteLine("// Reached from an 'on_unknown fail' clause, and from a conversion to a closed enum");
+        writer.WriteLine("// that states no fallback.");
+        using (writer.Block("[[noreturn]] inline void fail_unnamed(const char* enum_name, ::std::int32_t number)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(enum_name, stderr);");
+            writer.WriteLine("::std::fprintf(stderr, \" has no value numbered %ld\\n\", static_cast<long>(number));");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename E, typename Fallback>");
+        using (writer.Block("inline E named_or(E value, bool (*is_named)(int), Fallback fallback)"))
+        {
+            writer.WriteLine("return is_named(static_cast<int>(value)) ? value : fallback();");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename E>");
+        using (writer.Block("inline E named_or_fail(E value, bool (*is_named)(int), const char* enum_name)"))
+        {
+            using (writer.Block("if (!is_named(static_cast<int>(value)))"))
+            {
+                writer.WriteLine("fail_unnamed(enum_name, static_cast<::std::int32_t>(value));");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return value;");
+        }
+
+        writer.WriteLine();
+    }
+
+    /// <summary>The map operations whose ProtoCross semantics protobuf's <c>Map</c> does not already provide (spec 14.2).</summary>
+    /// <remarks>
+    /// <para>
+    /// Templates over the map, so this header names no protobuf type and needs no protobuf include:
+    /// whatever <c>Map</c> a call site passes is the one it reads.
+    /// </para>
+    /// <para>
+    /// A lookup with a fallback takes the fallback as something to call, which the call site writes as
+    /// a lambda, so it is evaluated only when the key is missing.
+    /// </para>
+    /// <para>
+    /// Both lookups return the value by value, because what a lookup gives is a value (spec 14.2). A
+    /// fallback is a temporary, and a reference to it would outlive it. A lookup that fails could give a
+    /// reference into the map instead and save a copy, and review found that wrong. A lookup passed to
+    /// a <c>mut fn</c> is then the map's own storage, and the method changing the map changes its
+    /// read-only argument: <c>observe(items[1] on_missing fail)</c> sees a store to <c>items[1]</c> the
+    /// method makes after it was called. A call passes an argument that is not a place as written,
+    /// because it is a temporary of its own (spec 18), and returning by value is what keeps a lookup
+    /// one. A copy at that call alone would have kept the reference everywhere else, and left every
+    /// future place a lookup can be held across a change to ask the question again.
+    /// </para>
+    /// <para>
+    /// Equality compares each value with its own <c>==</c>, as the C# runtime does, so a NaN equals
+    /// nothing in either.
+    /// </para>
+    /// <para>
+    /// A merge takes its source by value. The source may be inside the target -- a map held by one of
+    /// the target's own elements, <c>held.merge((held[1] on_missing fail).items)</c> -- and storing that
+    /// element replaces the message the source lives in while the merge is still reading it. A copy
+    /// taken before the first store is read instead. Merging a map into itself changes nothing either
+    /// way.
+    /// </para>
+    /// </remarks>
+    private static void EmitMapHelpers(SourceWriter writer)
+    {
+        writer.WriteLine("// Reached from an 'on_missing fail' clause.");
+        using (writer.Block("[[noreturn]] inline void fail_missing(const char* map_name)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(map_name, stderr);");
+            writer.WriteLine("::std::fputs(\" has no such key\\n\", stderr);");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map, typename Key, typename Fallback>");
+        using (writer.Block("inline typename Map::mapped_type value_or(const Map& map, const Key& key, Fallback fallback)"))
+        {
+            writer.WriteLine("auto found = map.find(key);");
+            using (writer.Block("if (found != map.end())"))
+            {
+                writer.WriteLine("return found->second;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return fallback();");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map, typename Key>");
+        using (writer.Block("inline typename Map::mapped_type found_or_fail(const Map& map, const Key& key, const char* map_name)"))
+        {
+            writer.WriteLine("auto found = map.find(key);");
+            using (writer.Block("if (found == map.end())"))
+            {
+                writer.WriteLine("fail_missing(map_name);");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return found->second;");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map, typename Key, typename Value>");
+        using (writer.Block("inline void add_if_absent(Map& map, const Key& key, const Value& value)"))
+        {
+            using (writer.Block("if (map.find(key) == map.end())"))
+            {
+                writer.WriteLine("map[key] = value;");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map, typename Key, typename Value>");
+        using (writer.Block("inline void replace_if_present(Map& map, const Key& key, const Value& value)"))
+        {
+            writer.WriteLine("auto found = map.find(key);");
+            using (writer.Block("if (found != map.end())"))
+            {
+                writer.WriteLine("found->second = value;");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map>");
+        using (writer.Block("inline void merge(Map& target, Map source)"))
+        {
+            using (writer.Block("for (const auto& entry : source)"))
+            {
+                writer.WriteLine("target[entry.first] = entry.second;");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename Map>");
+        using (writer.Block("inline bool maps_equal(const Map& left, const Map& right)"))
+        {
+            using (writer.Block("if (left.size() != right.size())"))
+            {
+                writer.WriteLine("return false;");
+            }
+
+            writer.WriteLine();
+            using (writer.Block("for (const auto& entry : left)"))
+            {
+                writer.WriteLine("auto found = right.find(entry.first);");
+                using (writer.Block("if (found == right.end() || !(found->second == entry.second))"))
+                {
+                    writer.WriteLine("return false;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return true;");
+        }
+
+        writer.WriteLine();
+    }
+
     private static void EmitFailHelper(SourceWriter writer)
     {
         writer.WriteLine("// Reached only from an 'on_zero fail' clause, where the author declared that");

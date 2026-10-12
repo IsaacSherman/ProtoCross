@@ -42,6 +42,12 @@ public static class DiagnosticCodes
     /// type is PC0063, as it is for every other field.
     /// </para>
     /// <para>
+    /// PC0038 refused every use of a map field, and PC0060 a map field in a message literal, until #11
+    /// gave maps their operations. A use of a map the language still refuses -- iterating one, asking
+    /// <c>has</c> of one, assigning one whole -- is refused under the code that refuses it for a repeated
+    /// field, with help about maps.
+    /// </para>
+    /// <para>
     /// PC1002 and PC1102 were the C# and C++ backends' refusals of a message literal outside a test's
     /// fixture, from #80's second step until each backend learned to generate one: C# in #80's third
     /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
@@ -49,7 +55,7 @@ public static class DiagnosticCodes
     /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -218,10 +224,6 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnknownName =
         new("PC0037", DiagnosticSeverity.Error, "unknown name");
 
-    /// <summary>A map field, which this version of the compiler does not support (spec 14.2).</summary>
-    public static readonly DiagnosticDescriptor MapsAreNotSupported =
-        new("PC0038", DiagnosticSeverity.Error, "maps are not supported");
-
     // ------------------------------------------------------- member access and calls
 
     /// <summary>A member read from a value that is not a message (spec 13.1).</summary>
@@ -315,10 +317,6 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnknownLiteralField =
         new("PC0059", DiagnosticSeverity.Error, "unknown field in a message literal");
 
-    /// <summary>A message literal setting a map field, which this compiler does not support (spec 13.2).</summary>
-    public static readonly DiagnosticDescriptor MapsAreNotSupportedInLiterals =
-        new("PC0060", DiagnosticSeverity.Error, "maps are not supported in message literals");
-
     /// <summary>A message literal setting one field more than once (spec 13.2).</summary>
     public static readonly DiagnosticDescriptor DuplicateLiteralField =
         new("PC0061", DiagnosticSeverity.Error, "duplicate field in a message literal");
@@ -361,9 +359,13 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ConditionMustBeBool =
         new("PC0071", DiagnosticSeverity.Error, "condition must be bool");
 
-    /// <summary>A <c>break</c> with no enclosing loop (spec 15.2).</summary>
+    /// <summary>A <c>break</c> with no enclosing loop or <c>switch</c> to leave (spec 15.2).</summary>
+    /// <remarks>
+    /// Named for the rule it reported before a <c>switch</c> could hold one (#6), and kept, since the
+    /// name is what other code reaches it by. The title says what it means now.
+    /// </remarks>
     public static readonly DiagnosticDescriptor BreakOutsideALoop =
-        new("PC0072", DiagnosticSeverity.Error, "'break' outside a loop");
+        new("PC0072", DiagnosticSeverity.Error, "'break' outside a loop or switch");
 
     /// <summary>A <c>continue</c> with no enclosing loop (spec 15.2).</summary>
     public static readonly DiagnosticDescriptor ContinueOutsideALoop =
@@ -514,6 +516,141 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ArgumentIsPartOfTheReceiver =
         new("PC0097", DiagnosticSeverity.Error, "argument is part of the receiver");
 
+    // ------------------------------------------------------- operators, continued
+
+    /// <summary>
+    /// <c>==</c> or <c>!=</c> on two messages or two repeated values, which compare nothing until spec
+    /// 13.3 says what makes two of them equal (spec 9.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OperandsHaveNoEquality =
+        new("PC0098", DiagnosticSeverity.Error, "operands have no equality");
+
+    // ------------------------------------------------------- statements and calls
+
+    /// <summary>
+    /// An expression written as a statement that is not a call, whose value would be thrown away
+    /// (spec 7.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ExpressionStatementIsNotACall =
+        new("PC0099", DiagnosticSeverity.Error, "expression statement is not a call");
+
+    /// <summary>
+    /// A call to a method that returns nothing, written where a value is expected (spec 16.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallHasNoValue =
+        new("PC0100", DiagnosticSeverity.Error, "call has no value");
+
+    // ------------------------------------------------------- an enum's number
+
+    /// <summary>
+    /// An <c>on_unknown</c> clause on a conversion whose target is not an enum, where no number can
+    /// lack a name (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnUnknownOutsideEnumConversion =
+        new("PC0101", DiagnosticSeverity.Error, "'on_unknown' outside a conversion to an enum");
+
+    /// <summary>
+    /// A conversion to a closed enum that says nothing about a number the enum does not name, which
+    /// therefore ends the program (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ClosedEnumConversionHasNoFallback =
+        new("PC0102", DiagnosticSeverity.Warning, "closed enum conversion has no fallback");
+
+    /// <summary>An <c>on_unknown</c> fallback that is not a value of the enum converted to (spec 12).</summary>
+    public static readonly DiagnosticDescriptor OnUnknownTypeMismatch =
+        new("PC0103", DiagnosticSeverity.Error, "on_unknown fallback type mismatch");
+
+    /// <summary><c>in</c> naming a type that is not an enum, which has no names to look in (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipNeedsAnEnum =
+        new("PC0104", DiagnosticSeverity.Error, "'in' needs an enum");
+
+    /// <summary><c>in</c> asked of a value that is not of the enum it names (spec 12.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipTypeMismatch =
+        new("PC0105", DiagnosticSeverity.Error, "value is not of the enum");
+
+    // ------------------------------------------------------- switch
+
+    /// <summary>A <c>switch</c> on a value that is neither an integer nor an enum (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor SubjectCannotBeSwitchedOn =
+        new("PC0106", DiagnosticSeverity.Error, "value cannot be switched on");
+
+    /// <summary>
+    /// A <c>case</c> listing something other than an integer literal or an enum value, which it cannot
+    /// compare by number before the method runs (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CaseValueIsNotAConstant =
+        new("PC0107", DiagnosticSeverity.Error, "case value is not a constant");
+
+    /// <summary>A <c>case</c> value of a type other than the one switched on (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor CaseValueTypeMismatch =
+        new("PC0108", DiagnosticSeverity.Error, "case value type mismatch");
+
+    /// <summary>
+    /// A number one <c>switch</c> lists twice, written the same way or as two names an enum gives it
+    /// (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CaseValueListedTwice =
+        new("PC0109", DiagnosticSeverity.Error, "case value listed twice");
+
+    /// <summary>A <c>default</c> arm with another arm after it, a second default included (spec 15.3).</summary>
+    public static readonly DiagnosticDescriptor DefaultArmIsNotLast =
+        new("PC0110", DiagnosticSeverity.Error, "default arm is not last");
+
+    /// <summary>
+    /// A <c>switch</c> with no <c>case</c> arm, which runs the same statements whatever its value
+    /// (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SwitchListsNoCase =
+        new("PC0111", DiagnosticSeverity.Error, "switch lists no case");
+
+    /// <summary>
+    /// A <c>switch</c> on a value built from literals and enum values alone, which runs the same arm
+    /// every time (spec 15.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SubjectIsAConstant =
+        new("PC0112", DiagnosticSeverity.Error, "switch on a constant");
+
+    // ------------------------------------------------------- maps
+
+    /// <summary><c>x[k]</c> on a value that is not a map, which is the only thing looked up by a key (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor ValueCannotBeIndexed =
+        new("PC0113", DiagnosticSeverity.Error, "value cannot be indexed");
+
+    /// <summary>A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MapKeyTypeMismatch =
+        new("PC0114", DiagnosticSeverity.Error, "key type mismatch");
+
+    /// <summary>A map read without saying what a missing key gives (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor LookupNeedsOnMissing =
+        new("PC0115", DiagnosticSeverity.Error, "lookup needs on_missing");
+
+    /// <summary>An <c>on_missing</c> fallback that is not a value of the map's values (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor OnMissingTypeMismatch =
+        new("PC0116", DiagnosticSeverity.Error, "on_missing fallback type mismatch");
+
+    /// <summary>
+    /// An <c>on_missing</c> clause on an element that is written to or through and never read, where a
+    /// missing key is put there instead (spec 14.2).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnMissingWhereNothingIsRead =
+        new("PC0117", DiagnosticSeverity.Error, "on_missing where nothing is read");
+
+    /// <summary><c>key in x</c> where <c>x</c> is a value but not a map (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MembershipNeedsAMap =
+        new("PC0118", DiagnosticSeverity.Error, "'in' needs a map");
+
+    /// <summary>A value in a map field's list that is not an entry, <c>{ key: k, value: v }</c> (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor MapListHoldsEntries =
+        new("PC0119", DiagnosticSeverity.Error, "map field takes entries");
+
+    /// <summary>An entry, <c>{ key: k, value: v }</c>, anywhere but a map field's list (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor EntryOutsideAMap =
+        new("PC0120", DiagnosticSeverity.Error, "entry outside a map field");
+
+    /// <summary>An entry of a map field's list missing its key or its value (spec 13.2).</summary>
+    public static readonly DiagnosticDescriptor EntryNeedsKeyAndValue =
+        new("PC0121", DiagnosticSeverity.Error, "entry needs a key and a value");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
@@ -588,4 +725,27 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor ProjectNameIsNotANamespace =
         new("PC2013", DiagnosticSeverity.Error, "project name is not a namespace");
+
+    /// <summary>
+    /// An <c>&lt;UnknownFallback&gt;</c> in <c>protocross.config.xml</c> that does not name one enum and
+    /// one of its values, or <c>fail</c> (spec 10.4, 12.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor InvalidEnumFallback =
+        new("PC2014", DiagnosticSeverity.Error, "invalid enum fallback");
+
+    // ------------------------------------------------------- informational notes
+
+    /// <summary>
+    /// A conversion to an open enum that keeps a number the enum does not name, as nothing says
+    /// otherwise (spec 12).
+    /// </summary>
+    public static readonly DiagnosticDescriptor UnnamedNumberIsKept =
+        new("PC5000", DiagnosticSeverity.Information, "unnamed number is kept");
+
+    /// <summary>
+    /// A read of a field C++ parses as a closed enum and C# as an open one, which the two can read
+    /// differently from the same bytes (spec 21.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ClosedEnumReadsDifferByRuntime =
+        new("PC5001", DiagnosticSeverity.Information, "closed enum reads differ by runtime");
 }

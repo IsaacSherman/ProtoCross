@@ -57,6 +57,8 @@ public static class SyntaxWalk
                 ? [branch.Condition, branch.Then, otherwise]
                 : [branch.Condition, branch.Then],
             WhileStatement loop => [loop.Condition, loop.Body],
+            SwitchStatement choice => [choice.Subject, .. choice.Arms],
+            SwitchArm arm => [.. arm.Values, arm.Body],
             AssignmentStatement assignment => [assignment.Target, assignment.Value],
             CompoundAssignmentStatement assignment => assignment.OnZero is { } onZero
                 ? [assignment.Target, assignment.Value, onZero]
@@ -71,7 +73,17 @@ public static class SyntaxWalk
             OnZeroClause { Fallback: { } fallback } => [fallback],
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
-            CastExpression cast => [cast.Operand, cast.TargetType],
+            EnumMembershipExpression membership => [membership.Value, membership.EnumType],
+            MembershipExpression membership => [membership.Value, membership.Collection],
+            IndexExpression index => index.OnMissing is { } onMissing
+                ? [index.Collection, index.Key, onMissing]
+                : [index.Collection, index.Key],
+            OnMissingClause { Fallback: { } fallback } => [fallback],
+            MapEntryExpression entry => [.. entry.Fields],
+            CastExpression cast => cast.OnUnknown is { } onUnknown
+                ? [cast.Operand, cast.TargetType, onUnknown]
+                : [cast.Operand, cast.TargetType],
+            OnUnknownClause { Fallback: { } fallback } => [fallback],
             MessageLiteralExpression literal => [literal.Type, .. literal.Fields],
             ListExpression list => [.. list.Elements],
 

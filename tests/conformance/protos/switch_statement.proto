@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// switch_statement.pcross -- choosing one arm by an integer or an enum (spec 15.3).
+//
+// One field of each integer width, so each width is switched on at its edges, and two enums: an
+// ordinary one, and one that gives a number two names.
+enum SwitchSeason {
+  SWITCH_SEASON_UNSPECIFIED = 0;
+  SWITCH_SEASON_SPRING = 1;
+  SWITCH_SEASON_SUMMER = 2;
+  SWITCH_SEASON_AUTUMN = 3;
+  SWITCH_SEASON_WINTER = 4;
+}
+
+// HALT is another name for STOP. A case may list either one, and matches a value set by the other.
+enum SwitchSignal {
+  option allow_alias = true;
+
+  SWITCH_SIGNAL_UNSPECIFIED = 0;
+  SWITCH_SIGNAL_STOP = 1;
+  SWITCH_SIGNAL_HALT = 1;
+  SWITCH_SIGNAL_GO = 2;
+}
+
+message SwitchCase {
+  SwitchSeason season = 1;
+  SwitchSignal signal = 2;
+  repeated SwitchSeason seasons = 3;
+  int32 small = 4;
+  int64 large = 5;
+  uint32 tally = 6;
+  uint64 big_tally = 7;
+  repeated int64 numbers = 8;
+}

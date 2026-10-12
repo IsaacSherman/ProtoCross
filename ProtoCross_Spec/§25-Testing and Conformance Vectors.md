@@ -123,8 +123,8 @@ test InvoiceItem.discounted_total "applies discount" {
 }
 ```
 
-For methods expected to terminate through `on_zero fail` or another future terminal failure
-mechanism:
+For methods expected to terminate through `on_zero fail`, through a conversion to an enum that
+fails ([12.1](./§12-Enums.md#121-an-enums-number)), or through another future terminal failure mechanism:
 
 ```protocross
 test InvoiceItem.strict_ratio "zero divisor fails" {

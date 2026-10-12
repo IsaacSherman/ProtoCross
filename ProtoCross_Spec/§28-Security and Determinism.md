@@ -9,11 +9,13 @@ Normative Requirements:
   stack exhausted in the compiler cannot be recovered from. The bound is 128 levels, and it
   applies to the tree the compiler builds, not only to how the parser reached it:
   - No expression may be more than 128 levels tall. A name or a literal is one level, and each
-    binary operator, member access, call, conversion (`as`), prefix operator and `has` adds one to
-    the tallest expression it holds. So `a.b.c` and `1 + 2 + 3` are each three levels tall, however
-    they are written. Parentheses add no level of their own.
-  - Parenthesized and argument expressions, blocks, message fixtures, and each `else if` of a chain
-    nest to the same bound.
+    binary operator, member access, lookup (`m[k]`), call, conversion (`as`), prefix operator and
+    `has` adds one to the tallest expression it holds, as do a message literal, a list and a map's
+    entry. So `a.b.c` and `1 + 2 + 3` are each three levels tall, however they are written.
+    Parentheses add no level of their own.
+  - Parenthesized and argument expressions, blocks, message fixtures, a map's entries, and each
+    `else if` of a chain nest to the same bound. An entry nests a level because its value may be a
+    list of entries, `[{ value: [{ value: ... }] }]`, which nests through no expression at all.
   - A construct past the bound is `PC0081`. It is reported once per file, at the token where the
     construct went too deep. The compiler steps over the rest of that construct, diagnoses nothing
     inside it, and goes on to parse what follows. A check that needs what was skipped cannot see

@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// map_fields.pcross -- maps, read and changed by key and never iterated (spec 14.2).
+//
+// A map of each kind of key protobuf allows -- string, each integer family and bool -- and of each
+// kind of value: a number, a string, an enum, a floating-point value and a message. A message value
+// holds maps of its own, one of them of its own type, and so does a message held in a field, so a map
+// can be reached through an element and through a link, and merged from inside its own element.
+enum MapLevel {
+  MAP_LEVEL_UNSPECIFIED = 0;
+  MAP_LEVEL_LOW = 1;
+  MAP_LEVEL_HIGH = 2;
+}
+
+message MapItem {
+  int64 quantity = 1;
+  string label = 2;
+  repeated int64 marks = 3;
+  map<string, int64> tags = 4;
+  map<int64, MapItem> children = 5;
+}
+
+message MapHolder {
+  map<string, int64> inner = 1;
+}
+
+message MapCase {
+  map<string, int64> prices = 1;
+  map<int32, string> names = 2;
+  map<int64, MapItem> items = 3;
+  map<string, MapLevel> levels = 4;
+  map<bool, double> ratios = 5;
+  map<uint64, bool> flags = 6;
+  map<string, int64> other_prices = 7;
+  map<sint64, int32> signed_counts = 8;
+  map<fixed32, uint32> fixed_counts = 9;
+  MapHolder holder = 10;
+  repeated string words = 11;
+  int64 small = 12;
+}

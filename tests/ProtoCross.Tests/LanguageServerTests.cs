@@ -840,8 +840,9 @@ public class LanguageServerTests
 
         var published = await client.DiagnosticsAsync(uri, message => message.Diagnostics.Count > 1);
 
-        // The compiler has two severities and LSP has four. Anything at Information or Hint would be
-        // this server asserting a distinction the language does not draw.
+        // Neither diagnostic here is a note, so neither may arrive as one: Information is the
+        // compiler's to give, and Hint is nobody's. Anything else would be this server asserting a
+        // distinction the language does not draw.
         Assert.All(
             published.Diagnostics,
             diagnostic => Assert.True(

@@ -12,12 +12,14 @@ The language currently includes:
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
 - Message literals, `new T { field: value, … }` ([13.2](./§13-Messages.md#132-message-construction)).
+- A map's value at a key, `prices[sku] on_missing 0`, whether it holds one, `sku in prices`, and
+  `count()` and `is_empty()` ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - Parenthesized expressions.
 
 Not implemented:
 
 - Top-level function calls.
-- Indexing.
+- Indexing anything but a map. A repeated field has none.
 - Bytes literals.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Each can be written today with a
   comparison, and how an intrinsic is named and found belongs with the open question of top-level
@@ -34,6 +36,7 @@ and or not
 && || !
 &  |  ^  ~  <<  >>
 has
+in
 =
 +=  -=  *=  /=  %=  &=  |=  ^=  <<=  >>=
 ```
@@ -42,12 +45,25 @@ has
 `not`, and unlike every other operator its operand is a field rather than a value -- reading the
 value is exactly what it must not do.
 
+`in` asks whether an enum value is one its enum names, `status in OrderStatus`, producing `bool`
+([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)), or whether a map holds a key, `sku in prices` ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). Its right side is a type for
+the first and a map for the second, which is told apart as `Level.HIGH` is, and it binds as a
+relational operator does.
+
+`m[k]` reads the value a map holds at a key, with an `on_missing` clause saying what a missing key
+gives, and binds as a member access or a call does ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). It is the one indexing the language has.
+
 Normative Requirements:
 
 - Both word and symbolic boolean operators are accepted: `and`/`&&`, `or`/`||`, and `not`/`!`.
 - Assignment is a statement only, and so is a compound assignment.
 - On integer operands, `%` follows the same `on_zero` rule as integer `/`. On floating-point
   operands it is the truncated remainder of [10.2](./§10-Numeric%20Semantics.md#102-division), which cannot fail and takes no clause.
+- A comparison takes two operands of one type (`PC0048`), and is a `bool`. `<`, `<=`, `>` and `>=`
+  compare numbers only (`PC0049`). `==` and `!=` compare any scalar or enum, but not two messages
+  or two repeated values (`PC0098`), until [13.3](./§13-Messages.md#133-equality) says what makes
+  two of those equal. They compare two maps by their keys and values, in any order, where the values
+  have equality themselves ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 
 **Decided: the C-family precedence order.**
 
@@ -60,7 +76,7 @@ From the tightest binding to the loosest. Every binary operator is left-associat
 | `*` `/` `%` | Multiplicative |
 | `+` `-` | Additive |
 | `<<` `>>` | Shift |
-| `<` `<=` `>` `>=` | Relational |
+| `<` `<=` `>` `>=` `in` | Relational |
 | `==` `!=` | Equality |
 | `&` | Bitwise and |
 | `^` | Bitwise exclusive or |
@@ -110,8 +126,9 @@ Normative Requirements:
   what it emits for the long form.
 - **The right side is one operand**, however loosely its own operators bind: `x *= a + b` is
   `x = x * (a + b)`, and `x &= a | b` is `x = x & (a | b)`.
-- The target rule is `=`'s: a local variable, or a field of a message the method may change
-  ([18](./§18-Mutability.md#18-mutability)). A parameter, the name a `for` binds and anything else that is neither is
+- The target rule is `=`'s: a local variable, a field of a message the method may change, or an
+  element of a map it may change ([18](./§18-Mutability.md#18-mutability)). An element is read as well, so it carries
+  the read's clause: `counts[word] on_missing 0 += 1;` ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). A parameter, the name a `for` binds and anything else that is neither is
   `PC0034`, and a field of a message the method may not change is `PC0094`.
 - An integer `/=` or `%=` takes an `on_zero` clause after its divisor, as `/` and `%` do
   ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)): `x /= d on_zero 0;`. The clause binds to the division it follows,
@@ -157,6 +174,17 @@ Current defined subset:
 - A compound assignment reads its target, evaluates its right side, and then stores. Reading a
   local or a field cannot fail, and nothing on the right can change either, so no program can
   observe that order.
+- A store to a map's element, and a change one of a map's methods makes, are ordered as an
+  assignment to a field is: the map is reached, setting any unset message on the way, then the key and
+  the value are evaluated, and the change is made last ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The key and the value are evaluated in
+  the order this section leaves open for an operator's operands, and so are a map entry's in a literal.
+- A lookup evaluates its map and its key, and its `on_missing` fallback only when the key is missing.
+- An integer division evaluates both its operands, and its `on_zero` fallback only when the divisor
+  is zero ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). A conversion to an enum evaluates its number, and its `on_unknown` fallback only
+  when the enum does not name it ([12.1](./§12-Enums.md#121-an-enums-number)).
+- A compound assignment written through an element of a map evaluates its read, clause and all,
+  before its target is reached, since reaching it puts a message at a missing key that the read must
+  not find ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - A call to a `mut fn` is never evaluated beside another operand: it stands on its own as a
   statement, a `var`'s initializer, a local's new value or a returned value
   ([18](./§18-Mutability.md#18-mutability)). So no operand can observe a change made by another, whichever order they are

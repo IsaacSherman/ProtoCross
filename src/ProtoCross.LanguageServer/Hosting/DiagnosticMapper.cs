@@ -23,10 +23,10 @@ public sealed record DiagnosticData(string Title, string? Help);
 /// </param>
 /// <remarks>
 /// <para>
-/// <b>Severity is mapped, not invented.</b> Spec 26 gives the compiler two levels and LSP has four.
-/// Promoting something to <c>Information</c> or <c>Hint</c> here would be this server asserting a
-/// distinction the language does not draw; if those are wanted they are a change to the compiler's own
-/// severity set, and one worth arguing about in its own right.
+/// <b>Severity is mapped, not invented.</b> Spec 26 gives the compiler three levels and LSP has four,
+/// so each of the three is the LSP level of the same name and <c>Hint</c> is never sent. Promoting
+/// something here would be this server asserting a distinction the language does not draw. The
+/// compiler gained <c>Information</c> for itself, in #166, as a change to its own severity set.
 /// </para>
 /// <para>
 /// <b>The title is carried in the message, because LSP has nowhere else to put it.</b> Spec 26's
@@ -71,9 +71,7 @@ public sealed class DiagnosticMapper(bool relatedInformationSupported)
         return new Diagnostic
         {
             Range = range,
-            Severity = diagnostic.Severity == DiagnosticSeverity.Error
-                ? Protocol.Lsp.DiagnosticSeverity.Error
-                : Protocol.Lsp.DiagnosticSeverity.Warning,
+            Severity = SeverityOf(diagnostic.Severity),
             Code = diagnostic.Code,
             Source = Source,
             Message = help is not null && !relatedInformationSupported ? $"{message}\nhelp: {help}" : message,
@@ -83,6 +81,15 @@ public sealed class DiagnosticMapper(bool relatedInformationSupported)
             Data = new DiagnosticData(diagnostic.Title, help),
         };
     }
+
+    /// <summary>The LSP level of the same name as the compiler's.</summary>
+    private static Protocol.Lsp.DiagnosticSeverity SeverityOf(DiagnosticSeverity severity) => severity switch
+    {
+        DiagnosticSeverity.Error => Protocol.Lsp.DiagnosticSeverity.Error,
+        DiagnosticSeverity.Warning => Protocol.Lsp.DiagnosticSeverity.Warning,
+        DiagnosticSeverity.Information => Protocol.Lsp.DiagnosticSeverity.Information,
+        _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, "Unhandled severity."),
+    };
 
     /// <summary>The editor range a compiler span names.</summary>
     /// <remarks>

@@ -167,6 +167,80 @@ public sealed record WhileStatement(
     BlockStatement Body,
     SourceSpan Span) : Statement(Span);
 
+/// <summary>
+/// A <c>switch</c> (spec 15.3): an integer or an enum, and the arms it chooses between in the order
+/// they were written.
+/// </summary>
+/// <remarks>
+/// The subject is unparenthesized, as an <c>if</c> condition is, and is ended by the brace that opens
+/// the arms for the same reason (see <see cref="Parser"/>). A default arm out of place is still an arm
+/// here, in the place it was written, so that the binder can say where it should have gone.
+/// </remarks>
+/// <param name="Keyword">
+/// Where <c>switch</c> was written, which is what a diagnostic about the switch as a whole points at.
+/// </param>
+public sealed record SwitchStatement(
+    SourceSpan Keyword,
+    Expression Subject,
+    IReadOnlyList<SwitchArm> Arms,
+    SourceSpan Span) : Statement(Span)
+{
+    /// <summary>Whether the parser found the brace that closes the arms.</summary>
+    /// <remarks>
+    /// What <see cref="BlockStatement.IsClosed"/> is to a block, and for the same reason: a caret at
+    /// the end of a switch nothing closed is still between its arms, where only another arm can
+    /// begin, and one after a closing brace is past it, where any statement can.
+    /// </remarks>
+    public bool IsClosed { get; init; } = true;
+
+    /// <summary>Where the brace that opens the arms was written, or null where it is missing.</summary>
+    /// <remarks>
+    /// Arms begin after it, and nowhere before it. The subject's end is not that place: a caret in the
+    /// space between the subject and the brace is in neither, and one after a subject with no brace yet
+    /// is still writing the subject.
+    /// </remarks>
+    public SourceSpan? OpenBrace { get; init; }
+
+    /// <summary>Whether everything between the braces was an arm, so the parser stepped over nothing.</summary>
+    public bool HoldsOnlyArms { get; init; } = true;
+
+    /// <summary>
+    /// Whether the parser read the switch as written up to its closing brace: its opening brace was
+    /// there, and everything between the braces was an arm.
+    /// </summary>
+    /// <remarks>
+    /// A switch missing its opening brace, or holding anything but arms, is one still being written:
+    /// the author is typing what the parser could not read yet. The parser has said so, and the binder
+    /// does not say as well that the switch lists no case, as it says nothing more about a statement
+    /// whose semicolon is missing. Whether the closing brace was found is <see cref="IsClosed"/>.
+    /// </remarks>
+    public bool IsWellFormed => OpenBrace is not null && HoldsOnlyArms;
+}
+
+/// <summary>One arm of a <c>switch</c>: <c>case A, B { ... }</c>, or <c>default { ... }</c>.</summary>
+/// <param name="Keyword">
+/// Where its <c>case</c> or <c>default</c> was written, which is what a diagnostic about the arm as a
+/// whole points at rather than underlining all of it.
+/// </param>
+/// <param name="Values">
+/// The values a <c>case</c> lists, in order, or none for the <c>default</c> arm. A <c>case</c> always
+/// lists at least one: where the parser found none it holds an <see cref="ErrorExpression"/> at the
+/// point the value would go, so an arm listing nothing is the default arm and nothing else.
+/// </param>
+/// <remarks>
+/// Every arm is braced and none falls into the next (spec 15.3), so an arm is a list and a block
+/// rather than a run of labels and the statements after them.
+/// </remarks>
+public sealed record SwitchArm(
+    SourceSpan Keyword,
+    IReadOnlyList<Expression> Values,
+    BlockStatement Body,
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>Whether this is the <c>default</c> arm, which runs when no <c>case</c> lists the value.</summary>
+    public bool IsDefault => Values.Count == 0;
+}
+
 public sealed record BreakStatement(SourceSpan Span) : Statement(Span);
 
 public sealed record ContinueStatement(SourceSpan Span) : Statement(Span);
@@ -191,7 +265,23 @@ public sealed record CompoundAssignmentStatement(
     SourceSpan Span,
     OnZeroClause? OnZero = null) : Statement(Span);
 
-public sealed record ExpressionStatement(Expression Expression, SourceSpan Span) : Statement(Span);
+public sealed record ExpressionStatement(Expression Expression, SourceSpan Span) : Statement(Span)
+{
+    /// <summary>Whether the semicolon that ends the statement was written, rather than found missing.</summary>
+    /// <remarks>
+    /// <para>
+    /// A statement nothing ended is one still being typed: <c>total</c>, on its way to
+    /// <c>total += 1;</c>, is an expression statement until the operator arrives. The parser has said
+    /// the semicolon is missing, and the binder does not say as well that a bare name is not a call
+    /// (spec 7.1), because that is the same unfinished statement reported twice on every keystroke.
+    /// </para>
+    /// <para>
+    /// Init-only and true by default, as <see cref="BlockStatement.IsClosed"/> is, so every existing
+    /// construction stays valid. A parser is the only thing that can have found the semicolon missing.
+    /// </para>
+    /// </remarks>
+    public bool IsTerminated { get; init; } = true;
+}
 
 public abstract record Expression(SourceSpan Span) : SyntaxNode(Span);
 
@@ -280,13 +370,99 @@ public sealed record HasExpression(
     SourceSpan Span) : Expression(Span);
 
 /// <summary>
-/// An explicit numeric conversion, <c>x as int64</c> (spec 10.3). ProtoCross applies no implicit
-/// numeric conversions, so this is the only way an expression changes width or signedness.
+/// An explicit conversion, <c>x as int64</c> (spec 10.3), or between an enum and its number,
+/// <c>n as OrderStatus</c> (spec 12). ProtoCross applies no implicit conversions, so this is the
+/// only way an expression changes its type.
 /// </summary>
+/// <param name="OnUnknown">
+/// What a conversion to an enum makes of a number the enum does not name, or null where nothing
+/// is written.
+/// </param>
 public sealed record CastExpression(
     Expression Operand,
     TypeReference TargetType,
+    SourceSpan Span,
+    OnUnknownClause? OnUnknown = null) : Expression(Span);
+
+/// <summary>
+/// Whether an enum value is one its enum names, <c>status in OrderStatus</c> (spec 12.2).
+/// </summary>
+/// <remarks>
+/// Not a <see cref="BinaryExpression"/>, because its right side is a type rather than a value: it
+/// asks about the names a type declares, and a value written there would be a different question.
+/// </remarks>
+public sealed record EnumMembershipExpression(
+    Expression Value,
+    TypeReference EnumType,
     SourceSpan Span) : Expression(Span);
+
+/// <summary>
+/// The <c>on_unknown</c> clause of a conversion to an enum: either a value to use instead of a
+/// number the enum does not name, or <c>fail</c>, which terminates deterministically (spec 12).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    public bool IsFail => Fallback is null;
+}
+
+/// <summary>
+/// <c>value in something</c> whose right side begins with a name: a key looked for in a map,
+/// <c>sku in prices</c> (spec 14.2), or a value looked for among an enum's names,
+/// <c>status in OrderStatus</c> (spec 12.2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// One node for both, because the parser cannot tell them apart: <c>prices</c> and <c>OrderStatus</c>
+/// are both a name. The binder settles it as it settles <c>Level.HIGH</c>: a dotted name whose first
+/// part names a value is that value, and any other names a type. <see cref="EnumMembershipExpression"/>
+/// is what a right side that cannot be a value still parses to, a scalar keyword or nothing at all,
+/// so that what is said about those is what was always said.
+/// </para>
+/// <para>
+/// The right side is an expression rather than a dotted name, so a map reached through a call or
+/// another map is written as it is anywhere else.
+/// </para>
+/// </remarks>
+public sealed record MembershipExpression(
+    Expression Value,
+    Expression Collection,
+    SourceSpan Span) : Expression(Span);
+
+/// <summary>
+/// One element of a map, <c>prices[sku]</c> (spec 14.2): read with a clause saying what a missing key
+/// gives, or written as a place.
+/// </summary>
+/// <param name="OnMissing">
+/// What a read gives when the key is missing, or null where nothing is written. A read needs one, and
+/// a place that is only written must not have one, which the binder says.
+/// </param>
+public sealed record IndexExpression(
+    Expression Collection,
+    Expression Key,
+    SourceSpan Span,
+    OnMissingClause? OnMissing = null) : Expression(Span);
+
+/// <summary>
+/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, or
+/// <c>fail</c>, which terminates deterministically (spec 14.2).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    public bool IsFail => Fallback is null;
+}
+
+/// <summary>
+/// One entry of a map field's list, <c>{ key: "apple", value: 3 }</c>, written as protobuf models the
+/// entries of a map (spec 13.2, 14.2).
+/// </summary>
+/// <remarks>
+/// A value only where a map field is given one, as a <see cref="ListExpression"/> is only where a
+/// repeated field is. It is braces without the <c>new T</c> a message literal begins with, because the
+/// entry's type is the field's and has no name an author could write.
+/// </remarks>
+public sealed record MapEntryExpression(IReadOnlyList<FieldInitializer> Fields, SourceSpan Span) : Expression(Span);
 
 /// <summary>
 /// An integer literal as written: its magnitude, in any of the spellings spec 6.6 allows.

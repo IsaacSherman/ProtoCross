@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  What a number an enum does not name becomes, for the vectors in this directory only (spec 12.1).
+
+  One enum is named by its simple name and one by its full name, so both spellings are resolved by
+  the compiler that reads this file. Config discovery stops at the nearest file, so nothing outside
+  this directory is affected.
+-->
+
+<ProtoCross>
+  <Enums>
+    <UnknownFallback Type="ConfiguredFruit">CONFIGURED_FRUIT_PLUM</UnknownFallback>
+    <UnknownFallback Type="protocross.conformance.ConfiguredShape">fail</UnknownFallback>
+  </Enums>
+</ProtoCross>

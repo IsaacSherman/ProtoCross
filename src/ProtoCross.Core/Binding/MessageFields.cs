@@ -27,9 +27,8 @@ namespace ProtoCross.Binding;
 /// field behind it.
 /// </para>
 /// <para>
-/// <b>A map field is a field.</b> Reading one is <c>PC0038</c>, which is a refusal of a field that
-/// was found rather than a failure to find it, so the exclusion belongs to the callers that offer
-/// names and not here.
+/// <b>A map field is a field.</b> It is found here like any other, and what may be done with it is
+/// asked of its type (spec 14.2).
 /// </para>
 /// <para>
 /// Reading an extension is not part of the language (spec 13.1), which is why nothing here offers a

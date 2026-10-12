@@ -383,7 +383,8 @@ public class PositionQueryTests
     /// once, and the target is the assignment's first child, so it is the one reached first -- the
     /// node for what was written, with the read the binder added after it. A field is reached through a
     /// chain, and the target and the read each have one, so each link of the target pairs with the
-    /// same link of the read (spec 22.2). Nothing else is excused.
+    /// same link of the read (spec 22.2). A map's element is such a link too: where the read looked a
+    /// key up, the target holds the element at that key (spec 14.2). Nothing else is excused.
     /// </remarks>
     [Fact]
     public void IrNodesThatShareASpanAlwaysStandInsideOneAnother()
@@ -426,6 +427,7 @@ public class PositionQueryTests
                 {
                     IrAssignment assignment => ((IrExpression)assignment.Target, assignment.Value),
                     IrFieldAssignment assignment => (assignment.Target, assignment.Value),
+                    IrElementAssignment assignment => (assignment.Target, assignment.Value),
                     _ => default((IrExpression Target, IrExpression Value)?),
                 })
                 .OfType<(IrExpression Target, IrExpression Value)>()
@@ -435,9 +437,22 @@ public class PositionQueryTests
                     IrIntegerDivision division => division.Left,
                     _ => null,
                 }))
-                .Where(pair => pair.Read is not null && pair.Read == pair.Target && pair.Read.Span == pair.Target.Span)
+                .Where(pair => pair.Read is not null && IsThePlaceRead(pair.Target, pair.Read) && pair.Read.Span == pair.Target.Span)
                 .Select(pair => ((IrNode)pair.Target, (IrNode)pair.Read!)),
         ];
+
+    /// <summary>
+    /// Whether <paramref name="target"/> is the place <paramref name="read"/> reads: the same chain, link
+    /// for link, where an element of the target stands for a lookup of the read at the same key.
+    /// </summary>
+    private static bool IsThePlaceRead(IrExpression target, IrExpression read) => (target, read) switch
+    {
+        (IrFieldAccess written, IrFieldAccess reading)
+            => written.Field == reading.Field && written.Span == reading.Span && IsThePlaceRead(written.Receiver, reading.Receiver),
+        (IrMapElement written, IrMapLookup reading)
+            => written.Span == reading.Span && IsThePlaceRead(written.Map, reading.Map),
+        _ => target == read,
+    };
 
     /// <summary>Whether <paramref name="node"/> is <paramref name="holder"/> or anything it holds.</summary>
     private static bool Holds(IrNode holder, IrNode node)

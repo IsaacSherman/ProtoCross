@@ -1,0 +1,69 @@
+// Reaching a wrapper must retain the key evaluated before the new entry was created (§9.3, §14.2).
+import proto "wrapper_key_review.proto";
+
+extend WrapperKeyReviewCase {
+    fn seven() -> int64 { return 7; }
+
+    mut fn direct_count_key(read_original: bool) -> int64 {
+        limits[limits.count()].value = seven();
+        if read_original {
+            return (limits[0] on_missing fail).value;
+        }
+        return limits.count() as int64;
+    }
+
+    mut fn nested_count_key(read_original: bool) -> int64 {
+        boxes[boxes.count()].limit.value = seven();
+        if read_original {
+            var first = boxes[0] on_missing fail;
+            if has first.limit { return first.limit.value; }
+            return -1;
+        }
+        return boxes.count() as int64;
+    }
+
+    mut fn nested_map_count_key(read_original: bool) -> int64 {
+        boxes[boxes.count()].limits[0].value = seven();
+        if read_original {
+            var first = boxes[0] on_missing fail;
+            return (first.limits[0] on_missing fail).value;
+        }
+        return boxes.count() as int64;
+    }
+}
+
+test WrapperKeyReviewCase.direct_count_key "reaching a direct wrapper creates only the original key" {
+    receiver { }
+    arg read_original = false;
+    expect return 1;
+}
+
+test WrapperKeyReviewCase.direct_count_key "a direct wrapper store writes the originally reached entry" {
+    receiver { }
+    arg read_original = true;
+    expect return 7;
+}
+
+test WrapperKeyReviewCase.nested_count_key "reaching a nested wrapper creates only the original key" {
+    receiver { }
+    arg read_original = false;
+    expect return 1;
+}
+
+test WrapperKeyReviewCase.nested_count_key "a nested wrapper store writes the originally reached entry" {
+    receiver { }
+    arg read_original = true;
+    expect return 7;
+}
+
+test WrapperKeyReviewCase.nested_map_count_key "reaching a wrapper map preserves the original parent key" {
+    receiver { }
+    arg read_original = false;
+    expect return 1;
+}
+
+test WrapperKeyReviewCase.nested_map_count_key "a wrapper map store writes into the originally reached parent" {
+    receiver { }
+    arg read_original = true;
+    expect return 7;
+}
