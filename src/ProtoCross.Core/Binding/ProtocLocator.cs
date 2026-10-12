@@ -288,10 +288,7 @@ public static class ProtocLocator
             }
 
             // Prefer the highest version present so the descriptor format stays current.
-            var versions = Directory.GetDirectories(toolsRoot)
-                .OrderByDescending(directory => Path.GetFileName(directory), StringComparer.OrdinalIgnoreCase);
-
-            foreach (var version in versions)
+            foreach (var version in NewestFirst(Directory.GetDirectories(toolsRoot)))
             {
                 var candidate = Path.Combine(version, "tools", rid, ExecutableName);
                 if (File.Exists(candidate))
@@ -301,6 +298,27 @@ public static class ProtocLocator
             }
         }
     }
+
+    /// <summary>
+    /// Package folders in the order they are preferred: the highest version first, a prerelease below
+    /// its release, and a folder whose name is not a version below every one whose name is.
+    /// </summary>
+    /// <remarks>
+    /// A folder whose name is not a version says nothing about how old its protoc is, so it is chosen
+    /// only when no versioned folder holds one, rather than winning by where its name falls in the
+    /// alphabet. Ties are broken by name, so one cache yields one protoc in whatever order the file
+    /// system lists its folders.
+    /// </remarks>
+    internal static IEnumerable<string> NewestFirst(IEnumerable<string> packageFolders)
+        => packageFolders
+            .Select(folder => (Folder: folder, Version: VersionOf(folder)))
+            .OrderByDescending(candidate => candidate.Version.HasValue)
+            .ThenByDescending(candidate => candidate.Version)
+            .ThenBy(candidate => Path.GetFileName(candidate.Folder), StringComparer.Ordinal)
+            .Select(candidate => candidate.Folder);
+
+    private static PackageVersion? VersionOf(string packageFolder)
+        => PackageVersion.TryParse(Path.GetFileName(packageFolder), out var version) ? version : null;
 
     private static string? GetRuntimeIdentifier()
     {
