@@ -15,9 +15,11 @@ namespace ProtoCross.Binding;
 /// <see cref="Version"/> reads the release, which keeps NuGet.Versioning out of the compiler for the
 /// sake of one comparison. NuGet names a package folder for the version normalized, so a release
 /// <see cref="Version"/> cannot read is not one NuGet wrote, and the folder is not taken for a version.
-/// A prerelease label is compared as text, ignoring case, where SemVer compares it one dot-separated
-/// part at a time, so <c>rc.10</c> sorts below <c>rc.2</c>. That only decides between two prereleases
-/// of one release, and only when nothing newer is restored.
+/// A prerelease label is compared as text, where SemVer compares it one dot-separated part at a time,
+/// so <c>rc.10</c> sorts below <c>rc.2</c>. That only decides between two prereleases of one release,
+/// and only when nothing newer is restored. The comparison is ordinal rather than ignoring case,
+/// because NuGet writes the label in lowercase anyway, and an ordinal comparison agrees with the
+/// record's equality.
 /// </para>
 /// </remarks>
 internal readonly record struct PackageVersion(Version Release, string? Prerelease) : IComparable<PackageVersion>
@@ -56,7 +58,7 @@ internal readonly record struct PackageVersion(Version Release, string? Prerelea
             (null, null) => 0,
             (null, _) => 1,
             (_, null) => -1,
-            var (mine, theirs) => StringComparer.OrdinalIgnoreCase.Compare(mine, theirs),
+            var (mine, theirs) => StringComparer.Ordinal.Compare(mine, theirs),
         };
     }
 }

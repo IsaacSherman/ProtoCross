@@ -40,6 +40,12 @@ public class BundledProtocOrderTests
     }
 
     [Fact]
+    public void TwoPrereleasesOfOneReleaseAreOrderedByTheirLabels()
+    {
+        Assert.Equal(["2.80.0-pre2", "2.80.0-pre1"], Preferred("2.80.0-pre1", "2.80.0-pre2"));
+    }
+
+    [Fact]
     public void APrereleaseOfANewerReleaseIsStillTheNewerOne()
     {
         Assert.Equal(["2.81.0-pre1", "2.80.0"], Preferred("2.80.0", "2.81.0-pre1"));
