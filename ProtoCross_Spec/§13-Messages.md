@@ -182,6 +182,9 @@ Normative Requirements:
 - Two operands of different types are `PC0048` before either is asked about. An ordered comparison
   of two messages is `PC0049` and nothing more, because a message has no order either.
 - The comparison is still a `bool`, so the expression around it reports nothing further.
+- A test's expected message is not compared with `==`. An `expect return` of a literal compares the
+  fields the literal sets, and nothing else
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), which decides nothing about what `==` will mean.
 
 The backends had given it two meanings. In C#, protoc's classes override `Equals` but not `==`, so
 `==` compares references: a message built by a literal equals nothing, an equal one included, while

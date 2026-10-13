@@ -58,12 +58,15 @@ internal static class ScopeSearch
         // region is not delimited -- it is the span of the parts that hold expressions -- so every
         // offset in it is genuinely in it, and ordinary containment is right there instead.
         //
-        // The two arms differ in exactly what the binder's HasImplicitReceiver says: a
-        // method body reaches its receiver's fields by bare name, and everything inside a test binds
-        // against a scope holding nothing. Reading it off the shape rather than restating the policy
+        // The arms differ in exactly what the binder's HasImplicitReceiver says: an extend
+        // method's body reaches its receiver's fields by bare name, and a factory's method and
+        // everything inside a test reach none. Reading it off the shape rather than restating the policy
         // is what keeps the two from drifting apart.
         return enclosing[0] switch
         {
+            IrMethod { Signature.HasReceiver: false } method when ScopeEntry.Inside(method.Body.Span, offset, method.Body.IsClosed)
+                => new ScopeAtPosition(new MessageType(method.Signature.Receiver), declared) { InAFactory = true },
+
             IrMethod method when ScopeEntry.Inside(method.Body.Span, offset, method.Body.IsClosed) => new ScopeAtPosition(
                 new MessageType(method.Signature.Receiver),
                 [.. declared, .. ReachableFields(method.Signature.Receiver, declared)]),

@@ -155,6 +155,17 @@ public sealed partial class CSharpBackend
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
 
+        /// <summary>The class <paramref name="message"/>'s factory is generated into (spec 24.1).</summary>
+        /// <remarks>
+        /// Named the same whether or not the sources are a project's. Only its namespace moves, as an
+        /// extension class's does, and the binder has refused any two factories that would meet in one.
+        /// </remarks>
+        public string FactoryClassOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
+
+        /// <summary>The class a method is declared in: its receiver's extension class, or its message's factory.</summary>
+        public string ClassOf(IrMethodSignature method)
+            => method.HasReceiver ? ClassOf(method.Receiver) : FactoryClassOf(method.Receiver);
+
         /// <summary>
         /// The name a method is declared and called by: its name PascalCased, with an underscore
         /// appended when that is the name of the class it is declared in.
@@ -170,7 +181,7 @@ public sealed partial class CSharpBackend
         public string MethodNameOf(IrMethodSignature method)
         {
             var name = NameConventions.ToPascalCase(method.Name);
-            return name == ClassOf(method.Receiver) ? name + "_" : name;
+            return name == ClassOf(method) ? name + "_" : name;
         }
 
         /// <summary>
@@ -184,10 +195,14 @@ public sealed partial class CSharpBackend
         public string PartOf(MessageDescriptor receiver)
             => Project is null ? receiver.FullName : ProjectClassName;
 
-        public string QualifiedClassOf(MessageDescriptor receiver)
+        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(receiver, ClassOf(receiver));
+
+        /// <summary>The class a method is declared in, qualified from <c>global::</c>.</summary>
+        public string QualifiedClassOf(IrMethodSignature method) => Qualified(method.Receiver, ClassOf(method));
+
+        private string Qualified(MessageDescriptor receiver, string className)
         {
             var ns = NamespaceOf(receiver);
-            var className = ClassOf(receiver);
             return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
         }
     }

@@ -260,26 +260,36 @@ public class MessageLiteralTests
 
     /// <summary>
     /// Nothing says yet what makes two messages equal (spec 13.3), and a C++ message has no
-    /// <c>==</c>, so an expected message cannot be compared with the one returned. The value is still
-    /// bound, and not checked as well, because one refusal says everything about the comparison.
+    /// <c>==</c>, so an expected message that is not a literal cannot be compared with the one
+    /// returned. A literal can, by the fields it sets (spec 25.3), and the help says to write one. The
+    /// value is still bound, and not checked as well, because one refusal says everything about the
+    /// comparison.
     /// </summary>
-    [Theory]
-    [InlineData("new Inner { }")]
-    [InlineData("5")]
-    public void ExpectingAReturnedMessageIsRefusedUntilEqualityIsDecided(string expected)
+    [Fact]
+    public void ExpectingAReturnedMessageIsRefusedUnlessItIsALiteral()
     {
         var refused = TheOnly(Compile(Source(
             "    fn made() -> Inner { return new Inner { }; }",
             "test Outer.made \"a message expected\" {\n"
             + "    receiver { }\n"
-            + $"    expect return {expected};\n"
+            + "    expect return 5;\n"
             + "}\n")));
 
         Assert.Equal(DiagnosticCodes.MessageReturnCannotBeExpected.Code, refused.Code);
         Assert.True(
-            refused.Help?.Contains("expect a scalar", StringComparison.Ordinal) == true,
+            refused.Help?.Contains("Expect a literal", StringComparison.Ordinal) == true,
             $"the help must say what can be tested instead, but says: {refused.Help}");
     }
+
+    /// <summary>A literal of the message returned is compared by the fields it sets, and an empty one sets none (spec 25.3).</summary>
+    [Fact]
+    public void ALiteralOfTheReturnedMessageMayBeExpected()
+        => AssertOk(Compile(Source(
+            "    fn made() -> Inner { return new Inner { }; }",
+            "test Outer.made \"a message expected\" {\n"
+            + "    receiver { }\n"
+            + "    expect return new Inner { };\n"
+            + "}\n")));
 
     /// <summary>
     /// A test has no implicit receiver (spec 25.3), so a method called by its bare name is called on

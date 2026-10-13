@@ -389,16 +389,22 @@ public sealed partial class Binder
     /// </remarks>
     private void CheckMutatingCall(IrMethodCall call, InvocationExpression invocation, MethodContext context)
     {
-        var change = $"'{call.Target.Name}' may change {Spelled(call.Receiver)}";
-
-        if (ReportIfReadOnly(call.Receiver, change, invocation.Span, context))
+        // Only an extend block's method is ever a mut fn, so only a call with a receiver reaches here.
+        if (call.Receiver is not { } receiver)
         {
             return;
         }
 
-        ReportIfTraversalChanges([call.Receiver], change, invocation.Span, context);
+        var change = $"'{call.Target.Name}' may change {Spelled(receiver)}";
 
-        if (StorageOf(call.Receiver) is not { } changed)
+        if (ReportIfReadOnly(receiver, change, invocation.Span, context))
+        {
+            return;
+        }
+
+        ReportIfTraversalChanges([receiver], change, invocation.Span, context);
+
+        if (StorageOf(receiver) is not { } changed)
         {
             return;
         }

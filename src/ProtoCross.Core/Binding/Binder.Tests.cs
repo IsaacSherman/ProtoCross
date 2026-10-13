@@ -1,5 +1,6 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
@@ -45,7 +46,7 @@ public sealed partial class Binder
             signature.Receiver,
             signature.ReturnType,
             HasImplicitReceiver: false);
-        var receiver = BindTestReceiver(test.Receiver, signature.Receiver, context);
+        var receiver = BindTestFixture(test, signature, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
 
@@ -53,6 +54,45 @@ public sealed partial class Binder
         {
             Document = _document,
         };
+    }
+
+    /// <summary>The message a test calls its method on, built from its fixture (spec 25.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// A test of a factory's method calls it on nothing. It holds whatever fixture its test does, the
+    /// stand-in for one never written or one written anyway, which is refused here; only the binder
+    /// knows the target is a factory's.
+    /// </para>
+    /// <para>
+    /// The parser reports a test of an extend method that writes no fixture, except where it read the
+    /// target as a factory's and it turned out to be a method of a nested message named <c>factory</c>.
+    /// That one is reported here, which is the first place it is known.
+    /// </para>
+    /// </remarks>
+    private IrMessageLiteral BindTestFixture(TestDeclaration test, IrMethodSignature signature, MethodContext context)
+    {
+        var fixture = test.Receiver;
+
+        if (signature.HasReceiver && !fixture.IsWritten && test.Target.Factory is not null)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.TestHasNoReceiver,
+                "A ProtoCross unit test must declare the protobuf receiver fixture.",
+                test.Span,
+                "Add a 'receiver { ... }' block.");
+        }
+
+        if (!signature.HasReceiver && fixture.IsWritten)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.FactoryTestDeclaresAReceiver,
+                $"'{signature.Name}' is a method of the factory of '{signature.Receiver.FullName}', which is called on "
+                + "nothing, so its test has no receiver to declare.",
+                fixture.Span,
+                "Remove the 'receiver { … }' block, and give the method its arguments with 'arg' (spec 25.3).");
+        }
+
+        return BindTestReceiver(fixture, signature.Receiver, context);
     }
 
     /// <remarks>
@@ -79,7 +119,18 @@ public sealed partial class Binder
             return null;
         }
 
-        var receiver = ResolveMessage(target.Receiver.Text, span);
+        if (target.Factory is { } word && TryResolveFactoryTarget(target, word, span, out var factoryMethod))
+        {
+            return factoryMethod;
+        }
+
+        // A factory word that turned out to be a nested type's name is part of the message's.
+        var receiverName = target.Factory is { } nested ? $"{target.Receiver.Text}.{nested.Text}" : target.Receiver.Text;
+        var receiverSpan = target.Factory is { } spelled
+            ? SourceSpan.Union(span.File, target.Receiver.Span, spelled.Span)
+            : target.Receiver.Span;
+
+        var receiver = ResolveMessage(receiverName, span);
         if (receiver is null)
         {
             return null;
@@ -90,20 +141,89 @@ public sealed partial class Binder
         // InvoiceItem.nope` still named InvoiceItem correctly -- what is wrong there is the method.
         // It is the day #41 can send a reader into the .proto that this matters most, and by then
         // the file will still be one someone is in the middle of fixing.
-        Use(SymbolId.ForType(receiver), target.Receiver.Span);
+        Use(SymbolId.ForType(receiver), receiverSpan);
 
         if (_methods.TryGetValue((receiver.FullName, target.Method.Text), out var signature))
         {
             Use(signature.Id, target.Method.Span);
-            return signature;
+            if (signature.HasReceiver)
+            {
+                return signature;
+            }
+
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownTestTarget,
+                $"'{target.Method}' is a method of the factory of '{receiver.FullName}', not of the message.",
+                span,
+                $"Target it through the factory: 'test {receiver.Name}.{ContextualKeywords.Factory}.{target.Method}' (spec 25.3).");
+            return null;
         }
 
         _diagnostics.Report(
             DiagnosticCodes.UnknownTestTarget,
             $"'{receiver.FullName}' has no ProtoCross method named '{target.Method}'.",
             span,
-            "Tests can only target methods declared in an extend block.");
+            "Tests can only target methods declared in an extend block or a factory.");
         return null;
+    }
+
+    /// <summary>Resolves <c>Invoice.factory.create</c>, a test's target in a message's factory.</summary>
+    /// <param name="signature">The method, or null when the target is refused, which has been reported.</param>
+    /// <returns>
+    /// False when the target is not a factory's after all: the message has no factory and a nested type
+    /// named <c>factory</c>, which is what the name reaches, as it always has.
+    /// </returns>
+    private bool TryResolveFactoryTarget(TestTarget target, SyntaxName word, SourceSpan span, out IrMethodSignature? signature)
+    {
+        signature = null;
+
+        var message = ResolveMessage(target.Receiver.Text, span);
+        if (message is null)
+        {
+            return true;
+        }
+
+        if (!_factories.TryGetValue(message.FullName, out var factory))
+        {
+            if (NestedTypeNamedFactory(message) is not null)
+            {
+                return false;
+            }
+
+            Use(SymbolId.ForType(message), target.Receiver.Span);
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownTestTarget,
+                $"'{message.FullName}' has no factory, so it has no method named '{target.Method}' to test.",
+                span,
+                "Tests can only target methods declared in an extend block or a factory.");
+            return true;
+        }
+
+        Use(SymbolId.ForType(message), target.Receiver.Span);
+        Use(factory.Id, word.Span);
+
+        if (!_methods.TryGetValue((message.FullName, target.Method.Text), out var found) || found.HasReceiver)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.UnknownTestTarget,
+                $"The factory of '{message.FullName}' has no method named '{target.Method}'.",
+                span,
+                found is not null
+                    ? $"'{target.Method}' is a method of '{message.Name}' itself. Target it as '{message.Name}.{target.Method}'."
+                    : "Tests can only target methods declared in an extend block or a factory.");
+            return true;
+        }
+
+        Use(found.Id, target.Method.Span);
+
+        if (found.Kind is IrMethodKind.Helper)
+        {
+            ReportHelperUsedOutsideItsFactory(found, span, "a test reaches only the methods a factory offers");
+            return true;
+        }
+
+        signature = found;
+        return true;
     }
 
     private IReadOnlyList<IrTestArgument> BindTestArguments(
@@ -224,6 +344,12 @@ public sealed partial class Binder
             case TestFailExpectation fail:
                 return new IrTestFailExpectation(fail.Span);
 
+            // A literal of the message returned says which of its fields to compare, which is the one
+            // comparison two messages have until spec 13.3 decides what makes them equal.
+            case TestReturnExpectation { Value: MessageLiteralExpression literal } returns
+                when signature.ReturnType is MessageType:
+                return BindExpectedFields(literal, returns.Span, signature, context);
+
             case TestReturnExpectation returns:
             {
                 if (signature.ReturnType is VoidType)
@@ -238,7 +364,17 @@ public sealed partial class Binder
                 // for '=='. The value is still bound, for the names in it, and not checked against the
                 // return type: a second diagnostic would be about a comparison that cannot be made.
                 var cannotCompare = !HasEquality(signature.ReturnType);
-                if (cannotCompare)
+                if (cannotCompare && signature.ReturnType is MessageType returned)
+                {
+                    _diagnostics.Report(
+                        DiagnosticCodes.MessageReturnCannotBeExpected,
+                        $"'{signature.Name}' returns message '{returned.DisplayName}', and only a literal of one can be "
+                        + "expected, because what makes two messages equal is not decided yet.",
+                        returns.Span,
+                        $"Expect a literal, 'expect return new {returned.Descriptor.Name} {{ … }};', which compares the "
+                        + "fields it sets (spec 25.3).");
+                }
+                else if (cannotCompare)
                 {
                     _diagnostics.Report(
                         DiagnosticCodes.MessageReturnCannotBeExpected,
@@ -265,6 +401,79 @@ public sealed partial class Binder
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(expectation), expectation, "Unhandled expectation.");
+        }
+    }
+
+    /// <summary>
+    /// Binds <c>expect return new T { … };</c> on a method that returns a message: the fields the literal
+    /// sets are what the test compares (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// The literal is bound as one anywhere else is, against the message the method returns, so a field it
+    /// names that the message lacks is the error it always is. Each field it sets is then asked whether a
+    /// test can compare it, by <see cref="IrExpectedFields.CanCompare"/>, which is the rule the backends'
+    /// checks are built by, so nothing reaches them unchecked.
+    /// </remarks>
+    private IrTestExpectation BindExpectedFields(
+        MessageLiteralExpression literal,
+        SourceSpan span,
+        IrMethodSignature signature,
+        MethodContext context)
+    {
+        var value = BindExpression(literal, NoNames(), context, signature.ReturnType);
+        if (value is not IrMessageLiteral expected)
+        {
+            return new IrTestReturnExpectation(value, span);
+        }
+
+        if (!TypesMatch(signature.ReturnType, expected.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.TestExpectationTypeMismatch,
+                $"'{signature.Name}' returns '{signature.ReturnType.DisplayName}' but the expectation is '{expected.Type.DisplayName}'.",
+                span);
+        }
+
+        ReportFieldsThatCannotBeCompared(expected);
+        return new IrTestFieldsExpectation(expected, span);
+    }
+
+    /// <summary>Refuses each field of an expected literal that a test cannot compare (<c>PC0134</c>).</summary>
+    private void ReportFieldsThatCannotBeCompared(IrMessageLiteral expected)
+    {
+        foreach (var initializer in expected.Fields)
+        {
+            var field = initializer.Field;
+            if (IrExpectedFields.CanCompare(field, initializer.Value))
+            {
+                if (initializer.Value is IrMessageLiteral nested)
+                {
+                    ReportFieldsThatCannotBeCompared(nested);
+                }
+
+                continue;
+            }
+
+            var (why, help) = field switch
+            {
+                { IsMap: true } => (
+                    $"'{field.Name}' is a map, and a test cannot compare one yet: the language has no way to list a "
+                    + "map's keys (spec 14.2).",
+                    "Leave it out of the expected literal, and test a method that returns what you want to check of it."),
+                { IsRepeated: true } => (
+                    $"'{field.Name}' is a repeated field, and a test cannot compare one yet: the language has no length "
+                    + "or index to compare it by (spec 14.1).",
+                    "Leave it out of the expected literal, and test a method that returns what you want to check of it."),
+                _ => (
+                    $"'{field.Name}' is given a '{initializer.Value.Type.DisplayName}' that is not a literal, and only a "
+                    + "literal says which of a message's fields to compare (spec 13.3).",
+                    "Write it as a literal, 'new T { … }', setting the fields that matter."),
+            };
+
+            if (initializer.Value.Type is not ErrorType)
+            {
+                _diagnostics.Report(DiagnosticCodes.ExpectedFieldCannotBeCompared, why, initializer.Span, help);
+            }
         }
     }
 }

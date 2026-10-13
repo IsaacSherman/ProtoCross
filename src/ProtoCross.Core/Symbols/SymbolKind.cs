@@ -10,9 +10,11 @@ namespace ProtoCross.Symbols;
 /// recorded at the declaration rather than recovered later by asking which statement holds it.
 /// </para>
 /// <para>
-/// The first four are declared in ProtoCross source. The last four are declared in a
+/// The first four are declared in ProtoCross source. The four after them are declared in a
 /// <c>.proto</c> file this compiler does not own, which is why their identity comes from a
-/// descriptor rather than from a location; see <see cref="SymbolId"/>.
+/// descriptor rather than from a location; see <see cref="SymbolId"/>. <see cref="Factory"/> is
+/// declared in ProtoCross source too, and comes last only because it came last: a kind's number is
+/// not its meaning, and renumbering the others would gain nothing.
 /// </para>
 /// </remarks>
 public enum SymbolKind
@@ -26,7 +28,7 @@ public enum SymbolKind
     /// <summary>The name a <c>for</c> loop binds each element to.</summary>
     LoopBinding,
 
-    /// <summary>A ProtoCross method, declared in an <c>extend</c> block.</summary>
+    /// <summary>A ProtoCross method, declared in an <c>extend</c> block or a <c>factory</c> block.</summary>
     Method,
 
     /// <summary>A protobuf message field.</summary>
@@ -40,4 +42,10 @@ public enum SymbolKind
 
     /// <summary>A protobuf enum type.</summary>
     EnumType,
+
+    /// <summary>
+    /// A <c>factory</c> block, which declares no type and is a symbol so that the <c>factory</c> of
+    /// <c>Invoice.factory.create()</c> can be followed to it (spec 16.3).
+    /// </summary>
+    Factory,
 }

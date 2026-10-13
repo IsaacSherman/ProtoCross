@@ -103,7 +103,7 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnexpectedToken =
         new("PC0010", DiagnosticSeverity.Error, "unexpected token");
 
-    /// <summary>A top-level declaration that is not an import, an extend or a test (spec 7.1).</summary>
+    /// <summary>A top-level declaration that is not an import, an extend, a factory or a test (spec 7.1).</summary>
     public static readonly DiagnosticDescriptor UnexpectedTopLevelDeclaration =
         new("PC0011", DiagnosticSeverity.Error, "unexpected top-level declaration");
 
@@ -474,8 +474,9 @@ public static class DiagnosticCodes
         new("PC0091", DiagnosticSeverity.Error, "literal of a type that is not a message");
 
     /// <summary>
-    /// <c>expect return</c> on a method that returns a message, which nothing can compare until spec
-    /// 13.3 says what message equality is (spec 25.3).
+    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal. A
+    /// literal is compared by the fields it sets, and nothing else can be until spec 13.3 says what
+    /// message equality is (spec 25.3).
     /// </summary>
     public static readonly DiagnosticDescriptor MessageReturnCannotBeExpected =
         new("PC0092", DiagnosticSeverity.Error, "a returned message cannot be expected yet");
@@ -650,6 +651,75 @@ public static class DiagnosticCodes
     /// <summary>An entry of a map field's list missing its key or its value (spec 13.2).</summary>
     public static readonly DiagnosticDescriptor EntryNeedsKeyAndValue =
         new("PC0121", DiagnosticSeverity.Error, "entry needs a key and a value");
+
+    // ------------------------------------------------------- factories
+
+    /// <summary>A factory block contains something that is not a method or a helper (spec 7.1).</summary>
+    public static readonly DiagnosticDescriptor UnexpectedFactoryMember =
+        new("PC0122", DiagnosticSeverity.Error, "unexpected member in factory block");
+
+    /// <summary>
+    /// A factory method that returns something other than the message its factory builds, nothing
+    /// included (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryMethodMustReturnItsMessage =
+        new("PC0123", DiagnosticSeverity.Error, "factory method does not return its message");
+
+    /// <summary>A second factory block for a message the compilation already has one for (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor DuplicateFactory =
+        new("PC0124", DiagnosticSeverity.Error, "duplicate factory");
+
+    /// <summary>
+    /// A factory for a message that declares a nested type named <c>factory</c>, which
+    /// <c>Message.factory</c> would also name (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryNameIsTaken =
+        new("PC0125", DiagnosticSeverity.Error, "message has a nested type named factory");
+
+    /// <summary>
+    /// A factory whose generated class would have the name of another factory's, or of a schema's
+    /// message, in the namespace it is declared in (spec 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryClassNameCollides =
+        new("PC0126", DiagnosticSeverity.Error, "factory class name collides");
+
+    /// <summary>A method marked <c>helper</c> outside a factory block (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor HelperOutsideAFactory =
+        new("PC0127", DiagnosticSeverity.Error, "helper outside a factory");
+
+    /// <summary>A factory method or helper marked <c>mut</c>, which has no receiver to change (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor MutatingFactoryMethod =
+        new("PC0128", DiagnosticSeverity.Error, "factory method marked mut");
+
+    /// <summary>A helper called from outside its factory, or targeted by a test (spec 16.3, 25.3).</summary>
+    public static readonly DiagnosticDescriptor HelperUsedOutsideItsFactory =
+        new("PC0129", DiagnosticSeverity.Error, "helper used outside its factory");
+
+    /// <summary>A factory method called on a message, which it has no receiver to take (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryMethodCalledOnAValue =
+        new("PC0130", DiagnosticSeverity.Error, "factory method called on a value");
+
+    /// <summary><c>Message.factory</c> written where a value is expected rather than called through (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryUsedAsAValue =
+        new("PC0131", DiagnosticSeverity.Error, "factory used as a value");
+
+    /// <summary>A test of a factory method that declares a receiver fixture it has no use for (spec 25.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryTestDeclaresAReceiver =
+        new("PC0132", DiagnosticSeverity.Error, "test of a factory method declares a receiver");
+
+    /// <summary>
+    /// A factory for a message protobuf's runtime declares, whose generated class goes beside it
+    /// without a project (spec 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryForAWellKnownType =
+        new("PC0133", DiagnosticSeverity.Warning, "factory for a well-known type");
+
+    /// <summary>
+    /// A field of an expected message literal that a test cannot compare: a repeated field, a map,
+    /// or a message given by anything but a literal (spec 25.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ExpectedFieldCannotBeCompared =
+        new("PC0134", DiagnosticSeverity.Error, "expected field cannot be compared");
 
     // ------------------------------------------------------- the configuration file
 

@@ -119,6 +119,13 @@ Contextual keywords:
   follows it, and is an identifier everywhere else, for the same reason.
 - `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail` or a name
   follows it, and is an identifier everywhere else, for the same reason.
+- `factory` is not reserved. It begins a factory declaration ([16.3](./§16-Methods.md#163-factories)) where a name follows it,
+  and is an identifier everywhere else, for the same reason. Nothing else can begin a top-level
+  declaration, so the parser reads it there whatever follows, and a declaration whose message is not
+  named yet is still one. After a message's name and a dot, `Invoice.factory`, it reaches that
+  message's factory; that is a reading of a name, decided by the binder, and not a keyword.
+- `helper` is not reserved. It marks a factory's helper ([16.3](./§16-Methods.md#163-factories)) where `fn` follows it, and is an
+  identifier everywhere else, for the same reason.
 
 `on_missing` is reserved, as `on_zero` is, though `on_unknown` is not. It follows a map lookup's
 closing bracket ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and its fallback may begin with a `-` or a literal, so the word and the one
@@ -157,8 +164,9 @@ Normative Requirements:
   standard modifier set with it. Every category is declared whether or not anything currently
   produces it.
 - A keyword ([6.4](#64-keywords)) is `keyword`, and so is `new` where it begins a message literal, which is where an
-  identifier follows it, and `mut` where it marks a method, which is where `fn` follows it. Anywhere
-  else each is an identifier and is classified as one.
+  identifier follows it, `mut` and `helper` where they mark a method, which is where `fn` follows
+  them, and `factory` where it begins a declaration, which is where an identifier follows it.
+  Anywhere else each is an identifier and is classified as one.
 - A string literal is `string`, an integer or floating-point literal is
   `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
   ([6.2](#62-comments)) is `comment`.
@@ -172,7 +180,8 @@ Normative Requirements:
   coarse, because a wrong colour reads as a fact about the code.
 - **An identifier the binder resolved takes the category of what it resolved to**: a parameter is
   `parameter`, a field of a message is `property`, a constant of an enum is `enumMember`, a ProtoCross
-  method is `method`, a message type is `class`, an enum type is `enum`, and both a local and the
+  method is `method`, a message type is `class`, an enum type is `enum`, a factory is `keyword`, as
+  the word that names it everywhere it is written, `Invoice.factory` included, and both a local and the
   name a `for` binds are `variable`. It is the binder's own resolution that is published, not a
   second lookup of the same name, so what is coloured is what the program means -- a value in scope
   winning over an enum type spelled the same way ([12](./§12-Enums.md#12-enums)) colours as the

@@ -150,9 +150,17 @@ Implemented:
 - Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
   list or an append. A local holds a copy of the message or repeated value it is given, so changing
   the local never changes what it was copied from, in either backend.
+- Factories. `factory Invoice { fn create(options: InvoiceOptions) -> Invoice { ... } }` declares
+  the methods that build a message. Every one returns the message and is called on nothing, as
+  `Invoice.factory.create(options)`, and a `helper fn` in the block is one only the factory may call.
+  A message has one factory. C# generates it as a static class, `InvoiceFactory`, and C++ as a struct
+  of static members, in the project's namespace or beside the message. A test targets one as
+  `test Invoice.factory.create`, with no receiver, and may expect the message it builds as a literal,
+  which is compared by the fields it sets. The spec has the rules in sections 16.3, 24 and 25.3.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow, and what each enum's unnamed numbers become
-- C# backend (extension methods) and C++ backend (header-only free functions)
+- C# backend (extension methods, and a static class per factory) and C++ backend (header-only free
+  functions, and a struct per factory)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends
@@ -162,8 +170,8 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `Result` types, `==` between two messages, asking which member of a `oneof` is
-set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
+Not implemented: `Result` types, `==` between two messages (a test compares an expected literal by
+the fields it sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
 tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
 does not implement, such as iterating a map, rather than emitting something whose semantics differ
 from the spec.

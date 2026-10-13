@@ -8,7 +8,16 @@ public sealed record CompilationUnit(
     IReadOnlyList<ImportDeclaration> Imports,
     IReadOnlyList<ExtendDeclaration> Extends,
     IReadOnlyList<TestDeclaration> Tests,
-    SourceSpan Span) : SyntaxNode(Span);
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>The source's <c>factory</c> blocks, in the order they are written (spec 16.3).</summary>
+    /// <remarks>
+    /// Init-only beside the positional members, as <see cref="MethodDeclaration.IsMutating"/> is, so
+    /// every existing construction of a unit stays valid and describes a source with no factory, which
+    /// every source was before #83.
+    /// </remarks>
+    public IReadOnlyList<FactoryDeclaration> Factories { get; init; } = [];
+}
 
 /// <summary>An <c>import proto "path.proto";</c> declaration (spec 5.2).</summary>
 /// <param name="PathIsMissing">
@@ -28,6 +37,23 @@ public sealed record ExtendDeclaration(
     IReadOnlyList<MethodDeclaration> Methods,
     SourceSpan Span) : SyntaxNode(Span);
 
+/// <summary>A <c>factory MessageName { ... }</c> block: the methods that build that message (spec 16.3).</summary>
+/// <remarks>
+/// A record of its own rather than an <see cref="ExtendDeclaration"/> with a flag, because the two
+/// differ in what their methods are given: an extend block's methods are called on a message, and a
+/// factory's are called on nothing. Everything that reads a declaration has to ask which it holds, and
+/// a type answers that where a flag can be forgotten.
+/// </remarks>
+/// <param name="Keyword">
+/// The <c>factory</c> word, which is what names the block: it declares no type, so a reference to it
+/// is that word, written after the message, and navigating to it selects this one.
+/// </param>
+public sealed record FactoryDeclaration(
+    SyntaxName Keyword,
+    SyntaxName MessageName,
+    IReadOnlyList<MethodDeclaration> Methods,
+    SourceSpan Span) : SyntaxNode(Span);
+
 public sealed record MethodDeclaration(
     SyntaxName Name,
     IReadOnlyList<ParameterDeclaration> Parameters,
@@ -42,6 +68,10 @@ public sealed record MethodDeclaration(
     /// which is what every method was before.
     /// </remarks>
     public bool IsMutating { get; init; }
+
+    /// <summary>Whether the declaration begins <c>helper fn</c>, so only its factory may call it (spec 16.3).</summary>
+    /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
+    public bool IsHelper { get; init; }
 }
 
 public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, SourceSpan Span) : SyntaxNode(Span);
@@ -72,8 +102,35 @@ public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNod
 /// written at all is missing on both halves.
 /// </para>
 /// </remarks>
-public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSpan Span) : SyntaxNode(Span);
+public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// The <c>factory</c> of <c>Invoice.factory.create</c>, when the target is a factory's method;
+    /// null for a method an extend block declares (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The word is kept apart from <see cref="Receiver"/>, which then names the message alone, so that
+    /// each of the three has a range of its own to navigate from, as the two halves already do.
+    /// </para>
+    /// <para>
+    /// The parser sets it wherever <c>factory</c> is the segment before the method, because a test of a
+    /// factory method has no receiver to declare and the parser is what asks for one. It cannot know
+    /// whether the message has a factory, or instead a nested type named <c>factory</c> with methods
+    /// of its own; the binder settles that, and a target that turns out to be the nested type's is
+    /// bound as one, receiver and all.
+    /// </para>
+    /// <para>Init-only, so every existing construction of a target stays valid and names an extend method.</para>
+    /// </remarks>
+    public SyntaxName? Factory { get; init; }
+}
 
+/// <param name="Receiver">
+/// The fixture the method is called on. A test that writes none holds an empty one at the point one
+/// would be typed, which says so (<see cref="TestReceiverFixture.IsWritten"/>): a test of an extend
+/// method that leaves it out has been reported, and a test of a factory's method has nothing to call
+/// its method on and leaves it out as it should (spec 25.3).
+/// </param>
 public sealed record TestDeclaration(
     TestTarget Target,
     string Name,
@@ -90,7 +147,23 @@ public sealed record TestDeclaration(
 /// </remarks>
 public sealed record TestReceiverFixture(
     IReadOnlyList<FieldInitializer> Fields,
-    SourceSpan Span) : SyntaxNode(Span);
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// Whether the author wrote this fixture, rather than the parser standing it in for one that is not
+    /// there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test of a factory's method declares no fixture, and one that declares one anyway is refused
+    /// (spec 25.3). Only the binder knows which method a test targets, so it is the one that asks, and the
+    /// stand-in is what a test that wrote none holds. An empty <c>receiver { }</c> has no fields either, so
+    /// the fields cannot answer.
+    /// </para>
+    /// <para>Init-only with a default of true, so every existing construction of a fixture is one that was written.</para>
+    /// </remarks>
+    public bool IsWritten { get; init; } = true;
+}
 
 /// <summary>One field of a message literal or a fixture: <c>name: value</c> (spec 13.2).</summary>
 /// <remarks>

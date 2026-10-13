@@ -154,10 +154,14 @@ public sealed partial class Binder
                     new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
         }
 
+        // A factory has no message of its own, so naming one whose fields it lacks would mislead.
         _diagnostics.Report(
             DiagnosticCodes.UnknownName,
-            $"'{name.Name}' is not a variable, parameter, or field of "
-            + $"'{context.Receiver.FullName}'.",
+            context.Method is { HasReceiver: false }
+                ? $"'{name.Name}' is not a variable or parameter. A factory method has no "
+                    + $"'{context.Receiver.Name}' of its own, so it reads fields from one it holds."
+                : $"'{name.Name}' is not a variable, parameter, or field of "
+                    + $"'{context.Receiver.FullName}'.",
             name.Span);
         return new IrLiteral(null, ErrorType.Instance, name.Span);
     }
@@ -289,8 +293,25 @@ public sealed partial class Binder
         Scope scope,
         MethodContext context)
     {
+        // 'Invoice.factory.' is a factory waiting for its method's name, which has been reported where it
+        // is missing. Bound as a value it would be refused as one as well. What it names is recorded,
+        // which is what a list offered after the dot is asked of.
+        if (member.Receiver is MemberAccessExpression reach && TryResolveFactoryReach(reach, scope, context, out _))
+        {
+            return new IrLiteral(null, ErrorType.Instance, member.Receiver.Span);
+        }
+
         if (!TryResolveEnumReceiver(member.Receiver, scope, context, out var descriptor))
         {
+            // 'Invoice.', where Invoice has a factory: the word is all that can follow, so the name is
+            // recorded as the message it is, for the word to be offered, rather than reported as no value.
+            // Asked after the enum, as a type name is asked of the enums first on the way in.
+            if (MessageWithAFactoryNamedBy(member.Receiver, scope, context) is { } message)
+            {
+                Use(SymbolId.ForType(message), member.Receiver.Span);
+                return new IrLiteral(null, ErrorType.Instance, member.Receiver.Span);
+            }
+
             return BindExpression(member.Receiver, scope, context, null);
         }
 
@@ -378,6 +399,11 @@ public sealed partial class Binder
             return new IrMissingMemberAccess(
                 BindReceiverAwaitingAMember(member, scope, context),
                 member.Span);
+        }
+
+        if (TryBindFactoryAsAValue(member, scope, context) is { } factory)
+        {
+            return factory;
         }
 
         // A member access whose receiver is a plain dotted name may be naming an enum constant
@@ -484,7 +510,7 @@ public sealed partial class Binder
     /// <summary>Binds a call, whether or not there turns out to be anything to call.</summary>
     /// <remarks>
     /// <para>
-    /// Nine paths below decide there is no method here. Every one of them still keeps the arguments,
+    /// Many paths below decide there is no method here. Every one of them still keeps the arguments,
     /// in an <see cref="IrUncallableInvocation"/>, because the arguments are source the author wrote
     /// and a call that does not resolve is the ordinary state of one being typed. Collapsing to an
     /// error-typed literal spanning the whole call -- which is what every path used to do -- leaves
@@ -493,7 +519,7 @@ public sealed partial class Binder
     /// </para>
     /// <para>
     /// Arguments are bound once and only once. The one path that reaches a failure with them already
-    /// bound hands over the list it built; the eight that fail before binding anything go through
+    /// bound hands over the list it built; the ones that fail before binding anything go through
     /// <c>Uncallable</c>, which binds with no expected type -- there is no signature to expect
     /// anything from. Binding twice would report every mistake inside an argument twice.
     /// </para>
@@ -514,6 +540,15 @@ public sealed partial class Binder
             // awaiting a member -- rather than looked up as a method called the empty string.
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return Uncallable(BindMemberAccess(member, scope, context));
+
+            // 'Invoice.factory.create()': settled before the receiver is bound, because 'Invoice.factory'
+            // is no value, and binding it as one reports that it is not.
+            case MemberAccessExpression { Receiver: MemberAccessExpression reach } member
+                when TryResolveFactoryReach(reach, scope, context, out var builds):
+                return builds is not null
+                    && ResolveFactoryMethod(builds, member.Name, invocation.Span, context) is { } factoryMethod
+                        ? BindCall(null, factoryMethod, member.Name.Span, invocation, scope, context)
+                        : Uncallable(null);
 
             case MemberAccessExpression member:
             {
@@ -567,6 +602,13 @@ public sealed partial class Binder
                 break;
             }
 
+            // Inside a factory, a bare call is to the factory's own methods and helpers, as one in an
+            // extend method is to its receiver's (spec 16.3).
+            case NameExpression name when context.Method is { HasReceiver: false } factoryMember:
+                return ResolveFactoryMethod(factoryMember.Receiver, name.Name, invocation.Span, context) is { } sibling
+                    ? BindCall(null, sibling, name.Name.Span, invocation, scope, context)
+                    : Uncallable(null);
+
             // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
             // field name there names no field. Bound against the method's receiver it would read the
             // message the fixture is still building, which neither backend can generate: C# reads the
@@ -613,6 +655,40 @@ public sealed partial class Binder
             return Uncallable(receiver);
         }
 
+        if (!signature.HasReceiver)
+        {
+            Use(signature.Id, methodNameSpan);
+            ReportFactoryMethodCalledOnAValue(signature, invocation.Span);
+            return Uncallable(receiver);
+        }
+
+        return BindCall(receiver, signature, methodNameSpan, invocation, scope, context);
+
+        // For the paths that give up before any argument has been looked at. There is no signature
+        // to take an expected type from -- that is what they gave up on -- so each argument is bound
+        // for whatever it is on its own.
+        IrUncallableInvocation Uncallable(IrExpression? boundReceiver)
+            => new(
+                boundReceiver,
+                [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))],
+                invocation.Span);
+    }
+
+    /// <summary>
+    /// Binds a call to <paramref name="signature"/>, now that what it is called on, if anything, is
+    /// settled: its arguments, and whether they are the ones it takes.
+    /// </summary>
+    /// <param name="receiver">What it is called on, or null for a factory's method, called on nothing.</param>
+    /// <param name="methodNameSpan">The method's name as the call writes it, which is what resolved to it.</param>
+    private IrExpression BindCall(
+        IrExpression? receiver,
+        IrMethodSignature signature,
+        SourceSpan methodNameSpan,
+        InvocationExpression invocation,
+        Scope scope,
+        MethodContext context)
+    {
+        var methodName = signature.Name;
         Use(signature.Id, methodNameSpan);
 
         // Reported and then bound as the call it is. The call is well formed and resolves; what is
@@ -669,15 +745,6 @@ public sealed partial class Binder
         }
 
         return call;
-
-        // For the eight paths that give up before any argument has been looked at. There is no
-        // signature to take an expected type from -- that is what they gave up on -- so each
-        // argument is bound for whatever it is on its own.
-        IrUncallableInvocation Uncallable(IrExpression? boundReceiver)
-            => new(
-                boundReceiver,
-                [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))],
-                invocation.Span);
     }
 
     /// <summary>

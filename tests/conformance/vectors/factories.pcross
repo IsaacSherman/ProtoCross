@@ -1,0 +1,179 @@
+// Conformance vectors for factories (spec 16.3): a message's factory, whose methods build it and are
+// called on nothing.
+//
+// C# generates each factory as a static class beside its message, and C++ as a struct of static
+// members, each with its helpers private. These pin that the two build the same message: fields
+// derived from the options, a nested message built by its own factory, a factory calling another's,
+// a sibling called by its bare name, a helper, a mut fn called on the message being built, and a
+// factory called from an extend method. A test of a factory's method expects the message it builds
+// by the fields that matter (spec 25.3), presence included where a field has it.
+
+import proto "factories.proto";
+
+extend FactoryInvoice {
+    mut fn apply_discount(cents: int64) {
+        discount_cents = cents;
+        total_cents -= cents;
+        status = FactoryStatus.FACTORY_STATUS_DISCOUNTED;
+    }
+}
+
+factory FactoryInvoice {
+    // Every field derived from the options, the discount through a mut fn on the local being built.
+    fn create(options: FactoryInvoiceOptions) -> FactoryInvoice {
+        var subtotal: int64 = subtotal_of(options);
+        var built: FactoryInvoice = new FactoryInvoice {
+            number: options.number,
+            subtotal_cents: subtotal,
+            total_cents: subtotal,
+            status: FactoryStatus.FACTORY_STATUS_OPEN,
+            first_line: Line.factory.of("first", options.unit_cents),
+        };
+
+        if options.discount_cents > 0 {
+            built.apply_discount(options.discount_cents);
+        }
+
+        return built;
+    }
+
+    // A sibling, called by its bare name.
+    fn blank(number: string) -> FactoryInvoice {
+        return create(new FactoryInvoiceOptions { number: number });
+    }
+
+    // Another message's factory, called through it.
+    fn for_customer(name: string, tier: int64) -> FactoryInvoice {
+        return new FactoryInvoice {
+            number: name,
+            customer: FactoryCustomer.factory.named(name, tier),
+        };
+    }
+
+    // Ends the program for an empty order, which a test can only expect to fail.
+    fn per_line(options: FactoryInvoiceOptions) -> FactoryInvoice {
+        return new FactoryInvoice {
+            subtotal_cents: options.unit_cents / options.line_count on_zero fail,
+        };
+    }
+
+    fn rated(rate: double) -> FactoryInvoice {
+        return new FactoryInvoice { rate: rate };
+    }
+
+    helper fn subtotal_of(options: FactoryInvoiceOptions) -> int64 {
+        return options.line_count * options.unit_cents;
+    }
+}
+
+factory FactoryCustomer {
+    fn named(name: string, tier: int64) -> FactoryCustomer {
+        return new FactoryCustomer { name: name, tier: tier };
+    }
+}
+
+// A nested message's factory, generated as FactoryInvoice_LineFactory in both backends.
+factory Line {
+    fn of(label: string, cents: int64) -> Line {
+        return new Line { label: label, cents: cents };
+    }
+}
+
+extend FactoryOrder {
+    // A factory called from an extend method, and what it built read back.
+    fn invoice_total() -> int64 {
+        var built: FactoryInvoice = FactoryInvoice.factory.create(new FactoryInvoiceOptions {
+            number: number,
+            line_count: lines,
+            unit_cents: unit_cents,
+        });
+
+        return built.total_cents;
+    }
+
+    fn first_line_cents() -> int64 {
+        var built: FactoryInvoice = FactoryInvoice.factory.create(new FactoryInvoiceOptions {
+            number: number,
+            line_count: lines,
+            unit_cents: unit_cents,
+        });
+
+        if has built.first_line {
+            return built.first_line.cents;
+        }
+
+        return -1;
+    }
+}
+
+test FactoryInvoice.factory.create "derives every field from the options" {
+    arg options = new FactoryInvoiceOptions { number: "A1", line_count: 3, unit_cents: 250 };
+    expect return new FactoryInvoice {
+        number: "A1",
+        subtotal_cents: 750,
+        total_cents: 750,
+        status: FactoryStatus.FACTORY_STATUS_OPEN,
+        first_line: new Line { label: "first", cents: 250 },
+    };
+}
+
+test FactoryInvoice.factory.create "a discount sets the optional field" {
+    arg options = new FactoryInvoiceOptions { number: "A2", line_count: 2, unit_cents: 300, discount_cents: 100 };
+    expect return new FactoryInvoice {
+        discount_cents: 100,
+        total_cents: 500,
+        status: FactoryStatus.FACTORY_STATUS_DISCOUNTED,
+    };
+}
+
+test FactoryInvoice.factory.create "an optional field set to zero is still set" {
+    arg options = new FactoryInvoiceOptions { number: "A3", line_count: 1, unit_cents: 40, discount_cents: 40 };
+    expect return new FactoryInvoice { discount_cents: 40, total_cents: 0 };
+}
+
+test FactoryInvoice.factory.blank "a sibling is called by its bare name" {
+    arg number = "B1";
+    expect return new FactoryInvoice { number: "B1", subtotal_cents: 0, total_cents: 0 };
+}
+
+test FactoryInvoice.factory.for_customer "another message's factory builds a field" {
+    arg name = "ada";
+    arg tier = 2;
+    expect return new FactoryInvoice { customer: new FactoryCustomer { name: "ada", tier: 2 } };
+}
+
+test FactoryInvoice.factory.per_line "an empty order ends the program" {
+    arg options = new FactoryInvoiceOptions { number: "C1", line_count: 0, unit_cents: 100 };
+    expect fail;
+}
+
+test FactoryInvoice.factory.rated "a NaN rate meets a NaN" {
+    arg rate = __NAN;
+    expect return new FactoryInvoice { rate: __NAN };
+}
+
+test Line.factory.of "a nested message has a factory of its own" {
+    arg label = "only";
+    arg cents = 75;
+    expect return new Line { label: "only", cents: 75 };
+}
+
+test FactoryOrder.invoice_total "a factory called from an extend method" {
+    receiver {
+        number: "O1",
+        lines: 4,
+        unit_cents: 125,
+    }
+
+    expect return 500;
+}
+
+test FactoryOrder.first_line_cents "a nested message built by its factory is read back" {
+    receiver {
+        number: "O2",
+        lines: 1,
+        unit_cents: 90,
+    }
+
+    expect return 90;
+}

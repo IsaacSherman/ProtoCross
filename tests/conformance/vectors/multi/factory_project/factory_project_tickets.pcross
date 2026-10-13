@@ -1,0 +1,38 @@
+// Conformance vectors for a factory in a project: the first of two sources, which declares the
+// factory. See factory_project_bookings.pcross for the source that calls it.
+//
+// In a project, the factory's class is declared in the project's namespace, factory_project, and not
+// beside the message in protocross.conformance (spec 24). So the call from the other source names the
+// project's namespace, and in C++ includes this source's header.
+
+import proto "factory_project.proto";
+
+factory ProjectedTicket {
+    fn for_seats(code: string, seats: int64) -> ProjectedTicket {
+        return new ProjectedTicket {
+            code: code,
+            seats: seats,
+            price_cents: price_of(seats),
+        };
+    }
+
+    helper fn price_of(seats: int64) -> int64 {
+        if seats > 4 {
+            return seats * 900;
+        }
+
+        return seats * 1000;
+    }
+}
+
+test ProjectedTicket.factory.for_seats "a small party pays the full price" {
+    arg code = "T1";
+    arg seats = 2;
+    expect return new ProjectedTicket { code: "T1", seats: 2, price_cents: 2000 };
+}
+
+test ProjectedTicket.factory.for_seats "a large party pays less a seat" {
+    arg code = "T2";
+    arg seats = 5;
+    expect return new ProjectedTicket { price_cents: 4500 };
+}

@@ -114,6 +114,40 @@ public static class NameConventions
     }
 
     /// <summary>
+    /// The class a message's factory is generated into, in every backend: the message's name and the
+    /// names of the messages enclosing it, each PascalCased and joined by underscores, then
+    /// <c>Factory</c>. So <c>Invoice</c> is <c>InvoiceFactory</c> and <c>Outer.invoice_line</c> is
+    /// <c>Outer_InvoiceLineFactory</c> (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One name for both backends, because it is the name a consumer types, and a factory spelled
+    /// differently in C# and C++ is two APIs to learn for one declaration. The enclosing names are
+    /// joined rather than dropped so that a nested message's factory cannot be a top-level one's, as
+    /// protoc flattens a nested message's C++ class.
+    /// </para>
+    /// <para>
+    /// The rule a C# extension class beside its message already follows, with another suffix, rather
+    /// than protoc's spelling of the message's own class. That spelling is the message's name as written
+    /// in C# and its flattened name in C++, so following it would give the factory two names, and
+    /// <c>invoice_lineFactory</c> in either. The suffix keeps every result out of both languages'
+    /// keywords, which are lowercase and none of which ends in it.
+    /// </para>
+    /// </remarks>
+    public static string GetFactoryClassName(MessageDescriptor message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var parts = new List<string>();
+        for (var current = message; current is not null; current = current.ContainingType)
+        {
+            parts.Insert(0, ToPascalCase(current.Name));
+        }
+
+        return string.Join('_', parts) + "Factory";
+    }
+
+    /// <summary>
     /// What follows a source's name in the names of the tests generated from it:
     /// <c>pricing.tests.g.cs</c>, <c>pricing.tests.cc</c>.
     /// </summary>

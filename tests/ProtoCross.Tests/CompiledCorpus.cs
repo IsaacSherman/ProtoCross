@@ -164,6 +164,35 @@ internal static class CompiledCorpus
         Compilation.Compile(TestPaths.WriteTempScript(UnclosedText), [TestPaths.ExampleProtoDirectory]));
 
     /// <summary>
+    /// A factory reached while its method's name, and then the word itself, are still being typed
+    /// (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <c>Invoice.factory.</c> and <c>Invoice.</c> name no value, and a finished source never writes
+    /// either, so only a buffer like this one puts the binder where it records what each names for a
+    /// list to be offered after the dot, with an error standing where a value would.
+    /// </remarks>
+    public const string UnfinishedFactoryText =
+        """
+        import proto "invoice.proto";
+
+        factory Invoice {
+            fn empty() -> Invoice { return new Invoice { }; }
+        }
+
+        extend Invoice {
+            fn reached() -> Invoice { return Invoice.factory. }
+
+            fn named() -> Invoice { return Invoice. }
+        }
+        """;
+
+    public static CorpusSource UnfinishedFactory { get; } = new(
+        "unfinishedFactory",
+        UnfinishedFactoryText,
+        Compilation.Compile(TestPaths.WriteTempScript(UnfinishedFactoryText), [TestPaths.ExampleProtoDirectory]));
+
+    /// <summary>
     /// The shapes a dotted name can take, which the rest of the corpus does not happen to contain.
     /// </summary>
     /// <remarks>
@@ -317,6 +346,7 @@ internal static class CompiledCorpus
         SimpleScript,
         Broken,
         Unclosed,
+        UnfinishedFactory,
         Qualified,
         .. CrossFile,
         .. ConformanceVectors.HandWritten.SelectMany(vector => Each(vector.SourcePaths, ConformanceVectors.Compile(vector))),

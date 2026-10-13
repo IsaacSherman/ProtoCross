@@ -61,6 +61,10 @@ public static class IrWalk
     /// twice would be two places for it to be wrong.
     /// </para>
     /// <para>
+    /// A <c>factory</c> block contributes itself, as well as its methods: it declares no type, and is
+    /// a symbol so that <c>Invoice.factory</c> can be followed to it.
+    /// </para>
+    /// <para>
     /// A <c>test</c> contributes nothing. It declares no name of its own, and its target's
     /// parameters are declared by the method: walking them here would report one parameter once per
     /// test that supplies it.
@@ -76,10 +80,11 @@ public static class IrWalk
     {
         ArgumentNullException.ThrowIfNull(module);
 
-        return module.Methods.SelectMany(method =>
-            new[] { method.Signature.Declaration }
-                .Concat(method.Parameters.Select(parameter => parameter.Declaration))
-                .Concat(DescendantsAndSelf(method).SelectMany(DeclarationsIn)));
+        return module.Factories.Select(factory => factory.Declaration)
+            .Concat(module.Methods.SelectMany(method =>
+                new[] { method.Signature.Declaration }
+                    .Concat(method.Parameters.Select(parameter => parameter.Declaration))
+                    .Concat(DescendantsAndSelf(method).SelectMany(DeclarationsIn))));
     }
 
     /// <inheritdoc cref="DeclarationsOf"/>
@@ -144,7 +149,9 @@ public static class IrWalk
 
             IrFieldAccess field => [field.Receiver],
             IrFieldPresence presence => [presence.Receiver],
-            IrMethodCall call => [call.Receiver, .. call.Arguments],
+            IrMethodCall call => call.Receiver is { } receiver
+                ? [receiver, .. call.Arguments]
+                : [.. call.Arguments],
             IrUncallableInvocation call => call.Receiver is { } receiver
                 ? [receiver, .. call.Arguments]
                 : [.. call.Arguments],
@@ -176,6 +183,7 @@ public static class IrWalk
             IrTest test => [test.Receiver, .. test.Arguments, test.Expectation],
             IrTestArgument argument => [argument.Value],
             IrTestReturnExpectation expectation => [expectation.Value],
+            IrTestFieldsExpectation expectation => [expectation.Expected],
 
             _ => [],
         };
