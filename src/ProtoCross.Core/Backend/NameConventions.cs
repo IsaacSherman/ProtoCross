@@ -137,6 +137,20 @@ public static class NameConventions
     public static string GetFactoryClassName(MessageDescriptor message)
     {
         ArgumentNullException.ThrowIfNull(message);
+        return GetFlattenedPascalCaseName(message) + "Factory";
+    }
+
+    /// <summary>
+    /// A message's name and the names of the messages enclosing it, each <see cref="ToPascalCase"/>d
+    /// and joined by underscores: <c>Outer.invoice_line</c> is <c>Outer_InvoiceLine</c>.
+    /// </summary>
+    /// <remarks>
+    /// What a class generated for a message is named from: a factory's, and a C# extension class beside
+    /// its message. One rule rather than a walk in each, because spec 24 describes them as one.
+    /// </remarks>
+    public static string GetFlattenedPascalCaseName(MessageDescriptor message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
 
         var parts = new List<string>();
         for (var current = message; current is not null; current = current.ContainingType)
@@ -144,7 +158,7 @@ public static class NameConventions
             parts.Insert(0, ToPascalCase(current.Name));
         }
 
-        return string.Join('_', parts) + "Factory";
+        return string.Join('_', parts);
     }
 
     /// <summary>

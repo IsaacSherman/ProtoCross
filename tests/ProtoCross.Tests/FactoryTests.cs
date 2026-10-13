@@ -323,6 +323,21 @@ public class FactoryTests
         => AssertOk(Compile(TicketFactory
             + "\nextend Holder {\n    fn f(Ticket: Holder) -> int64 { return Ticket.factory; }\n}\n"));
 
+    /// <summary>
+    /// Written anywhere but before a call's name, the word is a factory only where there is one, so a
+    /// message without one reports what it reported before factories existed (spec 16.3).
+    /// </summary>
+    [Theory]
+    [InlineData("var f = Holder.factory;\n        return 0;")]
+    [InlineData("var f = Holder.factory.none;\n        return 0;")]
+    public void TheWordAfterAMessageWithoutAFactoryIsTheUnknownNameItWas(string body)
+    {
+        var result = Compile("extend Ticket {\n    fn f() -> int64 {\n        " + body + "\n    }\n}\n");
+
+        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.UnknownName.Code);
+        Assert.DoesNotContain(result.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.FactoryUsedAsAValue.Code);
+    }
+
     [Fact]
     public void AHelperMayBeWrittenOnlyInAFactory()
         => TheOnly(

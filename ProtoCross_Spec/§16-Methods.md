@@ -118,9 +118,11 @@ Normative Requirements:
 - **A factory's own methods and helpers call each other by bare name**, as a method reaches its
   receiver's members, and anywhere else as `Message.factory.method(…)`. A factory method called on a
   message, `invoice.create()`, or by bare name in an `extend` block, is `PC0130`, whose help spells the
-  call through the factory. `Message.factory` written anywhere but before a call's name is `PC0131`;
-  `Message.factory.create` not called is `PC0040`, as a method is; and a call through the factory of a
-  message that has none, or to a name it lacks, is `PC0044`.
+  call through the factory. A call through the factory of a message that has none, or to a name it
+  lacks, is `PC0044`. Anywhere else the word is read as the factory only where the message has one:
+  `Message.factory` written anywhere but before a call's name is then `PC0131`, and
+  `Message.factory.create` not called is `PC0040`, as a method is. For a message with no factory either
+  is the unknown name `PC0037` it was before factories existed.
 - **`Message.factory` is read as the factory only where `Message` is not a value.** A local, a
   parameter or a field named like the message wins, as a value wins over an enum's name
   ([12](./§12-Enums.md#12-enums)), and the dot reaches into it.

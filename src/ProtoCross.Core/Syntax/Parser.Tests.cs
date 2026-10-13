@@ -61,11 +61,7 @@ public sealed partial class Parser
             // factory's.
             if (target.Factory is null)
             {
-                _diagnostics.Report(
-                    DiagnosticCodes.TestHasNoReceiver,
-                    "A ProtoCross unit test must declare the protobuf receiver fixture.",
-                    Spanning(start, end),
-                    "Add a 'receiver { ... }' block.");
+                ReportTestHasNoReceiver(_diagnostics, Spanning(start, end));
             }
 
             // The diagnostic is about the whole test; the node stands for a block that is not there,
@@ -96,6 +92,18 @@ public sealed partial class Parser
             expectation,
             Spanning(start, end));
     }
+
+    /// <summary>Reports a test of an extend method that declares no fixture to call it on (spec 25.3).</summary>
+    /// <remarks>
+    /// Shared with the binder, which is the one to report it for a target the parser read as a factory's
+    /// and that turned out to be a nested type's method, so the two say it in one way.
+    /// </remarks>
+    internal static void ReportTestHasNoReceiver(DiagnosticBag diagnostics, SourceSpan span)
+        => diagnostics.Report(
+            DiagnosticCodes.TestHasNoReceiver,
+            "A ProtoCross unit test must declare the protobuf receiver fixture.",
+            span,
+            "Add a 'receiver { ... }' block.");
 
     private TestReceiverFixture ParseTestReceiver()
     {

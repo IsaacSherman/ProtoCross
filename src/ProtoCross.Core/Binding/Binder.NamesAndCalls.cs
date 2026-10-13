@@ -296,7 +296,8 @@ public sealed partial class Binder
         // 'Invoice.factory.' is a factory waiting for its method's name, which has been reported where it
         // is missing. Bound as a value it would be refused as one as well. What it names is recorded,
         // which is what a list offered after the dot is asked of.
-        if (member.Receiver is MemberAccessExpression reach && TryResolveFactoryReach(reach, scope, context, out _))
+        if (member.Receiver is MemberAccessExpression reach
+            && TryResolveFactoryReach(reach, scope, context, out _, onlyAFactory: true))
         {
             return new IrLiteral(null, ErrorType.Instance, member.Receiver.Span);
         }

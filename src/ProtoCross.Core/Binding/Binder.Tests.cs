@@ -75,11 +75,7 @@ public sealed partial class Binder
 
         if (signature.HasReceiver && !fixture.IsWritten && test.Target.Factory is not null)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.TestHasNoReceiver,
-                "A ProtoCross unit test must declare the protobuf receiver fixture.",
-                test.Span,
-                "Add a 'receiver { ... }' block.");
+            Parser.ReportTestHasNoReceiver(_diagnostics, test.Span);
         }
 
         if (!signature.HasReceiver && fixture.IsWritten)

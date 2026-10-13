@@ -267,15 +267,19 @@ public sealed partial class Binder
     /// that, and <c>factory</c> is one of its fields.
     /// </para>
     /// <para>
-    /// Whether the message has a factory is not asked here. <c>Invoice.factory.create()</c> on a message
-    /// with none is still a call through a factory, and is refused as that.
+    /// A call asks it of any message: <c>Invoice.factory.create()</c> on a message with none is still a
+    /// call through a factory, and is refused as that. Anywhere else the word is read as the factory
+    /// only where there is one, asked with <paramref name="onlyAFactory"/>, and is otherwise the
+    /// unknown name it was before factories existed, so a source that wrote it then reports what it did.
     /// </para>
     /// </remarks>
+    /// <param name="onlyAFactory">Whether to answer only for a message that has a factory.</param>
     private bool TryResolveFactoryReach(
         MemberAccessExpression reach,
         Scope scope,
         MethodContext context,
-        out MessageDescriptor? message)
+        out MessageDescriptor? message,
+        bool onlyAFactory = false)
     {
         message = null;
 
@@ -290,7 +294,8 @@ public sealed partial class Binder
         var typeName = DottedName(reach.Receiver);
         if (Visible.ResolveReceiver(typeName) is not { } resolved)
         {
-            if (Visible.MessagesNamed(typeName).Count == 0
+            if (onlyAFactory
+                || Visible.MessagesNamed(typeName).Count == 0
                 && _types.ResolveReceiver(typeName) is null
                 && _types.MessagesNamed(typeName).Count == 0)
             {
@@ -303,7 +308,8 @@ public sealed partial class Binder
             return true;
         }
 
-        if (!_factories.ContainsKey(resolved.FullName) && NestedTypeNamedFactory(resolved) is not null)
+        if (!_factories.ContainsKey(resolved.FullName)
+            && (onlyAFactory || NestedTypeNamedFactory(resolved) is not null))
         {
             return false;
         }
@@ -423,7 +429,7 @@ public sealed partial class Binder
     /// <returns>Null when <paramref name="member"/> is neither, and is bound the ordinary way.</returns>
     private IrExpression? TryBindFactoryAsAValue(MemberAccessExpression member, Scope scope, MethodContext context)
     {
-        if (TryResolveFactoryReach(member, scope, context, out var factoryOf))
+        if (TryResolveFactoryReach(member, scope, context, out var factoryOf, onlyAFactory: true))
         {
             if (factoryOf is not null)
             {
@@ -439,7 +445,7 @@ public sealed partial class Binder
         }
 
         if (member.Receiver is not MemberAccessExpression reach
-            || !TryResolveFactoryReach(reach, scope, context, out var builds))
+            || !TryResolveFactoryReach(reach, scope, context, out var builds, onlyAFactory: true))
         {
             return null;
         }

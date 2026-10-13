@@ -113,15 +113,7 @@ public sealed partial class CSharpBackend
     };
 
     private static string ExtensionClassName(MessageDescriptor receiver)
-    {
-        var parts = new List<string>();
-        for (var current = receiver; current is not null; current = current.ContainingType)
-        {
-            parts.Insert(0, NameConventions.ToPascalCase(current.Name));
-        }
-
-        return string.Join('_', parts) + "ProtoCrossExtensions";
-    }
+        => NameConventions.GetFlattenedPascalCaseName(receiver) + "ProtoCrossExtensions";
 
     /// <summary>
     /// Where one source's behavior declares each receiver's extension methods: the namespace, the
