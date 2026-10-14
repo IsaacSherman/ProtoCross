@@ -329,10 +329,15 @@ Potential strategies:
 `const T&`, or as `T&` for a `mut fn`, in the project's namespace, or in the message's own protobuf
 namespace for sources compiled without a project. A consumer calls
 `acme::billing::line_total_cents(order)`. This subclasses nothing, needs no protoc insertion points,
-and behaves the same whether the protobuf codegen is regenerated or vendored. All declarations are
-emitted before any definition so methods may call one another in any order. Every call a generated
-function or test makes to another is qualified with the callee's namespace, so argument-dependent
-lookup cannot find another library's function of the same name.
+and behaves the same whether the protobuf codegen is regenerated or vendored. A header declares
+every function and factory it defines, in every namespace, before it defines any, so methods may call
+one another in any order. Without a project, a source that extends messages of two packages declares
+functions in two namespaces in one header, and a method in either may call a method or a factory of
+the other. Namespaces are written in the order of their names. A header that declares functions in
+one namespace and calls no other source declares and defines them inside it; any other writes every
+namespace's declarations, then every namespace's definitions, opening each namespace again for its
+definitions. Every call a generated function or test makes to another is qualified with the callee's
+namespace, so argument-dependent lookup cannot find another library's function of the same name.
 
 **A factory is a struct of static member functions, and its helpers are private static members.**
 A namespace cannot keep a member private, and a factory's helpers are its own. The struct is declared
@@ -356,10 +361,9 @@ into a header of its own, and a method may call one another source declares. A h
 do includes each such source's header after its own declarations and before its definitions. Two
 sources may therefore call each other, and whichever of their headers a translation unit includes
 first, the other's definitions find the functions they call already declared, while the include
-guard stops the inclusion going round again. A header that calls no other source includes none, and
-is laid out as it always was. A generated test driver includes the header of each source whose
-methods its tests call. That is the method a test targets, and any method its fixture, arguments or
-expectation call on a literal.
+guard stops the inclusion going round again. A header that calls no other source includes none. A
+generated test driver includes the header of each source whose methods its tests call. That is the
+method a test targets, and any method its fixture, arguments or expectation call on a literal.
 
 A header includes the protobuf header of each schema its methods' receivers are declared in. Each of
 those includes the header of every schema its own schema imports. Any other schema a header names a

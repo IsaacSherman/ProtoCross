@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package protocross.conformance.alpha;
+
+import "cross_package_beta.proto";
+
+// cross_package.pcross -- one source whose behavior is declared in two namespaces (spec 24.2).
+//
+// A schema declares one package, and this vector needs two, so its order is declared here and the
+// ticket it holds in cross_package_beta.proto. The packages are named so that this one's namespace
+// is written first in the header: what the vector pins is a call from it into the one after it.
+message CrossPackageOrder {
+  int64 quantity = 1;
+  protocross.conformance.beta.CrossPackageTicket ticket = 2;
+}

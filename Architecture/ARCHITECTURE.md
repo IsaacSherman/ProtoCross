@@ -711,7 +711,10 @@ A backend is handed one source's part of the module, and a call in it may name a
 source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
 declares the part. A C++ header includes the headers of the sources it calls, after its own
 declarations and before its definitions, so two sources that call each other compile whichever header
-comes first; one that calls none is laid out as it always was.
+comes first. A header that declares functions in more than one namespace, as one source extending
+messages of two packages does without a project, also writes every namespace's declarations before any
+definition, so a call between its namespaces finds its callee declared. A header with one namespace
+that calls no other source is laid out as it always was.
 
 Where that class or function is declared is each backend's `Placement` (spec 24). A project's
 compilation carries the project's namespace, read from the project's name, from `CompilationOptions`
