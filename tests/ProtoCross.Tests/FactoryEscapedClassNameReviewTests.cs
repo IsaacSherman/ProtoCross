@@ -36,14 +36,19 @@ public class FactoryEscapedClassNameReviewTests
         Assert.Equal("New_ItemFactory", NameConventions.GetFactoryClassName(item!));
         Assert.Equal("New__ItemFactory", NameConventions.GetCppTypeName(other!));
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        Assert.NotNull(protobuf);
-        Assert.NotNull(protobuf!.ProtocPath);
+        // Writing a header needs protoc and nothing of C++'s, so any protoc will do when no C++ install has one.
+        var protoc = Toolchain.LocateProtobufCpp()?.ProtocPath ?? Toolchain.LocateProtoc();
+        if (protoc is null)
+        {
+            Assert.Skip("No protoc found to show the C++ name protoc gives the nested type.");
+        }
+
         var workspace = CppTestWorkspace.Create("factory-escaped-name-review");
-        var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, directory, "escaped_factory.proto");
+        var generated = workspace.GenerateProtobuf(protoc, directory, "escaped_factory.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
         var header = File.ReadAllText(Path.Combine(workspace.Directory, "escaped_factory.pb.h"));
-        Assert.Contains("class New__ItemFactory final", header, StringComparison.Ordinal);
+        // From protoc 35 a macro stands between 'class' and the name.
+        Assert.Contains("New__ItemFactory final", header, StringComparison.Ordinal);
 
         Assert.True(result.Success,
             "The factory and the nested schema type have different names in both backends, so neither collides: "
