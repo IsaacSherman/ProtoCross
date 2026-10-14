@@ -63,16 +63,13 @@ public sealed partial class CppBackend : ITestProjectScaffold
             .ToList();
 
         var siblings = SiblingHeadersCalledFrom(module);
-        if (namespaces.Count <= 1 && siblings.Count == 0)
+        if (namespaces is [var (name, methods)] && siblings.Count == 0)
         {
-            foreach (var (name, methods) in namespaces)
+            using (OpenNamespace(writer, name))
             {
-                using (OpenNamespace(writer, name))
-                {
-                    WriteDeclarations(writer, methods, placement);
-                    writer.WriteLine();
-                    WriteDefinitions(writer, methods, placement);
-                }
+                WriteDeclarations(writer, methods, placement);
+                writer.WriteLine();
+                WriteDefinitions(writer, methods, placement);
             }
         }
         else

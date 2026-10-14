@@ -56,7 +56,9 @@ serialization format of their own.
    message would declare it twice there (`ConformanceVectorTests.NoTwoVectorsDeclareOneMethod`
    enforces this), and a message of its own means never having to check. A schema per vector, rather
    than one they all share, is what lets two branches add vectors at once without meeting at the end
-   of the same file.
+   of the same file. A schema declares one package, so a vector that needs two imports a second
+   schema named after the vector and its part, as `cross_package.proto` imports
+   `cross_package_beta.proto`.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
 3. Run `dotnet test ProtoCross.slnx`.
