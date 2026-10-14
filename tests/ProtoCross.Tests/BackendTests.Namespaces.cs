@@ -1,7 +1,6 @@
 using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Diagnostics;
-using ProtoCross.Tests.Conformance;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -23,35 +22,48 @@ public partial class BackendTests
     /// install is found, and this asks the same of the text on every machine.
     /// </para>
     /// <para>
-    /// Swept over the corpus rather than asked of one vector, because a header takes one of two
-    /// layouts by how many namespaces it writes and whether it calls another source, and the corpus
-    /// holds each kind: one namespace, two, a source calling another, and a source of tests alone.
+    /// Swept over every program of <see cref="CompiledCorpus.All"/> that compiles, rather than asked
+    /// of one vector, because a header takes one of two layouts by how many namespaces it writes and
+    /// whether it calls another source, and the corpus holds each kind: one namespace, two, a source
+    /// calling another, and a source of tests alone. The sweep fails when it checks nothing, so a
+    /// change to how a declaration is spelled cannot leave it passing over no headers.
     /// </para>
     /// </remarks>
     [Fact]
     public void EveryHeaderDeclaresEveryFunctionBeforeDefiningAny()
     {
-        foreach (var vector in ConformanceVectors.HandWritten)
+        var programs = CompiledCorpus.All
+            .Select(source => source.Result)
+            .Where(result => result.Success)
+            .Distinct();
+        var checkedHeaders = 0;
+
+        foreach (var program in programs)
         {
-            var result = ConformanceVectors.Compile(vector);
-            var headers = SourceEmission.Emit(result, new CppBackend(), new DiagnosticBag())
-                .Where(file => file.RelativePath.EndsWith(".pc.h", StringComparison.Ordinal));
+            var headers = SourceEmission.Emit(program, new CppBackend(), new DiagnosticBag())
+                .Where(file => file.RelativePath != CppRuntime.FileName);
 
             foreach (var header in headers)
             {
                 var lines = header.Contents.Split('\n').Select(line => line.Trim()).ToList();
-                var lastDeclaration = lines.FindLastIndex(IsDeclaration);
                 var firstDefinition = lines.FindIndex(IsDefinition);
-
-                // A source of tests alone generates a header that defines nothing.
-                if (firstDefinition >= 0 && lastDeclaration > firstDefinition)
+                if (firstDefinition < 0)
                 {
-                    Assert.Fail(
-                        $"{vector.Name}: {header.RelativePath} declares '{lines[lastDeclaration]}' on line "
-                        + $"{lastDeclaration + 1}, after defining '{lines[firstDefinition]}' on line {firstDefinition + 1}.");
+                    // A source of tests alone generates a header that defines nothing.
+                    continue;
                 }
+
+                checkedHeaders++;
+                var lastDeclaration = lines.FindLastIndex(IsDeclaration);
+                Assert.True(lastDeclaration >= 0, $"{header.RelativePath} defines functions without declaring any.");
+                Assert.True(
+                    lastDeclaration < firstDefinition,
+                    $"{header.RelativePath} declares '{lines[lastDeclaration]}' on line {lastDeclaration + 1}, "
+                    + $"after defining '{lines[firstDefinition]}' on line {firstDefinition + 1}.");
             }
         }
+
+        Assert.True(checkedHeaders > 0, "no header the corpus generates defines a function, so nothing was checked");
     }
 
     /// <summary>A function's declaration, or a factory's member declared in its struct.</summary>
