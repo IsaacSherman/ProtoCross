@@ -18,11 +18,13 @@ namespace ProtoCross.Backend.Cpp;
 /// its own for sources that are not a project's; see <c>Placement</c>. Declarations are emitted
 /// ahead of definitions so methods may call one another in any order.
 /// <para>
-/// A header has two layouts. One whose methods call no other source's declares and defines a
-/// namespace at a time, as every header always has. One whose methods do declares everything,
-/// includes the headers it calls, then defines everything, so two sources calling each other compile
-/// in either include order; see <c>WriteAroundSiblings</c>. Keeping the first layout for the common
-/// case is what keeps generating a single source from moving.
+/// A header has two layouts. One that declares functions in one namespace and calls no other
+/// source's declares and then defines them inside that namespace, as such a header always has. Any
+/// other declares everything, in every namespace, includes the headers it calls, then defines
+/// everything, so a definition finds what it calls declared whichever namespace or source declares
+/// it, and two sources calling each other compile in either include order; see
+/// <c>WriteEveryDeclarationFirst</c>. Keeping the first layout for the common case is what keeps
+/// generating a single source from moving.
 /// </para>
 /// </remarks>
 public sealed partial class CppBackend : ITestProjectScaffold
@@ -61,21 +63,18 @@ public sealed partial class CppBackend : ITestProjectScaffold
             .ToList();
 
         var siblings = SiblingHeadersCalledFrom(module);
-        if (siblings.Count == 0)
+        if (namespaces is [var (name, methods)] && siblings.Count == 0)
         {
-            foreach (var (name, methods) in namespaces)
+            using (OpenNamespace(writer, name))
             {
-                using (OpenNamespace(writer, name))
-                {
-                    WriteDeclarations(writer, methods, placement);
-                    writer.WriteLine();
-                    WriteDefinitions(writer, methods, placement);
-                }
+                WriteDeclarations(writer, methods, placement);
+                writer.WriteLine();
+                WriteDefinitions(writer, methods, placement);
             }
         }
         else
         {
-            WriteAroundSiblings(writer, namespaces, siblings, placement);
+            WriteEveryDeclarationFirst(writer, namespaces, siblings, placement);
         }
 
         writer.WriteLine();
@@ -89,12 +88,21 @@ public sealed partial class CppBackend : ITestProjectScaffold
     }
 
     /// <summary>
-    /// Writes a header that calls into other sources' headers: every declaration, then those headers,
-    /// then every definition.
+    /// Writes a header whose definitions may call beyond the namespace they are written in: every
+    /// namespace's declarations, then the headers of the sources it calls, then every namespace's
+    /// definitions.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A method may call one declared in another source of the compilation (spec 5.3), and two
+    /// A source compiled without a project declares each method beside its message, so one that
+    /// extends messages of two packages declares functions in two namespaces, and a method in either
+    /// may call one in the other. Written a namespace at a time, declarations and then definitions,
+    /// a definition in the first namespace called a function the second had not declared yet, and
+    /// the header did not compile. Ordering the namespaces by who calls whom would not have been
+    /// enough, because two namespaces may call each other.
+    /// </para>
+    /// <para>
+    /// A method may also call one declared in another source of the compilation (spec 5.3), and two
     /// sources may call each other. Each header therefore declares everything it defines before it
     /// includes anything it calls, so whichever of two such headers is included first, the other's
     /// definitions find its declarations already written, and the guard stops the include going round
@@ -102,12 +110,13 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// functions the first had not yet declared.
     /// </para>
     /// <para>
-    /// Only a header that calls another source is laid out this way. One that calls none keeps the
-    /// layout it has always had, declarations and definitions a namespace at a time, so generating a
-    /// single source does not move.
+    /// A header with one namespace that calls no other source keeps the layout it has always had,
+    /// declarations and definitions inside the one namespace, because nothing it calls can be declared
+    /// anywhere but above it. Laying it out this way as well would move every such header and fix
+    /// nothing.
     /// </para>
     /// </remarks>
-    private static void WriteAroundSiblings(
+    private static void WriteEveryDeclarationFirst(
         SourceWriter writer,
         IReadOnlyList<(string Namespace, List<IrMethod> Methods)> namespaces,
         IReadOnlyList<string> siblings,
@@ -121,12 +130,15 @@ public sealed partial class CppBackend : ITestProjectScaffold
             }
         }
 
-        writer.WriteLine();
-        writer.WriteLine("// The sources this one calls, included after its own declarations so that two sources");
-        writer.WriteLine("// calling one another compile whichever header is included first.");
-        foreach (var sibling in siblings)
+        if (siblings.Count > 0)
         {
-            writer.WriteLine($"#include \"{sibling}\"");
+            writer.WriteLine();
+            writer.WriteLine("// The sources this one calls, included after its own declarations so that two sources");
+            writer.WriteLine("// calling one another compile whichever header is included first.");
+            foreach (var sibling in siblings)
+            {
+                writer.WriteLine($"#include \"{sibling}\"");
+            }
         }
 
         foreach (var (name, methods) in namespaces)

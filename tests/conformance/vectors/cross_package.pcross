@@ -1,0 +1,82 @@
+// Conformance vectors for one source whose behavior is declared in two namespaces (spec 24.2).
+//
+// Compiled without a project, a method is declared beside its message, in the namespace protoc
+// declared the message in, so a source extending messages of two packages generates one header that
+// declares functions in two C++ namespaces, written in the order of their names. Every declaration
+// is written before any definition, so a function in the first namespace may call one in the second,
+// a method or a factory's member, as readily as the other way round. These pin a call each way
+// between protocross.conformance.alpha and protocross.conformance.beta.
+
+import proto "cross_package.proto";
+
+extend CrossPackageOrder {
+    // A method of the namespace written first, calling a method of the one written after it.
+    fn total_cents() -> int64 {
+        if not has ticket {
+            return 0;
+        }
+
+        return ticket.fare_cents() * quantity;
+    }
+
+    // And calling a member of that namespace's factory.
+    fn upgraded_fare_cents(extra_cents: int64) -> int64 {
+        if not has ticket {
+            return 0;
+        }
+
+        return CrossPackageTicket.factory.priced(ticket.price_cents + extra_cents, ticket.fee_cents).fare_cents();
+    }
+}
+
+// A factory of the namespace written first, building its ticket through the second's.
+factory CrossPackageOrder {
+    fn of(quantity: int64, price: int64, fee: int64) -> CrossPackageOrder {
+        return new CrossPackageOrder { quantity: quantity, ticket: CrossPackageTicket.factory.priced(price, fee) };
+    }
+}
+
+extend CrossPackageTicket {
+    fn fare_cents() -> int64 {
+        return price_cents + fee_cents;
+    }
+
+    // The namespace written second, calling back into the first through its factory and a method.
+    fn pair_cents() -> int64 {
+        return CrossPackageOrder.factory.of(2, price_cents, fee_cents).total_cents();
+    }
+}
+
+factory CrossPackageTicket {
+    fn priced(price: int64, fee: int64) -> CrossPackageTicket {
+        return new CrossPackageTicket { price_cents: price, fee_cents: fee };
+    }
+}
+
+test CrossPackageOrder.total_cents "a method calls a method of a namespace written after its own" {
+    receiver {
+        quantity: 3,
+        ticket: new CrossPackageTicket { price_cents: 200, fee_cents: 25 },
+    }
+
+    expect return 675;
+}
+
+test CrossPackageOrder.upgraded_fare_cents "a method calls a factory of a namespace written after its own" {
+    receiver {
+        quantity: 2,
+        ticket: new CrossPackageTicket { price_cents: 200, fee_cents: 25 },
+    }
+
+    arg extra_cents = 50;
+    expect return 275;
+}
+
+test CrossPackageTicket.pair_cents "a method calls back into the namespace written before its own" {
+    receiver {
+        price_cents: 120,
+        fee_cents: 30,
+    }
+
+    expect return 300;
+}
