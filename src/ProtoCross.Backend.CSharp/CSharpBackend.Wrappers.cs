@@ -314,11 +314,19 @@ public sealed partial class CSharpBackend
                 writer.WriteLine(storeBack);
                 break;
 
-            case IrReturn:
-                var result = body.Unused("result");
-                writer.WriteLine($"var {result} = {Expression(changed, placement)};");
+            // A method that may refuse returns its value through its parameter, and says it built it.
+            case IrReturn when body.Outs is { Result: { } result } outs:
+                writer.WriteLine($"{result} = {Expression(changed, placement)};");
                 writer.WriteLine(storeBack);
-                writer.WriteLine($"return {result};");
+                writer.WriteLine($"{outs.Refusal} = default;");
+                writer.WriteLine("return true;");
+                break;
+
+            case IrReturn:
+                var returned = body.Unused("result");
+                writer.WriteLine($"var {returned} = {Expression(changed, placement)};");
+                writer.WriteLine(storeBack);
+                writer.WriteLine($"return {returned};");
                 break;
 
             default:

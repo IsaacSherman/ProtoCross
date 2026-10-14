@@ -28,6 +28,8 @@ public class RefusalTests
 
         package acme.billing;
 
+        import "google/protobuf/wrappers.proto";
+
         message TicketOptions {
           string code = 1;
           int64 seats = 2;
@@ -37,6 +39,7 @@ public class RefusalTests
         message Ticket {
           string code = 1;
           int64 seats = 2;
+          google.protobuf.Int64Value spare = 3;
         }
 
         message Holder {
@@ -547,6 +550,43 @@ public class RefusalTests
 
         var csharp = Generated(result, new CSharpBackend(), tests: true);
         Assert.Equal(2, csharp.Split("out var built, out _) ? built : new global::Acme.Billing.Ticket()").Length - 1);
+    }
+
+    /// <summary>
+    /// A change to a wrapper C# holds as its value is written through a copy, and returned from a method that may
+    /// refuse, it is the method's result: given through its parameter, with the method saying it built it.
+    /// </summary>
+    [Fact]
+    public void CSharpReturnsAHeldWrappersChangeThroughTheResultParameter()
+    {
+        var generated = Generated(
+            Compile(
+                "extend google.protobuf.Int64Value {\n    mut fn bump() -> int64 {\n        value += 1;\n        return value;\n    }\n}\n\n"
+                + "factory Ticket {\n    helper fn bumped(seats: int64) -> int64 refuses Refusal {\n"
+                + "        var held: Ticket = new Ticket { spare: new google.protobuf.Int64Value { value: seats } };\n"
+                + "        if not has held.spare {\n            refuse new Refusal { why: \"none\" };\n        }\n\n"
+                + "        return held.spare.bump();\n    }\n}\n"),
+            new CSharpBackend());
+
+        Assert.DoesNotContain("return result", generated, StringComparison.Ordinal);
+        Assert.Matches(@"result = [^;]*Bump\(wrapper\);\s+held\.Spare = wrapper\.Value;\s+refusal = default;\s+return true;", generated);
+    }
+
+    /// <summary>
+    /// C# folds a constant condition and the language does not, so the end of a method that returns nothing, which
+    /// says there that it did not refuse, is written with the warning C# may give it suspended, as a section's break is.
+    /// </summary>
+    [Fact]
+    public void CSharpGuardsTheEndOfAMethodThatMayRefuseWhereAConstantConditionMayEndItFirst()
+    {
+        var generated = Generated(
+            Compile(WithCreate("    helper fn settled(n: int64) refuses Refusal {\n        if true {\n            return;\n        }\n    }\n")),
+            new CSharpBackend());
+
+        Assert.Matches(
+            @"#pragma warning disable CS0162 // A constant condition above may end the method first\.\s+refusal = default;\s+return true;\s+#pragma warning restore CS0162",
+            generated);
+        Assert.Single(generated.Split('\n'), line => line.Contains("#pragma warning disable CS0162", StringComparison.Ordinal));
     }
 
     /// <summary>A backend never meets a call to a method that may refuse without the node that says what a refusal makes of it.</summary>

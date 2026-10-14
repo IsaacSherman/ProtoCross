@@ -1428,7 +1428,15 @@ public sealed record IrTest(
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
-public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
+public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span)
+{
+    /// <summary>
+    /// What a backend compares with what the method gives: for <c>expect refuse</c>, the comparison it holds
+    /// (<see cref="IrTestRefusalExpectation.Expected"/>), and for every other expectation, itself.
+    /// </summary>
+    /// <remarks>A method rather than a property, so a record's printing of its members does not print itself.</remarks>
+    public IrTestExpectation Compared() => this is IrTestRefusalExpectation refusal ? refusal.Expected : this;
+}
 
 public sealed record IrTestReturnExpectation(IrExpression Value, SourceSpan Span) : IrTestExpectation(Span);
 

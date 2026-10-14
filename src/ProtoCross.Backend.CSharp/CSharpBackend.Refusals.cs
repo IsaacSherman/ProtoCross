@@ -1,4 +1,5 @@
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -95,6 +96,30 @@ public sealed partial class CSharpBackend
 
         writer.WriteLine($"{outs.Refusal} = default;");
         writer.WriteLine("return true;");
+    }
+
+    /// <summary>
+    /// The end of a method that returns nothing and may refuse, which says there that it built what it builds,
+    /// with the warning C# may give it suspended where a constant condition above may end the method first.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IrFlow"/> never calls an end unreachable that C# can reach, but C# folds a constant condition
+    /// and IrFlow does not, so C# may find this unreachable where IrFlow does not (CS0162), which a consumer
+    /// building with warnings as errors refuses. It is the case a switch's section break is guarded for.
+    /// </remarks>
+    private static void EmitFallingOffTheEnd(SourceWriter writer, IrBlock body, Outs outs, Placement placement)
+    {
+        var guarded = IrConstants.HasAConstantCondition(body);
+        if (guarded)
+        {
+            writer.WriteLine("#pragma warning disable CS0162 // A constant condition above may end the method first.");
+        }
+
+        EmitBuilt(writer, null, outs, placement);
+        if (guarded)
+        {
+            writer.WriteLine("#pragma warning restore CS0162");
+        }
     }
 
     /// <summary>A method that may refuse ending with its refusal: <c>refuse</c>.</summary>

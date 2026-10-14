@@ -336,7 +336,7 @@ public sealed partial class CppBackend
             writer.WriteLine($"const auto {IrExpectedFields.ResultName} = {CppInvocation(test, placement)};");
         }
 
-        EmitCppComparison(writer, test, Compared(test.Expectation), placement);
+        EmitCppComparison(writer, test, test.Expectation.Compared(), placement);
 
         writer.WriteLine();
         writer.WriteLine($"::std::cout << \"[ok] {EscapeString(test.Identity)}\" << ::std::endl;");
@@ -373,10 +373,6 @@ public sealed partial class CppBackend
                 throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C++ test expectation.");
         }
     }
-
-    /// <summary>What a test compares with what its method gives: for <c>expect refuse</c>, the comparison it holds.</summary>
-    private static IrTestExpectation Compared(IrTestExpectation expectation)
-        => expectation is IrTestRefusalExpectation refusal ? refusal.Expected : expectation;
 
     /// <summary>
     /// Calls a method that may refuse, and fails the test unless it built its result or refused as the test
@@ -460,7 +456,7 @@ public sealed partial class CppBackend
     /// condition needs, so the two cannot fall out of step. A field an expected literal checks counts
     /// as one, since each is compared as an expectation of its own.
     /// </remarks>
-    private static bool ExpectsFloatingPoint(IrTest test) => Compared(test.Expectation) switch
+    private static bool ExpectsFloatingPoint(IrTest test) => test.Expectation.Compared() switch
     {
         IrTestReturnExpectation returned => IsFloatingPoint(returned.Value.Type),
         IrTestFieldsExpectation fields => IrExpectedFields.Of(fields).Checks.OfType<IrValueCheck>().Any(check => IsFloatingPoint(check.Actual.Type)),

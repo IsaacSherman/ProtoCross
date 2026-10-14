@@ -326,12 +326,12 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
     /// <summary>A factory's method as its struct declares it: <c>static</c>, taking only its parameters.</summary>
     private static string FactoryMemberDeclaration(IrMethod method, Placement placement)
-        => $"static {FactoryReturnType(method)} {placement.MemberNameOf(method.Signature)}({ParameterList(method)})";
+        => $"static {FactoryReturnType(method)} {placement.MemberNameOf(method.Signature)}({ParameterList(method, Outs.Of(method))})";
 
     /// <summary>A factory's method as it is defined, after its struct: <c>inline</c>, and named through the struct.</summary>
-    private static string FactoryMemberDefinition(IrMethod method, Placement placement)
+    private static string FactoryMemberDefinition(IrMethod method, Outs? outs, Placement placement)
         => $"inline {FactoryReturnType(method)} {placement.FactoryStructOf(method.Receiver)}::"
-            + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method)})";
+            + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method, outs)})";
 
     /// <summary>
     /// What a factory's method returns: what it builds, or, for one that may refuse, whether it built it rather
@@ -344,10 +344,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// A method's parameters as C++ declares them, without any receiver, and with the references a method that
     /// may refuse gives its result and its refusal through.
     /// </summary>
-    private static string ParameterList(IrMethod method)
+    private static string ParameterList(IrMethod method, Outs? outs)
         => string.Join(", ", method.Parameters
             .Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}")
-            .Concat(Outs.Of(method)?.Declared(method.Signature) ?? []));
+            .Concat(outs?.Declared(method.Signature) ?? []));
 
     /// <remarks>
     /// A method that may refuse returns whether it built its result, and sets the result or the refusal through
@@ -356,11 +356,11 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// </remarks>
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
+        var outs = Outs.Of(method);
         using var scope = writer.Block(method.Signature.HasReceiver
             ? Signature(method)
-            : FactoryMemberDefinition(method, placement));
+            : FactoryMemberDefinition(method, outs, placement));
 
-        var outs = Outs.Of(method);
         EmitStatements(writer, method.Body.Statements, placement with { Outs = outs });
 
         // A method that returns nothing may reach the end of its body, and one that may refuse says there that it did not.

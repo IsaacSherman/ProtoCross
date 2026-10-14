@@ -225,7 +225,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         // A method that returns nothing may reach the end of its body, and one that may refuse says there that it did not.
         if (outs is { Result: null } && !IrFlow.NeverFallsThrough(method.Body))
         {
-            EmitBuilt(writer, null, outs, placement);
+            EmitFallingOffTheEnd(writer, method.Body, outs, placement);
         }
     }
 

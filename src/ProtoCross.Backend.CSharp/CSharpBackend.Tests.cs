@@ -56,7 +56,7 @@ public sealed partial class CSharpBackend
                 EmitFailTestDispatcher(writer, failTests, methodNames, sourceName, placement);
             }
 
-            if (module.Tests.Any(test => Compared(test.Expectation) is IrTestFieldsExpectation))
+            if (module.Tests.Any(test => test.Expectation.Compared() is IrTestFieldsExpectation))
             {
                 writer.WriteLine();
                 EmitFieldExpectations(writer);
@@ -343,10 +343,6 @@ public sealed partial class CSharpBackend
             Built = BuiltNamesIn(test, new HashSet<string>(StringComparer.Ordinal) { "receiver", IrExpectedFields.ResultName, "refusal" }),
         };
 
-    /// <summary>What a test compares with what its method gives: for <c>expect refuse</c>, the comparison it holds.</summary>
-    private static IrTestExpectation Compared(IrTestExpectation expectation)
-        => expectation is IrTestRefusalExpectation refusal ? refusal.Expected : expectation;
-
     /// <summary>
     /// Emits a test of a method that may refuse: the call, a check that it built its result or refused as the test
     /// expects, and then the comparison of that value, made as it is for any result (spec 25.3).
@@ -370,7 +366,7 @@ public sealed partial class CSharpBackend
             writer.WriteLine($"ExpectBuilt({Invocation(test, placement, $"out var {actual}", "out var refusal")}, refusal, {identity});");
         }
 
-        switch (Compared(test.Expectation))
+        switch (test.Expectation.Compared())
         {
             case IrTestReturnExpectation value:
                 writer.WriteLine($"global::Xunit.Assert.Equal({Expression(value.Value, placement, "receiver")}, {actual});");

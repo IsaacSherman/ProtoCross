@@ -277,7 +277,7 @@ public static class DocumentOutline
             parameter => $"{parameter.Name.Text}: {parameter.Type.Name.Text}");
 
         var signature = $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}"
-            + (method.Refusal is { } refusal ? $" {ContextualKeywords.Refuses} {refusal.Name.Text}" : string.Empty);
+            + (method.Refusal is { Name.IsMissing: false } refusal ? $" {ContextualKeywords.Refuses} {refusal.Name.Text}" : string.Empty);
         return method.IsHelper ? $"{ContextualKeywords.Helper} {signature}" : signature;
     }
 

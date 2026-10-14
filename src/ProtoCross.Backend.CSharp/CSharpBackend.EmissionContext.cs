@@ -69,16 +69,7 @@ public sealed partial class CSharpBackend
         public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
-        public string Unused(string stem)
-        {
-            var name = stem;
-            for (var suffix = 1; Taken.Contains(name); suffix++)
-            {
-                name = stem + suffix.ToString(CultureInfo.InvariantCulture);
-            }
-
-            return name;
-        }
+        public string Unused(string stem) => FirstUnused(stem, Taken.Contains);
 
         /// <summary>
         /// The parameters a method that may refuse says what it built or refused through, or null for a method
@@ -176,8 +167,16 @@ public sealed partial class CSharpBackend
     /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on not in <paramref name="taken"/>, which it is then added to.</summary>
     private static string Reserve(ISet<string> taken, string stem)
     {
+        var name = FirstUnused(stem, taken.Contains);
+        taken.Add(name);
+        return name;
+    }
+
+    /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that is not <paramref name="taken"/>.</summary>
+    private static string FirstUnused(string stem, Func<string, bool> taken)
+    {
         var name = stem;
-        for (var suffix = 1; !taken.Add(name); suffix++)
+        for (var suffix = 1; taken(name); suffix++)
         {
             name = stem + suffix.ToString(CultureInfo.InvariantCulture);
         }
