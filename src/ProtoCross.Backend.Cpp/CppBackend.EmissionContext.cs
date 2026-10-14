@@ -55,10 +55,7 @@ public sealed partial class CppBackend
     /// </remarks>
     private sealed record Placement(ProjectNamespace? Project)
     {
-        public string NamespaceOf(MessageDescriptor receiver)
-            => Project is { } project
-                ? NameConventions.GetCppNamespace(project)
-                : NameConventions.GetCppNamespace(receiver.File);
+        public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
         public string QualifiedFunctionOf(IrMethodSignature signature)
         {

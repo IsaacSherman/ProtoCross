@@ -21,8 +21,14 @@ public sealed partial class Binder
     /// <summary>The same factories in the order they were declared, which is the order the module lists them in.</summary>
     private readonly List<IrFactory> _factoriesInOrder = [];
 
-    /// <summary>The factory each generated class belongs to, by where it is generated and what it is called.</summary>
-    private readonly Dictionary<(string Namespace, string Class), IrFactory> _factoryClasses = [];
+    /// <summary>The factory each generated class belongs to, in each backend.</summary>
+    private readonly Dictionary<DeclaredName, IrFactory> _factoryClasses = [];
+
+    /// <summary>
+    /// What declares each name the schemas' generated code declares at namespace scope, in each
+    /// backend; null until a factory first asks.
+    /// </summary>
+    private Dictionary<DeclaredName, string>? _schemaNames;
 
     /// <summary>
     /// The namespace the sources' behavior is generated in when they are a project's, or null when each
@@ -30,10 +36,10 @@ public sealed partial class Binder
     /// </summary>
     /// <remarks>
     /// Asked of nothing but a factory's class name. Where a class is generated decides which classes
-    /// share a namespace, and two factories, or a factory and a schema's message, that would share a
-    /// name there cannot both be generated (<c>PC0126</c>). Every other name the backends generate is
-    /// told apart by something the language already refuses to repeat, so nothing else here depends on
-    /// where behavior goes.
+    /// share a namespace, and two factories, or a factory and a schema's type or namespace, that would
+    /// share a name there cannot both be generated (<c>PC0126</c>). Every other name the backends
+    /// generate is told apart by something the language already refuses to repeat, so nothing else here
+    /// depends on where behavior goes.
     /// </remarks>
     public ProjectNamespace? ProjectNamespace { get; init; }
 
@@ -165,35 +171,40 @@ public sealed partial class Binder
 
     /// <summary>
     /// Refuses a factory whose generated class would have the name of another factory's, or of a
-    /// schema's type, in the namespace it is generated in (<c>PC0126</c>, spec 24).
+    /// schema's type or namespace, in the namespace it is generated in (<c>PC0126</c>, spec 24).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The namespace is named as a package is, so the question is the same in every backend: a project's
-    /// factories share its namespace, and without a project a factory is generated in its message's
-    /// package. Two messages of one name in two packages are two factories of one class name in a
-    /// project, and refusing that is what C# would do with two classes of one name.
+    /// Compared as each backend spells the namespace and the class, because the two do not spell a
+    /// namespace alike. C# PascalCases a package and takes <c>csharp_namespace</c> over it, so
+    /// <c>acme.lower</c> and <c>acme.Lower</c>, or two packages whose files name one C# namespace, are
+    /// one namespace in C# and two in C++. A clash in either is refused whichever backends are run,
+    /// since that is decided after the compilation is, and one source should mean one thing in both.
+    /// Refusing is what C# does with two classes of one name.
     /// </para>
     /// <para>
-    /// A schema's type collides when it is declared in that package under the class's name, a nested
-    /// one by the name protoc's C++ flattens it to, <c>Outer_InvoiceFactory</c>. C# nests that one where
-    /// it collides with nothing, and it is refused all the same, so that one source means one thing in
-    /// both backends. A file that renames its C# namespace with <c>csharp_namespace</c> is compared by
-    /// its package like any other, since that is the one name both backends derive their namespace from.
+    /// A schema's type is compared by the name protoc declares at namespace scope. C++ flattens a
+    /// nested type into the namespace under its parent's class name, escape included, so
+    /// <c>Outer.InvoiceFactory</c> is <c>Outer_InvoiceFactory</c> there, and <c>New.ItemFactory</c> is
+    /// <c>New__ItemFactory</c>, which the factory of <c>New.Item</c>, <c>New_ItemFactory</c>, does not
+    /// meet. C# nests a nested type in its parent's <c>Types</c> class, where it meets nothing. A
+    /// schema's namespace is a name a class cannot take either: package
+    /// <c>factory_review.TicketFactory</c> declares one where <c>factory_review.Ticket</c>'s factory
+    /// would be generated.
     /// </para>
     /// </remarks>
     private void ReportIfTheClassNameIsTaken(IrFactory factory, SourceSpan header)
     {
         var message = factory.Message;
-        var className = NameConventions.GetFactoryClassName(message);
-        var package = ProjectNamespace?.Package ?? message.File.Package;
+        var classes = GeneratedClassesOf(message);
 
-        if (_factoryClasses.TryGetValue((package, className), out var other))
+        if (classes.FirstOrDefault(_factoryClasses.ContainsKey) is { } shared)
         {
+            var other = _factoryClasses[shared];
             _diagnostics.Report(
                 DiagnosticCodes.FactoryClassNameCollides,
-                $"The factory of '{message.FullName}' would be generated as '{className}' in {NamespaceNamed(package)}, "
-                + $"where the factory of '{other.Message.FullName}' is generated{WhereElse(other.Declaration)}.",
+                $"The factory of '{message.FullName}' would be generated as {shared}, as the factory of "
+                + $"'{other.Message.FullName}' is{WhereElse(other.Declaration)}.",
                 header,
                 ProjectNamespace is null
                     ? "Rename one of the messages, or build one of the factories in a project of its own (spec 24)."
@@ -201,27 +212,20 @@ public sealed partial class Binder
             return;
         }
 
-        _factoryClasses[(package, className)] = factory;
+        foreach (var generated in classes)
+        {
+            _factoryClasses[generated] = factory;
+        }
 
-        var taken = _types.All
-            .Select(type => type switch
-            {
-                SchemaMessageName named => (IDescriptor)named.Descriptor,
-                SchemaEnumName named => named.Descriptor,
-                _ => null,
-            })
-            .OfType<IDescriptor>()
-            .FirstOrDefault(type => type.File.Package == package && FlattenedName(type) == className);
-
-        if (taken is null)
+        _schemaNames ??= NamesProtocDeclares();
+        if (classes.FirstOrDefault(_schemaNames.ContainsKey) is not { } taken)
         {
             return;
         }
 
         _diagnostics.Report(
             DiagnosticCodes.FactoryClassNameCollides,
-            $"The factory of '{message.FullName}' would be generated as '{className}' in {NamespaceNamed(package)}, "
-            + $"where the schema declares '{taken.FullName}'.",
+            $"The factory of '{message.FullName}' would be generated as {taken}, {_schemaNames[taken]}.",
             header,
             ProjectNamespace is null
                 ? "Build the factory in a project, so that it is generated in the project's namespace rather than beside "
@@ -229,23 +233,94 @@ public sealed partial class Binder
                 : "Build the factory in a project of another name, whose namespace no schema shares (spec 24).");
     }
 
-    /// <summary>How a message names the namespace a factory is generated in.</summary>
-    private string NamespaceNamed(string package)
-        => ProjectNamespace is not null ? $"the namespace of project '{package}'"
-            : package.Length == 0 ? "the global namespace"
-            : $"the namespace of package '{package}'";
-
-    /// <summary>A type's name joined to those of the messages enclosing it, as protoc's C++ flattens it.</summary>
-    private static string FlattenedName(IDescriptor type)
+    /// <summary>The class each backend generates <paramref name="message"/>'s factory as, C# first.</summary>
+    private DeclaredName[] GeneratedClassesOf(MessageDescriptor message)
     {
-        var parent = type switch
-        {
-            MessageDescriptor message => message.ContainingType,
-            EnumDescriptor enumType => enumType.ContainingType,
-            _ => null,
-        };
+        var name = NameConventions.GetFactoryClassName(message);
+        return
+        [
+            DeclaredName.CSharp(NameConventions.GetCSharpBehaviorNamespace(message, ProjectNamespace), name),
+            DeclaredName.Cpp(NameConventions.GetCppBehaviorNamespace(message, ProjectNamespace), name),
+        ];
+    }
 
-        return parent is null ? type.Name : $"{FlattenedName(parent)}_{type.Name}";
+    /// <summary>
+    /// The names protoc's generated code declares at namespace scope for the schemas, in each backend,
+    /// with what declares each: a message's or an enum's class, and each namespace a file's classes are
+    /// declared in, enclosing ones included. The first to declare a name keeps it.
+    /// </summary>
+    /// <remarks>
+    /// Namespaces are taken from every file rather than from its types, because protoc's C# declares a
+    /// file's reflection class in its namespace whatever else the file holds.
+    /// </remarks>
+    private Dictionary<DeclaredName, string> NamesProtocDeclares()
+    {
+        var names = new Dictionary<DeclaredName, string>();
+        foreach (var type in _types.All)
+        {
+            switch (type)
+            {
+                case SchemaMessageName { Descriptor: var message }:
+                    DeclareType(message, message.ContainingType, NameConventions.GetCppTypeName(message));
+                    break;
+                case SchemaEnumName { Descriptor: var enumType }:
+                    DeclareType(enumType, enumType.ContainingType, NameConventions.GetCppTypeName(enumType));
+                    break;
+            }
+        }
+
+        foreach (var file in _files)
+        {
+            var declaredBy = $"a namespace protoc declares for '{file.Name}'";
+            foreach (var ns in DeclaredName.CSharpNamespaces(NameConventions.GetCSharpNamespace(file))
+                .Concat(DeclaredName.CppNamespaces(NameConventions.GetCppNamespace(file))))
+            {
+                names.TryAdd(ns, declaredBy);
+            }
+        }
+
+        return names;
+
+        // C++ flattens a nested type into the namespace, and C# declares it in its parent's Types class.
+        void DeclareType(IDescriptor type, MessageDescriptor? parent, string cppName)
+        {
+            var declaredBy = $"the name protoc gives '{type.FullName}'";
+            if (parent is null)
+            {
+                names.TryAdd(DeclaredName.CSharp(NameConventions.GetCSharpNamespace(type.File), type.Name), declaredBy);
+            }
+
+            names.TryAdd(DeclaredName.Cpp(NameConventions.GetCppNamespace(type.File), cppName), declaredBy);
+        }
+    }
+
+    /// <summary>A name one backend declares at namespace scope: the language, and the name fully qualified there.</summary>
+    /// <remarks>
+    /// A C# name is held as C# identifies it (<see cref="NameConventions.GetCSharpIdentity"/>), so that
+    /// two spellings of one namespace are one name.
+    /// </remarks>
+    private sealed record DeclaredName(string Language, string QualifiedName)
+    {
+        public static DeclaredName CSharp(string ns, string name)
+            => new("C#", NameConventions.GetCSharpIdentity(ns) is { Length: > 0 } identity ? $"{identity}.{name}" : name);
+
+        public static DeclaredName Cpp(string ns, string name) => new("C++", ns.Length == 0 ? name : $"{ns}::{name}");
+
+        /// <summary>The C# namespace <paramref name="ns"/> and every namespace enclosing it.</summary>
+        public static IEnumerable<DeclaredName> CSharpNamespaces(string ns)
+            => Enclosing(NameConventions.GetCSharpIdentity(ns), ".").Select(name => new DeclaredName("C#", name));
+
+        /// <summary>The C++ namespace <paramref name="ns"/> and every namespace enclosing it.</summary>
+        public static IEnumerable<DeclaredName> CppNamespaces(string ns)
+            => Enclosing(ns, "::").Select(name => new DeclaredName("C++", name));
+
+        public override string ToString() => $"'{QualifiedName}' in {Language}";
+
+        private static IEnumerable<string> Enclosing(string ns, string separator)
+        {
+            var parts = ns.Split(separator, StringSplitOptions.RemoveEmptyEntries);
+            return Enumerable.Range(1, parts.Length).Select(count => string.Join(separator, parts.Take(count)));
+        }
     }
 
     /// <summary>

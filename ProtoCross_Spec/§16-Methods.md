@@ -138,8 +138,9 @@ Normative Requirements:
   ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - **A factory for one of protobuf's well-known types is `PC0133`**, a warning, for the reason an
   `extend` block of one is `PC0077`: consumers have the type without the factory.
-- **Two factories whose generated classes would share a name in one namespace are refused** with
-  `PC0126` ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
+- **A factory whose generated class would share a name in its namespace is refused** with
+  `PC0126`, whether with another factory's class or with a schema's type or namespace, in either
+  backend ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
 
 Factories offer no support for injection or mocking in 1.0. A factory method is pure: it does no I/O
 and calls nothing outside ProtoCross ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), so nothing in it needs replacing in a test. A

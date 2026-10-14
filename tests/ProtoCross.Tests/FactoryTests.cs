@@ -408,6 +408,77 @@ public class FactoryTests
         TheOnly(CompileAs("acme.app"), DiagnosticCodes.FactoryClassNameCollides);
     }
 
+    /// <summary>
+    /// Without a project each factory is generated beside its message, and C# can declare two packages'
+    /// messages in one namespace that C++ keeps apart: by case, or by <c>csharp_namespace</c>, however
+    /// it is spelled (spec 24).
+    /// </summary>
+    [Theory]
+    [InlineData("acme.lower", "", "acme.Lower", "", "Acme.Lower")]
+    [InlineData("acme.lower", "Acme.Shared", "acme.upper", "Acme.Shared", "Acme.Shared")]
+    [InlineData("acme.lower", "Acme.Shared", "acme.upper", "@Acme.Shared", "Acme.Shared")]
+    public void FactoriesThatMeetInOneCSharpNamespaceAreRefused(
+        string firstPackage, string firstNamespace, string secondPackage, string secondNamespace, string shared)
+    {
+        // Two spellings of one class name, so the schemas themselves declare two classes.
+        var result = CompileAgainst(
+            FactoryOf($"{firstPackage}.invoice_line") + FactoryOf($"{secondPackage}.InvoiceLine"),
+            ("first.proto", SchemaOf(firstPackage, firstNamespace, "message invoice_line { int64 n = 1; }")),
+            ("second.proto", SchemaOf(secondPackage, secondNamespace, "message InvoiceLine { int64 n = 1; }")));
+
+        var refused = TheOnly(result, DiagnosticCodes.FactoryClassNameCollides);
+        Assert.Contains($"'{shared}.InvoiceLineFactory' in C#, as the factory of '{firstPackage}.invoice_line' is", refused.Message);
+    }
+
+    [Fact]
+    public void AFactoryCannotTakeTheNameOfASchemasNamespace()
+    {
+        var result = CompileAgainst(
+            FactoryOf("acme.Ticket"),
+            ("tickets.proto", SchemaOf("acme", "", "message Ticket { int64 n = 1; }")),
+            ("marker.proto", SchemaOf("acme.TicketFactory", "", "message Marker { int64 n = 1; }")));
+
+        var refused = TheOnly(result, DiagnosticCodes.FactoryClassNameCollides);
+        Assert.Contains("'Acme.TicketFactory' in C#, a namespace protoc declares for 'marker.proto'", refused.Message);
+    }
+
+    [Fact]
+    public void ANestedTypeIsComparedByTheNameProtocsCppGivesIt()
+    {
+        var result = CompileAgainst(
+            FactoryOf("acme.Outer.Ticket"),
+            ("tickets.proto", SchemaOf(
+                "acme",
+                "",
+                "message Outer {\n  message Ticket { int64 n = 1; }\n  message TicketFactory { int64 n = 1; }\n}")));
+
+        var refused = TheOnly(result, DiagnosticCodes.FactoryClassNameCollides);
+        Assert.Contains("'acme::Outer_TicketFactory' in C++, the name protoc gives 'acme.Outer.TicketFactory'", refused.Message);
+    }
+
+    /// <summary>Compiles <paramref name="body"/> against schemas of its own, importing each.</summary>
+    private static CompilationResult CompileAgainst(string body, params (string File, string Text)[] schemas)
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        foreach (var (file, text) in schemas)
+        {
+            File.WriteAllText(Path.Combine(directory, file), text);
+        }
+
+        var path = Path.Combine(directory, "factories.pcross");
+        File.WriteAllText(path, string.Concat(schemas.Select(schema => $"import proto \"{schema.File}\";\n")) + "\n" + body);
+
+        return new Compilation(SourceDocument.ReadFrom(path), new CompilationOptions { IncludePaths = [directory] }).Compile();
+    }
+
+    private static string SchemaOf(string package, string csharpNamespace, string declarations)
+        => $"syntax = \"proto3\";\n\npackage {package};\n"
+            + (csharpNamespace.Length == 0 ? "" : $"option csharp_namespace = \"{csharpNamespace}\";\n")
+            + $"\n{declarations}\n";
+
+    private static string FactoryOf(string message)
+        => $"factory {message} {{\n    fn make() -> {message} {{ return new {message} {{ }}; }}\n}}\n\n";
+
     [Fact]
     public void AFactoryForAWellKnownTypeIsWarnedAbout()
     {

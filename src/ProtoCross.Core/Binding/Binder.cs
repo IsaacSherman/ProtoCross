@@ -17,6 +17,7 @@ namespace ProtoCross.Binding;
 public sealed partial class Binder
 {
     private readonly DiagnosticBag _diagnostics;
+    private readonly IReadOnlyList<FileDescriptor> _files;
     private readonly SchemaTypes _types;
     /// <summary>What a call can resolve to: one entry per name a receiver actually offers.</summary>
     private readonly Dictionary<(string Receiver, string Method), IrMethodSignature> _methods = new();
@@ -112,6 +113,7 @@ public sealed partial class Binder
         _policy = policy ?? new NumericPolicy(_config);
         _document = document ?? SourceIdentity.Unsaved();
 
+        _files = files;
         _types = SchemaTypes.From(files);
     }
 

@@ -139,10 +139,7 @@ public sealed partial class CSharpBackend
         /// <summary>The class every extension method a project declares is in.</summary>
         public const string ProjectClassName = "ProtoCrossExtensions";
 
-        public string NamespaceOf(MessageDescriptor receiver)
-            => Project is { } project
-                ? NameConventions.GetCSharpNamespace(project)
-                : NameConventions.GetCSharpNamespace(receiver.File);
+        public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;

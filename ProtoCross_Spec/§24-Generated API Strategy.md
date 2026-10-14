@@ -28,11 +28,24 @@ the message, in the namespace protoc declares it in, as the message's extension 
 **A factory whose class would share a name in that namespace is `PC0126`.** In one project,
 `acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
 project's namespace. A project named after its schemas' package could also declare one beside a
-schema's message or enum of that name, a nested one counted by the name protoc's C++ flattens it to.
-Both are refused, and the help says how to separate them. The namespace is compared as a package, the
-project's name or the message's package, since that is the one name each backend's namespace comes
-from: a file that renames its C# namespace with `csharp_namespace` is compared by its package.
+schema's message or enum of that name. Both are refused, and the help says how to separate them.
 Refusing is what C# does with two classes of one name.
+
+The class is compared as each backend declares it, by its namespace and name there, and a clash in
+either backend is refused whichever backends are run:
+
+- **The namespace is the one each backend generates.** C# takes it from `csharp_namespace` when a file
+  sets one and PascalCases the package otherwise ([24.1](#241-c)), and C++ escapes the package's keywords
+  ([24.2](#242-c)). So
+  without a project, factories for `acme.lower.invoice_line` and `acme.Lower.InvoiceLine`, or for
+  messages of two packages whose files set one `csharp_namespace`, meet in C# and not in C++. A C#
+  namespace is compared as C# identifies it, so `@Acme.Shared` and `Acme.Shared` are one.
+- **A schema's type is compared by the name protoc declares at namespace scope.** A nested one is the
+  name protoc's C++ flattens it to, escaped as protoc escapes it: `Outer.InvoiceFactory` is
+  `Outer_InvoiceFactory`, and `New.ItemFactory` is `New__ItemFactory`, which the factory of `New.Item`,
+  `New_ItemFactory`, does not meet. C# nests a nested type where no factory is declared.
+- **A schema's namespace is taken too.** Package `acme.InvoiceFactory` declares a namespace where
+  `acme.Invoice`'s factory would be generated, and neither language lets a class share its name.
 
 Four placements lost:
 
