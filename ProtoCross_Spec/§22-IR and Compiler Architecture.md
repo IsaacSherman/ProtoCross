@@ -94,6 +94,17 @@ The IR preserves:
 - **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
   copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
   each backend asks rather than deciding what to copy.
+- **Which block declared each method, and so whether it has a receiver.** A method's signature says
+  whether it is an `extend` block's, a factory's, or a factory's helper ([16.3](./§16-Methods.md#163-factories)). A factory's
+  method keeps the message it builds as its receiver type, because that is the message whose names it
+  shares and whose class the backends generate it into, and a call to one has no receiver at all
+  rather than a stand-in. A module lists each factory block, by the message it builds and where its
+  `factory` word is written, so a reference to the factory can be followed to it; a factory declares
+  no type.
+- **A test of a message a method returns, by the fields that matter.** An `expect return` of a
+  literal on a method that returns a message is a node of its own, holding the literal. Which fields
+  it compares, in what order, and whether each must be set first are asked of the IR, so both
+  backends read one answer ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
   ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
   where it matters: what the receiver is passed as, and whether an argument is passed as a copy.

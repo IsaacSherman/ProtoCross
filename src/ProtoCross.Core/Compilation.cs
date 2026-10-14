@@ -182,10 +182,11 @@ public sealed record CompilationResult(
     /// (spec 24).
     /// </summary>
     /// <remarks>
-    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. Nothing
-    /// in the compilation depends on it. It is carried out because this result is what the generators
-    /// are handed, and the project a compilation was of is the one thing about it that decides where
-    /// every generated name is declared.
+    /// Init-only and beside the positional members for the reason <see cref="Schema"/> gives. The
+    /// binding asks it one thing, which factories' classes would share a namespace (spec 24), and
+    /// nothing else in the compilation depends on it. It is carried out because this result is what the
+    /// generators are handed, and the project a compilation was of is the one thing about it that
+    /// decides where every generated name is declared.
     /// </remarks>
     public ProjectNamespace? ProjectNamespace { get; init; }
 
@@ -254,9 +255,10 @@ public sealed record CompilationOptions
     /// project; null declares each receiver's beside its message (spec 24).
     /// </summary>
     /// <remarks>
-    /// The compilation only carries it, to <see cref="CompilationResult.ProjectNamespace"/>: where
-    /// behavior is declared changes what every generated name is, and nothing about what the
-    /// program means.
+    /// Carried to <see cref="CompilationResult.ProjectNamespace"/>: where behavior is declared changes
+    /// what every generated name is, and nothing about what the program means. The binder is told it
+    /// as well, for one question only: which factories' classes would share a namespace, which decides
+    /// whether two of them can be generated at all (spec 24).
     /// </remarks>
     public ProjectNamespace? ProjectNamespace { get; init; }
 }
@@ -895,6 +897,7 @@ public sealed class Compilation
         {
             SkipTests = Options.SkipTests,
             ProductionSchemas = production?.Schemas,
+            ProjectNamespace = Options.ProjectNamespace,
         };
         var module = binder.Bind(trees);
 

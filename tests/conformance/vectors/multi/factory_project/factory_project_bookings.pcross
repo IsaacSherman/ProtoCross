@@ -1,0 +1,20 @@
+// Conformance vectors for a factory in a project: the second of two sources, which calls the factory
+// the first declares. See factory_project_tickets.pcross.
+
+import proto "factory_project.proto";
+
+extend ProjectedBooking {
+    fn ticket_price() -> int64 {
+        var ticket: ProjectedTicket = ProjectedTicket.factory.for_seats(code, seats);
+        return ticket.price_cents;
+    }
+}
+
+test ProjectedBooking.ticket_price "a factory in another source of the project" {
+    receiver {
+        code: "B1",
+        seats: 6,
+    }
+
+    expect return 5400;
+}

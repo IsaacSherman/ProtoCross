@@ -71,6 +71,22 @@ public partial class NameMappingTests
         }
     }
 
+    /// <summary>
+    /// Every spelling C# reads as one name is one identity: a leading <c>@</c>, Unicode escapes,
+    /// formatting characters and whitespace around a dot all fall away, as the C# specification's rule
+    /// for identifiers says, and an escape that names no character stays as written.
+    /// </summary>
+    [Theory]
+    [InlineData("Acme.Shared", "Acme.Shared")]
+    [InlineData("@Acme.@Shared", "Acme.Shared")]
+    [InlineData("Acme . Shared", "Acme.Shared")]
+    [InlineData("\\u0041cme.\\U00000053hared", "Acme.Shared")]
+    [InlineData("Ac­me.Shared", "Acme.Shared")]
+    [InlineData("", "")]
+    [InlineData("Acme.\\UFFFFFFFF", "Acme.\\UFFFFFFFF")]
+    public void SpellingsOfOneCSharpNameShareAnIdentity(string written, string identity)
+        => Assert.Equal(identity, NameConventions.GetCSharpIdentity(written));
+
     /// <summary>The namespace generated C# declares its classes in, or empty when it declares none.</summary>
     private static string DeclaredNamespace(string source)
     {

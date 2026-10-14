@@ -242,6 +242,7 @@ public sealed partial class Parser
         var start = Current.Span;
         var imports = new List<ImportDeclaration>();
         var extends = new List<ExtendDeclaration>();
+        var factories = new List<FactoryDeclaration>();
         var tests = new List<TestDeclaration>();
 
         while (Current.Kind != TokenKind.EndOfFile)
@@ -260,18 +261,28 @@ public sealed partial class Parser
                     tests.Add(ParseTestDeclaration());
                     break;
 
+                // The word alone, rather than the word and a name after it, because nothing but a
+                // declaration can begin here: a factory whose name is still to be typed is still one,
+                // and is where an editor offers the messages it could build.
+                case TokenKind.Identifier when Current.Text == ContextualKeywords.Factory:
+                    factories.Add(ParseFactoryDeclaration());
+                    break;
+
                 default:
                     _diagnostics.Report(
                         DiagnosticCodes.UnexpectedTopLevelDeclaration,
-                        $"Expected 'import', 'extend', or 'test' but found {Current.Kind.Describe()}.",
+                        $"Expected 'import', 'extend', 'factory', or 'test' but found {Current.Kind.Describe()}.",
                         Current.Span,
-                        "A ProtoCross file contains proto imports, extend blocks, and test declarations.");
+                        "A ProtoCross file contains proto imports, extend blocks, factory blocks, and test declarations.");
                     SkipToNextTopLevelDeclaration();
                     break;
             }
         }
 
-        return new CompilationUnit(imports, extends, tests, Spanning(start, Current.Span));
+        return new CompilationUnit(imports, extends, tests, Spanning(start, Current.Span))
+        {
+            Factories = factories,
+        };
     }
 
     /// <summary>

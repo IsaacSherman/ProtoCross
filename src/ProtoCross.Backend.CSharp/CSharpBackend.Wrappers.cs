@@ -265,7 +265,7 @@ public sealed partial class CSharpBackend
         IrAssignment { Value: IrMethodCall call } => call,
         IrReturn { Value: IrMethodCall call } => call,
         _ => null,
-    } is { Target.IsMutating: true } found && IsHeldAsItsValue(found.Receiver) ? found : null;
+    } is { Target.IsMutating: true, Receiver: { } receiver } found && IsHeldAsItsValue(receiver) ? found : null;
 
     /// <summary>
     /// A statement whose call changes a wrapper held as its value, written as a change to a message made
@@ -287,10 +287,12 @@ public sealed partial class CSharpBackend
     /// </remarks>
     private static void EmitChangeThroughACopy(SourceWriter writer, IrStatement statement, IrMethodCall call, Body body)
     {
+        // Only a mut fn's call is changed through a copy, and only an extend block's method is one.
+        var receiver = call.Receiver!;
         var placement = body.Placement;
-        var copy = new HeldCopy(body.Unused("wrapper"), call.Receiver.Type);
+        var copy = new HeldCopy(body.Unused("wrapper"), receiver.Type);
         var changed = call with { Receiver = copy };
-        var storeBack = $"{HeldPlace(call.Receiver, placement)} = {copy.Name}.Value;";
+        var storeBack = $"{HeldPlace(receiver, placement)} = {copy.Name}.Value;";
 
         if (statement is IrVariableDeclaration declared)
         {
@@ -298,7 +300,7 @@ public sealed partial class CSharpBackend
         }
 
         using var scope = writer.Block(string.Empty);
-        writer.WriteLine($"var {copy.Name} = {MessageOf(call.Receiver, placement, ReceiverName)};");
+        writer.WriteLine($"var {copy.Name} = {MessageOf(receiver, placement, ReceiverName)};");
 
         switch (statement)
         {

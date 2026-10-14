@@ -6,9 +6,9 @@
 
 | Topic | Source and entry symbols | Relevant tests |
 | --- | --- | --- |
-| Production entry and files | [Emitter]: `CSharpBackend.Emit`, `EmitExtensionClass`, `EmitMethod`; extension methods in `<stem>.g.cs`, plus `ProtoCrossArithmetic.g.cs`. [Dispatch]: `SourceEmission.Emit` partitions sources and collects `GeneratedFile`. | [Backend tests]; [multiple sources] |
+| Production entry and files | [Emitter]: `CSharpBackend.Emit`, `EmitExtensionClass`, `EmitFactoryClass`, `EmitMethod`; extension methods and factory classes in `<stem>.g.cs`, plus `ProtoCrossArithmetic.g.cs`. [Dispatch]: `SourceEmission.Emit` partitions sources and collects `GeneratedFile`. | [Backend tests]; [multiple sources] |
 | Statements and control flow | [Statements]: `EmitStatement`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
-| Calls and placement | [Emitter]: `Expression`, `EmitCall`; [Context]: `Placement.NamespaceOf`, `ClassOf`, `MethodNameOf`; project namespace and partial class select call targets. | [project placement]; [multiple sources] |
+| Calls and placement | [Emitter]: `Expression`, `EmitCall`; [Context]: `Placement.NamespaceOf` (from `NameConventions.GetCSharpBehaviorNamespace`), `ClassOf`, `FactoryClassOf`, `MethodNameOf`; project namespace and partial class select call targets, and a factory's static class its methods'. | [project placement]; [multiple sources] |
 | Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`; [Formatting]: `EmitLiteral`, `FormatFloatingPoint`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
 | Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |

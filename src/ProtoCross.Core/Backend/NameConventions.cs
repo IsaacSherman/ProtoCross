@@ -1,4 +1,6 @@
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
 
 namespace ProtoCross.Backend;
@@ -8,7 +10,7 @@ namespace ProtoCross.Backend;
 /// target-language conventions; these helpers are that mapping, and they deliberately match what
 /// protoc's own generators do so hand-written and generated code agree.
 /// </summary>
-public static class NameConventions
+public static partial class NameConventions
 {
     /// <summary>
     /// Every name protoc's C++ generator will not use as it stands: the C++ keywords and alternative
@@ -111,6 +113,54 @@ public static class NameConventions
         }
 
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// The class a message's factory is generated into, in every backend: the message's name and the
+    /// names of the messages enclosing it, each PascalCased and joined by underscores, then
+    /// <c>Factory</c>. So <c>Invoice</c> is <c>InvoiceFactory</c> and <c>Outer.invoice_line</c> is
+    /// <c>Outer_InvoiceLineFactory</c> (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One name for both backends, because it is the name a consumer types, and a factory spelled
+    /// differently in C# and C++ is two APIs to learn for one declaration. The enclosing names are
+    /// joined rather than dropped so that a nested message's factory cannot be a top-level one's, as
+    /// protoc flattens a nested message's C++ class.
+    /// </para>
+    /// <para>
+    /// The rule a C# extension class beside its message already follows, with another suffix, rather
+    /// than protoc's spelling of the message's own class. That spelling is the message's name as written
+    /// in C# and its flattened name in C++, so following it would give the factory two names, and
+    /// <c>invoice_lineFactory</c> in either. The suffix keeps every result out of both languages'
+    /// keywords, which are lowercase and none of which ends in it.
+    /// </para>
+    /// </remarks>
+    public static string GetFactoryClassName(MessageDescriptor message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+        return GetFlattenedPascalCaseName(message) + "Factory";
+    }
+
+    /// <summary>
+    /// A message's name and the names of the messages enclosing it, each <see cref="ToPascalCase"/>d
+    /// and joined by underscores: <c>Outer.invoice_line</c> is <c>Outer_InvoiceLine</c>.
+    /// </summary>
+    /// <remarks>
+    /// What a class generated for a message is named from: a factory's, and a C# extension class beside
+    /// its message. One rule rather than a walk in each, because spec 24 describes them as one.
+    /// </remarks>
+    public static string GetFlattenedPascalCaseName(MessageDescriptor message)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        var parts = new List<string>();
+        for (var current = message; current is not null; current = current.ContainingType)
+        {
+            parts.Insert(0, ToPascalCase(current.Name));
+        }
+
+        return string.Join('_', parts);
     }
 
     /// <summary>
@@ -237,6 +287,52 @@ public static class NameConventions
         => UnderscoresToPascalCase(package, preservePeriod: true);
 
     /// <summary>
+    /// A dotted C# name as C# identifies it, so that two spellings of one name are one string: each
+    /// identifier trimmed, without its leading <c>@</c>, with its Unicode escapes decoded and its
+    /// formatting characters removed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The C# specification's rule for when two identifiers are the same (§6.4.3), applied to each part
+    /// of the name. Asked of a namespace, because <c>csharp_namespace</c> may spell one any way C#
+    /// accepts and protoc declares it as written: <c>@Acme.Shared</c> and <c>Acme.Shared</c> are one
+    /// namespace, and the binder has to see one to refuse two factories' classes in it (<c>PC0126</c>).
+    /// </para>
+    /// <para>
+    /// An escape that names no character is left as it is written. C# refuses it, and there is no
+    /// identifier for it to be the same as.
+    /// </para>
+    /// </remarks>
+    public static string GetCSharpIdentity(string dottedName)
+    {
+        ArgumentNullException.ThrowIfNull(dottedName);
+        return string.Join('.', dottedName.Split('.').Select(IdentifierIdentity));
+    }
+
+    /// <summary>One identifier as <see cref="GetCSharpIdentity"/> describes, in the specification's order.</summary>
+    private static string IdentifierIdentity(string identifier)
+    {
+        var written = identifier.Trim();
+        var unprefixed = written.StartsWith('@') ? written[1..] : written;
+        var unescaped = CSharpUnicodeEscape().Replace(unprefixed, Unescaped);
+        return string.Concat(unescaped.Where(c => char.GetUnicodeCategory(c) != UnicodeCategory.Format));
+    }
+
+    /// <summary>The character a <c>\u</c> or <c>\U</c> escape names, or the escape itself when it names none.</summary>
+    private static string Unescaped(Match escape)
+    {
+        var value = uint.Parse(escape.Groups["hex"].ValueSpan, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture);
+
+        // A \u escape is one UTF-16 unit, a lone surrogate included, as C# reads it.
+        return escape.Value[1] == 'u' ? ((char)value).ToString()
+            : Rune.IsValid(value) ? char.ConvertFromUtf32((int)value)
+            : escape.Value;
+    }
+
+    [GeneratedRegex(@"\\u(?<hex>[0-9A-Fa-f]{4})|\\U(?<hex>[0-9A-Fa-f]{8})", RegexOptions.CultureInvariant)]
+    private static partial Regex CSharpUnicodeEscape();
+
+    /// <summary>
     /// The C++ namespace protoc would use: the protobuf package with dots replaced by <c>::</c>, and
     /// each component escaped on its own, so <c>acme.new.default</c> is <c>acme::new_::default_</c>.
     /// </summary>
@@ -260,6 +356,25 @@ public static class NameConventions
         ArgumentNullException.ThrowIfNull(project);
         return CppNamespaceOfPackage(project.Package);
     }
+
+    /// <summary>
+    /// The C# namespace the behavior generated for <paramref name="message"/> is declared in: the
+    /// project's when there is one, and otherwise the one protoc declares the message in (spec 24).
+    /// </summary>
+    /// <remarks>
+    /// One answer for the backend that declares the behavior there and for the binder, which refuses a
+    /// factory whose class would meet another in it (<c>PC0126</c>) and has to mean the same namespace.
+    /// </remarks>
+    public static string GetCSharpBehaviorNamespace(MessageDescriptor message, ProjectNamespace? project)
+        => project is null ? GetCSharpNamespace(message.File) : GetCSharpNamespace(project);
+
+    /// <summary>
+    /// The C++ namespace the behavior generated for <paramref name="message"/> is declared in: the
+    /// project's when there is one, and otherwise the one protoc declares the message in (spec 24).
+    /// </summary>
+    /// <remarks>One answer for the reason <see cref="GetCSharpBehaviorNamespace"/> gives.</remarks>
+    public static string GetCppBehaviorNamespace(MessageDescriptor message, ProjectNamespace? project)
+        => project is null ? GetCppNamespace(message.File) : GetCppNamespace(project);
 
     /// <summary>What protoc's C++ generator names the namespace of a package.</summary>
     private static string CppNamespaceOfPackage(string package)

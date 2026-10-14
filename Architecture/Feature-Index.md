@@ -17,6 +17,7 @@ to each group's actual home; central files hold dispatch and shared state rather
 | Enum values, openness, unknown numbers | [Language](Language.md) | `Binder` in `Binder.Enums.cs`, `EnumOpenness` |
 | Message construction, maps, mutation, presence | [Language](Language.md) | `Binder` in `Binder.MessageLiterals.cs`, `Binder.Maps.cs`, `Binder.Mutation.cs` |
 | Control flow, switches, method calls, language tests | [Language](Language.md) | `Binder.BindExpression`, `Binder.BindTest`, `Parser.ParseBlock` |
+| Factories, helpers, calls through `Message.factory` | [Language](Language.md) | `Binder` in `Binder.Factories.cs`, `Parser.ParseFactoryDeclaration`, `IrMethodKind` |
 | Node shapes, behavior annotations, copies, flow | [IR](IR.md) | `IrExpression`, `IrCopy.Of`, `IrFlow.NeverFallsThrough`, `IrMutation` |
 | Tree walks, references, scopes, source positions | [IR](IR.md) | `SyntaxWalk.ChildrenOf`, `IrWalk.ChildrenOf`, `SemanticModel` |
 | C# output, runtime helpers, generated test projects | [C# backend](CSharp-Backend.md) | `CSharpBackend`, `CSharpRuntime`, `CSharpTestProject` |

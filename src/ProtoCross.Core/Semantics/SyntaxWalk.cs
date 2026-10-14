@@ -27,15 +27,16 @@ public static class SyntaxWalk
 
         return node switch
         {
-            // The parser keeps the three top-level kinds in three lists, and a file may interleave
+            // The parser keeps the four top-level kinds in four lists, and a file may interleave
             // them, so this is the one place where source order has to be restored rather than
             // inherited.
             CompilationUnit unit => [
-                .. unit.Imports.Cast<SyntaxNode>().Concat(unit.Extends).Concat(unit.Tests)
+                .. unit.Imports.Cast<SyntaxNode>().Concat(unit.Extends).Concat(unit.Factories).Concat(unit.Tests)
                     .OrderBy(child => child.Span.Start.Offset),
             ],
 
             ExtendDeclaration extend => [.. extend.Methods],
+            FactoryDeclaration factory => [.. factory.Methods],
             MethodDeclaration method => method.ReturnType is { } returnType
                 ? [.. method.Parameters, returnType, method.Body]
                 : [.. method.Parameters, method.Body],

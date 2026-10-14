@@ -31,6 +31,15 @@ public static class ContextualKeywords
     public const string OnUnknown = "on_unknown";
 
     /// <summary>
+    /// The word that begins a factory declaration, and that reaches a message's factory after its
+    /// name, as in <c>Invoice.factory.create()</c> (spec 16.3).
+    /// </summary>
+    public const string Factory = "factory";
+
+    /// <summary>The word that marks a method private to its factory (spec 16.3).</summary>
+    public const string Helper = "helper";
+
+    /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
     /// </summary>
@@ -73,11 +82,45 @@ public static class ContextualKeywords
             && next.Kind is TokenKind.Identifier or TokenKind.Fail;
 
     /// <summary>
+    /// Whether <paramref name="token"/> is a <c>factory</c> that begins a declaration: one with a name
+    /// straight after it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is followed by another name only after <c>new</c> and <c>on_unknown</c>, and a factory
+    /// declaration is the only thing either word can be followed by here that is not one of those. So
+    /// a field, a local or a nested type named <c>factory</c> keeps its name everywhere one can be
+    /// written, and two tokens settle it, as they do for <c>new</c>.
+    /// </para>
+    /// <para>
+    /// The parser asks less of the word where a declaration is all that can begin: at the top of a
+    /// file it reads <c>factory</c> as one whatever follows, so that a declaration whose name has not
+    /// been typed yet is still one. The colouring has only these two tokens to go on, and leaves the
+    /// word uncoloured until the name is written, as it leaves <c>new</c> before its type is.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsAFactory(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Factory } && next.Kind == TokenKind.Identifier;
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>helper</c> that marks a method: one with <c>fn</c>
+    /// straight after it.
+    /// </summary>
+    /// <remarks>
+    /// The rule <see cref="MarksAMutatingMethod"/> gives <c>mut</c>, for its reason: nothing but a
+    /// method's own marker can stand before <c>fn</c>.
+    /// </remarks>
+    public static bool MarksAHelper(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Helper } && next.Kind == TokenKind.Fn;
+
+    /// <summary>
     /// Whether <paramref name="token"/>, with <paramref name="next"/> after it, is one of these words
     /// where it is a keyword.
     /// </summary>
     public static bool IsAKeywordHere(Token token, Token next)
         => BeginsAMessageLiteral(token, next)
             || MarksAMutatingMethod(token, next)
-            || BeginsAnOnUnknownClause(token, next);
+            || BeginsAnOnUnknownClause(token, next)
+            || BeginsAFactory(token, next)
+            || MarksAHelper(token, next);
 }

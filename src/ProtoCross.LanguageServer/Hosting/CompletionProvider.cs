@@ -376,6 +376,11 @@ public sealed class CompletionProvider
             ];
         }
 
+        if (subject.PrecededByDot && FactoryMembers(model, result, subject, presence, writingAReceiver, asked.Document) is { } reached)
+        {
+            return reached;
+        }
+
         if (subject.PrecededByDot)
         {
             return Members(
@@ -624,17 +629,32 @@ public sealed class CompletionProvider
     /// redundant: <c>extend |</c> in a buffer that has not parsed at all has no declaration to ask,
     /// and that is precisely the state the list is requested in.
     /// </para>
+    /// <para>
+    /// A <c>factory</c> names the message it builds the way an <c>extend</c> names its receiver, and
+    /// <c>ResolveMessage</c> resolves both, so both are answered here with the same list.
+    /// </para>
     /// </remarks>
     private static QualifiedName? ExtendedAt(
         SemanticModel model, SchemaSubject subject, OpenDocument document)
     {
-        if (model.SyntaxAt(subject.Start)?.Enclosing<ExtendDeclaration>() is { } extend
+        var at = model.SyntaxAt(subject.Start);
+
+        if (at?.Enclosing<ExtendDeclaration>() is { } extend
             && EditorPositions.Covers(extend.MessageName.Span, subject.Start))
         {
             return Replacing(subject, extend.MessageName.Span, document);
         }
 
-        return subject.PrecededByExtend ? new QualifiedName(subject, string.Empty, string.Empty) : null;
+        if (at?.Enclosing<FactoryDeclaration>() is { } factory
+            && EditorPositions.Covers(factory.MessageName.Span, subject.Start))
+        {
+            return Replacing(subject, factory.MessageName.Span, document);
+        }
+
+        var outsideEveryBody = at?.Enclosing<MethodDeclaration>() is null && at?.Enclosing<TestDeclaration>() is null;
+        return subject.PrecededByExtend || (subject.PrecededByFactory && outsideEveryBody)
+            ? new QualifiedName(subject, string.Empty, string.Empty)
+            : null;
     }
 
     /// <summary>
@@ -867,9 +887,50 @@ public sealed class CompletionProvider
             return Methods(module, types, target, Replacing(subject, target.Method.Span, document), document);
         }
 
+        if (target.Factory is { } word && EditorPositions.Covers(word.Span, subject.Start))
+        {
+            return TheFactoryWord(module, types, target, Replacing(subject, word.Span, document), document);
+        }
+
         return EditorPositions.Covers(target.Receiver.Span, subject.Start) && !target.Receiver.IsMissing
             ? Receivers(module, types, result, target, Replacing(subject, target.Receiver.Span, document), document)
             : null;
+    }
+
+    /// <summary>
+    /// The word in <c>test Invoice.factory.create</c>, offered where it is written when the message
+    /// before it has a factory.
+    /// </summary>
+    /// <remarks>
+    /// Only where the word is already there to be replaced. After <c>test Invoice.</c> the name being
+    /// written is a method's, and the word alone would leave <c>factory</c> as the method, which is
+    /// <c>PC0058</c>.
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem> TheFactoryWord(
+        IrModule module,
+        SchemaTypes types,
+        TestTarget target,
+        QualifiedName written,
+        OpenDocument document)
+    {
+        if (target.Receiver.IsMissing
+            || types.ResolveReceiver(target.Receiver.Text) is not { } message
+            || module.Factories.FirstOrDefault(factory => factory.Message.FullName == message.FullName) is null)
+        {
+            return [];
+        }
+
+        return written.Writable(
+        [
+            Member(
+                ContextualKeywords.Factory,
+                CompletionItemKind.Keyword,
+                $"factory of {message.FullName}",
+                null,
+                "0",
+                written.Subject,
+                document),
+        ]);
     }
 
     /// <summary>The methods a test could target on the receiver its header already names.</summary>
@@ -888,7 +949,7 @@ public sealed class CompletionProvider
 
         return written.Writable(
         [
-            .. module.MethodsOn(receiver.FullName).Select(method => Member(
+            .. TargetableOn(module, receiver.FullName, target).Select(method => Member(
                 method.Name,
                 CompletionItemKind.Method,
                 method.Signature.DisplayName,
@@ -911,19 +972,29 @@ public sealed class CompletionProvider
         => written.Writable(
         [
             .. types.All
-                .Where(type => type.IsMessage && Declares(module, type.FullName, target.Method))
+                .Where(type => type.IsMessage && Declares(module, type.FullName, target))
                 .SelectMany(type => Receiver(type, types, result, written.Subject, document)),
         ]);
 
     /// <summary>Whether this message declares the method a target names, or any at all when it names none.</summary>
-    private static bool Declares(IrModule module, string receiver, SyntaxName method)
+    private static bool Declares(IrModule module, string receiver, TestTarget target)
     {
-        var declared = module.MethodsOn(receiver);
+        var declared = TargetableOn(module, receiver, target);
+        var method = target.Method;
 
         return method.IsMissing
-            ? declared.Count > 0
+            ? declared.Any()
             : declared.Any(candidate => string.Equals(candidate.Name, method.Text, StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// The methods a test may target on a message: its own, or its factory's where the target goes
+    /// through <c>factory</c>, whose helpers no test reaches (spec 25.3).
+    /// </summary>
+    private static IEnumerable<IrMethod> TargetableOn(IrModule module, string message, TestTarget target)
+        => target.Factory is null
+            ? module.MethodsOn(message)
+            : module.FactoryOf(message).Where(method => method.Signature.Kind is IrMethodKind.Factory);
 
     /// <summary>The messages that could receive an <c>extend</c> block.</summary>
     /// <remarks>
@@ -1597,9 +1668,11 @@ public sealed class CompletionProvider
         // members. Ignoring either offers a candidate that is perfectly good on its own and does not
         // bind where it lands -- 'quantity' over the name in 'case_count(3)', or an int64 local in
         // front of '.'.
-        var methods = result.Module is { } module
-            ? module.MethodsOn(scope.Receiver.Descriptor.FullName)
-            : [];
+        // Inside a factory a bare call reaches the factory's methods and helpers, and nothing of the
+        // message's own, which is called on a message the factory does not have (spec 16.3).
+        var methods = result.Module is not { } module ? []
+            : scope.InAFactory ? module.FactoryOf(scope.Receiver.Descriptor.FullName)
+            : module.MethodsOn(scope.Receiver.Descriptor.FullName);
 
         if (subject.FollowedByCall)
         {
@@ -1834,6 +1907,102 @@ public sealed class CompletionProvider
     /// above, which is a change to what the IR preserves rather than to this file.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// What may follow a dot after a message's name or its factory's, as the binder resolved them; null
+    /// when the dot follows anything else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// After <c>Invoice.</c>, for a message with a factory, the word <c>factory</c> is the one thing that
+    /// can follow, and after <c>Invoice.factory.</c> the factory's methods are. A helper is offered only
+    /// inside its own factory, which is the only place a call to one binds.
+    /// </para>
+    /// <para>
+    /// Asked of what the binder recorded for the name before the dot, rather than of the text, so that
+    /// what is offered is what the binder will accept: a local named like the message is a value, and its
+    /// fields are what follow its dot. The binder records the message and the factory whether the name
+    /// after the dot is written or not, so a name already written there is offered again, as every other
+    /// member is.
+    /// </para>
+    /// <para>
+    /// Nothing is offered where a receiver or the operand of <c>has</c> goes, the floor a message's own
+    /// methods are held to in <see cref="Members"/>, for its reason, except the word itself, which is
+    /// what a call through the factory is written after.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem>? FactoryMembers(
+        SemanticModel model,
+        CompilationResult result,
+        SchemaSubject subject,
+        bool presence,
+        bool writingAReceiver,
+        OpenDocument document)
+    {
+        if (model.SyntaxAt(subject.Start)?.Enclosing<MemberAccessExpression>() is not { } member
+            || !EditorPositions.Covers(member.Name.Span, subject.Start)
+            || result.Module is not { } module)
+        {
+            return null;
+        }
+
+        // The last name before the dot, which is where the binder records what a dotted name resolved to.
+        // Anything else there, a call or a literal, is a value.
+        SourceSpan? before = member.Receiver switch
+        {
+            MemberAccessExpression reach => reach.Name.Span,
+            NameExpression name => name.Name.Span,
+            _ => null,
+        };
+
+        if (before is not { } named || model.ReferenceAt(named.Start.Offset)?.Symbol is not { } symbol)
+        {
+            return null;
+        }
+
+        if (symbol.Kind is SymbolKind.MessageType
+            && module.Factories.FirstOrDefault(factory => SymbolId.ForType(factory.Message) == symbol) is { } owned)
+        {
+            return presence || subject.FollowedByCall
+                ? []
+                :
+                [
+                    Member(
+                        ContextualKeywords.Factory,
+                        CompletionItemKind.Keyword,
+                        $"factory of {owned.Message.FullName}",
+                        null,
+                        rank: "0",
+                        subject,
+                        document),
+                ];
+        }
+
+        if (symbol.Kind is not SymbolKind.Factory
+            || module.Factories.FirstOrDefault(factory => factory.Id == symbol) is not { } reached)
+        {
+            return null;
+        }
+
+        var inside = model.ScopeAt(subject.Start) is { InAFactory: true } scope
+            && scope.Receiver.Descriptor.FullName == reached.Message.FullName;
+
+        return presence || writingAReceiver
+            ? []
+            :
+            [
+                .. module.FactoryOf(reached.Message.FullName)
+                    .Where(method => inside || method.Signature.Kind is IrMethodKind.Factory)
+                    .Select(method => Member(
+                        subject.FollowedByCall ? method.Name : method.Name + "()",
+                        CompletionItemKind.Method,
+                        method.Signature.DisplayName,
+                        null,
+                        rank: "0",
+                        subject,
+                        document)),
+            ];
+    }
+
     private static PlType? ReceiverAt(SemanticModel model, SchemaSubject subject)
     {
         if (model.IrAt(subject.Start) is not { } at)

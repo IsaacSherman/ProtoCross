@@ -15,7 +15,13 @@ This section should be maintained as the authoritative list of open decisions.
   in 7.1.
 - ~~Type inference policy.~~ Decided: local variables may state an explicit type or infer from the
   initializer ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), [8](./§8-Type%20System.md#8-type-system)).
-- Helper functions and whether top-level functions belong in the language.
+- ~~Helper functions~~ Decided: a factory's `helper fn`, which only that factory may call, is the
+  only helper, and there are no access modifiers ([16.3](./§16-Methods.md#163-factories)). Whether top-level functions belong in
+  the language remains open.
+- ~~Where a factory lives, and what it generates.~~ Decided: a `factory Message { … }` block, whose
+  methods build the message, are called as `Message.factory.method(…)`, and are generated into a
+  `MessageFactory` class in the namespace the message's behavior goes in ([16.3](./§16-Methods.md#163-factories),
+  [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). Injection and mocking are not supported in 1.0.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
   comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)).
 - ~~Complete scalar type support.~~ Decided: all protobuf scalar spellings map into the supported
@@ -65,7 +71,8 @@ This section should be maintained as the authoritative list of open decisions.
   `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
   ([13.2](./§13-Messages.md#132-message-construction)).
 - Message equality semantics. Until they are decided, `==` and `!=` refuse two messages and two
-  repeated values ([13.3](./§13-Messages.md#133-equality)).
+  repeated values ([13.3](./§13-Messages.md#133-equality)). A test compares an expected message literal by the fields it sets
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), which leaves `==` undecided.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
   the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; an
   element is appended with `place.append(value);`, to a field or to a local holding a repeated value;

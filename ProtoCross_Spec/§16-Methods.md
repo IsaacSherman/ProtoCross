@@ -2,7 +2,8 @@
 
 ### 16.1 Method Attachment
 
-Methods are attached to protobuf message types using `extend`.
+Methods are attached to protobuf message types using `extend`, and a message's factory declares the
+methods that build one ([16.3](#163-factories)).
 
 ```protocross
 extend DetectorReading {
@@ -14,10 +15,12 @@ extend DetectorReading {
 
 Normative Requirements:
 
-- All ProtoCross-defined methods are public.
+- All ProtoCross-defined methods are public, except a factory's helpers, which only that factory may
+  call ([16.3](#163-factories)).
 - Method behavior must not depend on target-language inheritance.
 - Method names share a namespace with protobuf fields on the receiver. A method whose name collides
-  with a field is `PC0023`. An extension declared inside the receiver is not one of its fields
+  with a field is `PC0023`. A factory's methods and helpers are in that namespace too, so no name
+  means one thing called on a message and another called through its factory. An extension declared inside the receiver is not one of its fields
   ([13.4](./§13-Messages.md#134-extensions)), so a method may take its name.
 - Overloading is not supported. Two methods with the same name on the same receiver are `PC0022`,
   even if their parameter lists differ, and even if they are declared in different sources of one
@@ -59,3 +62,88 @@ Open Questions:
 
 - Should recoverable errors be represented through user-defined protobuf messages, a future standard
   library `Result`, or some other convention?
+
+### 16.3 Factories
+
+**Decided: a message's factory is a `factory` block, whose methods build that message and are called
+on nothing.**
+
+```protocross
+factory Invoice {
+    fn create(options: InvoiceOptions) -> Invoice {
+        return new Invoice {
+            number: options.number,
+            total_cents: line_total(options),
+        };
+    }
+
+    helper fn line_total(options: InvoiceOptions) -> int64 {
+        return options.line_count * options.unit_cents;
+    }
+}
+
+extend Order {
+    fn invoice() -> Invoice {
+        return Invoice.factory.create(new InvoiceOptions { number: number });
+    }
+}
+```
+
+In the language, a factory is part of its message. `factory Invoice` declares no type: its methods
+are members of `Invoice`, and code calls them as `Invoice.factory.create(options)`. What is generated
+differs from that model on purpose. Each message's factory becomes a class of its own
+([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)), and the compiler knows where to find it.
+
+Normative Requirements:
+
+- **A factory block is a top-level declaration**, `factory` and the message it builds, then its
+  methods in braces ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar)). It resolves the message as an `extend` block resolves its receiver, and one whose
+  message does not resolve is skipped as an `extend` block is. A message needs no `extend` block to
+  have a factory.
+- **Every method of a factory returns the message it builds.** One that returns anything else,
+  nothing included, is `PC0123`, and its help says to mark it a helper if what it computes is part of
+  building one.
+- **A message has one factory in a compilation.** A second block for it is `PC0124`, and its methods
+  are bound for the names in them and called by nothing. Spreading one factory across sources would
+  only be convenience, and C++ could not declare it ([24.2](./§24-Generated%20API%20Strategy.md#242-c)).
+- **A factory's methods and helpers share the message's one set of member names** ([16.1](#161-method-attachment)).
+  One that shares a name with a field is `PC0023`, and with a method or another member of the factory,
+  `PC0022`, whichever block declared the first.
+- **A factory body follows every rule a method body does, except that it has no receiver.** A bare
+  name reaches no field, and a bare name that is not a local or a parameter is `PC0037`, whose message
+  says why. A method of the message is called on a message the factory holds, and called bare, it is
+  `PC0093`. A `mut fn` may be called on a message the factory built and holds in a local, and not on
+  a parameter ([18](./§18-Mutability.md#18-mutability)). A factory's method or helper marked `mut` is `PC0128`, and is bound as
+  though it were not.
+- **A factory's own methods and helpers call each other by bare name**, as a method reaches its
+  receiver's members, and anywhere else as `Message.factory.method(…)`. A factory method called on a
+  message, `invoice.create()`, or by bare name in an `extend` block, is `PC0130`, whose help spells the
+  call through the factory. A call through the factory of a message that has none, or to a name it
+  lacks, is `PC0044`. Anywhere else the word is read as the factory only where the message has one:
+  `Message.factory` written anywhere but before a call's name is then `PC0131`, and
+  `Message.factory.create` not called is `PC0040`, as a method is. For a message with no factory either
+  is the unknown name `PC0037` it was before factories existed.
+- **`Message.factory` is read as the factory only where `Message` is not a value.** A local, a
+  parameter or a field named like the message wins, as a value wins over an enum's name
+  ([12](./§12-Enums.md#12-enums)), and the dot reaches into it.
+- **A nested type named `factory` takes the word.** A factory for a message that declares a nested
+  message or enum named `factory` is `PC0125`. A message with such a type and no factory keeps reaching
+  it as `Message.factory`, as it always has.
+- **A helper is `helper fn`, and only its own factory may call it.** It need not return the message.
+  A call to one from anywhere else, and a `test` that targets one, is `PC0129`. A helper written in an
+  `extend` block is `PC0127` and is bound as an ordinary method: there are no helpers outside a factory
+  and no access modifiers. The rule is the binder's, so every backend behaves the same, including one
+  with no private members. It holds for now. Making helpers public later would break no caller.
+- **A test targets a factory's method as `Invoice.factory.create`, with no receiver**
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
+- **A factory for one of protobuf's well-known types is `PC0133`**, a warning, for the reason an
+  `extend` block of one is `PC0077`: consumers have the type without the factory.
+- **A factory whose generated class would share a name in its namespace is refused** with
+  `PC0126`, whether with another factory's class or with a schema's type or namespace, in either
+  backend ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
+
+Factories offer no support for injection or mocking in 1.0. A factory method is pure: it does no I/O
+and calls nothing outside ProtoCross ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), so nothing in it needs replacing in a test. A
+consumer who wants an interface writes a wrapper that forwards to the generated methods, which is
+how consumers already adapt protoc's sealed message classes. Generating one was considered and left
+out, because nobody needs it yet and adding it later breaks no caller.

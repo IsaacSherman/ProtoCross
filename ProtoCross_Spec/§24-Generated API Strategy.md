@@ -15,6 +15,57 @@ Sources compiled without a project are not a library, and have no name to own a 
 behavior is declared beside each message it extends, in the namespace protoc declares that message
 in, as it always has been.
 
+**Decided: a message's factory is a class of its own, named after the message, in the namespace its
+behavior goes in** ([16.3](./§16-Methods.md#163-factories)). The class of `Invoice`'s factory is `InvoiceFactory`. Its name is the
+message's name and the names of the messages enclosing it, each PascalCased as a C# method name is
+([24.1](#241-c)) and joined by underscores, then `Factory`: `Outer.invoice_line` is
+`Outer_InvoiceLineFactory`. One name in every backend, because it is the name a consumer types, and a
+nested message's factory never takes a top-level one's. It goes where the project's behavior goes, so
+a consumer writes `using Acme.App;` and `InvoiceFactory.Create(options)` in C#, or
+`acme::app::InvoiceFactory::create(options)` in C++. Compiled without a project, it is declared beside
+the message, in the namespace protoc declares it in, as the message's extension class is.
+
+**A factory whose class would share a name in that namespace is `PC0126`.** In one project,
+`acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
+project's namespace. A project named after its schemas' package could also declare one beside a
+schema's message or enum of that name. Both are refused, and the help says how to separate them.
+Refusing is what C# does with two classes of one name.
+
+The class is compared as each backend declares it, by its namespace and name there, and a clash in
+either backend is refused whichever backends are run:
+
+- **The namespace is the one each backend generates.** C# takes it from `csharp_namespace` when a file
+  sets one and PascalCases the package otherwise ([24.1](#241-c)), and C++ escapes the package's keywords
+  ([24.2](#242-c)). So
+  without a project, factories for `acme.lower.invoice_line` and `acme.Lower.InvoiceLine`, or for
+  messages of two packages whose files set one `csharp_namespace`, meet in C# and not in C++. A C#
+  namespace is compared as C# identifies it, so `@Acme.Shared` and `Acme.Shared` are one.
+- **A schema's type is compared by the name protoc declares at namespace scope.** A nested one is the
+  name protoc's C++ flattens it to, escaped as protoc escapes it: `Outer.InvoiceFactory` is
+  `Outer_InvoiceFactory`, and `New.ItemFactory` is `New__ItemFactory`, which the factory of `New.Item`,
+  `New_ItemFactory`, does not meet. C# nests a nested type where no factory is declared.
+- **A schema's namespace is taken too.** Package `acme.InvoiceFactory` declares a namespace where
+  `acme.Invoice`'s factory would be generated, and neither language lets a class share its name.
+
+Four placements lost:
+
+- **Beside the message, in protoc's namespace, inside a project.** Two messages would never collide,
+  but that namespace belongs to whoever owns the schema, which is what a project's namespace was
+  decided against above. Two libraries that each declare a factory for one message would declare the
+  same class, which a C# consumer of both cannot compile and a C++ linker silently merges.
+- **The project's namespace with the message's package under it.** It never collides, but the names
+  are long, and in C++ the inner namespace hides the outer one: `acme` inside `acme::app`. The
+  generated C++ does not qualify names from `::` everywhere, so every reference would have to be
+  checked.
+- **One `ProtoCrossFactories` class holding every factory.** A consumer would need
+  `using static Acme.App.ProtoCrossFactories;` to write `InvoiceFactory.Create`. Its one benefit was
+  avoiding a schema message called `InvoiceFactory`, which the refusal covers.
+- **Namespaces taken from the sources' folders.** In a project every extension method is already an
+  overload in one class, told apart by its receiver, so two messages of one name need nothing more. A
+  folder does not identify a message either: two `Invoice`s extended from one folder would still
+  collide. A source declares no namespace ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), so renaming a folder would break every consumer, and folder
+  names would need a second, lossy conversion rule.
+
 A library that declares its symbols in a namespace someone else owns shares it with every other
 library that does the same. Two libraries extending one message there declare the same names: in C#
 two classes a consumer referencing both cannot tell apart, and in C++ two `inline` functions the
@@ -49,6 +100,14 @@ which C# does not allow, has an underscore appended wherever it is declared or c
 appends one to a property named after its message: `proto_cross_extensions` is
 `ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
 `TimestampProtoCrossExtensions_` beside it.
+
+**A factory is a `public static class`, and its helpers are `private static` methods.** Each method is
+named as an extension method is, PascalCased, with an underscore appended when that is the class's
+own name, and takes only its parameters. The class is not `partial`: a message has one factory in a
+compilation, in one source ([16.3](./§16-Methods.md#163-factories)), so one file declares all of it. A helper's privacy changes
+nothing a ProtoCross caller can do, since the binder already refuses a call to one from outside its
+factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
+qualified from `global::`, as a call to an extension method is.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
@@ -274,6 +333,16 @@ and behaves the same whether the protobuf codegen is regenerated or vendored. Al
 emitted before any definition so methods may call one another in any order. Every call a generated
 function or test makes to another is qualified with the callee's namespace, so argument-dependent
 lookup cannot find another library's function of the same name.
+
+**A factory is a struct of static member functions, and its helpers are private static members.**
+A namespace cannot keep a member private, and a factory's helpers are its own. The struct is declared
+with the functions, before any definition, and its members are defined after it, `inline`, as every
+function in a generated header is. A member named after its struct would declare a constructor, so it
+has an underscore appended, as C# appends one. One block per message is also what lets the struct be
+declared at all, since a struct cannot be continued in another header. A call to a member is
+qualified with the namespace and the struct, `::acme::app::InvoiceFactory::create(options)`, and a
+struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
+take one.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is

@@ -26,10 +26,40 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// Methods are not indexed, because a compilation declares few of them and the alternative is a
     /// dictionary built for every compilation whether or not anything asks.
     /// </para>
+    /// <para>
+    /// A factory's methods are not among them, because none is called on a message: they are what
+    /// <see cref="FactoryOf"/> answers. Every caller asking what may follow a value's dot is asking
+    /// about these alone.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<IrMethod> MethodsOn(string receiverFullName)
         => [.. Methods.Where(method
-            => string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+            => method.Signature.HasReceiver
+                && string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+
+    /// <summary>
+    /// The methods and helpers of the factory that builds one message, in declaration order; empty when
+    /// the module declares no factory for it (spec 16.3).
+    /// </summary>
+    /// <remarks>Keyed as <see cref="MethodsOn"/> is, by the message's full name compared ordinally.</remarks>
+    public IReadOnlyList<IrMethod> FactoryOf(string messageFullName)
+        => [.. Methods.Where(method
+            => !method.Signature.HasReceiver
+                && string.Equals(method.Receiver.FullName, messageFullName, StringComparison.Ordinal))];
+
+    /// <summary>Every <c>factory</c> block the module declares, one per message (spec 16.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// The block itself, which its methods do not record: where it is written, so that the
+    /// <c>factory</c> of <c>Invoice.factory.create()</c> can be followed to it. A factory declares no
+    /// type, and is a symbol only for that.
+    /// </para>
+    /// <para>
+    /// Init-only with an empty default, on the terms <see cref="References"/> gives, so every existing
+    /// construction of a module stays valid and declares no factory.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<IrFactory> Factories { get; init; } = [];
 
     /// <summary>The method <paramref name="symbol"/> identifies, or null when this module declares no
     /// such method.</summary>
@@ -129,6 +159,7 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
         {
             References = [.. References.Where(reference => reference.Document == document)],
             Scope = [.. Scope.Where(entry => entry.Declaration.Document == document)],
+            Factories = [.. Factories.Where(factory => factory.Declaration.Document == document)],
         };
     }
 }
@@ -222,6 +253,27 @@ public sealed record IrMethodSignature(
     /// </remarks>
     public bool IsMutating { get; init; }
 
+    /// <summary>
+    /// Which block declared the method, which decides whether it is called on a message and who may
+    /// call it (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A factory's methods keep <see cref="Receiver"/>, naming the message they build. That is still the
+    /// message they belong to: they share its one set of member names (spec 16.1), and the backends
+    /// declare them in a class named after it. What they lack is an instance to be called on, which is
+    /// what this says, rather than a missing receiver.
+    /// </para>
+    /// <para>
+    /// Init-only with a default of <see cref="IrMethodKind.Extend"/>, so every existing construction of
+    /// a signature stays valid and describes the method every method was before #83.
+    /// </para>
+    /// </remarks>
+    public IrMethodKind Kind { get; init; }
+
+    /// <summary>Whether the method is called on a message, which only an extend block's are.</summary>
+    public bool HasReceiver => Kind is IrMethodKind.Extend;
+
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
     /// int64</c>, or <c>mut fn …</c> for one that may change its receiver.</summary>
     /// <remarks>
@@ -277,12 +329,43 @@ public sealed record IrMethodSignature(
         }
     }
 
-    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}(" : $"fn {Name}(";
+    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}("
+        : Kind is IrMethodKind.Helper ? $"{ContextualKeywords.Helper} fn {Name}("
+        : $"fn {Name}(";
 
     private const string Separator = ", ";
 
     private static string Describe(IrParameter parameter)
         => $"{parameter.Name}: {parameter.Type.DisplayName}";
+}
+
+/// <summary>Which block declared a method (spec 16.1, 16.3).</summary>
+public enum IrMethodKind
+{
+    /// <summary>A method of an <c>extend</c> block, called on a message.</summary>
+    Extend,
+
+    /// <summary>A method of a <c>factory</c> block, called on nothing, which builds its message.</summary>
+    Factory,
+
+    /// <summary>A <c>helper fn</c> of a <c>factory</c> block, which only that factory may call.</summary>
+    Helper,
+}
+
+/// <summary>A <c>factory</c> block: the message it builds, and where it is written (spec 16.3).</summary>
+/// <param name="Declaration">
+/// The block, named by its <c>factory</c> word. A factory declares no type and no name of its own, so
+/// the word is what a reference to it is written as -- the <c>factory</c> of
+/// <c>Invoice.factory.create()</c> -- and what navigating to it selects.
+/// </param>
+/// <remarks>
+/// A symbol rather than a node, as <see cref="IrMethodSignature"/> is: its methods are the module's,
+/// each a root of its own, and holding them here as well would put every method in two places.
+/// </remarks>
+public sealed record IrFactory(MessageDescriptor Message, DeclarationSite Declaration)
+{
+    /// <inheritdoc cref="IrMethodSignature.Id"/>
+    public SymbolId Id => Declaration.Id;
 }
 
 /// <summary>Where one parameter sits inside a rendered signature.</summary>
@@ -641,8 +724,19 @@ public sealed record IrFieldPresence(
     FieldDescriptor Field,
     SourceSpan Span) : IrExpression(ScalarType.BoolType, Span);
 
+/// <param name="Receiver">
+/// The message the method is called on, or null for a call to a factory's method, which is called on
+/// nothing (spec 16.3). Null exactly where <see cref="IrMethodSignature.HasReceiver"/> is false.
+/// </param>
+/// <remarks>
+/// One record for both, rather than a second for a factory's calls, because everything that asks about
+/// calls asks about both: which source's header a C++ file includes, what a method may change, which
+/// method a caret is on. A second record would be a second arm in each of those, and a walk that
+/// forgot one would pass over a call without a word. A nullable receiver is an arm the compiler asks
+/// every reader for.
+/// </remarks>
 public sealed record IrMethodCall(
-    IrExpression Receiver,
+    IrExpression? Receiver,
     IrMethodSignature Target,
     IReadOnlyList<IrExpression> Arguments,
     SourceSpan Span) : IrExpression(Target.ReturnType, Span);
@@ -1192,7 +1286,10 @@ public sealed record IrValuelessCall(IrMethodCall Call) : IrExpression(ErrorType
 
 /// <param name="Receiver">
 /// The message the method is called on, which a fixture writes the way a literal does (spec 25.3)
-/// and the binder builds as one.
+/// and the binder builds as one. A test of a factory's method calls it on nothing, and holds the
+/// fixture its test does: the empty one standing where none was written, or one written anyway and
+/// refused. No backend builds it for such a test, since <see cref="IrMethodSignature.HasReceiver"/> on
+/// the target says there is nothing to call the method on.
 /// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
@@ -1210,7 +1307,14 @@ public sealed record IrTest(
     /// two do it differently. This is what they report instead, so a conformance harness can check
     /// that every backend ran the same set of tests rather than merely that each ran some.
     /// </remarks>
-    public string Identity => $"{Target.Receiver.FullName}.{Target.Name}: {Name}";
+    /// <remarks>
+    /// A factory's method is named as a test targets it, <c>acme.Invoice.factory.create</c>. No method
+    /// of the message can share its name (spec 16.1), so the word distinguishes nothing; it says where
+    /// the method is.
+    /// </remarks>
+    public string Identity => Target.HasReceiver
+        ? $"{Target.Receiver.FullName}.{Target.Name}: {Name}"
+        : $"{Target.Receiver.FullName}.{ContextualKeywords.Factory}.{Target.Name}: {Name}";
 
     /// <summary>
     /// The source this test is declared in, or null for a test nothing bound.
@@ -1237,3 +1341,24 @@ public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
 public sealed record IrTestReturnExpectation(IrExpression Value, SourceSpan Span) : IrTestExpectation(Span);
 
 public sealed record IrTestFailExpectation(SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary>
+/// <c>expect return new T { ... };</c> on a method that returns a message: met when every field the
+/// literal sets has the same value in the message returned. Fields it leaves out are not looked at
+/// (spec 25.3).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Its own record rather than a <see cref="IrTestReturnExpectation"/> holding a literal, because it is
+/// not that comparison. Two messages have no equality until spec 13.3 decides one, so nothing here is
+/// the language's <c>==</c>: the literal says which fields matter, and each is compared as an
+/// <c>expect return</c> of its own value would be. A backend that met this as a return expectation
+/// would compare the two messages whole.
+/// </para>
+/// <para>
+/// Which comparisons it makes, and in what order, is <see cref="Semantics.IrExpectedFields.Of"/>'s to
+/// say, so both backends read one answer. The binder refuses a field that cannot be compared, so every
+/// field of a literal that reaches a backend can be.
+/// </para>
+/// </remarks>
+public sealed record IrTestFieldsExpectation(IrMessageLiteral Expected, SourceSpan Span) : IrTestExpectation(Span);

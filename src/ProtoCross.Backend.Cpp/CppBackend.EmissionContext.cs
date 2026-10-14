@@ -55,16 +55,34 @@ public sealed partial class CppBackend
     /// </remarks>
     private sealed record Placement(ProjectNamespace? Project)
     {
-        public string NamespaceOf(MessageDescriptor receiver)
-            => Project is { } project
-                ? NameConventions.GetCppNamespace(project)
-                : NameConventions.GetCppNamespace(receiver.File);
+        public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
         public string QualifiedFunctionOf(IrMethodSignature signature)
         {
             var ns = NamespaceOf(signature.Receiver);
-            var name = Escape(signature.Name);
+            var name = signature.HasReceiver
+                ? Escape(signature.Name)
+                : $"{FactoryStructOf(signature.Receiver)}::{MemberNameOf(signature)}";
             return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
+        }
+
+        /// <summary>The struct <paramref name="message"/>'s factory is generated into (spec 24.2).</summary>
+        /// <remarks>The name C# gives the class, so a consumer of both learns one (<see cref="NameConventions.GetFactoryClassName"/>).</remarks>
+        public string FactoryStructOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
+
+        /// <summary>
+        /// The name a factory's method is declared and called by: its name escaped as any method's is,
+        /// with an underscore appended when that is the name of its struct.
+        /// </summary>
+        /// <remarks>
+        /// A member named after its class declares a constructor, so <c>fn InvoiceFactory()</c> in the
+        /// factory of <c>Invoice</c> could not be a static member as written. The escape is the one the
+        /// C# backend applies to a method named after its class, so the two stay one rule.
+        /// </remarks>
+        public string MemberNameOf(IrMethodSignature signature)
+        {
+            var name = Escape(signature.Name);
+            return name == FactoryStructOf(signature.Receiver) ? name + "_" : name;
         }
 
         /// <summary>The guard of the header named <paramref name="headerName"/>.</summary>

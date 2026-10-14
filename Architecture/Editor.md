@@ -8,7 +8,7 @@
 | Debounce, cancel, publish | [CompileScheduler][sched]: `Schedule`, `CompileAsync` | [Compile supervision][sup-t] |
 | Deferred answers and staleness | [DeferredAnswers][defer]: `AnswerAsync`, `Require` | [Compile supervision][sup-t] |
 | Completion: context capture and imports | [CompletionProvider][comp]: `Read`, `Schemas` | [Import completion][imp-t] |
-| Completion: scope, dotted members, presence | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members` | [Schema completion][comp-t] |
+| Completion: scope, dotted members, presence, factories | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members`, `FactoryMembers` | [Schema completion][comp-t] |
 | Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted` | [Type edits][type-t] |
 | Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t], [Refused parts][refused-t] |
 | Completion: switch keywords | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t] |

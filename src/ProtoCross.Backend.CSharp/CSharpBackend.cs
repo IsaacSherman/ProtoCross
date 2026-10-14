@@ -46,6 +46,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             IDisposable? namespaceScope = hasNamespace ? writer.Block($"namespace {namespaceGroup.Key}") : null;
 
             var byPart = namespaceGroup
+                .Where(m => m.Signature.HasReceiver)
                 .GroupBy(m => placement.PartOf(m.Receiver), StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 
@@ -63,6 +64,23 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 // project's one part lists each receiver's methods together.
                 var methods = part.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal).ToList();
                 EmitExtensionClass(writer, placement.ClassOf(methods[0].Receiver), methods, placement);
+            }
+
+            // After the extension classes, so a source with no factory is generated as it always was.
+            var factories = namespaceGroup
+                .Where(m => !m.Signature.HasReceiver)
+                .GroupBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal);
+
+            foreach (var factory in factories)
+            {
+                if (!firstClass)
+                {
+                    writer.WriteLine();
+                }
+
+                firstClass = false;
+                EmitFactoryClass(writer, [.. factory], placement);
             }
 
             namespaceScope?.Dispose();
@@ -142,17 +160,52 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         }
     }
 
+    /// <summary>Emits the static class a message's factory is generated into (spec 24.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// Not <c>partial</c>, unlike an extension class: a message has one factory in a compilation, and
+    /// its block is in one source (spec 16.3), so one file declares the whole class. A consumer who wants
+    /// to add to it writes a class of their own.
+    /// </para>
+    /// <para>
+    /// A helper is <c>private</c>. The binder already refuses a call to one from anywhere but its own
+    /// factory, so this changes nothing a ProtoCross caller can do; it keeps a C# caller to the same
+    /// methods.
+    /// </para>
+    /// </remarks>
+    private static void EmitFactoryClass(SourceWriter writer, IReadOnlyList<IrMethod> methods, Placement placement)
+    {
+        var message = methods[0].Receiver;
+
+        writer.WriteLine($"/// <summary>Builds <c>{message.FullName}</c>: its ProtoCross factory.</summary>");
+        using var classScope = writer.Block($"public static class {placement.FactoryClassOf(message)}");
+
+        var first = true;
+        foreach (var method in methods)
+        {
+            if (!first)
+            {
+                writer.WriteLine();
+            }
+
+            first = false;
+            EmitMethod(writer, method, placement);
+        }
+    }
+
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         var returnType = TypeName(method.ReturnType);
         var methodName = placement.MethodNameOf(method.Signature);
         var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
 
-        var parameters = new List<string> { $"this {receiverType} {ReceiverName}" };
+        // A factory's method is called on nothing, so it is a plain static method of its class.
+        var parameters = method.Signature.HasReceiver ? [$"this {receiverType} {ReceiverName}"] : new List<string>();
         parameters.AddRange(method.Parameters.Select(p => $"{TypeName(p.Type)} {Escape(p.Name)}"));
 
+        var access = method.Signature.Kind is IrMethodKind.Helper ? "private" : "public";
         using var methodScope = writer.Block(
-            $"public static {returnType} {methodName}({string.Join(", ", parameters)})");
+            $"{access} static {returnType} {methodName}({string.Join(", ", parameters)})");
 
         EmitStatements(
             writer,
@@ -196,13 +249,15 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
     private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
     {
-        var arguments = new List<string> { Expression(call.Receiver, placement, receiverName) };
+        var arguments = call.Receiver is { } receiver
+            ? [Expression(receiver, placement, receiverName)]
+            : new List<string>();
         arguments.AddRange(call.Arguments.Select(argument => IrMutation.IsPassedAsACopy(call, argument)
             ? StoredValue(argument, placement, receiverName)
             : Expression(argument, placement, receiverName)));
 
         var methodName = placement.MethodNameOf(call.Target);
-        return $"{placement.QualifiedClassOf(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
+        return $"{placement.QualifiedClassOf(call.Target)}.{methodName}({string.Join(", ", arguments)})";
     }
 
     /// <summary>

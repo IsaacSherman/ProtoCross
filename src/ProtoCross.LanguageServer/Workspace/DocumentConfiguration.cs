@@ -343,6 +343,10 @@ public sealed record DocumentConfiguration
             IncludePaths = IncludeDirectories,
             Config = Config,
             Loader = loader,
+
+            // Where the project's behavior is generated decides which factories would share a class
+            // name there (spec 24), so an editor without it would pass what the build refuses.
+            ProjectNamespace = Project?.Namespace,
         };
 
         return true;

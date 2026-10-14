@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// multi/factory_project -- a factory in a project (spec 24): generated as a class of its own in the
+// project's namespace rather than beside its message, and called from another source of the project.
+message ProjectedTicket {
+  string code = 1;
+  int64 seats = 2;
+  int64 price_cents = 3;
+}
+
+message ProjectedBooking {
+  string code = 1;
+  int64 seats = 2;
+}

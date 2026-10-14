@@ -119,10 +119,17 @@ public partial class BackendTests
             $"{entry.RelativePath} calls '{entry.Method}' in '{entry.Namespace}' rather than the project's namespace"));
 
         static IEnumerable<(string RelativePath, string Method, string Namespace)> CallsTo(Ir.IrModule module, IReadOnlyList<GeneratedFile> files)
-            => from method in module.Methods.Select(method => NameConventions.EscapeCppKeyword(method.Name)).Distinct()
+            => from method in module.Methods.Select(Called).Distinct()
                from file in files
                from Match match in Regex.Matches(file.Contents, $@"::([\w:]+)::{Regex.Escape(method)}\(")
                select (file.RelativePath, method, match.Groups[1].Value);
+
+        // A factory's method is called through its struct, which is declared in the namespace the call
+        // is qualified by (spec 24.2).
+        static string Called(Ir.IrMethod method)
+            => method.Signature.HasReceiver
+                ? NameConventions.EscapeCppKeyword(method.Name)
+                : $"{NameConventions.GetFactoryClassName(method.Receiver)}::{NameConventions.EscapeCppKeyword(method.Name)}";
     }
 
     /// <summary>

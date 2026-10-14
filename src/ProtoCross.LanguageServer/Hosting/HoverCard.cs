@@ -6,6 +6,7 @@ using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
 using ProtoCross.Symbols;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 using ProtoCross.LanguageServer.Protocol.Lsp;
 using SymbolKind = ProtoCross.Symbols.SymbolKind;
@@ -95,6 +96,7 @@ internal static class HoverCard
             SymbolKind.Local or SymbolKind.Parameter or SymbolKind.LoopBinding
                 => AboutBinding(result, symbol),
             SymbolKind.Method => AboutMethod(result, symbol),
+            SymbolKind.Factory => AboutFactory(result, symbol),
             SymbolKind.Field => AboutField(model, symbol),
             SymbolKind.EnumValue => AboutEnumValue(model, symbol),
             _ => AboutType(result, symbol),
@@ -132,7 +134,25 @@ internal static class HoverCard
         }
 
         yield return Signature(signature.DisplayName);
-        yield return $"Method on `{signature.Receiver.FullName}`.";
+        yield return signature.Kind switch
+        {
+            IrMethodKind.Factory => $"Method of the factory of `{signature.Receiver.FullName}`, called on nothing.",
+            IrMethodKind.Helper => $"Helper of the factory of `{signature.Receiver.FullName}`, which only that factory calls.",
+            _ => $"Method on `{signature.Receiver.FullName}`.",
+        };
+    }
+
+    /// <summary>A <c>factory</c> block, reached from its word wherever the word is written.</summary>
+    private static IEnumerable<string> AboutFactory(CompilationResult result, DeclaredSymbol symbol)
+    {
+        if (result.Module?.Factories.FirstOrDefault(factory => factory.Id == symbol.Id) is not { } factory)
+        {
+            yield break;
+        }
+
+        yield return Signature($"{ContextualKeywords.Factory} {factory.Message.Name}");
+        yield return $"Factory of `{factory.Message.FullName}`. Its methods build one, and are called as "
+            + $"`{factory.Message.Name}.{ContextualKeywords.Factory}.method(…)`.";
     }
 
     private static IEnumerable<string> AboutField(SemanticModel model, DeclaredSymbol symbol)

@@ -124,7 +124,12 @@ each with a form that takes a list of sources.
    **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
    continues, a name the parser never saw resolves to `ErrorType`
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
-   message to bind against. Declarations inside a resolvable receiver are kept as far as possible:
+   message to bind against. A `factory` block is declared beside the extend blocks, in the order the
+   two are written, and its methods go into the same table, so they share the message's names; each
+   signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
+   implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
+   block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
+   can be followed to it (`Binder.Factories.cs`). Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
    [`DeclarationSite`](../src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
    declaration it means and say which symbol that is. It also records the other direction as it
@@ -584,7 +589,9 @@ it is invoked in is nearly always one the parser has already recovered from. The
 position, after `extend` or `new`, inside a literal's braces, or naming a fixture field. That is
 answered from a compilation kept between keystrokes. A bare name is answered from `ScopeAt`, a
 member from the receiver's type, and a literal's braces from its message's fields. After a dot on a
-repeated value at statement position, the answer is `append()`. Each list honours the `ScopeAt`
+repeated value at statement position, the answer is `append()`. After a message's name the answer is
+its factory's word, and after the word its methods, each asked of the reference the binder recorded
+for the name before the dot. Each list honours the `ScopeAt`
 contract, *everything offered binds*. Under `PROTOCROSS_SWEEP` the suite checks that contract by
 accepting every item offered at every caret worth asking at in the corpus, and compiling the result.
 
@@ -691,6 +698,15 @@ the list, `ProtoCrossWrappers` in the support file, so the binding is the elemen
 messages. Nothing in the IR or the binder knows about it, because
 it is a fact about one target's generated code rather than about the language (spec 24.1).
 
+A factory's methods are told apart from extension methods by `IrMethodSignature.HasReceiver`, and
+each backend groups them by message into a class of their own, after the extension classes, so a
+source with no factory is generated as it always was: a C# `public static class` with `private static`
+helpers, and a C++ struct of static members, declared with the functions and defined after them. The
+class's name is `NameConventions.GetFactoryClassName`, the one both backends and the binder's collision
+check use. A test whose expectation is a message literal compares the fields it sets, and which those
+are is [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer, which each
+backend emits as field reads off the result.
+
 A backend is handed one source's part of the module, and a call in it may name a method another
 source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
 declares the part. A C++ header includes the headers of the sources it calls, after its own
@@ -702,8 +718,9 @@ compilation carries the project's namespace, read from the project's name, from 
 through `CompilationResult.ProjectNamespace` to `BackendOptions`, and every class, function, call and
 C++ include guard is placed in it, whatever message the method extends. Without a project there is no
 namespace to carry, and each receiver's behavior is declared beside its message, in the namespace
-protoc declared that message in. The compilation itself never reads the namespace: where behavior is
-declared changes every generated name and nothing a program means.
+protoc declared that message in. The compilation reads the namespace for one question, which
+factories' classes would share one, since two of them that would cannot be generated at all; otherwise
+where behavior is declared changes every generated name and nothing a program means.
 
 ## Tests
 
@@ -716,7 +733,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `CompiledCorpusTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,

@@ -206,6 +206,10 @@ public static class SemanticTokenLegend
             SymbolKind.Method => MethodIndex,
             SymbolKind.MessageType => ClassIndex,
             SymbolKind.EnumType => EnumIndex,
+
+            // A factory is named by its word wherever it is written, 'factory Invoice' and
+            // 'Invoice.factory' alike, and the word is coloured as the keyword it is in both.
+            SymbolKind.Factory => KeywordIndex,
             _ => VariableIndex,
         };
 

@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// factories.pcross -- a message's factory (spec 16.3): methods that build a message, called on
+// nothing, and a test that expects the message a factory built by the fields it sets (spec 25.3).
+//
+// An invoice built from options, so its fields are derived rather than copied: a subtotal from a
+// count and a price, a total less a discount, an optional discount that is set only when there is
+// one, a customer built by a factory of its own, and a nested line built by the nested message's.
+message FactoryInvoiceOptions {
+  string number = 1;
+  int64 line_count = 2;
+  int64 unit_cents = 3;
+  int64 discount_cents = 4;
+}
+
+message FactoryInvoice {
+  message Line {
+    string label = 1;
+    int64 cents = 2;
+  }
+
+  string number = 1;
+  int64 subtotal_cents = 2;
+  optional int64 discount_cents = 3;
+  int64 total_cents = 4;
+  FactoryCustomer customer = 5;
+  FactoryStatus status = 6;
+  double rate = 7;
+  Line first_line = 8;
+}
+
+message FactoryCustomer {
+  string name = 1;
+  int64 tier = 2;
+}
+
+enum FactoryStatus {
+  FACTORY_STATUS_UNSPECIFIED = 0;
+  FACTORY_STATUS_OPEN = 1;
+  FACTORY_STATUS_DISCOUNTED = 2;
+}
+
+// What an extend method builds an invoice for, so a factory is called from one.
+message FactoryOrder {
+  string number = 1;
+  int64 lines = 2;
+  int64 unit_cents = 3;
+}

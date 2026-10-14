@@ -3,6 +3,8 @@ using System.Text;
 using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -52,6 +54,12 @@ public sealed partial class CSharpBackend
             {
                 writer.WriteLine();
                 EmitFailTestDispatcher(writer, failTests, methodNames, sourceName, placement);
+            }
+
+            if (module.Tests.Any(test => test.Expectation is IrTestFieldsExpectation))
+            {
+                writer.WriteLine();
+                EmitFieldExpectations(writer);
             }
         }
 
@@ -109,15 +117,96 @@ public sealed partial class CSharpBackend
             return;
         }
 
-        if (test.Expectation is not IrTestReturnExpectation returnExpectation)
+        if (test.Target.HasReceiver)
         {
-            throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C# test expectation.");
+            EmitReceiverCreation(writer, test.Receiver, placement);
         }
 
-        EmitReceiverCreation(writer, test.Receiver, placement);
-        writer.WriteLine(
-            "global::Xunit.Assert.Equal("
-            + $"{Expression(returnExpectation.Value, placement, "receiver")}, {Invocation(test, placement)});");
+        switch (test.Expectation)
+        {
+            case IrTestReturnExpectation returnExpectation:
+                writer.WriteLine(
+                    "global::Xunit.Assert.Equal("
+                    + $"{Expression(returnExpectation.Value, placement, "receiver")}, {Invocation(test, placement)});");
+                break;
+
+            case IrTestFieldsExpectation fields:
+                EmitFieldChecks(writer, test, fields, placement);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C# test expectation.");
+        }
+    }
+
+    /// <summary>
+    /// Emits what an expected message literal checks: the call, held in a local, and then each field the
+    /// literal sets, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// A field is checked by <c>ExpectSet</c> and <c>ExpectField</c> rather than by <c>Assert.Equal</c>,
+    /// so a failure says which field it was: a test checking five fields that reported only two values
+    /// would leave the reader to find which.
+    /// </remarks>
+    private static void EmitFieldChecks(SourceWriter writer, IrTest test, IrTestFieldsExpectation fields, Placement placement)
+    {
+        var expected = IrExpectedFields.Of(fields);
+        writer.WriteLine($"var {Escape(expected.Result.Name)} = {Invocation(test, placement)};");
+
+        foreach (var check in expected.Checks)
+        {
+            var field = FormatString($"{test.Identity}: '{check.Path}'");
+            writer.WriteLine(check switch
+            {
+                IrPresenceCheck presence
+                    => $"ExpectSet({Expression(presence.Presence, placement, "receiver")}, {field});",
+                IrValueCheck value
+                    => $"ExpectField({Expression(value.Expected, placement, "receiver")}, "
+                        + $"{Expression(value.Actual, placement, "receiver")}, {field});",
+                _ => throw new ArgumentOutOfRangeException(nameof(fields), check, "Unhandled field check."),
+            });
+        }
+    }
+
+    /// <summary>The two checks an expected message literal's fields are asserted by, written once per test class.</summary>
+    /// <remarks>
+    /// <para>
+    /// A field is equal by <c>EqualityComparer&lt;T&gt;.Default</c>, which is what <c>Assert.Equal</c>
+    /// compares an <c>expect return</c> by: a NaN meets a NaN, as it does there (spec 25.3), and two
+    /// <c>ByteString</c>s compare by their bytes. Its type is inferred from both arguments, so a literal of
+    /// a narrower type than the field widens to it rather than comparing unequal.
+    /// </para>
+    /// <para>
+    /// <c>ExpectSet</c> does not return when the field is unset, and says so with <c>DoesNotReturnIf</c>,
+    /// so that the compiler's null-state analysis reads a nested message's fields after it without a
+    /// warning. Generated tests build with warnings as errors, and protoc declares a message field as
+    /// a reference that may be null.
+    /// </para>
+    /// <para>
+    /// Written only where a test needs them, so every other test file is generated as it always was.
+    /// </para>
+    /// </remarks>
+    private static void EmitFieldExpectations(SourceWriter writer)
+    {
+        writer.WriteLine("/// <summary>Fails the test unless a field an expected message sets is set.</summary>");
+        using (writer.Block(
+            "private static void ExpectSet([global::System.Diagnostics.CodeAnalysis.DoesNotReturnIf(false)] bool set, string field)"))
+        {
+            using (writer.Block("if (!set)"))
+            {
+                writer.WriteLine("global::Xunit.Assert.Fail($\"{field} is not set\");");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("/// <summary>Fails the test unless a field an expected message sets has the value it sets.</summary>");
+        using (writer.Block("private static void ExpectField<T>(T expected, T actual, string field)"))
+        {
+            using (writer.Block("if (!global::System.Collections.Generic.EqualityComparer<T>.Default.Equals(expected, actual))"))
+            {
+                writer.WriteLine("global::Xunit.Assert.Fail($\"{field}: expected {expected}, actual {actual}\");");
+            }
+        }
     }
 
     /// <summary>
@@ -182,7 +271,10 @@ public sealed partial class CSharpBackend
                 writer.WriteLine("{");
                 writer.Indent();
 
-                EmitReceiverCreation(writer, test.Receiver, placement);
+                if (test.Target.HasReceiver)
+                {
+                    EmitReceiverCreation(writer, test.Receiver, placement);
+                }
 
                 // The call is expected not to return, so its result is deliberately unused.
                 writer.WriteLine(test.Target.ReturnType is VoidType
@@ -209,13 +301,13 @@ public sealed partial class CSharpBackend
         writer.WriteLine($"global::System.Environment.Exit({CSharpTestRuntime.TypeName}.DidNotTerminate);");
     }
 
-    /// <summary>The call under test, against the local named <c>receiver</c>.</summary>
+    /// <summary>The call under test, against the local named <c>receiver</c> where it has one.</summary>
     private static string Invocation(IrTest test, Placement placement)
     {
-        var arguments = new List<string> { "receiver" };
+        var arguments = test.Target.HasReceiver ? ["receiver"] : new List<string>();
         arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement, "receiver")));
 
-        return $"{placement.QualifiedClassOf(test.Target.Receiver)}."
+        return $"{placement.QualifiedClassOf(test.Target)}."
             + $"{placement.MethodNameOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
@@ -229,7 +321,11 @@ public sealed partial class CSharpBackend
 
     private static string UniqueTestMethodName(IrTest test, HashSet<string> usedNames)
     {
-        var baseName = ToIdentifier($"{test.Target.Receiver.Name}_{test.Target.Name}_{test.Name}");
+        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create'.
+        var target = test.Target.HasReceiver
+            ? $"{test.Target.Receiver.Name}_{test.Target.Name}"
+            : $"{test.Target.Receiver.Name}_{ContextualKeywords.Factory}_{test.Target.Name}";
+        var baseName = ToIdentifier($"{target}_{test.Name}");
         var candidate = baseName;
         var suffix = 2;
         while (!usedNames.Add(candidate))
