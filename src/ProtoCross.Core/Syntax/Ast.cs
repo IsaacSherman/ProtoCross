@@ -72,6 +72,13 @@ public sealed record MethodDeclaration(
     /// <summary>Whether the declaration begins <c>helper fn</c>, so only its factory may call it (spec 16.3).</summary>
     /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
     public bool IsHelper { get; init; }
+
+    /// <summary>
+    /// What the method may refuse with, written after its return type as <c>refuses T</c>, or null for a
+    /// method that cannot refuse (spec 16.3).
+    /// </summary>
+    /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
+    public TypeReference? Refusal { get; init; }
 }
 
 public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, SourceSpan Span) : SyntaxNode(Span);
@@ -182,6 +189,9 @@ public sealed record TestReturnExpectation(Expression Value, SourceSpan Span) : 
 
 public sealed record TestFailExpectation(SourceSpan Span) : TestExpectation(Span);
 
+/// <summary><c>expect refuse value;</c>: the method refuses, with that value (spec 25.3).</summary>
+public sealed record TestRefusalExpectation(Expression Value, SourceSpan Span) : TestExpectation(Span);
+
 public abstract record Statement(SourceSpan Span) : SyntaxNode(Span);
 
 public sealed record BlockStatement(IReadOnlyList<Statement> Statements, SourceSpan Span) : Statement(Span)
@@ -216,6 +226,9 @@ public sealed record VariableDeclarationStatement(
     SourceSpan Span) : Statement(Span);
 
 public sealed record ReturnStatement(Expression? Value, SourceSpan Span) : Statement(Span);
+
+/// <summary><c>refuse value;</c>: ends a factory's method with its refusal rather than its message (spec 16.3).</summary>
+public sealed record RefuseStatement(Expression Value, SourceSpan Span) : Statement(Span);
 
 public sealed record ForInStatement(
     SyntaxName VariableName,
@@ -374,6 +387,34 @@ public sealed record InvocationExpression(
     Expression Callee,
     IReadOnlyList<Expression> Arguments,
     SourceSpan Span) : Expression(Span);
+
+/// <summary>
+/// A call with an <c>on_refused</c> clause, which says what a refusal from the method it calls makes of
+/// the call (spec 16.3).
+/// </summary>
+/// <remarks>
+/// A node around the call rather than a clause on it, as <see cref="IndexExpression.OnMissing"/> is on a
+/// lookup, so that the call keeps the span it has always had. A call's diagnostics, its arguments
+/// counted or its method not found, underline the call, and a call that took in its clause would
+/// underline the fallback with them.
+/// </remarks>
+public sealed record OnRefusedExpression(InvocationExpression Call, OnRefusedClause Clause, SourceSpan Span)
+    : Expression(Span);
+
+/// <summary>
+/// The <c>on_refused</c> clause of a call: a value to use when the method refuses, <c>fail</c>, which
+/// terminates deterministically, or <c>refuse</c>, which ends the calling method with the same refusal
+/// (spec 16.3).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
+public sealed record OnRefusedClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>Whether the clause is <c>on_refused refuse</c>, which passes the refusal on.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public bool PassesItOn { get; init; }
+
+    public bool IsFail => Fallback is null && !PassesItOn;
+}
 
 public enum BinaryOperatorKind
 {

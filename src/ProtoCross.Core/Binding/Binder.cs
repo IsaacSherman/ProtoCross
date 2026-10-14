@@ -521,6 +521,7 @@ public sealed partial class Binder
             // bound as the method it would be without the word.
             IsMutating = method.IsMutating && kind is IrMethodKind.Extend,
             Kind = kind,
+            Refusal = DescribeRefusal(method, kind),
         };
     }
 
@@ -621,6 +622,7 @@ public sealed partial class Binder
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
             InvocationExpression invocation => BindCallValue(invocation, scope, context),
+            OnRefusedExpression handled => BindOnRefused(handled, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),

@@ -157,6 +157,12 @@ Implemented:
   of static members, in the project's namespace or beside the message. A test targets one as
   `test Invoice.factory.create`, with no receiver, and may expect the message it builds as a literal,
   which is compared by the fields it sets. The spec has the rules in sections 16.3, 24 and 25.3.
+- Refusals. A factory's method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
+  InvoiceRefusal`, ending with `refuse value;` instead of its message, with a type of the author's
+  choosing. Every call to one says what a refusal makes of it: `on_refused <fallback>`,
+  `on_refused fail`, or `on_refused refuse` to pass it on. A factory that only builds is called as
+  before. C# and C++ both generate the method as `bool Create(…, out result, out refusal)`, references
+  in C++, and a test expects a refusal with `expect refuse`. The spec has the rules in section 16.3.1.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow, and what each enum's unnamed numbers become
 - C# backend (extension methods, and a static class per factory) and C++ backend (header-only free
@@ -170,7 +176,7 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `Result` types, `==` between two messages (a test compares an expected literal by
+Not implemented: `Result` types, a refusal from a method outside a factory, `==` between two messages (a test compares an expected literal by
 the fields it sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
 tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
 does not implement, such as iterating a map, rather than emitting something whose semantics differ

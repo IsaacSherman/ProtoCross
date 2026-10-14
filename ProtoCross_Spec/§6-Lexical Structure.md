@@ -94,10 +94,12 @@ int64
 message
 not
 on_missing
+on_refused
 on_zero
 or
 proto
 receiver
+refuse
 return
 string
 switch
@@ -126,6 +128,16 @@ Contextual keywords:
   message's factory; that is a reading of a name, decided by the binder, and not a keyword.
 - `helper` is not reserved. It marks a factory's helper ([16.3](./§16-Methods.md#163-factories)) where `fn` follows it, and is an
   identifier everywhere else, for the same reason.
+- `refuses` is not reserved. It begins a method's refusal ([16.3.1](./§16-Methods.md#1631-refusals)) where a name or a type keyword
+  follows it, and is an identifier everywhere else, for the same reason. Nothing but the body's brace
+  can follow a method's signature, so the parser reads it there whatever follows, and a refusal whose
+  type is not written yet is still one, as a factory whose message is not named yet is.
+
+`refuse` and `on_refused` are reserved ([16.3.1](./§16-Methods.md#1631-refusals)), for `on_missing`'s reason below. `refuse` begins a
+statement as `return` does, and its value may begin with a `-` or a parenthesis, so the word and the one
+after it cannot tell a refusal from a call to a method named `refuse` or a local named `refuse` minus one.
+`on_refused` follows a call's closing parenthesis, and its fallback may begin the same way. A schema field
+named either can no longer be written.
 
 `on_missing` is reserved, as `on_zero` is, though `on_unknown` is not. It follows a map lookup's
 closing bracket ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and its fallback may begin with a `-` or a literal, so the word and the one
@@ -165,8 +177,9 @@ Normative Requirements:
   produces it.
 - A keyword ([6.4](#64-keywords)) is `keyword`, and so is `new` where it begins a message literal, which is where an
   identifier follows it, `mut` and `helper` where they mark a method, which is where `fn` follows
-  them, and `factory` where it begins a declaration, which is where an identifier follows it.
-  Anywhere else each is an identifier and is classified as one.
+  them, `factory` where it begins a declaration, which is where an identifier follows it, and
+  `refuses` where it begins a method's refusal, which is where an identifier or a type keyword follows
+  it. Anywhere else each is an identifier and is classified as one.
 - A string literal is `string`, an integer or floating-point literal is
   `number` -- `__INF` and `__NAN` included, and a malformed one too ([6.6](#66-numeric-literals)) -- and a comment
   ([6.2](#62-comments)) is `comment`.

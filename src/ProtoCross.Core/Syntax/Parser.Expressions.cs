@@ -516,9 +516,62 @@ public sealed partial class Parser
 
             expression = link;
             height = linkHeight;
+
+            // A clause ends the chain, as a lookup's does, and for its reason: a fallback took any access
+            // written after it, and 'fail' and 'refuse' take none.
+            if (link is InvocationExpression call && ParseOnRefusedClause(out var refusedHeight) is { } onRefused)
+            {
+                var handledHeight = Math.Max(height, refusedHeight) + 1;
+                if (!TryReachHeight(handledHeight, onRefused.Span))
+                {
+                    height = 1;
+                    return AbandonTallExpression(expression.Span);
+                }
+
+                expression = new OnRefusedExpression(call, onRefused, Spanning(call.Span, onRefused.Span));
+                height = handledHeight;
+                break;
+            }
         }
 
         return expression;
+    }
+
+    /// <summary>
+    /// Parses the <c>on_refused</c> suffix of a call (spec 16.3): a fallback, <c>fail</c>, or <c>refuse</c>,
+    /// or returns null where none is written.
+    /// </summary>
+    /// <remarks>
+    /// The fallback parses at unary precedence, as <c>on_zero</c>'s and <c>on_missing</c>'s do, so
+    /// <c>create(o) on_refused blank() .total</c> is not a member of the call; parenthesize the call to
+    /// read one. Whether the method called may refuse at all is the binder's to say.
+    /// </remarks>
+    /// <param name="fallbackHeight">How tall the fallback is, or zero where there is none to count.</param>
+    private OnRefusedClause? ParseOnRefusedClause(out int fallbackHeight)
+    {
+        fallbackHeight = 0;
+
+        if (Current.Kind != TokenKind.OnRefused)
+        {
+            return null;
+        }
+
+        var onRefusedToken = Advance();
+
+        if (Current.Kind == TokenKind.Fail)
+        {
+            var failToken = Advance();
+            return new OnRefusedClause(null, Spanning(onRefusedToken.Span, failToken.Span));
+        }
+
+        if (Current.Kind == TokenKind.Refuse)
+        {
+            var refuseToken = Advance();
+            return new OnRefusedClause(null, Spanning(onRefusedToken.Span, refuseToken.Span)) { PassesItOn = true };
+        }
+
+        var fallback = ParseUnaryExpression(out fallbackHeight);
+        return new OnRefusedClause(fallback, Spanning(onRefusedToken.Span, fallback.Span));
     }
 
     /// <summary>

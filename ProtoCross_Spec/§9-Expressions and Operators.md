@@ -185,6 +185,10 @@ Current defined subset:
 - A compound assignment written through an element of a map evaluates its read, clause and all,
   before its target is reached, since reaching it puts a message at a missing key that the read must
   not find ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- A call to a method that may refuse evaluates its arguments and makes the call, and evaluates its
+  `on_refused` fallback only when the method refused. One that passes the refusal on stands on its own,
+  as a call to a `mut fn` does, so the method it is in ends before anything beside the call is
+  evaluated ([16.3.1](./§16-Methods.md#1631-refusals)).
 - A call to a `mut fn` is never evaluated beside another operand: it stands on its own as a
   statement, a `var`'s initializer, a local's new value or a returned value
   ([18](./§18-Mutability.md#18-mutability)). So no operand can observe a change made by another, whichever order they are

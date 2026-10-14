@@ -492,6 +492,13 @@ public sealed partial class Binder
     /// </para>
     /// </remarks>
     private IrExpression BindCallValue(InvocationExpression invocation, Scope scope, MethodContext context)
+        => AnswerRefusal(ValueOfCall(invocation, scope, context), null, scope, context);
+
+    /// <summary>
+    /// Binds a call for its value, refusing one to a method that returns nothing, before anything says what a
+    /// refusal makes of it (<see cref="AnswerRefusal"/>).
+    /// </summary>
+    private IrExpression ValueOfCall(InvocationExpression invocation, Scope scope, MethodContext context)
     {
         var bound = BindInvocation(invocation, scope, context);
         if (bound is not IrMethodCall { Type: VoidType } call)

@@ -139,6 +139,13 @@ public sealed partial class Parser
             return new TestReturnExpectation(value, Spanning(start, end));
         }
 
+        if (Match(TokenKind.Refuse))
+        {
+            var value = ParseExpression();
+            var end = Expect(TokenKind.Semicolon).Span;
+            return new TestRefusalExpectation(value, Spanning(start, end));
+        }
+
         if (Match(TokenKind.Fail))
         {
             var end = Expect(TokenKind.Semicolon).Span;
@@ -147,7 +154,7 @@ public sealed partial class Parser
 
         _diagnostics.Report(
             DiagnosticCodes.ExpectedTestExpectation,
-            $"Expected 'return' or 'fail' but found {Current.Kind.Describe()}.",
+            $"Expected 'return', 'refuse' or 'fail' but found {Current.Kind.Describe()}.",
             Current.Span);
         Advance();
         var recoveredEnd = Current.Span;

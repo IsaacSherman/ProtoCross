@@ -142,6 +142,11 @@ The IR preserves:
   it lacks, so what was written in it is there to ask about while it is being typed.
   A compound store's place is a copy of what it reads, node for node, with each lookup made the
   element it looked up, so no node stands in two places.
+- **A refusal.** A method that may refuse carries the type it refuses with, on its signature, since a
+  call reaches the signature and not the method. `refuse` is a statement of its own that ends the method.
+  Every call to a method that may refuse is a node around the call holding what a refusal makes of it: a
+  fallback, which it holds too, `fail`, or `refuse`. A call written with no clause holds that it has
+  none, so a backend never meets a call to such a method bare ([16.3.1](./§16-Methods.md#1631-refusals)).
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
   constants it lists, of the subject's type, and its block, and the default arm is the one listing
   none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the

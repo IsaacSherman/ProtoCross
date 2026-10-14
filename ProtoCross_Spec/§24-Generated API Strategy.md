@@ -109,6 +109,30 @@ nothing a ProtoCross caller can do, since the binder already refuses a call to o
 factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
 qualified from `global::`, as a call to an extension method is.
 
+**A factory's method that may refuse returns `bool`, and gives what it built or refused through `out`
+parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`:
+
+```csharp
+public static bool Create(
+    global::Acme.InvoiceOptions options,
+    [global::System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out global::Acme.Invoice? result,
+    [global::System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out global::Acme.InvoiceRefusal? refusal)
+```
+
+It returns `true` having set `result`, and `false` having set `refusal`, and sets the other to its
+default, since C# requires every `out` parameter to be set. A method that returns nothing has no
+`result`. A value type is written without `?` or the attribute. The two are named `result` and
+`refusal`, numbered as a name generated code declares always is where the method already declares the
+name, so a parameter of the method's own keeps the name it was given. A call written for its value
+tests what the method returned, with what it built in a local of its own declared in the call,
+`(Create(options, out var built, out _) ? built : fallback)`, so the fallback is evaluated only where
+the method refused. `on_refused fail` is `ProtoCrossRefusals.Fail<T>(name)` in the support file there,
+which writes the method's name as the language spells it and ends the program as `on_zero fail` does. A
+call that passes a refusal on is tested by an `if` before the rest of its statement, and gives the
+refusal straight to the calling method's own `refusal`, which the method being called sets as it
+refuses. Each `out var` is given a name of its own in the method, since C# keeps it in scope in the
+whole block around its statement.
+
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
 initializes `Name`, and a scalar with explicit presence is tested with `HasName`. That name is the
@@ -348,6 +372,18 @@ declared at all, since a struct cannot be continued in another header. A call to
 qualified with the namespace and the struct, `::acme::app::InvoiceFactory::create(options)`, and a
 struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
 take one.
+
+**A factory's method that may refuse returns `bool`, and gives what it built or refused through
+references**, as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):
+`static bool create(const ::acme::InvoiceOptions& options, ::acme::Invoice& result,
+::acme::InvoiceRefusal& refusal)`. It returns `true` having set `result`, and `false` having set
+`refusal`, and leaves the other as it was handed in. The two are named as C# names them. A call written
+for its value is a lambda called where it is written, as a message literal is, that declares what the
+method builds and refuses with under names nothing in the call reads, calls it, and gives what it built
+or what the clause says instead. `on_refused fail` calls `protocross_runtime::refused(name)`, which
+writes the line the C# runtime writes. A call that passes a refusal on is tested by an `if` before the
+rest of its statement, and is handed the calling method's own `refusal`. A loop over a field of what such
+a call built keeps it in a local first, as it keeps any call's result.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is

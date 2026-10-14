@@ -55,6 +55,16 @@ public sealed partial class CppBackend
     /// </remarks>
     private sealed record Placement(ProjectNamespace? Project)
     {
+        /// <summary>
+        /// The parameters the method being written says what it built or refused through, or null outside a method
+        /// that may refuse (spec 24.2).
+        /// </summary>
+        /// <remarks>
+        /// Here because this is what every statement is handed. Each method that may refuse is written with a copy
+        /// of its file's placement holding its own.
+        /// </remarks>
+        public Outs? Outs { get; init; }
+
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
         public string QualifiedFunctionOf(IrMethodSignature signature)
@@ -170,6 +180,45 @@ public sealed partial class CppBackend
     };
 
     private static string Escape(string name) => NameConventions.EscapeCppKeyword(name);
+
+    /// <summary>
+    /// The reference parameters a method that may refuse is declared with (spec 24.2): <c>result</c>, what it
+    /// built, which a method that returns nothing has none of, and <c>refusal</c>, what it refused with.
+    /// </summary>
+    /// <remarks>
+    /// Named as the C# backend names its <c>out</c> parameters, and numbered, as a name generated code declares
+    /// always is, where the method already uses the name. Its declaration in the struct and its definition after
+    /// it each ask, and get one answer, because it is a function of the method.
+    /// </remarks>
+    private sealed record Outs(string? Result, string Refusal)
+    {
+        /// <summary>The parameters <paramref name="method"/> may refuse through, or null where it cannot refuse.</summary>
+        /// <remarks>
+        /// Every parameter's name is taken, read or not, since each is declared beside these. Anything else the body
+        /// declares or reads is taken by <see cref="NamesFor"/>.
+        /// </remarks>
+        public static Outs? Of(IrMethod method)
+        {
+            if (method.Signature.Refusal is null)
+            {
+                return null;
+            }
+
+            var names = NamesFor(method, [.. method.Parameters.Select(parameter => Escape(parameter.Name))]);
+            return new(method.ReturnType is VoidType ? null : names.Next("result"), names.Next("refusal"));
+        }
+
+        /// <summary>The parameters as the method's declaration and definition write them.</summary>
+        public IEnumerable<string> Declared(IrMethodSignature method)
+        {
+            if (Result is not null)
+            {
+                yield return $"{TypeName(method.ReturnType)}& {Result}";
+            }
+
+            yield return $"{TypeName(method.Refusal!)}& {Refusal}";
+        }
+    }
 
     /// <summary>
     /// Names for what generated code declares inside <paramref name="node"/>. None of them is a name

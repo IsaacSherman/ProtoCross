@@ -144,7 +144,8 @@ Normative Requirements:
   ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 - `on_zero fail` terminates the program deterministically, with a diagnostic naming the operation
   written to standard error. It is not catchable and not recoverable. The process exit code is
-  **70** (`EX_SOFTWARE`) in every backend.
+  **70** (`EX_SOFTWARE`) in every backend. `on_unknown fail`, `on_missing fail` and `on_refused fail`
+  end the program the same way ([12.1](./§12-Enums.md#121-an-enums-number), [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps), [16.3.1](./§16-Methods.md#1631-refusals)).
 - A backend must terminate with a primitive that cannot be intercepted and does not engage the
   platform's crash reporting: `Environment.Exit` in C#, `std::_Exit` in C++. `Environment.FailFast`
   and `std::abort` are the wrong tools even though they look like the obvious ones. Both are
@@ -187,7 +188,9 @@ Open Questions:
   proven-non-zero test rather than by any dedicated analysis.
 - `on_zero fail` gives generated library code the ability to terminate the host process. That is
   intentional, but it is a larger capability than anything else the language permits ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), and a
-  server embedding ProtoCross behavior has no way to opt out.
+  server embedding ProtoCross behavior has no way to opt out. A factory has a way not to: it may
+  refuse instead, and leave the answer to its caller ([16.3.1](./§16-Methods.md#1631-refusals)). Whether any other method may, and
+  whether `fail` may become a refusal, is #16's to decide.
 - Python's `/` produces a float and `//` floors, so neither maps to truncating division, and Python
   raises on float division by zero rather than yielding `inf`. The Python backend will need explicit
   helpers for both.

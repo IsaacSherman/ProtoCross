@@ -107,6 +107,8 @@ public static class CSharpRuntime
             EmitMaps(writer);
             writer.WriteLine();
             EmitWrappers(writer);
+            writer.WriteLine();
+            EmitRefusals(writer);
         }
 
         return writer.ToString();
@@ -366,6 +368,52 @@ public static class CSharpRuntime
 
                 writer.WriteLine();
                 writer.WriteLine("return true;");
+            }
+        }
+    }
+
+    /// <summary>The class <see cref="EmitRefusals"/> declares, as generated code names it.</summary>
+    public const string RefusalsTypeName = "global::ProtoCross.Runtime.ProtoCrossRefusals";
+
+    /// <summary>Emits what a call makes of a refusal where the call says <c>on_refused fail</c> (spec 16.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// The failure names the method by its name in the language, passed in by the call site, so both runtimes
+    /// write the same line for the same call, as a conversion that fails names its enum by its protobuf name.
+    /// It does not write the refusal: the two runtimes would print one message two different ways.
+    /// </para>
+    /// <para>
+    /// A form that gives a value never returns one, and is generic so that a call site can stand where a value of
+    /// any type is expected, as <c>FailOverflow</c> can.
+    /// </para>
+    /// </remarks>
+    private static void EmitRefusals(SourceWriter writer)
+    {
+        writer.WriteLine("/// <summary>What a call makes of a refusal from a factory's method, where nothing else may be made of it.</summary>");
+        using (writer.Block("internal static class ProtoCrossRefusals"))
+        {
+            writer.WriteLine("/// <summary>");
+            writer.WriteLine("/// Terminates the process. Reached only from an 'on_refused fail' clause, where the");
+            writer.WriteLine("/// author declared that no substitute for what the method builds is correct.");
+            writer.WriteLine("/// </summary>");
+            writer.WriteLine("[global::System.Diagnostics.CodeAnalysis.DoesNotReturn]");
+            using (writer.Block("public static void Fail(string method)"))
+            {
+                writer.WriteLine($"global::System.Console.Error.WriteLine(\"{FailMarker}\" + method + \" refused\");");
+                writer.WriteLine("global::System.Console.Error.Flush();");
+                writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The same, where the call is written for its value: it never gives one.</summary>");
+            writer.WriteLine("[global::System.Diagnostics.CodeAnalysis.DoesNotReturn]");
+            using (writer.Block("public static T Fail<T>(string method)"))
+            {
+                writer.WriteLine("Fail(method);");
+                writer.WriteLine();
+                writer.WriteLine("// Unreachable: Exit does not return, but the runtime does not say so in a way");
+                writer.WriteLine("// the compiler can use.");
+                writer.WriteLine("return default!;");
             }
         }
     }

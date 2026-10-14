@@ -342,7 +342,7 @@ public sealed partial class Parser
     /// </remarks>
     /// <summary>Whether a token can only start a statement or a declaration, never continue an expression.</summary>
     private static bool BeginsAStatementOrDeclaration(TokenKind kind) => kind is
-        TokenKind.Var or TokenKind.Return or TokenKind.If or TokenKind.Else or TokenKind.While
+        TokenKind.Var or TokenKind.Return or TokenKind.Refuse or TokenKind.If or TokenKind.Else or TokenKind.While
         or TokenKind.For or TokenKind.Break or TokenKind.Continue
         or TokenKind.Switch or TokenKind.Case or TokenKind.Default
         or TokenKind.Import or TokenKind.Extend or TokenKind.Fn or TokenKind.Test

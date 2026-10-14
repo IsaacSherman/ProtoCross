@@ -340,14 +340,7 @@ public sealed partial class Binder
             case TestFailExpectation fail:
                 return new IrTestFailExpectation(fail.Span);
 
-            // A literal of the message returned says which of its fields to compare, which is the one
-            // comparison two messages have until spec 13.3 decides what makes them equal.
-            case TestReturnExpectation { Value: MessageLiteralExpression literal } returns
-                when signature.ReturnType is MessageType:
-                return BindExpectedFields(literal, returns.Span, signature, context);
-
             case TestReturnExpectation returns:
-            {
                 if (signature.ReturnType is VoidType)
                 {
                     _diagnostics.Report(
@@ -356,48 +349,92 @@ public sealed partial class Binder
                         returns.Span);
                 }
 
-                // Refused whatever the value is, because what is missing is not a value but a meaning
-                // for '=='. The value is still bound, for the names in it, and not checked against the
-                // return type: a second diagnostic would be about a comparison that cannot be made.
-                var cannotCompare = !HasEquality(signature.ReturnType);
-                if (cannotCompare && signature.ReturnType is MessageType returned)
-                {
-                    _diagnostics.Report(
-                        DiagnosticCodes.MessageReturnCannotBeExpected,
-                        $"'{signature.Name}' returns message '{returned.DisplayName}', and only a literal of one can be "
-                        + "expected, because what makes two messages equal is not decided yet.",
-                        returns.Span,
-                        $"Expect a literal, 'expect return new {returned.Descriptor.Name} {{ … }};', which compares the "
-                        + "fields it sets (spec 25.3).");
-                }
-                else if (cannotCompare)
-                {
-                    _diagnostics.Report(
-                        DiagnosticCodes.MessageReturnCannotBeExpected,
-                        $"'{signature.Name}' returns message '{signature.ReturnType.DisplayName}', and what makes two "
-                        + "messages equal is not decided yet.",
-                        returns.Span,
-                        "Until spec 13.3 decides, expect a scalar instead: test a method that returns the field you want to check.");
-                }
+                return BindExpectedValue(returns.Value, returns.Span, Outcome.Result(signature), context);
 
-                var value = BindExpression(returns.Value, NoNames(), context, signature.ReturnType);
-                if (signature.ReturnType is not VoidType
-                    && !cannotCompare
-                    && value.Type is not ErrorType
-                    && !TypesMatch(signature.ReturnType, value.Type))
-                {
-                    _diagnostics.Report(
-                        DiagnosticCodes.TestExpectationTypeMismatch,
-                        $"'{signature.Name}' returns '{signature.ReturnType.DisplayName}' but the expectation is '{value.Type.DisplayName}'.",
-                        returns.Span);
-                }
+            case TestRefusalExpectation refusal when signature.Refusal is null:
+                _diagnostics.Report(
+                    DiagnosticCodes.RefusalExpectedOfAMethodThatCannotRefuse,
+                    $"'{signature.Name}' declares no refusal, so a test cannot expect one.",
+                    refusal.Span,
+                    "Expect what it returns, 'expect return …;', or that it ends the program, 'expect fail;' (spec 25.3).");
+                return new IrTestRefusalExpectation(
+                    new IrTestReturnExpectation(BindExpression(refusal.Value, NoNames(), context, null), refusal.Span),
+                    refusal.Span);
 
-                return new IrTestReturnExpectation(value, returns.Span);
-            }
+            case TestRefusalExpectation refusal:
+                return new IrTestRefusalExpectation(
+                    BindExpectedValue(refusal.Value, refusal.Span, Outcome.Refusal(signature), context),
+                    refusal.Span);
 
             default:
                 throw new ArgumentOutOfRangeException(nameof(expectation), expectation, "Unhandled expectation.");
         }
+    }
+
+    /// <summary>
+    /// What a test expects a value of: the result its method returns, or the refusal it refuses with, and the
+    /// words its diagnostics use for that.
+    /// </summary>
+    /// <param name="Verb">How a message says the method gives this: "returns", or "refuses with".</param>
+    /// <param name="Keyword">The word after <c>expect</c> that expects it.</param>
+    private sealed record Outcome(IrMethodSignature Signature, PlType Type, string Verb, string Keyword)
+    {
+        public static Outcome Result(IrMethodSignature signature) => new(signature, signature.ReturnType, "returns", "return");
+
+        public static Outcome Refusal(IrMethodSignature signature) => new(signature, signature.Refusal!, "refuses with", "refuse");
+    }
+
+    /// <summary>Binds the value an <c>expect return</c> or an <c>expect refuse</c> compares with what the method gives.</summary>
+    /// <remarks>
+    /// One comparison for both, because a refusal is a value as a result is: a literal of a message says which
+    /// of its fields to compare, which is the one comparison two messages have until spec 13.3 decides what
+    /// makes them equal, and any other value is compared under <c>==</c>.
+    /// </remarks>
+    private IrTestExpectation BindExpectedValue(Expression written, SourceSpan span, Outcome outcome, MethodContext context)
+    {
+        var signature = outcome.Signature;
+        if (written is MessageLiteralExpression literal && outcome.Type is MessageType)
+        {
+            return BindExpectedFields(literal, span, outcome, context);
+        }
+
+        // Refused whatever the value is, because what is missing is not a value but a meaning
+        // for '=='. The value is still bound, for the names in it, and not checked against the
+        // return type: a second diagnostic would be about a comparison that cannot be made.
+        var cannotCompare = !HasEquality(outcome.Type);
+        if (cannotCompare && outcome.Type is MessageType returned)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MessageReturnCannotBeExpected,
+                $"'{signature.Name}' {outcome.Verb} message '{returned.DisplayName}', and only a literal of one can be "
+                + "expected, because what makes two messages equal is not decided yet.",
+                span,
+                $"Expect a literal, 'expect {outcome.Keyword} new {returned.Descriptor.Name} {{ … }};', which compares the "
+                + "fields it sets (spec 25.3).");
+        }
+        else if (cannotCompare)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MessageReturnCannotBeExpected,
+                $"'{signature.Name}' {outcome.Verb} message '{outcome.Type.DisplayName}', and what makes two "
+                + "messages equal is not decided yet.",
+                span,
+                "Until spec 13.3 decides, expect a scalar instead: test a method that returns the field you want to check.");
+        }
+
+        var value = BindExpression(written, NoNames(), context, outcome.Type);
+        if (outcome.Type is not VoidType
+            && !cannotCompare
+            && value.Type is not ErrorType
+            && !TypesMatch(outcome.Type, value.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.TestExpectationTypeMismatch,
+                $"'{signature.Name}' {outcome.Verb} '{outcome.Type.DisplayName}' but the expectation is '{value.Type.DisplayName}'.",
+                span);
+        }
+
+        return new IrTestReturnExpectation(value, span);
     }
 
     /// <summary>
@@ -413,20 +450,20 @@ public sealed partial class Binder
     private IrTestExpectation BindExpectedFields(
         MessageLiteralExpression literal,
         SourceSpan span,
-        IrMethodSignature signature,
+        Outcome outcome,
         MethodContext context)
     {
-        var value = BindExpression(literal, NoNames(), context, signature.ReturnType);
+        var value = BindExpression(literal, NoNames(), context, outcome.Type);
         if (value is not IrMessageLiteral expected)
         {
             return new IrTestReturnExpectation(value, span);
         }
 
-        if (!TypesMatch(signature.ReturnType, expected.Type))
+        if (!TypesMatch(outcome.Type, expected.Type))
         {
             _diagnostics.Report(
                 DiagnosticCodes.TestExpectationTypeMismatch,
-                $"'{signature.Name}' returns '{signature.ReturnType.DisplayName}' but the expectation is '{expected.Type.DisplayName}'.",
+                $"'{outcome.Signature.Name}' {outcome.Verb} '{outcome.Type.DisplayName}' but the expectation is '{expected.Type.DisplayName}'.",
                 span);
         }
 

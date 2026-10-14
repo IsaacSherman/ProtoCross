@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// refusals.pcross -- a factory's method that may refuse (spec 16.3): what it refuses with, and what a
+// call makes of a refusal.
+//
+// An invoice built from options it may refuse, with a refusal that says why: no lines, too many, or no
+// number. A ticket refuses with a string and a badge with an enum, so a refusal of each kind of type is
+// compared. An order builds invoices and answers their refusals.
+message RefusalInvoiceOptions {
+  string number = 1;
+  int64 line_count = 2;
+  int64 unit_cents = 3;
+  int64 divisor = 4;
+}
+
+message RefusalLine {
+  int64 cents = 1;
+}
+
+message RefusalInvoice {
+  string number = 1;
+  int64 total_cents = 2;
+  repeated RefusalLine lines = 3;
+}
+
+enum RefusalReason {
+  REFUSAL_REASON_UNSPECIFIED = 0;
+  REFUSAL_REASON_NO_LINES = 1;
+  REFUSAL_REASON_TOO_MANY_LINES = 2;
+  REFUSAL_REASON_NO_NUMBER = 3;
+}
+
+message InvoiceRefusal {
+  RefusalReason reason = 1;
+  string detail = 2;
+}
+
+message RefusalTicket {
+  string code = 1;
+}
+
+enum BadgeRefusal {
+  BADGE_REFUSAL_UNSPECIFIED = 0;
+  BADGE_REFUSAL_NEGATIVE = 1;
+}
+
+message RefusalBadge {
+  int64 level = 1;
+}
+
+message RefusalOrder {
+  string number = 1;
+  int64 lines = 2;
+  int64 unit_cents = 3;
+}

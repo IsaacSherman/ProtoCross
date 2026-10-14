@@ -265,7 +265,7 @@ public static class DocumentOutline
             children: null);
     }
 
-    /// <summary>The method's parameter list and return type, as the author wrote them.</summary>
+    /// <summary>The method's parameter list, return type and refusal, as the author wrote them.</summary>
     /// <remarks>
     /// The return type is written even where the author left the arrow off, because what a call
     /// produces is what decides whether it may be used as a value -- the same argument
@@ -276,7 +276,8 @@ public static class DocumentOutline
         var parameters = method.Parameters.Select(
             parameter => $"{parameter.Name.Text}: {parameter.Type.Name.Text}");
 
-        var signature = $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}";
+        var signature = $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}"
+            + (method.Refusal is { } refusal ? $" {ContextualKeywords.Refuses} {refusal.Name.Text}" : string.Empty);
         return method.IsHelper ? $"{ContextualKeywords.Helper} {signature}" : signature;
     }
 

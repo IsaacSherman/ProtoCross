@@ -87,6 +87,11 @@ public static class IrCopy
             },
             // Through Of, as any expression, so the call's refused parts are copied with it.
             IrValuelessCall valueless => valueless with { Call = (IrMethodCall)Of(valueless.Call) },
+            IrRefusableCall refusable => refusable with
+            {
+                Call = (IrMethodCall)Of(refusable.Call),
+                Fallback = OrNull(refusable.Fallback),
+            },
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "An expression IrCopy does not know."),
         };
     }

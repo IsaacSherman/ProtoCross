@@ -329,8 +329,9 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// The local <see cref="EmitChangeThroughACopy"/> declares, standing in the IR for the receiver it
-    /// copies, so the call is written by the same code as every other call.
+    /// A local generated code declares, standing in the IR for the value it holds, so what reads it is
+    /// written by the same code as every other value: the receiver <see cref="EmitChangeThroughACopy"/>
+    /// copies, or what a call that passes a refusal on built (<see cref="EmitPassedOn"/>).
     /// </summary>
     private sealed record HeldCopy(string Name, PlType Type) : IrExpression(Type, default);
 }

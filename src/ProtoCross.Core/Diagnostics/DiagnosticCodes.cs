@@ -721,6 +721,49 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor ExpectedFieldCannotBeCompared =
         new("PC0134", DiagnosticSeverity.Error, "expected field cannot be compared");
 
+    // ------------------------------------------------------- refusals
+
+    /// <summary>A method of an extend block that declares a refusal, which only a factory's may (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalOutsideAFactory =
+        new("PC0135", DiagnosticSeverity.Error, "refusal outside a factory");
+
+    /// <summary>A <c>refuse</c> in a method that declares no refusal (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefuseInAMethodThatCannotRefuse =
+        new("PC0136", DiagnosticSeverity.Error, "refuse in a method that cannot refuse");
+
+    /// <summary>A <c>refuse</c> whose value is not of the type the method refuses with (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalTypeMismatch =
+        new("PC0137", DiagnosticSeverity.Error, "refusal type mismatch");
+
+    /// <summary>A call to a method that may refuse, with no <c>on_refused</c> clause to say what a refusal makes of it (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalNotAnswered =
+        new("PC0138", DiagnosticSeverity.Error, "call needs on_refused");
+
+    /// <summary>An <c>on_refused</c> clause on a call to a method that cannot refuse, which cannot run (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor UnnecessaryOnRefusedClause =
+        new("PC0139", DiagnosticSeverity.Warning, "unnecessary on_refused clause");
+
+    /// <summary>An <c>on_refused</c> fallback that is not a value of what the call gives (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor OnRefusedTypeMismatch =
+        new("PC0140", DiagnosticSeverity.Error, "on_refused fallback type mismatch");
+
+    /// <summary>
+    /// <c>on_refused refuse</c> in a method that cannot refuse, or that refuses with another type (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalCannotBePassedOn =
+        new("PC0141", DiagnosticSeverity.Error, "refusal cannot be passed on");
+
+    /// <summary>
+    /// <c>on_refused refuse</c> on a call inside an expression, where the method cannot end before the rest of
+    /// the expression is evaluated (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalPassedOnInsideAnExpression =
+        new("PC0142", DiagnosticSeverity.Error, "refusal passed on inside an expression");
+
+    /// <summary><c>expect refuse</c> on a method that cannot refuse (spec 25.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalExpectedOfAMethodThatCannotRefuse =
+        new("PC0143", DiagnosticSeverity.Error, "expected refusal of a method that cannot refuse");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

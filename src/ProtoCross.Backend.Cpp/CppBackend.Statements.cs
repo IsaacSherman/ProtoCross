@@ -26,6 +26,48 @@ public sealed partial class CppBackend
                 break;
             }
 
+            // A call that passes a refusal on is tested before the statement it stands in does anything.
+            case IrVariableDeclaration { Initializer: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } declaration:
+            {
+                var local = Escape(declaration.Local.Name);
+                writer.WriteLine($"{TypeName(declaration.Local.Type)} {local}{{}};");
+                EmitPassedOn(writer, passed, local, placement);
+                break;
+            }
+
+            case IrAssignment { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } assignment:
+                EmitPassedOnInto(writer, passed, Expression(assignment.Target, placement), statement, placement);
+                break;
+
+            case IrExpressionStatement { Expression: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }
+                when passed.Call.Type is VoidType:
+                EmitPassedOn(writer, passed, null, placement);
+                break;
+
+            case IrExpressionStatement { Expression: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }:
+                EmitPassedOnInto(writer, passed, null, statement, placement);
+                break;
+
+            // Both methods give what they built and refused through references of one type, so the call is handed this one's.
+            case IrReturn { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }
+                when placement.Outs is { Result: { } result } outs:
+                writer.WriteLine($"return {EmitCall(passed.Call, placement, result, outs.Refusal)};");
+                break;
+
+            case IrReturn returned when placement.Outs is { } outs:
+                if (returned.Value is not null)
+                {
+                    writer.WriteLine($"{outs.Result} = {Expression(returned.Value, placement)};");
+                }
+
+                writer.WriteLine("return true;");
+                break;
+
+            case IrRefuse refusal:
+                writer.WriteLine($"{placement.Outs!.Refusal} = {Expression(refusal.Value, placement)};");
+                writer.WriteLine("return false;");
+                break;
+
             case IrVariableDeclaration declaration:
                 writer.WriteLine(
                     $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = "

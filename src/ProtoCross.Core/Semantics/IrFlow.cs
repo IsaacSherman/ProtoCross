@@ -42,7 +42,7 @@ public static class IrFlow
 
         return statement switch
         {
-            IrReturn or IrBreak or IrContinue => true,
+            IrReturn or IrRefuse or IrBreak or IrContinue => true,
 
             // Anything after a terminator in the same block is unreachable, so its position does not
             // matter: the block as a whole cannot fall through.

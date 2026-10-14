@@ -94,7 +94,10 @@ This section should be maintained as the authoritative list of open decisions.
   identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to
   register ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
-- Error result model.
+- ~~Error result model for construction.~~ Decided: a factory's method declares a refusal of the
+  author's type after its return type, ends with `refuse`, and every call answers it with a fallback,
+  `fail`, or `refuse` to pass it on ([16.3.1](./§16-Methods.md#1631-refusals)). Whether any other method may refuse, and whether a
+  value may hold a refusal, remain open ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions), #16).
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).
 - `protoc` plugin and Buf integration strategy.

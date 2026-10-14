@@ -75,7 +75,7 @@ public static class IrMutation
 
     /// <summary>
     /// The temporary message a chain of field reads begins at, when it begins at one: a literal, a
-    /// call's result, or what a lookup gives.
+    /// call's result, whether or not its method may refuse, or what a lookup gives.
     /// </summary>
     /// <remarks>
     /// A loop over a field of one has to keep the message for as long as it runs, and keeps a message
@@ -89,7 +89,9 @@ public static class IrMutation
         ArgumentNullException.ThrowIfNull(collection);
 
         var root = RootOf(collection);
-        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall or IrMapLookup ? root : null;
+        return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall or IrRefusableCall or IrMapLookup
+            ? root
+            : null;
     }
 
     /// <summary>
