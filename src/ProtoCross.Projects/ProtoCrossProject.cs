@@ -66,6 +66,16 @@ public sealed record ProtoCrossProject
     /// <summary>The directories schemas are searched for in, in the order the file gives them.</summary>
     public IReadOnlyList<NamedPath> ProtoPaths { get; init; } = [];
 
+    /// <summary>
+    /// What the project's <c>&lt;Scaffold&gt;</c> chose about the test projects <c>--scaffold</c> writes
+    /// (spec 25.3.2), or the defaults where it has none.
+    /// </summary>
+    /// <remarks>
+    /// In the project rather than the configuration file, because it changes nothing a method means: it
+    /// names what builds the tests, which is a question about the compilation and not about its policy.
+    /// </remarks>
+    public ScaffoldSettings Scaffold { get; init; } = ScaffoldSettings.Default;
+
     /// <summary>Whether two projects say the same things, read from the same file.</summary>
     /// <remarks>Written out for the reason <see cref="ProjectItem.Equals(ProjectItem?)"/> is.</remarks>
     public bool Equals(ProtoCrossProject? other)
@@ -75,7 +85,8 @@ public sealed record ProtoCrossProject
             && Config == other.Config
             && Sources.SequenceEqual(other.Sources)
             && Tests.SequenceEqual(other.Tests)
-            && ProtoPaths.SequenceEqual(other.ProtoPaths);
+            && ProtoPaths.SequenceEqual(other.ProtoPaths)
+            && Scaffold == other.Scaffold;
 
     public override int GetHashCode()
         => HashCode.Combine(Path, Config, Sources.Count, Tests.Count, ProtoPaths.Count);
@@ -118,22 +129,26 @@ public sealed record ProtoCrossProject
     /// <summary>One read of one project file, gathering what it states and whether any of it failed.</summary>
     private sealed class ProjectReader(XmlInput file, string path, DiagnosticBag diagnostics)
     {
-        private static readonly string[] KnownElements = ["Sources", "Tests", "ProtoPath", "Config"];
+        private static readonly string[] KnownElements = ["Sources", "Tests", "ProtoPath", "Config", "Scaffold"];
 
         private static readonly string[] ItemAttributes = ["Include", "Exclude"];
+
+        private const string ScaffoldExample =
+            "Each target's settings are attributes of its element, as in <CSharp ProjectName=\"BillingTests\" />.";
 
         private readonly string _directory = System.IO.Path.GetDirectoryName(path)!;
         private readonly List<ProjectItem> _sources = [];
         private readonly List<ProjectItem> _tests = [];
         private readonly List<NamedPath> _protoPaths = [];
         private NamedPath? _config;
+        private ScaffoldSettings? _scaffold;
         private bool _failed;
 
         public ProtoCrossProject? Read()
         {
             var projectNamespace = ReadName();
             RefuseAttributes(file.Root);
-            RefuseText(file.Root);
+            RefuseText(file.Root, text => $"Sources are named by an element, as in <Sources Include=\"{text}\" />.");
 
             foreach (var element in file.Root.Elements())
             {
@@ -151,6 +166,9 @@ public sealed record ProtoCrossProject
                     case "Config":
                         ReadConfig(element);
                         break;
+                    case "Scaffold":
+                        ReadScaffold(element);
+                        break;
                     default:
                         RefuseUnknownElement(element);
                         break;
@@ -167,6 +185,7 @@ public sealed record ProtoCrossProject
                     Sources = _sources,
                     Tests = _tests,
                     ProtoPaths = _protoPaths,
+                    Scaffold = _scaffold ?? ScaffoldSettings.Default,
                 };
         }
 
@@ -319,6 +338,96 @@ public sealed record ProtoCrossProject
             _config = ReadPath(element, "the protocross.config.xml the project compiles under");
         }
 
+        /// <summary>
+        /// <c>&lt;Scaffold&gt;</c>: one element per target, whose attributes are that target's settings
+        /// (spec 25.3.2).
+        /// </summary>
+        /// <remarks>
+        /// Which elements and attributes there are is <see cref="ScaffoldSetting.All"/>'s to say, and so is
+        /// what each accepts, because a flag states the same settings and has to accept the same values.
+        /// </remarks>
+        private void ReadScaffold(XElement element)
+        {
+            if (_scaffold is not null)
+            {
+                Invalid(
+                    element,
+                    "<Scaffold> is stated more than once.",
+                    "Each target has one test project, so a project says once what each is.");
+                return;
+            }
+
+            RefuseAttributes(element);
+            RefuseText(element, _ => ScaffoldExample);
+
+            var settings = ScaffoldSettings.Default;
+            var stated = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var target in element.Elements())
+            {
+                settings = ReadScaffoldTarget(target, stated, settings);
+            }
+
+            _scaffold = settings;
+        }
+
+        /// <summary>
+        /// <paramref name="settings"/>, with what one target's element inside <c>&lt;Scaffold&gt;</c>
+        /// states, where it is a target's element stated once.
+        /// </summary>
+        /// <param name="stated">The targets' elements already read, which this one joins.</param>
+        private ScaffoldSettings ReadScaffoldTarget(XElement target, HashSet<string> stated, ScaffoldSettings settings)
+        {
+            var name = target.Name.LocalName;
+            var ofTarget = ScaffoldSetting.All.Where(setting => setting.Element == name).ToList();
+            if (ofTarget.Count == 0)
+            {
+                Unknown(
+                    target,
+                    $"<{name}> is not an element ProtoCross knows about inside <Scaffold>.",
+                    $"Known elements inside <Scaffold>: {string.Join(", ", ScaffoldSetting.All.Select(setting => setting.Element).Distinct())}.");
+                return settings;
+            }
+
+            if (!stated.Add(name))
+            {
+                Invalid(
+                    target,
+                    $"<{name}> is stated more than once inside <Scaffold>.",
+                    "A target has one test project, so state its settings on one element.");
+                return settings;
+            }
+
+            RefuseAttributes(target, [.. ofTarget.Select(setting => setting.Attribute)]);
+            RefuseChildren(target);
+            if (TextOf(target) is { Length: > 0 })
+            {
+                Invalid(target, $"<{name}> states its settings with attributes, not with text.", ScaffoldExample);
+            }
+
+            return ofTarget.Aggregate(settings, (read, setting) => ReadScaffoldSetting(target, setting, read));
+        }
+
+        /// <summary>
+        /// <paramref name="settings"/>, with the value <paramref name="target"/> states for
+        /// <paramref name="setting"/> where it states one that setting accepts.
+        /// </summary>
+        private ScaffoldSettings ReadScaffoldSetting(XElement target, ScaffoldSetting setting, ScaffoldSettings settings)
+        {
+            if (target.Attribute(setting.Attribute) is not { } attribute)
+            {
+                return settings;
+            }
+
+            var value = attribute.Value.Trim();
+            if (setting.ProblemWith(value) is { } problem)
+            {
+                Invalid(attribute, problem, setting.Help);
+                return settings;
+            }
+
+            return setting.With(settings, value);
+        }
+
         /// <summary>The path an element's text gives, resolved against the project's directory.</summary>
         private NamedPath? ReadPath(XElement element, string meaning)
         {
@@ -365,11 +474,13 @@ public sealed record ProtoCrossProject
         }
 
         /// <summary>
-        /// Refuses text standing directly in <paramref name="element"/>, which is patterns pasted in the
-        /// wrong place far more often than anything else, and which would otherwise be dropped without a
-        /// word from a project that then compiles fewer sources than its author wrote.
+        /// Refuses text standing directly in <paramref name="element"/>, an element that holds elements.
+        /// In the root that is patterns pasted in the wrong place far more often than
+        /// anything else, and it would otherwise be dropped without a word from a project that then
+        /// compiles fewer sources than its author wrote.
         /// </summary>
-        private void RefuseText(XElement element)
+        /// <param name="help">What to write instead, given the text.</param>
+        private void RefuseText(XElement element, Func<string, string> help)
         {
             var text = TextOf(element);
             if (text.Length == 0)
@@ -381,7 +492,7 @@ public sealed record ProtoCrossProject
                 DiagnosticCodes.InvalidProjectSetting,
                 $"<{element.Name.LocalName}> holds elements, not text, and '{text}' is text.",
                 file.SpanOfText(element.Nodes().OfType<XText>().First(node => !string.IsNullOrWhiteSpace(node.Value))),
-                $"Sources are named by an element, as in <Sources Include=\"{text}\" />.");
+                help(text));
             _failed = true;
         }
 

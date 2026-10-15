@@ -192,7 +192,8 @@ protoc \
 ```
 
 `--scaffold` writes a target-specific test project beside generated tests and requires
-`--test-out`. Each test backend writes under `<test-out>/<target>/`.
+`--test-out`. Each test backend writes under `<test-out>/<target>/`. What each project is named and
+targets is [25.3.2](#2532-test-projects)'s.
 
 Implemented backend behavior:
 
@@ -213,8 +214,10 @@ Open Questions:
   ([25.3](#253-author-written-protocross-unit-tests)).
 - Should the compiler embed fixtures in generated source, copy fixture files beside the generated
   tests, or support both?
-- Should target test framework selection be a backend option such as
-  `--test-opt framework=xunit|standalone|gtest`?
+- ~~Should target test framework selection be a backend option such as
+  `--test-opt framework=xunit|standalone|gtest`?~~ Decided for 1.0: no. A C# test is an xUnit test
+  and a C++ test is a standalone driver, and a setting names and targets the project that builds
+  them rather than choosing the framework they are written for ([25.3.2](#2532-test-projects)).
 - Should generated tests be stable enough to check in, or treated as build artifacts only?
 - What should the eventual `protoc` plugin flag names be?
 
@@ -295,3 +298,73 @@ Implementation Note:
   when `--test-out` asks for the tests.
 - An editor does not take a project yet, so every source it compiles is a production source, and it
   binds every source's tests.
+
+### 25.3.2 Test Projects
+
+**Decided: what the test projects `--scaffold` writes are named and target is four settings, stated
+by a project's `<Scaffold>` for every build of it and by a flag for one build, the flag standing over
+the project. Nothing else about a test project is a setting.**
+
+```xml
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Scaffold>
+    <CSharp TargetFramework="net8.0" ProjectName="Acme.Billing.Tests" />
+    <Cpp ProjectName="billing_tests" TargetPrefix="billing" />
+  </Scaffold>
+</ProtoCrossProject>
+```
+
+| Setting | Flag | Default | Accepts |
+|---|---|---|---|
+| `<CSharp TargetFramework>` | `--csharp-target-framework` | `net10.0` | `net` and a major and minor version, `net8.0` or later, with no platform |
+| `<CSharp ProjectName>` | `--csharp-project-name` | `ProtoCrossTests` | identifiers separated by periods, each an ASCII letter followed by ASCII letters, digits and underscores |
+| `<Cpp ProjectName>` | `--cpp-project-name` | `protocross_tests` | an ASCII letter followed by ASCII letters, digits and underscores |
+| `<Cpp TargetPrefix>` | `--cpp-target-prefix` | none | the same |
+
+Normative Requirements:
+
+- The C# project's name is its `.csproj`'s file name, and so the assembly its tests build into. The
+  CMake project's name is what its `project()` declares.
+- A target prefix begins every target the CMake project declares, followed by an underscore:
+  `billing_protocross_protos` and `billing_invoice_tests` rather than `protocross_protos` and
+  `invoice_tests`. Every target takes it, so that test projects built in one CMake build can be told
+  apart by it alone.
+- A setting no project or flag states is its default, which is what the project was before settings
+  existed, byte for byte.
+- `<Scaffold>` holds a `<CSharp>` and a `<Cpp>`, each at most once and each optional, whose attributes
+  are that target's settings, each optional. Any other element or attribute in it is `PC2008`. A
+  second `<Scaffold>`, a second `<CSharp>` or `<Cpp>`, text, or a value its setting does not accept is
+  `PC2009`, at what it got wrong, and the project is refused whole
+  ([5.4](./§5-Source%20Organization.md#54-projects)). Whitespace around a value is not part of it.
+- A value is refused, never rewritten into one its setting accepts. A name with its spaces made
+  underscores is a name nobody wrote, and the test project would answer to it.
+- A flag replaces the one setting it states, and the project's other settings stand. Unlike a policy
+  flag ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), it needs no
+  `--override-config`: policy decides what the generated code means, and a test project's name and
+  framework decide only what builds the tests.
+- The command line refuses a flag with no `--scaffold`, a flag for a target the build does not write,
+  and a value its setting does not accept, before it compiles anything. A build that took a flag and
+  wrote nothing it shapes would look as if it had used it. A project's settings for a target the
+  build leaves out are not refused, because a project states every target's whatever one build asks
+  for.
+
+Rationale:
+
+- **`net8.0` is the oldest framework** because the pinned `Microsoft.NET.Test.Sdk` refuses to build
+  for anything older, and xunit.v3 supports nothing older either. The generated behavior and tests
+  need no newer language than .NET 8's. Raising a pinned package can raise it.
+- **The package versions are not settings.** Google.Protobuf has to match the protoc that Grpc.Tools
+  runs, so a project that pinned one and not the other would build code its protobuf runtime cannot
+  read.
+- **The test framework is not a setting.** Each test backend writes source for one: xUnit for C#, a
+  standalone driver for C++. Another would take a second emitter, not a setting.
+- **In the project rather than `protocross.config.xml`**, because a test project's name changes
+  nothing a method means. The configuration file is for policy.
+
+Implementation Note:
+
+- `ScaffoldSetting` describes each setting once: its element, its attribute, its flag and what it
+  accepts. The project reader and the command line both ask it, so the two cannot come to accept
+  different values. `ScaffoldSettings` holds what was stated, and `ScaffoldOptions.Settings` hands it
+  to a backend.

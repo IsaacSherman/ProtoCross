@@ -285,6 +285,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
 | Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](../src/ProtoCross.Core/Types/EnumOpenness.cs) |
 | Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](../src/ProtoCross.Core/Backend/IBackend.cs) |
+| What a test project is named and targets, and where each choice is stated | `ScaffoldSettings`, `ScaffoldSetting` | [Backend/ScaffoldSettings.cs](../src/ProtoCross.Core/Backend/ScaffoldSettings.cs) |
 | Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](../src/ProtoCross.Core/Backend/NameConventions.cs) |
 
 ### Diagnostics
@@ -356,7 +357,9 @@ alone, through the same [`XmlInput`](../src/ProtoCross.Core/Config/XmlInput.cs) 
 file is read with, so a position in either is placed the same way.
 [`ProjectSources.Expand`](../src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
 directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
-an element whose patterns match nothing is a warning (`PC2010`).
+an element whose patterns match nothing is a warning (`PC2010`). Its `<Scaffold>` names the test
+projects `--scaffold` writes (spec 25.3.2), through the same `ScaffoldSetting`s the command line's
+flags state, so a value one accepts the other does too.
 [`ProjectFiles`](../src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
 role, and [`ProjectPolicy`](../src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
 file the compilation runs under, warning about a member whose own search finds another (`PC2011`).

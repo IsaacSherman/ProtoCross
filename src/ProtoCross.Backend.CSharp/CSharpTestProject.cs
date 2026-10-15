@@ -22,7 +22,18 @@ namespace ProtoCross.Backend.CSharp;
 /// </remarks>
 public static class CSharpTestProject
 {
-    public const string FileName = "ProtoCrossTests.csproj";
+    /// <summary>The project's name where nothing chose one (spec 25.3.2).</summary>
+    public const string DefaultProjectName = "ProtoCrossTests";
+
+    /// <summary>The framework the project targets where nothing chose one (spec 25.3.2).</summary>
+    public const string DefaultTargetFramework = "net10.0";
+
+    /// <summary>The project file's name where nothing chose one.</summary>
+    public const string FileName = DefaultProjectName + ".csproj";
+
+    /// <summary>The project file's name, which is the project's.</summary>
+    public static string FileNameFor(ScaffoldSettings settings)
+        => (settings.CSharpProjectName ?? DefaultProjectName) + ".csproj";
 
     /// <summary>
     /// Package versions the emitted project pins.
@@ -55,7 +66,7 @@ public static class CSharpTestProject
         builder.AppendLine("<Project Sdk=\"Microsoft.NET.Sdk\">");
         builder.AppendLine();
         builder.AppendLine("  <PropertyGroup>");
-        builder.AppendLine("    <TargetFramework>net10.0</TargetFramework>");
+        builder.AppendLine($"    <TargetFramework>{options.Settings.CSharpTargetFramework ?? DefaultTargetFramework}</TargetFramework>");
         builder.AppendLine("    <Nullable>enable</Nullable>");
         builder.AppendLine("    <ImplicitUsings>enable</ImplicitUsings>");
         builder.AppendLine("    <IsPackable>false</IsPackable>");

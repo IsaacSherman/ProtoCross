@@ -231,7 +231,12 @@ internal sealed record ScaffoldLayout(
             Compilation.Compile(sourcePath ?? TestPaths.SimpleScript, [protoDirectory ?? TestPaths.ExampleProtoDirectory]));
 
     /// <summary>Writes what <paramref name="result"/> generates, divided between the two outputs as the CLI divides it.</summary>
-    public static ScaffoldLayout Emit(ITestProjectScaffold backend, string label, CompilationResult result)
+    /// <param name="settings">What the test project is named and targets; the defaults when null.</param>
+    public static ScaffoldLayout Emit(
+        ITestProjectScaffold backend,
+        string label,
+        CompilationResult result,
+        ScaffoldSettings? settings = null)
     {
         Assert.True(
             result.Success,
@@ -257,7 +262,10 @@ internal sealed record ScaffoldLayout(
             result.Descriptors,
             behaviorDirectory,
             testDirectory,
-            testFiles.Select(file => file.RelativePath).ToList());
+            testFiles.Select(file => file.RelativePath).ToList()) with
+        {
+            Settings = settings ?? ScaffoldSettings.Default,
+        };
 
         Write(testDirectory, backend.EmitTestProject(scaffold, diagnostics));
 

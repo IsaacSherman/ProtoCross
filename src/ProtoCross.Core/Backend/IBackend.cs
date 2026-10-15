@@ -111,6 +111,9 @@ public sealed record ScaffoldOptions(
     IReadOnlyList<ProtoFileReference> ProtoFiles,
     IReadOnlyList<string> TestSourceFileNames)
 {
+    /// <summary>What the project and the command line chose about the test project (spec 25.3.2).</summary>
+    public ScaffoldSettings Settings { get; init; } = ScaffoldSettings.Default;
+
     /// <summary>
     /// Builds the options for one backend, resolving every path relative to the directory the build
     /// file will sit in.
