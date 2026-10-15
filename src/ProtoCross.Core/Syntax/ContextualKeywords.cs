@@ -31,6 +31,18 @@ public static class ContextualKeywords
     public const string OnUnknown = "on_unknown";
 
     /// <summary>
+    /// The word that begins a factory declaration, and that reaches a message's factory after its
+    /// name, as in <c>Invoice.factory.create()</c> (spec 16.3).
+    /// </summary>
+    public const string Factory = "factory";
+
+    /// <summary>The word that marks a method private to its factory (spec 16.3).</summary>
+    public const string Helper = "helper";
+
+    /// <summary>The word that says what a factory's method may refuse with, after its return type (spec 16.3).</summary>
+    public const string Refuses = "refuses";
+
+    /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
     /// </summary>
@@ -51,12 +63,12 @@ public static class ContextualKeywords
 
     /// <summary>
     /// Whether <paramref name="token"/> is an <c>on_unknown</c> that begins a conversion's clause: one
-    /// with <c>fail</c> or a name straight after it.
+    /// with <c>fail</c>, <c>refuse</c> or a name straight after it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A name is never followed by <c>fail</c> anywhere else, and by another name only where
-    /// <c>new</c> begins a literal. The clause follows a conversion's type, and nothing else can, so a
+    /// A name is never followed by <c>fail</c> or <c>refuse</c> anywhere else, and by another name only
+    /// where <c>new</c> begins a literal. The clause follows a conversion's type, and nothing else can, so a
     /// field named <c>on_unknown</c> keeps its name everywhere a field can be read.
     /// </para>
     /// <para>
@@ -70,7 +82,67 @@ public static class ContextualKeywords
     /// </remarks>
     public static bool BeginsAnOnUnknownClause(Token token, Token next)
         => token is { Kind: TokenKind.Identifier, Text: OnUnknown }
-            && next.Kind is TokenKind.Identifier or TokenKind.Fail;
+            && next.Kind is TokenKind.Identifier or TokenKind.Fail or TokenKind.Refuse;
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>factory</c> that begins a declaration: one with a name
+    /// straight after it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is followed by another name only after <c>new</c> and <c>on_unknown</c>, and a factory
+    /// declaration is the only thing either word can be followed by here that is not one of those. So
+    /// a field, a local or a nested type named <c>factory</c> keeps its name everywhere one can be
+    /// written, and two tokens settle it, as they do for <c>new</c>.
+    /// </para>
+    /// <para>
+    /// The parser asks less of the word where a declaration is all that can begin: at the top of a
+    /// file it reads <c>factory</c> as one whatever follows, so that a declaration whose name has not
+    /// been typed yet is still one. The colouring has only these two tokens to go on, and leaves the
+    /// word uncoloured until the name is written, as it leaves <c>new</c> before its type is.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsAFactory(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Factory } && next.Kind == TokenKind.Identifier;
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>helper</c> that marks a method: one with <c>fn</c>
+    /// straight after it.
+    /// </summary>
+    /// <remarks>
+    /// The rule <see cref="MarksAMutatingMethod"/> gives <c>mut</c>, for its reason: nothing but a
+    /// method's own marker can stand before <c>fn</c>.
+    /// </remarks>
+    public static bool MarksAHelper(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Helper } && next.Kind == TokenKind.Fn;
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>refuses</c> that begins a method's refusal: one with a
+    /// type straight after it, a name or one of the scalar keywords.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is followed by a type keyword nowhere else, and by another name only after <c>new</c>,
+    /// <c>on_unknown</c> and <c>factory</c>, none of which is this word. So a field, a local or a
+    /// message named <c>refuses</c> keeps its name wherever one can be written, as <c>factory</c>'s
+    /// does. The one place the two tokens misread it is a message named <c>refuses</c> returned by a
+    /// method that refuses, <c>-&gt; refuses refuses Refusal</c>, whose return type is coloured as the
+    /// word.
+    /// </para>
+    /// <para>
+    /// The parser asks less of it, as it does of <c>factory</c>: after a method's parameters and return
+    /// type only the body's brace can follow, so it reads the word there whatever follows, and a refusal
+    /// whose type has not been typed yet is still one.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsARefusal(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Refuses } && (next.Kind == TokenKind.Identifier || NamesABuiltInType(next.Kind));
+
+    /// <summary>Whether <paramref name="kind"/> is a keyword a type reference may be: a scalar, or <c>void</c> (spec 8.1).</summary>
+    public static bool NamesABuiltInType(TokenKind kind)
+        => kind is TokenKind.Int32 or TokenKind.Int64 or TokenKind.UInt32 or TokenKind.UInt64
+            or TokenKind.Double or TokenKind.Float or TokenKind.Bool or TokenKind.String
+            or TokenKind.Bytes or TokenKind.Void;
 
     /// <summary>
     /// Whether <paramref name="token"/>, with <paramref name="next"/> after it, is one of these words
@@ -79,5 +151,8 @@ public static class ContextualKeywords
     public static bool IsAKeywordHere(Token token, Token next)
         => BeginsAMessageLiteral(token, next)
             || MarksAMutatingMethod(token, next)
-            || BeginsAnOnUnknownClause(token, next);
+            || BeginsAnOnUnknownClause(token, next)
+            || BeginsAFactory(token, next)
+            || MarksAHelper(token, next)
+            || BeginsARefusal(token, next);
 }

@@ -23,25 +23,31 @@ public sealed partial class CSharpBackend
     /// A map of wrappers holds values, so its lookup is a value too, and its fallback is given as one
     /// (<see cref="HeldValue"/>).
     /// </para>
+    /// <para>
+    /// A lookup whose clause refuses was tested before its statement, and is what that test held
+    /// (<see cref="EmitClauseRefusal"/>).
+    /// </para>
     /// </remarks>
     private static string EmitMapLookup(IrMapLookup lookup, Placement placement, string receiverName)
-    {
-        var map = Expression(lookup.Map, placement, receiverName);
-        var key = Expression(lookup.Key, placement, receiverName);
-
-        return lookup.OnMissing switch
+        => lookup.OnMissing switch
         {
             MissingKeyBehavior.Fallback =>
-                $"({CSharpRuntime.MapsTypeName}.{FindHelper(lookup.ValueType)}({map}, {key}) ?? "
+                $"({Found(lookup, placement, receiverName)} ?? "
                 + $"{(WrappedScalar(lookup.ValueType) is null
                     ? Expression(lookup.Fallback!, placement, receiverName)
                     : WrappedValue(lookup.Fallback!, placement, receiverName))})",
             MissingKeyBehavior.Fail =>
-                $"{CSharpRuntime.MapsTypeName}.FoundOrFail({map}, {key}, {FormatString(lookup.MapName)})",
+                $"{CSharpRuntime.MapsTypeName}.FoundOrFail({Expression(lookup.Map, placement, receiverName)}, "
+                + $"{Expression(lookup.Key, placement, receiverName)}, {FormatString(lookup.MapName)})",
+            MissingKeyBehavior.Refuse => placement.Built[lookup],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(lookup), lookup.OnMissing, "A lookup with no clause never reaches a backend."),
         };
-    }
+
+    /// <summary>The value the map holds at the key, or null where the key is missing.</summary>
+    private static string Found(IrMapLookup lookup, Placement placement, string receiverName)
+        => $"{CSharpRuntime.MapsTypeName}.{FindHelper(lookup.ValueType)}("
+            + $"{Expression(lookup.Map, placement, receiverName)}, {Expression(lookup.Key, placement, receiverName)})";
 
     /// <summary>
     /// The helper that gives a map's value or null: <c>FindValue</c> for a value type, which comes back as

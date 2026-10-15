@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package protocross.conformance.beta;
+
+// The second package of cross_package.pcross, whose namespace is written after
+// protocross.conformance.alpha's in the header the vector generates. See cross_package.proto.
+message CrossPackageTicket {
+  int64 price_cents = 1;
+  int64 fee_cents = 2;
+}

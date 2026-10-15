@@ -16,23 +16,25 @@ public sealed partial class CppBackend
     /// <summary>A lookup: the value at the key, or what its clause says a missing key gives.</summary>
     /// <remarks>
     /// The fallback is handed over as a lambda, so the helper calls it only where the key is missing,
-    /// and a fallback that can end the program does not end one whose key was there (spec 14.2).
+    /// and a fallback that can end the program does not end one whose key was there (spec 14.2). A
+    /// lookup whose clause refuses was tested before its statement, and is what that test held
+    /// (<see cref="EmitClauseRefusal"/>).
     /// </remarks>
     private static string EmitMapLookup(IrMapLookup lookup, Placement placement)
-    {
-        var map = Expression(lookup.Map, placement);
-        var key = Expression(lookup.Key, placement);
-
-        return lookup.OnMissing switch
+        => lookup.OnMissing switch
         {
-            MissingKeyBehavior.Fallback =>
-                $"{RuntimeNamespace}::value_or({map}, {key}, {Deferred(Expression(lookup.Fallback!, placement))})",
+            MissingKeyBehavior.Fallback => ValueOr(lookup, Deferred(Expression(lookup.Fallback!, placement)), placement),
             MissingKeyBehavior.Fail =>
-                $"{RuntimeNamespace}::found_or_fail({map}, {key}, {FormatString(lookup.MapName)})",
+                $"{RuntimeNamespace}::found_or_fail({Expression(lookup.Map, placement)}, {Expression(lookup.Key, placement)}, "
+                + $"{FormatString(lookup.MapName)})",
+            MissingKeyBehavior.Refuse => placement.Held[lookup],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(lookup), lookup.OnMissing, "A lookup with no clause never reaches a backend."),
         };
-    }
+
+    /// <summary>The value at the key, calling <paramref name="fallback"/>, a lambda, where the key is missing.</summary>
+    private static string ValueOr(IrMapLookup lookup, string fallback, Placement placement)
+        => $"{RuntimeNamespace}::value_or({Expression(lookup.Map, placement)}, {Expression(lookup.Key, placement)}, {fallback})";
 
     /// <summary><c>count()</c>, as the <c>int32</c> protoc's own size is, or <c>is_empty()</c>.</summary>
     private static string EmitMapQuery(IrMapQuery query, Placement placement)

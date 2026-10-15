@@ -8,4 +8,14 @@
     <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
+  <!--
+    For the order the bundled protoc is chosen in (ProtocLocator.NewestFirst), which is tested on folder
+    names of its own: the real search reads this machine's NuGet cache and a process-wide environment
+    variable, so a test steering it would depend on what the machine has restored and on every test
+    running beside it.
+  -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="ProtoCross.Tests" />
+  </ItemGroup>
+
 </Project>

@@ -8,7 +8,16 @@ public sealed record CompilationUnit(
     IReadOnlyList<ImportDeclaration> Imports,
     IReadOnlyList<ExtendDeclaration> Extends,
     IReadOnlyList<TestDeclaration> Tests,
-    SourceSpan Span) : SyntaxNode(Span);
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>The source's <c>factory</c> blocks, in the order they are written (spec 16.3).</summary>
+    /// <remarks>
+    /// Init-only beside the positional members, as <see cref="MethodDeclaration.IsMutating"/> is, so
+    /// every existing construction of a unit stays valid and describes a source with no factory, which
+    /// every source was before #83.
+    /// </remarks>
+    public IReadOnlyList<FactoryDeclaration> Factories { get; init; } = [];
+}
 
 /// <summary>An <c>import proto "path.proto";</c> declaration (spec 5.2).</summary>
 /// <param name="PathIsMissing">
@@ -28,6 +37,23 @@ public sealed record ExtendDeclaration(
     IReadOnlyList<MethodDeclaration> Methods,
     SourceSpan Span) : SyntaxNode(Span);
 
+/// <summary>A <c>factory MessageName { ... }</c> block: the methods that build that message (spec 16.3).</summary>
+/// <remarks>
+/// A record of its own rather than an <see cref="ExtendDeclaration"/> with a flag, because the two
+/// differ in what their methods are given: an extend block's methods are called on a message, and a
+/// factory's are called on nothing. Everything that reads a declaration has to ask which it holds, and
+/// a type answers that where a flag can be forgotten.
+/// </remarks>
+/// <param name="Keyword">
+/// The <c>factory</c> word, which is what names the block: it declares no type, so a reference to it
+/// is that word, written after the message, and navigating to it selects this one.
+/// </param>
+public sealed record FactoryDeclaration(
+    SyntaxName Keyword,
+    SyntaxName MessageName,
+    IReadOnlyList<MethodDeclaration> Methods,
+    SourceSpan Span) : SyntaxNode(Span);
+
 public sealed record MethodDeclaration(
     SyntaxName Name,
     IReadOnlyList<ParameterDeclaration> Parameters,
@@ -42,6 +68,17 @@ public sealed record MethodDeclaration(
     /// which is what every method was before.
     /// </remarks>
     public bool IsMutating { get; init; }
+
+    /// <summary>Whether the declaration begins <c>helper fn</c>, so only its factory may call it (spec 16.3).</summary>
+    /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
+    public bool IsHelper { get; init; }
+
+    /// <summary>
+    /// What the method may refuse with, written after its return type as <c>refuses T</c>, or null for a
+    /// method that cannot refuse (spec 16.3).
+    /// </summary>
+    /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
+    public TypeReference? Refusal { get; init; }
 }
 
 public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, SourceSpan Span) : SyntaxNode(Span);
@@ -72,8 +109,35 @@ public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNod
 /// written at all is missing on both halves.
 /// </para>
 /// </remarks>
-public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSpan Span) : SyntaxNode(Span);
+public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// The <c>factory</c> of <c>Invoice.factory.create</c>, when the target is a factory's method;
+    /// null for a method an extend block declares (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The word is kept apart from <see cref="Receiver"/>, which then names the message alone, so that
+    /// each of the three has a range of its own to navigate from, as the two halves already do.
+    /// </para>
+    /// <para>
+    /// The parser sets it wherever <c>factory</c> is the segment before the method, because a test of a
+    /// factory method has no receiver to declare and the parser is what asks for one. It cannot know
+    /// whether the message has a factory, or instead a nested type named <c>factory</c> with methods
+    /// of its own; the binder settles that, and a target that turns out to be the nested type's is
+    /// bound as one, receiver and all.
+    /// </para>
+    /// <para>Init-only, so every existing construction of a target stays valid and names an extend method.</para>
+    /// </remarks>
+    public SyntaxName? Factory { get; init; }
+}
 
+/// <param name="Receiver">
+/// The fixture the method is called on. A test that writes none holds an empty one at the point one
+/// would be typed, which says so (<see cref="TestReceiverFixture.IsWritten"/>): a test of an extend
+/// method that leaves it out has been reported, and a test of a factory's method has nothing to call
+/// its method on and leaves it out as it should (spec 25.3).
+/// </param>
 public sealed record TestDeclaration(
     TestTarget Target,
     string Name,
@@ -90,7 +154,23 @@ public sealed record TestDeclaration(
 /// </remarks>
 public sealed record TestReceiverFixture(
     IReadOnlyList<FieldInitializer> Fields,
-    SourceSpan Span) : SyntaxNode(Span);
+    SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// Whether the author wrote this fixture, rather than the parser standing it in for one that is not
+    /// there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test of a factory's method declares no fixture, and one that declares one anyway is refused
+    /// (spec 25.3). Only the binder knows which method a test targets, so it is the one that asks, and the
+    /// stand-in is what a test that wrote none holds. An empty <c>receiver { }</c> has no fields either, so
+    /// the fields cannot answer.
+    /// </para>
+    /// <para>Init-only with a default of true, so every existing construction of a fixture is one that was written.</para>
+    /// </remarks>
+    public bool IsWritten { get; init; } = true;
+}
 
 /// <summary>One field of a message literal or a fixture: <c>name: value</c> (spec 13.2).</summary>
 /// <remarks>
@@ -108,6 +188,9 @@ public abstract record TestExpectation(SourceSpan Span) : SyntaxNode(Span);
 public sealed record TestReturnExpectation(Expression Value, SourceSpan Span) : TestExpectation(Span);
 
 public sealed record TestFailExpectation(SourceSpan Span) : TestExpectation(Span);
+
+/// <summary><c>expect refuse value;</c>: the method refuses, with that value (spec 25.3).</summary>
+public sealed record TestRefusalExpectation(Expression Value, SourceSpan Span) : TestExpectation(Span);
 
 public abstract record Statement(SourceSpan Span) : SyntaxNode(Span);
 
@@ -143,6 +226,9 @@ public sealed record VariableDeclarationStatement(
     SourceSpan Span) : Statement(Span);
 
 public sealed record ReturnStatement(Expression? Value, SourceSpan Span) : Statement(Span);
+
+/// <summary><c>refuse value;</c>: ends a factory's method with its refusal rather than its message (spec 16.3).</summary>
+public sealed record RefuseStatement(Expression Value, SourceSpan Span) : Statement(Span);
 
 public sealed record ForInStatement(
     SyntaxName VariableName,
@@ -302,6 +388,34 @@ public sealed record InvocationExpression(
     IReadOnlyList<Expression> Arguments,
     SourceSpan Span) : Expression(Span);
 
+/// <summary>
+/// A call with an <c>on_refused</c> clause, which says what a refusal from the method it calls makes of
+/// the call (spec 16.3).
+/// </summary>
+/// <remarks>
+/// A node around the call rather than a clause on it, as <see cref="IndexExpression.OnMissing"/> is on a
+/// lookup, so that the call keeps the span it has always had. A call's diagnostics, its arguments
+/// counted or its method not found, underline the call, and a call that took in its clause would
+/// underline the fallback with them.
+/// </remarks>
+public sealed record OnRefusedExpression(InvocationExpression Call, OnRefusedClause Clause, SourceSpan Span)
+    : Expression(Span);
+
+/// <summary>
+/// The <c>on_refused</c> clause of a call: a value to use when the method refuses, <c>fail</c>, which
+/// terminates deterministically, or <c>refuse</c>, which ends the calling method with the same refusal
+/// (spec 16.3).
+/// </summary>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
+public sealed record OnRefusedClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>Whether the clause is <c>on_refused refuse</c>, which passes the refusal on.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public bool PassesItOn { get; init; }
+
+    public bool IsFail => Fallback is null && !PassesItOn;
+}
+
 public enum BinaryOperatorKind
 {
     Add,
@@ -343,13 +457,24 @@ public sealed record BinaryExpression(
     OnZeroClause? OnZero = null) : Expression(Span);
 
 /// <summary>
-/// The <c>on_zero</c> clause of an integer division: either a fallback value, or <c>fail</c>,
-/// which terminates deterministically.
+/// The <c>on_zero</c> clause of an integer division: a fallback value, <c>fail</c>, which terminates
+/// deterministically, or <c>refuse</c> and a value, which ends the method with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnZeroClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
+
+    public bool IsFail => WrittenValue() is null;
 }
 
 public sealed record UnaryExpression(
@@ -397,13 +522,25 @@ public sealed record EnumMembershipExpression(
     SourceSpan Span) : Expression(Span);
 
 /// <summary>
-/// The <c>on_unknown</c> clause of a conversion to an enum: either a value to use instead of a
-/// number the enum does not name, or <c>fail</c>, which terminates deterministically (spec 12).
+/// The <c>on_unknown</c> clause of a conversion to an enum: a value to use instead of a number the
+/// enum does not name, <c>fail</c>, which terminates deterministically (spec 12), or <c>refuse</c> and a
+/// value, which ends the method with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
+
+    public bool IsFail => WrittenValue() is null;
 }
 
 /// <summary>
@@ -444,13 +581,25 @@ public sealed record IndexExpression(
     OnMissingClause? OnMissing = null) : Expression(Span);
 
 /// <summary>
-/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, or
-/// <c>fail</c>, which terminates deterministically (spec 14.2).
+/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, <c>fail</c>,
+/// which terminates deterministically (spec 14.2), or <c>refuse</c> and a value, which ends the method
+/// with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
+
+    public bool IsFail => WrittenValue() is null;
 }
 
 /// <summary>

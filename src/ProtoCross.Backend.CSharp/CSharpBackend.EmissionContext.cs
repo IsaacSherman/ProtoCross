@@ -69,16 +69,13 @@ public sealed partial class CSharpBackend
         public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
-        public string Unused(string stem)
-        {
-            var name = stem;
-            for (var suffix = 1; Taken.Contains(name); suffix++)
-            {
-                name = stem + suffix.ToString(CultureInfo.InvariantCulture);
-            }
+        public string Unused(string stem) => FirstUnused(stem, Taken.Contains);
 
-            return name;
-        }
+        /// <summary>
+        /// The parameters a method that may refuse says what it built or refused through, or null for a method
+        /// that cannot refuse (spec 24.1).
+        /// </summary>
+        public Outs? Outs { get; init; }
 
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
@@ -96,9 +93,108 @@ public sealed partial class CSharpBackend
         /// else, and is traversed as it is.
         /// </remarks>
         public string Collection(IrForEach loop)
-            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrMapLookup) and var owner
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
+    }
+
+    /// <summary>
+    /// The <c>out</c> parameters a method that may refuse is declared with (spec 24.1): <c>result</c>, what it
+    /// built, which a method that returns nothing has none of, and <c>refusal</c>, what it refused with.
+    /// </summary>
+    /// <remarks>
+    /// Each is numbered, as a name generated code declares always is, where the method already declares the
+    /// name, so a parameter of its own called <c>result</c> keeps the name it was given.
+    /// </remarks>
+    private sealed record Outs(string? Result, string Refusal)
+    {
+        /// <summary>The parameters <paramref name="method"/> may refuse through, or null where it cannot refuse.</summary>
+        /// <param name="taken">Every name the method declares, which these are added to.</param>
+        public static Outs? Of(IrMethodSignature method, ISet<string> taken)
+            => method.Refusal is null
+                ? null
+                : new(method.ReturnType is VoidType ? null : Reserve(taken, "result"), Reserve(taken, "refusal"));
+
+        /// <summary>The parameters as the method's declaration writes them.</summary>
+        public IEnumerable<string> Declared(IrMethodSignature method)
+        {
+            if (Result is not null)
+            {
+                yield return OutParameter(method.ReturnType, Result, onSuccess: true);
+            }
+
+            yield return OutParameter(method.Refusal!, Refusal, onSuccess: false);
+        }
+
+        /// <summary>
+        /// One <c>out</c> parameter, marked as set exactly when the method says it is, where the type is a reference:
+        /// a result when it returns true, and a refusal when it returns false.
+        /// </summary>
+        private static string OutParameter(PlType type, string name, bool onSuccess)
+            => type is EnumPlType || (type is ScalarType scalar && IsAStruct(scalar))
+                ? $"out {TypeName(type)} {name}"
+                : $"[global::System.Diagnostics.CodeAnalysis.NotNullWhen({(onSuccess ? "true" : "false")})] out {TypeName(type)}? {name}";
+    }
+
+    /// <summary>
+    /// The local each call in <paramref name="node"/> to a method that may refuse holds what it built in, and each
+    /// operation whose clause refuses holds what it gave in, none of them a name in <paramref name="taken"/>, to
+    /// which each is added.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An <c>out var</c> declared in an expression is in scope in the whole block around its statement, and C#
+    /// refuses a second of one name there (CS0128) and one that gives a name used in an enclosing scope another
+    /// meaning (CS0136). So no two calls in a method share one, and none is a name the method declares. They are
+    /// given out before anything is written, because an expression is written by a function of the node alone
+    /// (<see cref="Expression"/>), which has no method to ask.
+    /// </para>
+    /// <para>
+    /// A call that passes a refusal on stands on its own, and its statement declares the local the same way, as
+    /// does the statement an operation whose clause refuses stands in (<see cref="EmitClauseRefusal"/>). A call
+    /// to a method that returns nothing builds nothing, and is given none.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyDictionary<IrExpression, string> BuiltNamesIn(IrNode node, ISet<string> taken)
+    {
+        var names = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
+        foreach (var expression in IrWalk.DescendantsAndSelf(node).OfType<IrExpression>())
+        {
+            if (HeldStemOf(expression) is { } stem)
+            {
+                names[expression] = Reserve(taken, stem);
+            }
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// What the local <paramref name="expression"/> holds its value in is named after, or null where it is held in
+    /// none: what a call to a method that may refuse built, or what a division, a conversion to an enum or a
+    /// lookup gave where its clause refuses.
+    /// </summary>
+    private static string? HeldStemOf(IrExpression expression)
+        => expression is IrRefusableCall { Type: not VoidType } ? "built" : IrRefusals.HeldNameOf(expression);
+
+    /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on not in <paramref name="taken"/>, which it is then added to.</summary>
+    private static string Reserve(ISet<string> taken, string stem)
+    {
+        var name = FirstUnused(stem, taken.Contains);
+        taken.Add(name);
+        return name;
+    }
+
+    /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that is not <paramref name="taken"/>.</summary>
+    private static string FirstUnused(string stem, Func<string, bool> taken)
+    {
+        var name = stem;
+        for (var suffix = 1; taken(name); suffix++)
+        {
+            name = stem + suffix.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return name;
     }
 
     /// <summary>
@@ -113,15 +209,7 @@ public sealed partial class CSharpBackend
     };
 
     private static string ExtensionClassName(MessageDescriptor receiver)
-    {
-        var parts = new List<string>();
-        for (var current = receiver; current is not null; current = current.ContainingType)
-        {
-            parts.Insert(0, NameConventions.ToPascalCase(current.Name));
-        }
-
-        return string.Join('_', parts) + "ProtoCrossExtensions";
-    }
+        => NameConventions.GetFlattenedPascalCaseName(receiver) + "ProtoCrossExtensions";
 
     /// <summary>
     /// Where one source's behavior declares each receiver's extension methods: the namespace, the
@@ -147,13 +235,33 @@ public sealed partial class CSharpBackend
         /// <summary>The class every extension method a project declares is in.</summary>
         public const string ProjectClassName = "ProtoCrossExtensions";
 
-        public string NamespaceOf(MessageDescriptor receiver)
-            => Project is { } project
-                ? NameConventions.GetCSharpNamespace(project)
-                : NameConventions.GetCSharpNamespace(receiver.File);
+        /// <summary>
+        /// The local each call to a method that may refuse holds what it built in, and each operation whose clause
+        /// refuses holds what it gave in, in the method or test being written (<see cref="BuiltNamesIn"/>).
+        /// </summary>
+        /// <remarks>
+        /// Here because this is what every expression is handed: the names are the method's, given out before
+        /// it is written, and an expression is written by a function of the node and this alone. Each method
+        /// is written with a copy of its file's placement holding its own.
+        /// </remarks>
+        public IReadOnlyDictionary<IrExpression, string> Built { get; init; }
+            = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
+
+        public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
+
+        /// <summary>The class <paramref name="message"/>'s factory is generated into (spec 24.1).</summary>
+        /// <remarks>
+        /// Named the same whether or not the sources are a project's. Only its namespace moves, as an
+        /// extension class's does, and the binder has refused any two factories that would meet in one.
+        /// </remarks>
+        public string FactoryClassOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
+
+        /// <summary>The class a method is declared in: its receiver's extension class, or its message's factory.</summary>
+        public string ClassOf(IrMethodSignature method)
+            => method.HasReceiver ? ClassOf(method.Receiver) : FactoryClassOf(method.Receiver);
 
         /// <summary>
         /// The name a method is declared and called by: its name PascalCased, with an underscore
@@ -170,7 +278,7 @@ public sealed partial class CSharpBackend
         public string MethodNameOf(IrMethodSignature method)
         {
             var name = NameConventions.ToPascalCase(method.Name);
-            return name == ClassOf(method.Receiver) ? name + "_" : name;
+            return name == ClassOf(method) ? name + "_" : name;
         }
 
         /// <summary>
@@ -184,10 +292,14 @@ public sealed partial class CSharpBackend
         public string PartOf(MessageDescriptor receiver)
             => Project is null ? receiver.FullName : ProjectClassName;
 
-        public string QualifiedClassOf(MessageDescriptor receiver)
+        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(receiver, ClassOf(receiver));
+
+        /// <summary>The class a method is declared in, qualified from <c>global::</c>.</summary>
+        public string QualifiedClassOf(IrMethodSignature method) => Qualified(method.Receiver, ClassOf(method));
+
+        private string Qualified(MessageDescriptor receiver, string className)
         {
             var ns = NamespaceOf(receiver);
-            var className = ClassOf(receiver);
             return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
         }
     }

@@ -88,6 +88,15 @@ internal sealed record SchemaSubject(
 {
     public override CompletionContextKind Kind => CompletionContextKind.Schema;
 
+    /// <summary>Whether the word before the name under the caret is <c>factory</c>, with space between.</summary>
+    /// <remarks>
+    /// The fact <see cref="PrecededByExtend"/> is, for the declaration that begins with a word rather
+    /// than a keyword: a <c>factory |</c> the tree has no declaration for is still where a message's
+    /// name goes. Only a token, since the word is a name everywhere else, so it is asked only outside
+    /// every method and test.
+    /// </remarks>
+    public bool PrecededByFactory { get; init; }
+
     /// <summary>Whether the word before the name under the caret is <c>new</c>, with space between.</summary>
     /// <remarks>
     /// <para>
@@ -167,6 +176,7 @@ internal sealed record SchemaSubject(
             FollowedByCall: following is TokenKind.OpenParen)
         {
             PrecededByNew = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.New },
+            PrecededByFactory = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Factory },
             FollowedByAppend = BeginsAnAppend(tokens, end),
         };
 

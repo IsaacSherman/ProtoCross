@@ -124,7 +124,19 @@ each with a form that takes a list of sources.
    **not** throw on bad input: an unresolved name becomes `ErrorType` (`PC0037`) and binding
    continues, a name the parser never saw resolves to `ErrorType`
    in silence, and an extend block whose receiver cannot be resolved is skipped because there is no
-   message to bind against. Declarations inside a resolvable receiver are kept as far as possible:
+   message to bind against. A `factory` block is declared beside the extend blocks, in the order the
+   two are written, and its methods go into the same table, so they share the message's names; each
+   signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
+   implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
+   block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
+   can be followed to it (`Binder.Factories.cs`). A method that may refuse, of a factory or an extend
+   block, carries the type it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is
+   an `IrRefuse`, and every call to such a method, from anywhere, is held by an `IrRefusableCall` saying
+   what a refusal makes of it, so a backend never meets one bare (`Binder.Refusals.cs`). A division, a
+   conversion to an enum or a lookup whose clause refuses carries a `Refuse` behavior, and
+   `IrRefusals.ClauseRefusalOf` and `IrMutation.StandingExpressionOf` answer, once for the binder and
+   both backends, which clause refuses and where it may stand. Where the project forbids termination,
+   each construct that would end the program is reported as it is bound (`Binder.Termination.cs`). Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
    [`DeclarationSite`](../src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
    declaration it means and say which symbol that is. It also records the other direction as it
@@ -293,7 +305,9 @@ question to ask before mapping a span to an editor range.
 ### Configuration
 
 `protocross.config.xml` (spec 10.4) states the language-dependent policies: overflow, conversion,
-divide-by-zero, unset-message reads. Discovery walks up from the source directory, the way
+divide-by-zero, unset-message reads, enum fallbacks, and whether generated code may end the program
+(`Failure/Termination`, which the binder enforces and no backend sees). A file whose settings
+contradict each other is refused as it is read. Discovery walks up from the source directory, the way
 `.editorconfig` does. A command-line flag that contradicts an explicit setting is **refused** unless
 `--override-config` is passed — generated code has to mean the same thing however it was built.
 
@@ -584,7 +598,9 @@ it is invoked in is nearly always one the parser has already recovered from. The
 position, after `extend` or `new`, inside a literal's braces, or naming a fixture field. That is
 answered from a compilation kept between keystrokes. A bare name is answered from `ScopeAt`, a
 member from the receiver's type, and a literal's braces from its message's fields. After a dot on a
-repeated value at statement position, the answer is `append()`. Each list honours the `ScopeAt`
+repeated value at statement position, the answer is `append()`. After a message's name the answer is
+its factory's word, and after the word its methods, each asked of the reference the binder recorded
+for the name before the dot. Each list honours the `ScopeAt`
 contract, *everything offered binds*. Under `PROTOCROSS_SWEEP` the suite checks that contract by
 accepting every item offered at every caret worth asking at in the corpus, and compiling the result.
 
@@ -691,19 +707,44 @@ the list, `ProtoCrossWrappers` in the support file, so the binding is the elemen
 messages. Nothing in the IR or the binder knows about it, because
 it is a fact about one target's generated code rather than about the language (spec 24.1).
 
+A factory's methods are told apart from extension methods by `IrMethodSignature.HasReceiver`, and
+each backend groups them by message into a class of their own, after the extension classes, so a
+source with no factory is generated as it always was: a C# `public static class` with `private static`
+helpers, and a C++ struct of static members, declared with the functions and defined after them. The
+class's name is `NameConventions.GetFactoryClassName`, the one both backends and the binder's collision
+check use. A test whose expectation is a message literal compares the fields it sets, and which those
+are is [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer, which each
+backend emits as field reads off the result.
+
+A method that may refuse is generated in a shape of its own in both backends: it returns `bool`, and
+gives what it built or refused through two parameters, `out` in C# and references in C++
+(`*Backend.Refusals.cs`). A call answered with a fallback or `fail` is an expression. In C# it is a
+conditional over the call with what it built in an `out var`, each named once per method, before the
+method is written, and handed to every expression on the method's copy of `Placement`. In C++ it is a
+lambda called where it is written, as a literal is. A call that passes a refusal on stands on its own,
+so each backend tests it in an `if` before the rest of its statement. So does a division, a conversion
+or a lookup whose clause refuses: C# matches the support file's helper that gives null into a local,
+and C++ hands the helper that takes a fallback a lambda that marks it refused, each through the same
+helper a fallback goes through. `on_refused fail` goes through a helper in each support file. A test of such a method checks how it ended, then compares the result or
+the refusal as any result is compared.
+
 A backend is handed one source's part of the module, and a call in it may name a method another
 source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
 declares the part. A C++ header includes the headers of the sources it calls, after its own
 declarations and before its definitions, so two sources that call each other compile whichever header
-comes first; one that calls none is laid out as it always was.
+comes first. A header that declares functions in more than one namespace, as one source extending
+messages of two packages does without a project, also writes every namespace's declarations before any
+definition, so a call between its namespaces finds its callee declared. A header with one namespace
+that calls no other source is laid out as it always was.
 
 Where that class or function is declared is each backend's `Placement` (spec 24). A project's
 compilation carries the project's namespace, read from the project's name, from `CompilationOptions`
 through `CompilationResult.ProjectNamespace` to `BackendOptions`, and every class, function, call and
 C++ include guard is placed in it, whatever message the method extends. Without a project there is no
 namespace to carry, and each receiver's behavior is declared beside its message, in the namespace
-protoc declared that message in. The compilation itself never reads the namespace: where behavior is
-declared changes every generated name and nothing a program means.
+protoc declared that message in. The compilation reads the namespace for one question, which
+factories' classes would share one, since two of them that would cannot be generated at all; otherwise
+where behavior is declared changes every generated name and nothing a program means.
 
 ## Tests
 
@@ -716,7 +757,8 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `CompiledCorpusTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
+`TerminationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,

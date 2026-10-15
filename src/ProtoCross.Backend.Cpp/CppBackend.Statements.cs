@@ -17,6 +17,15 @@ public sealed partial class CppBackend
 
     private static void EmitStatement(SourceWriter writer, IrStatement statement, Placement placement)
     {
+        // An operation whose clause refuses is tested before the statement it stands in does anything.
+        if (IrMutation.StandingExpressionOf(statement) is { } standing
+            && IrRefusals.ClauseRefusalOf(standing) is { } refusal
+            && !placement.Held.ContainsKey(standing))
+        {
+            EmitClauseRefusal(writer, statement, standing, refusal, placement);
+            return;
+        }
+
         switch (statement)
         {
             case IrBlock block:
@@ -25,6 +34,48 @@ public sealed partial class CppBackend
                 EmitStatements(writer, block.Statements, placement);
                 break;
             }
+
+            // A call that passes a refusal on is tested before the statement it stands in does anything.
+            case IrVariableDeclaration { Initializer: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } declaration:
+            {
+                var local = Escape(declaration.Local.Name);
+                writer.WriteLine($"{TypeName(declaration.Local.Type)} {local}{{}};");
+                EmitPassedOn(writer, passed, local, placement);
+                break;
+            }
+
+            case IrAssignment { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } assignment:
+                EmitPassedOnInto(writer, passed, Expression(assignment.Target, placement), statement, placement);
+                break;
+
+            case IrExpressionStatement { Expression: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }
+                when passed.Call.Type is VoidType:
+                EmitPassedOn(writer, passed, null, placement);
+                break;
+
+            case IrExpressionStatement { Expression: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }:
+                EmitPassedOnInto(writer, passed, null, statement, placement);
+                break;
+
+            // Both methods give what they built and refused through references of one type, so the call is handed this one's.
+            case IrReturn { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed }
+                when placement.Outs is { Result: { } result } outs:
+                writer.WriteLine($"return {EmitCall(passed.Call, placement, result, outs.Refusal)};");
+                break;
+
+            case IrReturn returned when placement.Outs is { } outs:
+                if (returned.Value is not null)
+                {
+                    writer.WriteLine($"{outs.Result} = {Expression(returned.Value, placement)};");
+                }
+
+                writer.WriteLine("return true;");
+                break;
+
+            case IrRefuse refused:
+                writer.WriteLine($"{placement.Outs!.Refusal} = {Expression(refused.Value, placement)};");
+                writer.WriteLine("return false;");
+                break;
 
             case IrVariableDeclaration declaration:
                 writer.WriteLine(

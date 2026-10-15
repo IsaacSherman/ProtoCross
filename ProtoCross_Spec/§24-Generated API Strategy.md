@@ -15,6 +15,57 @@ Sources compiled without a project are not a library, and have no name to own a 
 behavior is declared beside each message it extends, in the namespace protoc declares that message
 in, as it always has been.
 
+**Decided: a message's factory is a class of its own, named after the message, in the namespace its
+behavior goes in** ([16.3](./§16-Methods.md#163-factories)). The class of `Invoice`'s factory is `InvoiceFactory`. Its name is the
+message's name and the names of the messages enclosing it, each PascalCased as a C# method name is
+([24.1](#241-c)) and joined by underscores, then `Factory`: `Outer.invoice_line` is
+`Outer_InvoiceLineFactory`. One name in every backend, because it is the name a consumer types, and a
+nested message's factory never takes a top-level one's. It goes where the project's behavior goes, so
+a consumer writes `using Acme.App;` and `InvoiceFactory.Create(options)` in C#, or
+`acme::app::InvoiceFactory::create(options)` in C++. Compiled without a project, it is declared beside
+the message, in the namespace protoc declares it in, as the message's extension class is.
+
+**A factory whose class would share a name in that namespace is `PC0126`.** In one project,
+`acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
+project's namespace. A project named after its schemas' package could also declare one beside a
+schema's message or enum of that name. Both are refused, and the help says how to separate them.
+Refusing is what C# does with two classes of one name.
+
+The class is compared as each backend declares it, by its namespace and name there, and a clash in
+either backend is refused whichever backends are run:
+
+- **The namespace is the one each backend generates.** C# takes it from `csharp_namespace` when a file
+  sets one and PascalCases the package otherwise ([24.1](#241-c)), and C++ escapes the package's keywords
+  ([24.2](#242-c)). So
+  without a project, factories for `acme.lower.invoice_line` and `acme.Lower.InvoiceLine`, or for
+  messages of two packages whose files set one `csharp_namespace`, meet in C# and not in C++. A C#
+  namespace is compared as C# identifies it, so `@Acme.Shared` and `Acme.Shared` are one.
+- **A schema's type is compared by the name protoc declares at namespace scope.** A nested one is the
+  name protoc's C++ flattens it to, escaped as protoc escapes it: `Outer.InvoiceFactory` is
+  `Outer_InvoiceFactory`, and `New.ItemFactory` is `New__ItemFactory`, which the factory of `New.Item`,
+  `New_ItemFactory`, does not meet. C# nests a nested type where no factory is declared.
+- **A schema's namespace is taken too.** Package `acme.InvoiceFactory` declares a namespace where
+  `acme.Invoice`'s factory would be generated, and neither language lets a class share its name.
+
+Four placements lost:
+
+- **Beside the message, in protoc's namespace, inside a project.** Two messages would never collide,
+  but that namespace belongs to whoever owns the schema, which is what a project's namespace was
+  decided against above. Two libraries that each declare a factory for one message would declare the
+  same class, which a C# consumer of both cannot compile and a C++ linker silently merges.
+- **The project's namespace with the message's package under it.** It never collides, but the names
+  are long, and in C++ the inner namespace hides the outer one: `acme` inside `acme::app`. The
+  generated C++ does not qualify names from `::` everywhere, so every reference would have to be
+  checked.
+- **One `ProtoCrossFactories` class holding every factory.** A consumer would need
+  `using static Acme.App.ProtoCrossFactories;` to write `InvoiceFactory.Create`. Its one benefit was
+  avoiding a schema message called `InvoiceFactory`, which the refusal covers.
+- **Namespaces taken from the sources' folders.** In a project every extension method is already an
+  overload in one class, told apart by its receiver, so two messages of one name need nothing more. A
+  folder does not identify a message either: two `Invoice`s extended from one folder would still
+  collide. A source declares no namespace ([5.2](./§5-Source%20Organization.md#52-relationship-to-proto)), so renaming a folder would break every consumer, and folder
+  names would need a second, lossy conversion rule.
+
 A library that declares its symbols in a namespace someone else owns shares it with every other
 library that does the same. Two libraries extending one message there declare the same names: in C#
 two classes a consumer referencing both cannot tell apart, and in C++ two `inline` functions the
@@ -49,6 +100,48 @@ which C# does not allow, has an underscore appended wherever it is declared or c
 appends one to a property named after its message: `proto_cross_extensions` is
 `ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
 `TimestampProtoCrossExtensions_` beside it.
+
+**A factory is a `public static class`, and its helpers are `private static` methods.** Each method is
+named as an extension method is, PascalCased, with an underscore appended when that is the class's
+own name, and takes only its parameters. The class is not `partial`: a message has one factory in a
+compilation, in one source ([16.3](./§16-Methods.md#163-factories)), so one file declares all of it. A helper's privacy changes
+nothing a ProtoCross caller can do, since the binder already refuses a call to one from outside its
+factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
+qualified from `global::`, as a call to an extension method is.
+
+**A method that may refuse returns `bool`, and gives what it built or refused through `out`
+parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method is a static method of
+its class, and a method of an extend block an extension method, whose parameters come after `this`:
+
+```csharp
+public static bool Create(
+    global::Acme.InvoiceOptions options,
+    [global::System.Diagnostics.CodeAnalysis.NotNullWhen(true)] out global::Acme.Invoice? result,
+    [global::System.Diagnostics.CodeAnalysis.NotNullWhen(false)] out global::Acme.InvoiceRefusal? refusal)
+```
+
+It returns `true` having set `result`, and `false` having set `refusal`, and sets the other to its
+default, since C# requires every `out` parameter to be set. A method that returns nothing has no
+`result`. A value type is written without `?` or the attribute. The two are named `result` and
+`refusal`, numbered as a name generated code declares always is where the method already declares the
+name, so a parameter of the method's own keeps the name it was given. A call written for its value
+tests what the method returned, with what it built in a local of its own declared in the call,
+`(Create(options, out var built, out _) ? built : fallback)`, so the fallback is evaluated only where
+the method refused. `on_refused fail` is `ProtoCrossRefusals.Fail<T>(name)` in the support file there,
+which writes the method's name as the language spells it and ends the program as `on_zero fail` does. A
+call that passes a refusal on is tested by an `if` before the rest of its statement, and gives the
+refusal straight to the calling method's own `refusal`, which the method being called sets as it
+refuses. Each `out var` is given a name of its own in the method, since C# keeps it in scope in the
+whole block around its statement.
+
+A division, a conversion to an enum or a lookup whose clause refuses is tested by an `if` before the
+rest of its statement too, through the support file's helper that gives null where the clause would
+answer, matched into a local of its own: `if (ProtoCrossArithmetic.WrapDivideOrNull(a, b) is not { }
+quotient) { result = default; refusal = value; return false; }`, after which the statement reads
+`quotient`. The local is named `quotient`, `remainder`, `named` or `found`, and numbered as `built` is.
+A `mut fn` that may refuse, called on a wrapper C# holds as its value, changes a copy as any `mut fn`
+call on one does, and the copy is stored back before the refusal is answered, so the change stands
+where the method refused, as it does in C++.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
@@ -270,10 +363,47 @@ Potential strategies:
 `const T&`, or as `T&` for a `mut fn`, in the project's namespace, or in the message's own protobuf
 namespace for sources compiled without a project. A consumer calls
 `acme::billing::line_total_cents(order)`. This subclasses nothing, needs no protoc insertion points,
-and behaves the same whether the protobuf codegen is regenerated or vendored. All declarations are
-emitted before any definition so methods may call one another in any order. Every call a generated
-function or test makes to another is qualified with the callee's namespace, so argument-dependent
-lookup cannot find another library's function of the same name.
+and behaves the same whether the protobuf codegen is regenerated or vendored. A header declares
+every function and factory it defines, in every namespace, before it defines any, so methods may call
+one another in any order. Without a project, a source that extends messages of two packages declares
+functions in two namespaces in one header, and a method in either may call a method or a factory of
+the other. Namespaces are written in the order of their names. A header that declares functions in
+one namespace and calls no other source declares and defines them inside it; any other writes every
+namespace's declarations, then every namespace's definitions, opening each namespace again for its
+definitions. Every call a generated function or test makes to another is qualified with the callee's
+namespace, so argument-dependent lookup cannot find another library's function of the same name.
+
+**A factory is a struct of static member functions, and its helpers are private static members.**
+A namespace cannot keep a member private, and a factory's helpers are its own. The struct is declared
+with the functions, before any definition, and its members are defined after it, `inline`, as every
+function in a generated header is. A member named after its struct would declare a constructor, so it
+has an underscore appended, as C# appends one. One block per message is also what lets the struct be
+declared at all, since a struct cannot be continued in another header. A call to a member is
+qualified with the namespace and the struct, `::acme::app::InvoiceFactory::create(options)`, and a
+struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
+take one.
+
+**A method that may refuse returns `bool`, and gives what it built or refused through references**,
+as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):
+`static bool create(const ::acme::InvoiceOptions& options, ::acme::Invoice& result,
+::acme::InvoiceRefusal& refusal)` for a factory's method, and `inline bool rate(const ::acme::Meter& self,
+::std::int64_t& result, ::acme::RateRefusal& refusal)`, declared and defined, for a method of an extend
+block. It returns `true` having set `result`, and `false` having set
+`refusal`, and leaves the other as it was handed in. The two are named as C# names them. A call written
+for its value is a lambda called where it is written, as a message literal is, that declares what the
+method builds and refuses with under names nothing in the call reads, calls it, and gives what it built
+or what the clause says instead. `on_refused fail` calls `protocross_runtime::refused(name)`, which
+writes the line the C# runtime writes. A call that passes a refusal on is tested by an `if` before the
+rest of its statement, and is handed the calling method's own `refusal`. A loop over a field of what such
+a call built keeps it in a local first, as it keeps any call's result.
+
+A division, a conversion to an enum or a lookup whose clause refuses is tested before the rest of its
+statement too, in a block of its own. It goes through the runtime's helper that takes a fallback, as a
+lambda that marks it refused and gives a value nothing reads, `[&] { refused = true; return
+::std::int64_t{}; }`, and what it gave is kept in a local, `quotient`, `remainder`, `named` or `found`,
+which the statement reads once `if (refused)` has left the method with the refusal. A `var` it
+initializes is declared above the block and given the value inside it. No helper of the runtime's is
+added for it.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is
@@ -287,15 +417,15 @@ into a header of its own, and a method may call one another source declares. A h
 do includes each such source's header after its own declarations and before its definitions. Two
 sources may therefore call each other, and whichever of their headers a translation unit includes
 first, the other's definitions find the functions they call already declared, while the include
-guard stops the inclusion going round again. A header that calls no other source includes none, and
-is laid out as it always was. A generated test driver includes the header of each source whose
-methods its tests call. That is the method a test targets, and any method its fixture, arguments or
-expectation call on a literal.
+guard stops the inclusion going round again. A header that calls no other source includes none. A
+generated test driver includes the header of each source whose methods its tests call. That is the
+method a test targets, and any method its fixture, arguments or expectation call on a literal.
 
 A header includes the protobuf header of each schema its methods' receivers are declared in. Each of
 those includes the header of every schema its own schema imports. Any other schema a header names a
-type from also gets its header included: through a literal, a parameter, a return value, a local or
-an enum value. So does any such schema a test driver names beyond its targets' schemas. A schema
+type from also gets its header included: through a literal, a parameter, a return value, a refusal, a
+local or an enum value. A refusal is named by the method that declares it, and by every call to such a
+method, which declares one to be handed. So does any such schema a test driver names beyond its targets' schemas. A schema
 that is already declared by those includes is not included a second time.
 
 **A `mut fn` takes its receiver as `T&`; every other receiver, and every parameter, stays `const`**

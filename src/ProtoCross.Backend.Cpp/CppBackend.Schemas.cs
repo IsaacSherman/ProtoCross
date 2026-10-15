@@ -14,11 +14,13 @@ public sealed partial class CppBackend
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Generated code names a type wherever it declares one: a parameter, a return value, a local, the
-    /// message a literal builds, an enum value it spells, the enum a number is converted to, or the
-    /// enum whose names it asks about. Every such type must be declared by a header the file has
-    /// included. A type reached only through a field accessor needs nothing, because it belongs to a
-    /// schema the field's own schema imports.
+    /// Generated code names a type wherever it declares one: a parameter, a return value, a refusal, a
+    /// local, the message a literal builds, an enum value it spells, the enum a number is converted to,
+    /// or the enum whose names it asks about. A refusal is named by the method that declares it, through
+    /// the reference it refuses through, and by every call to a method that may refuse, which declares
+    /// one to be handed. Every such type must be declared by a header the file has included. A type
+    /// reached only through a field accessor needs nothing, because it belongs to a schema the field's
+    /// own schema imports.
     /// </para>
     /// <para>
     /// Only the schemas not already declared, because each protoc header includes the header of every
@@ -44,7 +46,8 @@ public sealed partial class CppBackend
             .SelectMany(IrWalk.DescendantsAndSelf)
             .SelectMany(node => node switch
             {
-                IrMethod method => [.. method.Parameters.Select(parameter => parameter.Type), method.ReturnType],
+                IrMethod method => [.. method.Parameters.Select(parameter => parameter.Type), method.ReturnType, .. RefusalOf(method.Signature)],
+                IrRefusableCall refusable => RefusalOf(refusable.Call.Target),
                 IrVariableDeclaration declaration => [declaration.Local.Type],
                 IrMessageLiteral literal => [literal.MessageType],
                 IrEnumValue value => [value.EnumType],
@@ -53,6 +56,9 @@ public sealed partial class CppBackend
                 _ => Array.Empty<PlType>(),
             })
             .SelectMany(SchemasOf);
+
+    /// <summary>The type <paramref name="method"/> refuses with, or nothing where it cannot refuse.</summary>
+    private static PlType[] RefusalOf(IrMethodSignature method) => method.Refusal is { } refusal ? [refusal] : [];
 
     /// <summary>The schema that declares <paramref name="type"/>, or its element's, if there is one.</summary>
     private static IEnumerable<FileDescriptor> SchemasOf(PlType type) => type switch

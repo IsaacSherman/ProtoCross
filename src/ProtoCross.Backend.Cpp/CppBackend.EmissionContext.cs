@@ -55,16 +55,55 @@ public sealed partial class CppBackend
     /// </remarks>
     private sealed record Placement(ProjectNamespace? Project)
     {
-        public string NamespaceOf(MessageDescriptor receiver)
-            => Project is { } project
-                ? NameConventions.GetCppNamespace(project)
-                : NameConventions.GetCppNamespace(receiver.File);
+        /// <summary>
+        /// The parameters the method being written says what it built or refused through, or null outside a method
+        /// that may refuse (spec 24.2).
+        /// </summary>
+        /// <remarks>
+        /// Here because this is what every statement is handed. Each method that may refuse is written with a copy
+        /// of its file's placement holding its own.
+        /// </remarks>
+        public Outs? Outs { get; init; }
+
+        /// <summary>
+        /// The local each operation whose clause refuses holds what it gave in, in the statement being written
+        /// (<see cref="EmitClauseRefusal"/>).
+        /// </summary>
+        /// <remarks>
+        /// Here for the reason <see cref="Outs"/> is: an expression is written by a function of the node and this
+        /// alone, and the statement that reads the local is written with a copy holding it.
+        /// </remarks>
+        public IReadOnlyDictionary<IrExpression, string> Held { get; init; }
+            = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
+
+        public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
         public string QualifiedFunctionOf(IrMethodSignature signature)
         {
             var ns = NamespaceOf(signature.Receiver);
-            var name = Escape(signature.Name);
+            var name = signature.HasReceiver
+                ? Escape(signature.Name)
+                : $"{FactoryStructOf(signature.Receiver)}::{MemberNameOf(signature)}";
             return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
+        }
+
+        /// <summary>The struct <paramref name="message"/>'s factory is generated into (spec 24.2).</summary>
+        /// <remarks>The name C# gives the class, so a consumer of both learns one (<see cref="NameConventions.GetFactoryClassName"/>).</remarks>
+        public string FactoryStructOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
+
+        /// <summary>
+        /// The name a factory's method is declared and called by: its name escaped as any method's is,
+        /// with an underscore appended when that is the name of its struct.
+        /// </summary>
+        /// <remarks>
+        /// A member named after its class declares a constructor, so <c>fn InvoiceFactory()</c> in the
+        /// factory of <c>Invoice</c> could not be a static member as written. The escape is the one the
+        /// C# backend applies to a method named after its class, so the two stay one rule.
+        /// </remarks>
+        public string MemberNameOf(IrMethodSignature signature)
+        {
+            var name = Escape(signature.Name);
+            return name == FactoryStructOf(signature.Receiver) ? name + "_" : name;
         }
 
         /// <summary>The guard of the header named <paramref name="headerName"/>.</summary>
@@ -152,6 +191,45 @@ public sealed partial class CppBackend
     };
 
     private static string Escape(string name) => NameConventions.EscapeCppKeyword(name);
+
+    /// <summary>
+    /// The reference parameters a method that may refuse is declared with (spec 24.2): <c>result</c>, what it
+    /// built, which a method that returns nothing has none of, and <c>refusal</c>, what it refused with.
+    /// </summary>
+    /// <remarks>
+    /// Named as the C# backend names its <c>out</c> parameters, and numbered, as a name generated code declares
+    /// always is, where the method already uses the name. Its declaration in the struct and its definition after
+    /// it each ask, and get one answer, because it is a function of the method.
+    /// </remarks>
+    private sealed record Outs(string? Result, string Refusal)
+    {
+        /// <summary>The parameters <paramref name="method"/> may refuse through, or null where it cannot refuse.</summary>
+        /// <remarks>
+        /// Every parameter's name is taken, read or not, since each is declared beside these. Anything else the body
+        /// declares or reads is taken by <see cref="NamesFor"/>.
+        /// </remarks>
+        public static Outs? Of(IrMethod method)
+        {
+            if (method.Signature.Refusal is null)
+            {
+                return null;
+            }
+
+            var names = NamesFor(method, [.. method.Parameters.Select(parameter => Escape(parameter.Name))]);
+            return new(method.ReturnType is VoidType ? null : names.Next("result"), names.Next("refusal"));
+        }
+
+        /// <summary>The parameters as the method's declaration and definition write them.</summary>
+        public IEnumerable<string> Declared(IrMethodSignature method)
+        {
+            if (Result is not null)
+            {
+                yield return $"{TypeName(method.ReturnType)}& {Result}";
+            }
+
+            yield return $"{TypeName(method.Refusal!)}& {Refusal}";
+        }
+    }
 
     /// <summary>
     /// Names for what generated code declares inside <paramref name="node"/>. None of them is a name

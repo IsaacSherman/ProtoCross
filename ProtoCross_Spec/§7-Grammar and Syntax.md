@@ -6,15 +6,18 @@ than mechanically exhaustive.
 ### 7.1 Implemented Grammar
 
 ```ebnf
-source_file       = { import_decl | extend_decl | test_decl };
+source_file       = { import_decl | extend_decl | factory_decl | test_decl };
 
 import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
-method_decl       = [ "mut" ] "fn" identifier
+factory_decl      = "factory" qualified_name "{" { method_decl } "}";
+
+method_decl       = [ "mut" | "helper" ] "fn" identifier
                     "(" [ parameter_list ] ")"
                     [ "->" type_ref ]
+                    [ "refuses" type_ref ]
                     block;
 
 parameter_list    = parameter { "," parameter };
@@ -24,6 +27,7 @@ block             = "{" { statement } "}";
 
 statement         = var_decl
                   | return_stmt
+                  | refuse_stmt
                   | if_stmt
                   | while_stmt
                   | for_in_stmt
@@ -37,6 +41,7 @@ statement         = var_decl
 
 var_decl          = "var" identifier [ ":" type_ref ] "=" expression ";";
 return_stmt       = "return" [ expression ] ";";
+refuse_stmt       = "refuse" expression ";";
 if_stmt           = "if" expression block [ "else" ( if_stmt | block ) ];
 while_stmt        = "while" expression block;
 for_in_stmt       = "for" identifier "in" expression block;
@@ -47,21 +52,24 @@ break_stmt        = "break" ";";
 continue_stmt     = "continue" ";";
 assignment_stmt   = expression "=" expression ";";
 compound_stmt     = expression compound_op expression
-                    [ "on_zero" ( expression | "fail" ) ] ";";
+                    [ "on_zero" ( expression | "fail" | "refuse" expression ) ] ";";
 compound_op       = "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=";
 expression_stmt   = expression ";";                                  (* a call; see below *)
 
-test_decl         = "test" qualified_name string_literal
+test_decl         = "test" test_target string_literal
                     "{" { receiver_fixture | test_arg | test_expectation } "}";
 receiver_fixture  = "receiver" "{" [ field_list ] "}";
 test_arg          = "arg" identifier "=" expression ";";
-test_expectation  = "expect" ( "return" expression | "fail" ) ";";
+test_expectation  = "expect" ( "return" expression | "refuse" expression | "fail" ) ";";
+test_target       = qualified_name [ "." "factory" ] "." identifier;
 
 conversion        = expression "as" type_ref                       (* an expression *)
-                    [ "on_unknown" ( postfix_expr | "fail" ) ];      (* begins with a name *)
+                    [ "on_unknown" ( postfix_expr | "fail" | "refuse" postfix_expr ) ];
 membership        = expression "in" ( postfix_expr | type_ref );    (* an expression *)
 lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
-                    [ "on_missing" ( unary_expr | "fail" ) ];
+                    [ "on_missing" ( unary_expr | "fail" | "refuse" unary_expr ) ];
+answered_call     = call "on_refused"                              (* a postfix expression *)
+                    ( unary_expr | "fail" | "refuse" );
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
@@ -75,7 +83,7 @@ Normative Requirement:
 
 - The final grammar must be unambiguous.
 - Backend code generation must not depend on parser quirks or target-language parsing.
-- Semicolons are mandatory after imports, variable declarations, `return`, `break`, `continue`,
+- Semicolons are mandatory after imports, variable declarations, `return`, `refuse`, `break`, `continue`,
   assignment and compound assignment statements, expression statements, test arguments, and test
   expectations.
 - The fields of a fixture or a message literal, and the elements of a list, are separated by commas,
@@ -87,6 +95,19 @@ Normative Requirement:
   repeated field's value only.
 - `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
+- `factory` is not a keyword. At the start of a top-level declaration it begins a factory block,
+  whatever follows it, and anywhere else it is an identifier ([6.4](./§6-Lexical%20Structure.md#64-keywords), [16.3](./§16-Methods.md#163-factories)). A factory
+  block is read as an `extend` block is, and recovers as one does: a member that is not a method is
+  `PC0122`, and is skipped with everything up to the next method. A top-level token that begins no
+  declaration is `PC0011`, and recovery skips to the next `import`, `extend` or `test`, or to a
+  `factory` with a name after it.
+- `helper` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
+  anywhere else. It is read wherever a method is, and the binder refuses it outside a factory
+  ([16.3](./§16-Methods.md#163-factories)).
+- In a test's target, `factory` as the segment before the method's name says the method is the
+  factory's, and the test then needs no receiver fixture. Whether the message has a factory is the
+  binder's to say: a target whose message has none, but has a nested type named `factory`, names that
+  type's method, receiver and all ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - A switch's subject is ended by the brace that opens its arms, as an `if` condition is by its body's,
   and a case's values by the brace that opens the arm. Only an arm may stand between two arms:
   anything else there is reported once and stepped over, braces and all, to the next arm. An arm
@@ -99,6 +120,12 @@ Normative Requirement:
   chain, so `(items[id] on_missing fail).quantity` reads a member of what the lookup gives
   ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The right side of `in` is a postfix expression when it begins with a name, which the
   binder reads as a map or an enum, and a type otherwise.
+- `refuses` is not a keyword. After a method's parameters and return type it begins the method's
+  refusal, whatever follows it, and anywhere else it is an identifier. `refuse` and `on_refused` are
+  reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). An `on_refused` clause after a call's closing parenthesis belongs to that call.
+  Its fallback is a unary expression, as `on_missing`'s is, and the clause ends the postfix chain, so
+  `(Invoice.factory.create(o) on_refused fail).total` reads a member of what the call gives
+  ([16.3.1](./§16-Methods.md#1631-refusals)).
 - Braces in a list are an entry of a map field, `{ key: k, value: v }`, with fields written as a
   literal's are ([13.2](./§13-Messages.md#132-message-construction)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
@@ -117,16 +144,17 @@ Normative Requirement:
   the program under `on_zero fail` ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). An expression that failed to bind has already said why,
   and a statement whose semicolon is missing is one still being typed, which the parser has
   reported. Neither is told as well that it is not a call.
-- Top-level helper functions are not implemented.
+- Top-level helper functions are not implemented. A factory's helpers are the only helpers
+  ([16.3](./§16-Methods.md#163-factories)).
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order
   [9.2](./§9-Expressions%20and%20Operators.md#92-operators) gives.
 - A compound operator is one token, the longest spelling that fits, so `a>>=b` is `>>=` and never
   `>` followed by `>=`. The right side of a compound assignment is a whole expression, and its
   `on_zero` clause binds as [10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause) says a division's does.
-- A test declaration must contain a receiver fixture and an expectation. The parser accepts
-  `receiver`, `arg`, and `expect` members in any order and reports missing required members after
-  the block is parsed.
+- A test declaration must contain an expectation, and a receiver fixture unless it targets a
+  factory's method. The parser accepts `receiver`, `arg`, and `expect` members in any order and
+  reports missing required members after the block is parsed.
 - Parser recovery synthesizes missing tokens and missing names so later compiler stages can continue
   reporting useful diagnostics and editor tooling can still anchor completion points.
 - How deeply a construct may nest is bounded, and a chain of member accesses, calls, conversions,

@@ -4,9 +4,15 @@ namespace ProtoCross.Syntax;
 
 public sealed partial class Parser
 {
+    /// <remarks>
+    /// A <c>factory</c> stops the skip only with a name after it, where the other three stop it alone.
+    /// They are keywords and cannot be anything else; the word is a name everywhere but the start of a
+    /// declaration, and what is being skipped is text that could hold one.
+    /// </remarks>
     private void SkipToNextTopLevelDeclaration()
     {
-        while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Import or TokenKind.Extend or TokenKind.Test))
+        while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Import or TokenKind.Extend or TokenKind.Test)
+            && !ContextualKeywords.BeginsAFactory(Current, Peek(1)))
         {
             Advance();
         }
@@ -29,6 +35,50 @@ public sealed partial class Parser
     {
         var start = Expect(TokenKind.Extend).Span;
         var name = ParseQualifiedName();
+        var methods = ParseMethodBlock(() => _diagnostics.Report(
+            DiagnosticCodes.UnexpectedExtendMember,
+            $"Expected 'fn' but found {Current.Kind.Describe()}.",
+            Current.Span,
+            "Extend blocks contain methods. Fields belong in the .proto schema."));
+
+        var end = Expect(TokenKind.CloseBrace).Span;
+        return new ExtendDeclaration(name, methods, Spanning(start, end));
+    }
+
+    /// <summary>Parses <c>factory Invoice { ... }</c> (spec 16.3).</summary>
+    /// <remarks>
+    /// Read as an extend block is, so a malformed factory recovers as far as one does: a member that is
+    /// not a method is reported and skipped to the next one, and a name that does not resolve is the
+    /// binder's to skip.
+    /// </remarks>
+    private FactoryDeclaration ParseFactoryDeclaration()
+    {
+        var keyword = Advance();
+        var name = ParseQualifiedName();
+        var methods = ParseMethodBlock(() => _diagnostics.Report(
+            DiagnosticCodes.UnexpectedFactoryMember,
+            $"Expected 'fn' or 'helper fn' but found {Current.Kind.Describe()}.",
+            Current.Span,
+            "A factory block contains the methods that build its message, and the helpers they share."));
+
+        var end = Expect(TokenKind.CloseBrace).Span;
+        return new FactoryDeclaration(
+            new SyntaxName(keyword.Text, keyword.Span),
+            name,
+            methods,
+            Spanning(keyword.Span, end));
+    }
+
+    /// <summary>
+    /// Parses the brace that opens a block of methods and everything up to the brace that closes it,
+    /// which is left for the caller.
+    /// </summary>
+    /// <param name="reportUnexpectedMember">
+    /// Reports the token that cannot begin a method, which is then skipped with everything up to the
+    /// next one that can. What is said about it depends on which block it is in.
+    /// </param>
+    private List<MethodDeclaration> ParseMethodBlock(Action reportUnexpectedMember)
+    {
         Expect(TokenKind.OpenBrace);
 
         var methods = new List<MethodDeclaration>();
@@ -40,11 +90,7 @@ public sealed partial class Parser
                 continue;
             }
 
-            _diagnostics.Report(
-                DiagnosticCodes.UnexpectedExtendMember,
-                $"Expected 'fn' but found {Current.Kind.Describe()}.",
-                Current.Span,
-                "Extend blocks contain methods. Fields belong in the .proto schema.");
+            reportUnexpectedMember();
 
             while (Current.Kind is not (TokenKind.CloseBrace or TokenKind.EndOfFile) && !StartsAMethod())
             {
@@ -52,8 +98,7 @@ public sealed partial class Parser
             }
         }
 
-        var end = Expect(TokenKind.CloseBrace).Span;
-        return new ExtendDeclaration(name, methods, Spanning(start, end));
+        return methods;
     }
 
     /// <summary>Parses <c>Foo</c> or <c>pkg.Foo</c> into a single dotted name.</summary>
@@ -90,18 +135,23 @@ public sealed partial class Parser
         return new SyntaxName(string.Join('.', parts), span);
     }
 
-    /// <summary>Whether a method declaration begins here: <c>fn</c>, or <c>mut fn</c>.</summary>
+    /// <summary>Whether a method declaration begins here: <c>fn</c>, <c>mut fn</c>, or <c>helper fn</c>.</summary>
     /// <remarks>
-    /// Recovery inside an extend block stops at the same place, so a stray token before a
+    /// Recovery inside a block of methods stops at the same place, so a stray token before a
     /// <c>mut fn</c> skips to the <c>mut</c> and keeps it, rather than to the <c>fn</c> and losing it.
+    /// Both markers are read wherever a method is, and the binder says which block each belongs in:
+    /// a <c>helper</c> in an extend block is a mistake about where the method is, not about its syntax.
     /// </remarks>
     private bool StartsAMethod()
-        => Current.Kind == TokenKind.Fn || ContextualKeywords.MarksAMutatingMethod(Current, Peek(1));
+        => Current.Kind == TokenKind.Fn
+            || ContextualKeywords.MarksAMutatingMethod(Current, Peek(1))
+            || ContextualKeywords.MarksAHelper(Current, Peek(1));
 
     private MethodDeclaration ParseMethodDeclaration()
     {
         var mutating = ContextualKeywords.MarksAMutatingMethod(Current, Peek(1));
-        var start = mutating ? Advance().Span : Current.Span;
+        var helper = ContextualKeywords.MarksAHelper(Current, Peek(1));
+        var start = mutating || helper ? Advance().Span : Current.Span;
         Expect(TokenKind.Fn);
         var name = ExpectName();
 
@@ -131,11 +181,35 @@ public sealed partial class Parser
             returnType = ParseTypeReference();
         }
 
+        var refusal = ParseRefusal();
         var body = ParseBlock();
         return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span))
         {
             IsMutating = mutating,
+            IsHelper = helper,
+            Refusal = refusal,
         };
+    }
+
+    /// <summary>
+    /// Parses the <c>refuses T</c> after a method's return type (spec 16.3), or returns null where none is
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// The word is read here whatever follows it, and not only where
+    /// <see cref="ContextualKeywords.BeginsARefusal"/> would colour it, because nothing but the body's
+    /// brace can follow a signature: a refusal whose type is still being typed is one, and its missing type
+    /// is reported as any other is.
+    /// </remarks>
+    private TypeReference? ParseRefusal()
+    {
+        if (Current is not { Kind: TokenKind.Identifier, Text: ContextualKeywords.Refuses })
+        {
+            return null;
+        }
+
+        Advance();
+        return ParseTypeReference();
     }
 
     private TypeReference ParseTypeReference()
@@ -144,9 +218,7 @@ public sealed partial class Parser
 
         // Scalar type keywords and message/enum names both land here; the binder decides which
         // is which by asking the protobuf descriptor pool.
-        if (token.Kind is TokenKind.Int32 or TokenKind.Int64 or TokenKind.UInt32 or TokenKind.UInt64
-            or TokenKind.Double or TokenKind.Float or TokenKind.Bool or TokenKind.String
-            or TokenKind.Bytes or TokenKind.Void)
+        if (ContextualKeywords.NamesABuiltInType(token.Kind))
         {
             Advance();
             return new TypeReference(new SyntaxName(token.Text, token.Span), token.Span);

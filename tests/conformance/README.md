@@ -56,7 +56,9 @@ serialization format of their own.
    message would declare it twice there (`ConformanceVectorTests.NoTwoVectorsDeclareOneMethod`
    enforces this), and a message of its own means never having to check. A schema per vector, rather
    than one they all share, is what lets two branches add vectors at once without meeting at the end
-   of the same file.
+   of the same file. A schema declares one package, so a vector that needs two imports a second
+   schema named after the vector and its part, as `cross_package.proto` imports
+   `cross_package_beta.proto`.
 2. Drop a `.pcross` file into `vectors/`. It is discovered automatically; nothing needs
    registering. The search is recursive, so a vector may live in a subdirectory.
 3. Run `dotnet test ProtoCross.slnx`.
@@ -178,8 +180,12 @@ failing. A fully equipped machine should report no skips.
 | `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
 | `bitwise` | `&` `\|` `^` `~` `<<` `>>`: where each binds among the other operators, the type a literal beside one takes -- the value shifted takes the type expected of the shift and never the count's, and a count literal keeps its own -- a count reduced modulo the width whatever its type and sign, a signed right shift copying the sign bit in and an unsigned one zero-filling, a left shift discarding what passes the width, and the idioms of testing, clearing and packing bits (spec 9.2, 10.1) |
 | `compound_assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=`, each storing what its long form computes: the whole right side as one operand, an integer division's `on_zero` clause after its divisor, a literal on the right taking the target's type and a shift count keeping its own, the target as its own operand, and a local accumulating across a loop (spec 9.2) |
+| `cross_package` | One source extending messages of two packages, so its C++ header declares functions in two namespaces: a method and a factory of the namespace written first call a method and a factory of the one written after it, and a method of the second calls back into the first (spec 24.2) |
+| `factories` | A message's factory, its methods called on nothing: fields derived from the options, a nested message built by its own factory, a factory calling another's, a sibling called by its bare name, a helper, a `mut fn` called on the message being built, and a factory called from an extend method. A test expects the message by the fields that matter, presence included (spec 16.3, 25.3) |
+| `refusals` | A factory's method that may refuse with a message, a string or an enum, and each answer to a refusal: a fallback evaluated only where the method refused, `fail`, which ends the program, and `refuse`, passing it on from a statement, a `var`, a local's new value and a `return`. A test expects one with `expect refuse` (spec 16.3.1, 25.3) |
 | `multi/cross_file` | One program written across three sources. Two extend one receiver and each calls a method the other declares, so C# has two parts of one static class and each C++ header includes the other. The third holds only tests, so its behavior output is empty and its driver includes the headers of the sources it tests (spec 5.3, 24.1, 24.2) |
 | `multi/owned_namespace` | A project's behavior, in the project's namespace, compiled into the same assembly and the same link as every other vector's. It extends the well-known `google.protobuf.Timestamp` and a message of its schema's own with the same simple name, each with a method of one name, so C# has two overloads in the project's one class and C++ two in the project's namespace, and the other source calls both (spec 24) |
+| `multi/factory_project` | A factory in a project, declared in one source and called from another. Its class is in the project's namespace rather than beside the message, so the call names that namespace, and in C++ includes the declaring source's header (spec 16.3, 24) |
 | `sweep/integer_sweep` | Every integer `+ - * / %` and unary `-` over every pair of boundary values of each integer type, with the fallback for a zero divisor, and every comparison of the same pairs, under the default wrapping policy (spec 10.1, 10.2). Generated |
 | `sweep/bitwise_sweep` | Every `&` `\|` `^` over every pair of boundary values of each integer type, `~` of each one, and `<<` and `>>` of each one by every count worth trying, in the value's own type; and one value shifted by every count in each other integer type (spec 9.2, 10.1). Generated |
 | `sweep/floating_sweep` | Every floating-point `+ - * / %`, unary `-` and comparison, in `float` and `double`, over both zeros, an inexact fraction, the largest finite value, the smallest subnormal, both infinities and NaN (spec 10.2). Generated |
@@ -190,6 +196,7 @@ failing. A fully equipped machine should report no skips.
 | `saturating/saturating_arithmetic` | The saturating overflow policy: clamping at both bounds for every operation and width, and a left shift past MAX left unclamped (spec 10.1, 10.4) |
 | `checked/checked_compound_assignment` | Compound assignment under the checked policy: an overflow in the operation it stands for terminates, and a left shift past MAX does not (spec 9.2, 10.1) |
 | `saturating/saturating_compound_assignment` | Compound assignment under the saturating policy: an overflow in the operation it stands for stores the bound, and a left shift past MAX is not clamped (spec 9.2, 10.1) |
+| `forbidden_termination/refusing_methods` | Refusals from every method, where the project forbids ending the program: an extend method that declares a refusal, and a zero divisor, an unnamed enum number and a missing key that refuse, each from a `var`, a local's new value and a `return`. A `mut fn` that changes its receiver and then refuses leaves the change standing, including on a wrapper C# holds as its value (spec 10.4, 16.3.1) |
 
 ## Adding a backend
 

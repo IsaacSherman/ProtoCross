@@ -366,6 +366,28 @@ public partial class CliTests
         Assert.Contains("--override-config", run.Output, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Checked overflow where the project forbids ending the program is refused, and the override flag is not
+    /// offered, since it answers one setting in the file's place and cannot lift a refusal from another
+    /// (spec 10.4).
+    /// </summary>
+    [Fact]
+    public void CheckedOverflowIsRefusedWhereTerminationIsForbiddenWithoutOfferingTheOverride()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(
+            directory,
+            ("billing.pcproj", Project("<Sources Include=\"src/*.pcross\" />")),
+            ("protocross.config.xml", "<ProtoCross><Failure><Termination>Forbidden</Termination></Failure></ProtoCross>"),
+            ("src/pricing.pcross", Pricing));
+
+        var run = Run(directory, "billing.pcproj", "--arithmetic-overflow", "checked", "-o", "out");
+
+        Assert.True(run.ExitCode == 2, run.Output);
+        Assert.Contains("Failure/Termination = Forbidden", run.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("--override-config", run.Output, StringComparison.Ordinal);
+    }
+
     // ------- what the command line refuses
 
     /// <summary>

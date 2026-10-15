@@ -27,18 +27,21 @@ public static class SyntaxWalk
 
         return node switch
         {
-            // The parser keeps the three top-level kinds in three lists, and a file may interleave
+            // The parser keeps the four top-level kinds in four lists, and a file may interleave
             // them, so this is the one place where source order has to be restored rather than
             // inherited.
             CompilationUnit unit => [
-                .. unit.Imports.Cast<SyntaxNode>().Concat(unit.Extends).Concat(unit.Tests)
+                .. unit.Imports.Cast<SyntaxNode>().Concat(unit.Extends).Concat(unit.Factories).Concat(unit.Tests)
                     .OrderBy(child => child.Span.Start.Offset),
             ],
 
             ExtendDeclaration extend => [.. extend.Methods],
-            MethodDeclaration method => method.ReturnType is { } returnType
-                ? [.. method.Parameters, returnType, method.Body]
-                : [.. method.Parameters, method.Body],
+            FactoryDeclaration factory => [.. factory.Methods],
+            MethodDeclaration method => [
+                .. method.Parameters,
+                .. new[] { method.ReturnType, method.Refusal }.OfType<TypeReference>(),
+                method.Body,
+            ],
             ParameterDeclaration parameter => [parameter.Type],
 
             TestDeclaration test => [test.Target, test.Receiver, .. test.Arguments, test.Expectation],
@@ -46,12 +49,14 @@ public static class SyntaxWalk
             FieldInitializer field => [field.Value],
             TestArgumentDeclaration argument => [argument.Value],
             TestReturnExpectation expectation => [expectation.Value],
+            TestRefusalExpectation expectation => [expectation.Value],
 
             BlockStatement block => [.. block.Statements],
             VariableDeclarationStatement declaration => declaration.DeclaredType is { } declaredType
                 ? [declaredType, declaration.Initializer]
                 : [declaration.Initializer],
             ReturnStatement { Value: { } returned } => [returned],
+            RefuseStatement refusal => [refusal.Value],
             ForInStatement loop => [loop.Collection, loop.Body],
             IfStatement branch => branch.Else is { } otherwise
                 ? [branch.Condition, branch.Then, otherwise]
@@ -67,10 +72,13 @@ public static class SyntaxWalk
 
             MemberAccessExpression member => [member.Receiver],
             InvocationExpression invocation => [invocation.Callee, .. invocation.Arguments],
+            OnRefusedExpression handled => [handled.Call, handled.Clause],
+            OnRefusedClause { Fallback: { } fallback } => [fallback],
             BinaryExpression binary => binary.OnZero is { } onZero
                 ? [binary.Left, binary.Right, onZero]
                 : [binary.Left, binary.Right],
             OnZeroClause { Fallback: { } fallback } => [fallback],
+            OnZeroClause { Refusal: { } refusal } => [refusal],
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
             EnumMembershipExpression membership => [membership.Value, membership.EnumType],
@@ -79,11 +87,13 @@ public static class SyntaxWalk
                 ? [index.Collection, index.Key, onMissing]
                 : [index.Collection, index.Key],
             OnMissingClause { Fallback: { } fallback } => [fallback],
+            OnMissingClause { Refusal: { } refusal } => [refusal],
             MapEntryExpression entry => [.. entry.Fields],
             CastExpression cast => cast.OnUnknown is { } onUnknown
                 ? [cast.Operand, cast.TargetType, onUnknown]
                 : [cast.Operand, cast.TargetType],
             OnUnknownClause { Fallback: { } fallback } => [fallback],
+            OnUnknownClause { Refusal: { } refusal } => [refusal],
             MessageLiteralExpression literal => [literal.Type, .. literal.Fields],
             ListExpression list => [.. list.Elements],
 

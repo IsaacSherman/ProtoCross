@@ -85,6 +85,7 @@ public sealed partial class Binder
     {
         var bound = BindStatementItself(statement, scope, context);
         ReportMutatingCallsInsideExpressions(bound);
+        ReportRefusalsInsideExpressions(bound);
         return bound;
     }
 
@@ -93,6 +94,7 @@ public sealed partial class Binder
         BlockStatement block => BindBlock(block, scope, context),
         VariableDeclarationStatement declaration => BindVariableDeclaration(declaration, scope, context),
         ReturnStatement returnStatement => BindReturn(returnStatement, scope, context),
+        RefuseStatement refusal => BindRefuse(refusal, scope, context),
         IfStatement ifStatement => BindIf(ifStatement, scope, context),
         WhileStatement whileStatement => BindWhile(whileStatement, scope, context),
         BreakStatement breakStatement => BindBreak(breakStatement, context),
@@ -187,8 +189,8 @@ public sealed partial class Binder
 
         // A method that returns nothing refuses any value, which is said below, so a call written as
         // the value is bound as a statement's would be rather than told it has no value as well.
-        var value = context.ReturnType is VoidType && statement.Value is InvocationExpression invocation
-            ? BindInvocation(invocation, scope, context)
+        var value = context.ReturnType is VoidType && StandingCallOf(statement.Value) is var (invocation, handled)
+            ? BindStandingCall(invocation, handled, scope, context)
             : BindExpression(statement.Value, scope, context, context.ReturnType);
 
         if (context.ReturnType is VoidType)
@@ -464,7 +466,7 @@ public sealed partial class Binder
         {
             return BindRefusedAssignment(
                 statement.Target,
-                statement.OnZero?.Fallback is { } fallback ? [statement.Value, fallback] : [statement.Value],
+                statement.OnZero?.WrittenValue() is { } written ? [statement.Value, written] : [statement.Value],
                 statement.Span,
                 scope,
                 context);

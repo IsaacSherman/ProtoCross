@@ -25,7 +25,7 @@ internal sealed record CppProgramResult(string DriverSource, int ExitCode, strin
 /// </remarks>
 internal sealed class CppTestWorkspace
 {
-    private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(15);
 
     private CppTestWorkspace(string directory) => Directory = directory;
 

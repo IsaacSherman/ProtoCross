@@ -389,16 +389,22 @@ public sealed partial class Binder
     /// </remarks>
     private void CheckMutatingCall(IrMethodCall call, InvocationExpression invocation, MethodContext context)
     {
-        var change = $"'{call.Target.Name}' may change {Spelled(call.Receiver)}";
-
-        if (ReportIfReadOnly(call.Receiver, change, invocation.Span, context))
+        // Only an extend block's method is ever a mut fn, so only a call with a receiver reaches here.
+        if (call.Receiver is not { } receiver)
         {
             return;
         }
 
-        ReportIfTraversalChanges([call.Receiver], change, invocation.Span, context);
+        var change = $"'{call.Target.Name}' may change {Spelled(receiver)}";
 
-        if (StorageOf(call.Receiver) is not { } changed)
+        if (ReportIfReadOnly(receiver, change, invocation.Span, context))
+        {
+            return;
+        }
+
+        ReportIfTraversalChanges([receiver], change, invocation.Span, context);
+
+        if (StorageOf(receiver) is not { } changed)
         {
             return;
         }
@@ -474,7 +480,7 @@ public sealed partial class Binder
 
             foreach (var call in IrWalk.DescendantsAndSelf(expression).OfType<IrMethodCall>())
             {
-                if (!call.Target.IsMutating || (mayBeOne && ReferenceEquals(call, expression)))
+                if (!call.Target.IsMutating || (mayBeOne && IsTheCallOf(expression, call)))
                 {
                     continue;
                 }
@@ -499,15 +505,26 @@ public sealed partial class Binder
     }
 
     /// <summary>
+    /// Whether <paramref name="expression"/> is <paramref name="call"/>, or a call to a method that may refuse
+    /// that is <paramref name="call"/> with what a refusal makes of it (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// The clause is answered after the call returns, as the rest of a statement runs after a call that
+    /// stands on its own, so a <c>mut fn</c> that may refuse stands wherever one that cannot may.
+    /// </remarks>
+    private static bool IsTheCallOf(IrExpression expression, IrMethodCall call)
+        => ReferenceEquals(expression, call) || (expression is IrRefusableCall refusable && ReferenceEquals(refusable.Call, call));
+
+    /// <summary>
     /// The expressions a statement holds directly, and whether each may itself be a mutating call.
     /// </summary>
     private static IEnumerable<(IrExpression Expression, bool MayBeAMutatingCall)> ExpressionsOf(IrStatement statement)
         => statement switch
         {
-            IrExpressionStatement expression => [(expression.Expression, true)],
-            IrVariableDeclaration declaration => [(declaration.Initializer, true)],
-            IrAssignment assignment => [(assignment.Value, true)],
-            IrReturn { Value: { } returned } => [(returned, true)],
+            _ when IrMutation.StandingExpressionOf(statement) is { } standing => [(standing, true)],
+
+            // A refusal's value is evaluated as the method ends, so it may not end it first, nor change anything.
+            IrRefuse refusal => [(refusal.Value, false)],
             IrFieldAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
             IrAppend append => [(append.Collection, false), (append.Value, false)],
             IrElementAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
@@ -527,20 +544,44 @@ public sealed partial class Binder
     /// </summary>
     private IrStatement BindExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
     {
-        if (statement.Expression is not InvocationExpression invocation)
+        if (StandingCallOf(statement.Expression) is not var (invocation, handled))
         {
             return RefuseExpressionStatement(statement, scope, context);
         }
 
-        if (AppendCallee(invocation, scope, context) is { } callee)
+        // An append or a map's update with a clause after it is bound as a call, and told there what is wrong.
+        if (handled is null && AppendCallee(invocation, scope, context) is { } callee)
         {
             return BindAppend(invocation, callee, statement.Span, scope, context);
         }
 
-        return MapUpdateCallee(invocation, scope, context) is { } update
+        return handled is null && MapUpdateCallee(invocation, scope, context) is { } update
             ? BindMapUpdate(invocation, update.Callee, update.Method, statement.Span, scope, context)
-            : new IrExpressionStatement(BindInvocation(invocation, scope, context), statement.Span);
+            : new IrExpressionStatement(BindStandingCall(invocation, handled, scope, context), statement.Span);
     }
+
+    /// <summary>
+    /// The call <paramref name="expression"/> is, with the <c>on_refused</c> clause written after it if there is
+    /// one, or null where it is not a call.
+    /// </summary>
+    private static (InvocationExpression Invocation, OnRefusedExpression? Handled)? StandingCallOf(Expression expression)
+        => expression switch
+        {
+            InvocationExpression invocation => (invocation, null),
+            OnRefusedExpression handled => (handled.Call, handled),
+            _ => null,
+        };
+
+    /// <summary>
+    /// Binds a call that stands where its value is not used, as a statement or a void method's <c>return</c>
+    /// value, so a method that returns nothing may be called, and answers a refusal from it.
+    /// </summary>
+    private IrExpression BindStandingCall(
+        InvocationExpression invocation,
+        OnRefusedExpression? handled,
+        Scope scope,
+        MethodContext context)
+        => AnswerRefusal(BindInvocation(invocation, scope, context), handled, scope, context);
 
     /// <summary>
     /// Reports a statement that is an expression but not a call, whose value would be computed and

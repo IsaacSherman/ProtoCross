@@ -38,6 +38,8 @@ Normative Requirements:
   It may change nothing else. A parameter, and anything reached through one, is read-only, and so is
   the receiver of a method that is not `mut`. A call's result and a literal are held by nothing once
   the statement is over, so a change to one would be lost. A change to any of these is `PC0094`.
+- **A factory's method has no receiver** ([16.3](./§16-Methods.md#163-factories)), so what it may change is what it holds in
+  locals, the messages it builds included, and one marked `mut` is `PC0128`.
 - **Assignment.** `place = value;` and `place op= value;` ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)) assign a local
   declared with `var`, or a singular field of a message the method may change: `total = 5;`,
   `customer.name = "x";`.

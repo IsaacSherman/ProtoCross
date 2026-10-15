@@ -26,10 +26,40 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// Methods are not indexed, because a compilation declares few of them and the alternative is a
     /// dictionary built for every compilation whether or not anything asks.
     /// </para>
+    /// <para>
+    /// A factory's methods are not among them, because none is called on a message: they are what
+    /// <see cref="FactoryOf"/> answers. Every caller asking what may follow a value's dot is asking
+    /// about these alone.
+    /// </para>
     /// </remarks>
     public IReadOnlyList<IrMethod> MethodsOn(string receiverFullName)
         => [.. Methods.Where(method
-            => string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+            => method.Signature.HasReceiver
+                && string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+
+    /// <summary>
+    /// The methods and helpers of the factory that builds one message, in declaration order; empty when
+    /// the module declares no factory for it (spec 16.3).
+    /// </summary>
+    /// <remarks>Keyed as <see cref="MethodsOn"/> is, by the message's full name compared ordinally.</remarks>
+    public IReadOnlyList<IrMethod> FactoryOf(string messageFullName)
+        => [.. Methods.Where(method
+            => !method.Signature.HasReceiver
+                && string.Equals(method.Receiver.FullName, messageFullName, StringComparison.Ordinal))];
+
+    /// <summary>Every <c>factory</c> block the module declares, one per message (spec 16.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// The block itself, which its methods do not record: where it is written, so that the
+    /// <c>factory</c> of <c>Invoice.factory.create()</c> can be followed to it. A factory declares no
+    /// type, and is a symbol only for that.
+    /// </para>
+    /// <para>
+    /// Init-only with an empty default, on the terms <see cref="References"/> gives, so every existing
+    /// construction of a module stays valid and declares no factory.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<IrFactory> Factories { get; init; } = [];
 
     /// <summary>The method <paramref name="symbol"/> identifies, or null when this module declares no
     /// such method.</summary>
@@ -129,6 +159,7 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
         {
             References = [.. References.Where(reference => reference.Document == document)],
             Scope = [.. Scope.Where(entry => entry.Declaration.Document == document)],
+            Factories = [.. Factories.Where(factory => factory.Declaration.Document == document)],
         };
     }
 }
@@ -222,6 +253,61 @@ public sealed record IrMethodSignature(
     /// </remarks>
     public bool IsMutating { get; init; }
 
+    /// <summary>
+    /// Which block declared the method, which decides whether it is called on a message and who may
+    /// call it (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A factory's methods keep <see cref="Receiver"/>, naming the message they build. That is still the
+    /// message they belong to: they share its one set of member names (spec 16.1), and the backends
+    /// declare them in a class named after it. What they lack is an instance to be called on, which is
+    /// what this says, rather than a missing receiver.
+    /// </para>
+    /// <para>
+    /// Init-only with a default of <see cref="IrMethodKind.Extend"/>, so every existing construction of
+    /// a signature stays valid and describes the method every method was before #83.
+    /// </para>
+    /// </remarks>
+    public IrMethodKind Kind { get; init; }
+
+    /// <summary>Whether the method is called on a message, which only an extend block's are.</summary>
+    public bool HasReceiver => Kind is IrMethodKind.Extend;
+
+    /// <summary>
+    /// What the method may refuse with, as its <c>refuses T</c> declares, or null for a method that
+    /// cannot refuse (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On the signature for the reason <see cref="IsMutating"/> is: a call reaches the signature, and the
+    /// call is where a refusal has to be answered, by the clause the caller writes. Each backend reads it
+    /// at the declaration too, since a method that can refuse is generated in a shape of its own (spec 24).
+    /// </para>
+    /// <para>
+    /// Init-only with a default of null, so every existing construction of a signature stays valid and
+    /// describes a method that cannot refuse, which every method was before #84.
+    /// </para>
+    /// </remarks>
+    public PlType? Refusal { get; init; }
+
+    /// <summary>Whether the method may refuse, so a call to it says what a refusal makes of it.</summary>
+    public bool CanRefuse => Refusal is not null;
+
+    /// <summary>
+    /// The method as the language names it, with its message's protobuf name: <c>acme.Invoice.total</c>,
+    /// or <c>acme.Invoice.factory.create</c> for a factory's.
+    /// </summary>
+    /// <remarks>
+    /// One spelling for every surface that names a method to someone reading a run rather than a source: a
+    /// test's identity, and the line a call that ends the program writes. A factory's method is named
+    /// through the factory, as code calls it. No method of the message can share its name (spec 16.1), so
+    /// the word distinguishes nothing; it says where the method is.
+    /// </remarks>
+    public string QualifiedName => HasReceiver
+        ? $"{Receiver.FullName}.{Name}"
+        : $"{Receiver.FullName}.{ContextualKeywords.Factory}.{Name}";
+
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
     /// int64</c>, or <c>mut fn …</c> for one that may change its receiver.</summary>
     /// <remarks>
@@ -239,7 +325,8 @@ public sealed record IrMethodSignature(
     /// </para>
     /// </remarks>
     public string DisplayName
-        => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}";
+        => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}"
+            + (Refusal is null ? string.Empty : $" {ContextualKeywords.Refuses} {Refusal.DisplayName}");
 
     /// <summary>
     /// Where each parameter sits inside <see cref="DisplayName"/>, in the order they are declared.
@@ -277,12 +364,43 @@ public sealed record IrMethodSignature(
         }
     }
 
-    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}(" : $"fn {Name}(";
+    private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}("
+        : Kind is IrMethodKind.Helper ? $"{ContextualKeywords.Helper} fn {Name}("
+        : $"fn {Name}(";
 
     private const string Separator = ", ";
 
     private static string Describe(IrParameter parameter)
         => $"{parameter.Name}: {parameter.Type.DisplayName}";
+}
+
+/// <summary>Which block declared a method (spec 16.1, 16.3).</summary>
+public enum IrMethodKind
+{
+    /// <summary>A method of an <c>extend</c> block, called on a message.</summary>
+    Extend,
+
+    /// <summary>A method of a <c>factory</c> block, called on nothing, which builds its message.</summary>
+    Factory,
+
+    /// <summary>A <c>helper fn</c> of a <c>factory</c> block, which only that factory may call.</summary>
+    Helper,
+}
+
+/// <summary>A <c>factory</c> block: the message it builds, and where it is written (spec 16.3).</summary>
+/// <param name="Declaration">
+/// The block, named by its <c>factory</c> word. A factory declares no type and no name of its own, so
+/// the word is what a reference to it is written as -- the <c>factory</c> of
+/// <c>Invoice.factory.create()</c> -- and what navigating to it selects.
+/// </param>
+/// <remarks>
+/// A symbol rather than a node, as <see cref="IrMethodSignature"/> is: its methods are the module's,
+/// each a root of its own, and holding them here as well would put every method in two places.
+/// </remarks>
+public sealed record IrFactory(MessageDescriptor Message, DeclarationSite Declaration)
+{
+    /// <inheritdoc cref="IrMethodSignature.Id"/>
+    public SymbolId Id => Declaration.Id;
 }
 
 /// <summary>Where one parameter sits inside a rendered signature.</summary>
@@ -515,6 +633,14 @@ public sealed record IrMapUpdate(
 
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
 
+/// <summary><c>refuse value;</c>: the method ends with its refusal rather than its result (spec 16.3).</summary>
+/// <remarks>
+/// A statement of its own rather than a return with a flag, because the two end the method in different
+/// ways in every backend: one sets the result and says the method built it, the other sets the refusal
+/// and says it did not. A walk that met a refusal as a return would take the value for the result.
+/// </remarks>
+public sealed record IrRefuse(IrExpression Value, SourceSpan Span) : IrStatement(Span);
+
 /// <summary>Iteration over a repeated field, in protobuf field order (spec 14).</summary>
 public sealed record IrForEach(IrLocal Loop, IrExpression Collection, IrBlock Body, SourceSpan Span)
     : IrStatement(Span);
@@ -641,8 +767,19 @@ public sealed record IrFieldPresence(
     FieldDescriptor Field,
     SourceSpan Span) : IrExpression(ScalarType.BoolType, Span);
 
+/// <param name="Receiver">
+/// The message the method is called on, or null for a call to a factory's method, which is called on
+/// nothing (spec 16.3). Null exactly where <see cref="IrMethodSignature.HasReceiver"/> is false.
+/// </param>
+/// <remarks>
+/// One record for both, rather than a second for a factory's calls, because everything that asks about
+/// calls asks about both: which source's header a C++ file includes, what a method may change, which
+/// method a caret is on. A second record would be a second arm in each of those, and a walk that
+/// forgot one would pass over a call without a word. A nullable receiver is an arm the compiler asks
+/// every reader for.
+/// </remarks>
 public sealed record IrMethodCall(
-    IrExpression Receiver,
+    IrExpression? Receiver,
     IrMethodSignature Target,
     IReadOnlyList<IrExpression> Arguments,
     SourceSpan Span) : IrExpression(Target.ReturnType, Span);
@@ -736,6 +873,12 @@ public enum ZeroDivisorBehavior
 
     /// <summary>Terminate the program deterministically. The author declared no valid result.</summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_zero refuse value</c> (spec 16.3.1). Only a method
+    /// that may refuse can, and only from a division that stands on its own, which the binder says.
+    /// </summary>
+    Refuse,
 }
 
 /// <summary>
@@ -744,8 +887,10 @@ public enum ZeroDivisorBehavior
 /// to emit a zero check rather than the bare operator.
 /// </summary>
 /// <param name="OnZero">
-/// The declared fallback value. Non-null exactly when <paramref name="ZeroBehavior"/> is
-/// <see cref="ZeroDivisorBehavior.Fallback"/>.
+/// The value the clause wrote: the fallback where <paramref name="ZeroBehavior"/> is
+/// <see cref="ZeroDivisorBehavior.Fallback"/>, and the refusal where it is
+/// <see cref="ZeroDivisorBehavior.Refuse"/>. Null for every other behavior, and evaluated only for a zero
+/// divisor.
 /// </param>
 public sealed record IrIntegerDivision(
     IrBinaryOperator Operator,
@@ -866,6 +1011,12 @@ public enum UnnamedNumberBehavior
     /// closed enum, which protobuf does not let hold such a number.
     /// </summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_unknown refuse value</c>, as
+    /// <see cref="ZeroDivisorBehavior.Refuse"/> does (spec 16.3.1).
+    /// </summary>
+    Refuse,
 }
 
 /// <summary>Who said what a conversion to an enum makes of a number the enum does not name (spec 12.1).</summary>
@@ -895,9 +1046,11 @@ public enum UnnamedNumberSource
 /// or what the project's configuration says about it.
 /// </remarks>
 /// <param name="Fallback">
-/// The fallback a clause wrote. Non-null exactly when <paramref name="OnUnnamed"/> is
+/// The value a clause wrote: the fallback where <paramref name="OnUnnamed"/> is
 /// <see cref="UnnamedNumberBehavior.Fallback"/> and <paramref name="Source"/> is
-/// <see cref="UnnamedNumberSource.Clause"/>.
+/// <see cref="UnnamedNumberSource.Clause"/>, and the refusal where it is
+/// <see cref="UnnamedNumberBehavior.Refuse"/>. Null otherwise, and evaluated only for a number the enum does
+/// not name.
 /// </param>
 /// <param name="ConfiguredFallback">
 /// The fallback the configuration names. Non-null exactly when <paramref name="OnUnnamed"/> is
@@ -923,6 +1076,57 @@ public sealed record IrNumberToEnum(
 public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, SourceSpan Span)
     : IrExpression(ScalarType.BoolType, Span);
 
+/// <summary>What a call to a method that may refuse makes of a refusal (spec 16.3).</summary>
+public enum RefusalBehavior
+{
+    /// <summary>The fallback the clause wrote, evaluated only when the method refuses.</summary>
+    Fallback,
+
+    /// <summary>Terminate the program deterministically, as <c>on_zero fail</c> does.</summary>
+    Fail,
+
+    /// <summary>
+    /// End the calling method with the same refusal, <c>on_refused refuse</c>. Only a method that may refuse
+    /// with the same type can, and only from where a call stands on its own, which the binder says.
+    /// </summary>
+    Refuse,
+
+    /// <summary>
+    /// No clause was written, which is <c>PC0138</c>. Kept as a call of the method's return type rather
+    /// than collapsed to an error, so the expression around it reports nothing further; no backend is
+    /// handed one, because a compilation that reported it has failed.
+    /// </summary>
+    Unstated,
+}
+
+/// <summary>
+/// A call to a method that may refuse, with what a refusal makes of it:
+/// <c>Invoice.factory.create(options) on_refused fail</c> (spec 16.3).
+/// </summary>
+/// <param name="Fallback">
+/// The value a refusal gives. Non-null exactly when <paramref name="OnRefused"/> is
+/// <see cref="RefusalBehavior.Fallback"/>, and evaluated only when the method refuses.
+/// </param>
+/// <remarks>
+/// <para>
+/// A node around the call rather than more members on <see cref="IrMethodCall"/>, because a backend calls
+/// a method that may refuse in a shape of its own, and has to answer the refusal where the call is. One
+/// that met such a call as an ordinary one would emit a call to a method that is not there. Every call to
+/// a method that may refuse is one of these, the clause written or not, so a backend never meets one
+/// bare. What asks about calls, which methods change what and which header declares them, finds the
+/// call inside it, as it finds one inside <see cref="IrValuelessCall"/>.
+/// </para>
+/// <para>
+/// Its value is the call's: the message built, or the fallback, which has the same type. A refusal passed
+/// on with <see cref="RefusalBehavior.Refuse"/> never gives a value at all, since the calling method ends.
+/// </para>
+/// </remarks>
+public sealed record IrRefusableCall(
+    IrMethodCall Call,
+    RefusalBehavior OnRefused,
+    IrExpression? Fallback,
+    SourceSpan Span) : IrExpression(Call.Type, Span);
+
 /// <summary>What a map lookup gives when its key is missing (spec 14.2).</summary>
 public enum MissingKeyBehavior
 {
@@ -931,6 +1135,12 @@ public enum MissingKeyBehavior
 
     /// <summary>Terminate the program deterministically, as <c>on_zero fail</c> does.</summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_missing refuse value</c>, as
+    /// <see cref="ZeroDivisorBehavior.Refuse"/> does (spec 16.3.1).
+    /// </summary>
+    Refuse,
 
     /// <summary>
     /// No clause was written, which is <c>PC0115</c>. Kept as a lookup of the map's value type rather
@@ -942,8 +1152,9 @@ public enum MissingKeyBehavior
 
 /// <summary>The value a map holds at a key, <c>prices[sku] on_missing 0</c> (spec 14.2).</summary>
 /// <param name="Fallback">
-/// The value a missing key gives. Non-null exactly when <paramref name="OnMissing"/> is
-/// <see cref="MissingKeyBehavior.Fallback"/>, and evaluated only when the key is missing.
+/// The value the clause wrote: what a missing key gives where <paramref name="OnMissing"/> is
+/// <see cref="MissingKeyBehavior.Fallback"/>, and the refusal where it is
+/// <see cref="MissingKeyBehavior.Refuse"/>. Null otherwise, and evaluated only when the key is missing.
 /// </param>
 /// <remarks>
 /// <para>
@@ -1192,7 +1403,10 @@ public sealed record IrValuelessCall(IrMethodCall Call) : IrExpression(ErrorType
 
 /// <param name="Receiver">
 /// The message the method is called on, which a fixture writes the way a literal does (spec 25.3)
-/// and the binder builds as one.
+/// and the binder builds as one. A test of a factory's method calls it on nothing, and holds the
+/// fixture its test does: the empty one standing where none was written, or one written anyway and
+/// refused. No backend builds it for such a test, since <see cref="IrMethodSignature.HasReceiver"/> on
+/// the target says there is nothing to call the method on.
 /// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
@@ -1210,7 +1424,12 @@ public sealed record IrTest(
     /// two do it differently. This is what they report instead, so a conformance harness can check
     /// that every backend ran the same set of tests rather than merely that each ran some.
     /// </remarks>
-    public string Identity => $"{Target.Receiver.FullName}.{Target.Name}: {Name}";
+    /// <remarks>
+    /// A factory's method is named as a test targets it, <c>acme.Invoice.factory.create</c>. No method
+    /// of the message can share its name (spec 16.1), so the word distinguishes nothing; it says where
+    /// the method is.
+    /// </remarks>
+    public string Identity => $"{Target.QualifiedName}: {Name}";
 
     /// <summary>
     /// The source this test is declared in, or null for a test nothing bound.
@@ -1232,8 +1451,50 @@ public sealed record IrTest(
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
-public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
+public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span)
+{
+    /// <summary>
+    /// What a backend compares with what the method gives: for <c>expect refuse</c>, the comparison it holds
+    /// (<see cref="IrTestRefusalExpectation.Expected"/>), and for every other expectation, itself.
+    /// </summary>
+    /// <remarks>A method rather than a property, so a record's printing of its members does not print itself.</remarks>
+    public IrTestExpectation Compared() => this is IrTestRefusalExpectation refusal ? refusal.Expected : this;
+}
 
 public sealed record IrTestReturnExpectation(IrExpression Value, SourceSpan Span) : IrTestExpectation(Span);
 
 public sealed record IrTestFailExpectation(SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary><c>expect refuse value;</c>: met when the method refuses, with a refusal the inner expectation meets (spec 25.3).</summary>
+/// <param name="Expected">
+/// What the refusal is compared with, as an <c>expect return</c> of it would compare a result: an
+/// <see cref="IrTestReturnExpectation"/>, or an <see cref="IrTestFieldsExpectation"/> where the refusal
+/// is a message and the value a literal of one. It has this expectation's span, since it is the same text.
+/// </param>
+/// <remarks>
+/// Around an expectation rather than beside its kinds, because a refusal is compared exactly as a result
+/// is. Each backend already compares a result each way, and what it adds for this is the call that
+/// expects a refusal and hands it to that comparison.
+/// </remarks>
+public sealed record IrTestRefusalExpectation(IrTestExpectation Expected, SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary>
+/// <c>expect return new T { ... };</c> on a method that returns a message: met when every field the
+/// literal sets has the same value in the message returned. Fields it leaves out are not looked at
+/// (spec 25.3).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Its own record rather than a <see cref="IrTestReturnExpectation"/> holding a literal, because it is
+/// not that comparison. Two messages have no equality until spec 13.3 decides one, so nothing here is
+/// the language's <c>==</c>: the literal says which fields matter, and each is compared as an
+/// <c>expect return</c> of its own value would be. A backend that met this as a return expectation
+/// would compare the two messages whole.
+/// </para>
+/// <para>
+/// Which comparisons it makes, and in what order, is <see cref="Semantics.IrExpectedFields.Of"/>'s to
+/// say, so both backends read one answer. The binder refuses a field that cannot be compared, so every
+/// field of a literal that reaches a backend can be.
+/// </para>
+/// </remarks>
+public sealed record IrTestFieldsExpectation(IrMessageLiteral Expected, SourceSpan Span) : IrTestExpectation(Span);

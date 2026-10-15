@@ -31,7 +31,22 @@ namespace ProtoCross.Semantics;
 /// the schema's own field order. A name is in this list at most once even where two things bear it:
 /// see <see cref="VisibleName"/>.
 /// </param>
-public sealed record ScopeAtPosition(MessageType Receiver, IReadOnlyList<VisibleName> Names);
+public sealed record ScopeAtPosition(MessageType Receiver, IReadOnlyList<VisibleName> Names)
+{
+    /// <summary>
+    /// Whether the position is inside a method of <see cref="Receiver"/>'s factory, where a bare call
+    /// reaches the factory's methods and helpers rather than the message's (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// No field is among <see cref="Names"/> there, because a factory has no message of its own. What
+    /// that does not settle is which methods a bare call may name, and a caller offering calls has to
+    /// ask, since <see cref="Receiver"/> is the same message either way.
+    /// </para>
+    /// <para>Init-only with a default of false, so every existing construction stays valid and means what it did.</para>
+    /// </remarks>
+    public bool InAFactory { get; init; }
+}
 
 /// <summary>One name that resolves at a position, and what it resolves to.</summary>
 /// <remarks>

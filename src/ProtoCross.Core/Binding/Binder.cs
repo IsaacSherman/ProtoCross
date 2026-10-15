@@ -17,6 +17,7 @@ namespace ProtoCross.Binding;
 public sealed partial class Binder
 {
     private readonly DiagnosticBag _diagnostics;
+    private readonly IReadOnlyList<FileDescriptor> _files;
     private readonly SchemaTypes _types;
     /// <summary>What a call can resolve to: one entry per name a receiver actually offers.</summary>
     private readonly Dictionary<(string Receiver, string Method), IrMethodSignature> _methods = new();
@@ -112,6 +113,7 @@ public sealed partial class Binder
         _policy = policy ?? new NumericPolicy(_config);
         _document = document ?? SourceIdentity.Unsaved();
 
+        _files = files;
         _types = SchemaTypes.From(files);
     }
 
@@ -208,16 +210,16 @@ public sealed partial class Binder
         _testSources = [.. sources.Where(source => source.Role is SourceRole.Test).Select(source => source.Document)];
         _configuredFallbacks = ResolveConfiguredFallbacks();
 
-        var declared = sources.Select(source => (Source: source, Extends: Declare(source))).ToList();
+        var declared = sources.Select(source => (Source: source, Blocks: Declare(source))).ToList();
 
         var methods = new List<IrMethod>();
         var tests = new List<IrTest>();
 
-        foreach (var (source, extends) in declared)
+        foreach (var (source, blocks) in declared)
         {
             _document = source.Document;
             _productionBehavior = source.Role is SourceRole.Production;
-            methods.AddRange(BindMethods(extends));
+            methods.AddRange(BindMethods(blocks));
 
             _productionBehavior = false;
             if (!SkipTests)
@@ -230,56 +232,99 @@ public sealed partial class Binder
         {
             References = SymbolReference.InSourceOrder(_references),
             Scope = [.. _scope],
+            Factories = [.. _factoriesInOrder],
         };
     }
 
     /// <summary>
-    /// The first pass over one source: resolves what each <c>extend</c> names, and declares every
-    /// method in it so that any source may call it.
+    /// The first pass over one source: resolves what each <c>extend</c> and <c>factory</c> names, and
+    /// declares every method in them so that any source may call it.
     /// </summary>
-    /// <returns>The <c>extend</c> blocks whose receiver resolved, which are the ones with bodies to bind.</returns>
-    private List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> Declare(SourceTree source)
+    /// <returns>
+    /// The blocks whose message resolved, which are the ones with bodies to bind, each with that message.
+    /// </returns>
+    /// <remarks>
+    /// The two kinds of block are declared in the order they are written, interleaved, because which of
+    /// two methods of one name is the duplicate is decided by which was declared second, and a reader
+    /// expects the one further down to be it.
+    /// </remarks>
+    private List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)> Declare(SourceTree source)
     {
         _document = source.Document;
         _productionBehavior = source.Role is SourceRole.Production;
-        var resolvedExtends = new List<(ExtendDeclaration Declaration, MessageDescriptor Receiver)>();
+        var resolved = new List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)>();
 
-        foreach (var extend in source.Unit.Extends)
+        var blocks = source.Unit.Extends.Cast<SyntaxNode>()
+            .Concat(source.Unit.Factories)
+            .OrderBy(block => block.Span.Start.Offset);
+
+        foreach (var block in blocks)
         {
-            if (extend.MessageName.IsMissing)
+            switch (block)
             {
-                continue;
-            }
+                case ExtendDeclaration extend when DeclareExtend(extend) is { } receiver:
+                    resolved.Add((extend.Methods, receiver));
+                    break;
 
-            var receiver = ResolveMessage(extend.MessageName.Text, extend.Span);
-            if (receiver is null)
-            {
-                continue;
-            }
-
-            Use(SymbolId.ForType(receiver), extend.MessageName.Span);
-            resolvedExtends.Add((extend, receiver));
-            WarnIfWellKnown(receiver, extend);
-
-            foreach (var method in extend.Methods)
-            {
-                DeclareMethod(receiver, method);
+                case FactoryDeclaration factory when DeclareFactory(factory) is { } message:
+                    resolved.Add((factory.Methods, message));
+                    break;
             }
         }
 
-        return resolvedExtends;
+        return resolved;
+    }
+
+    /// <summary>Resolves what an <c>extend</c> block names and declares its methods.</summary>
+    /// <returns>The receiver, or null when the block names none that resolves.</returns>
+    private MessageDescriptor? DeclareExtend(ExtendDeclaration extend)
+    {
+        if (extend.MessageName.IsMissing)
+        {
+            return null;
+        }
+
+        var receiver = ResolveMessage(extend.MessageName.Text, extend.Span);
+        if (receiver is null)
+        {
+            return null;
+        }
+
+        Use(SymbolId.ForType(receiver), extend.MessageName.Span);
+        WarnIfWellKnown(receiver, extend);
+
+        foreach (var method in extend.Methods)
+        {
+            // Declared as the method it would be without the word, which is what the author has
+            // written apart from it: a helper is a factory's, and this block's methods are all public.
+            if (method.IsHelper)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.HelperOutsideAFactory,
+                    $"{Capitalized(Refer(method.Name, "method"))} is marked '{ContextualKeywords.Helper}', and only a "
+                    + "factory has helpers. Every method of an extend block is public.",
+                    method.Span,
+                    $"Remove '{ContextualKeywords.Helper}', or move the method into "
+                    + $"'{ContextualKeywords.Factory} {extend.MessageName} {{ … }}' if what it computes is part of "
+                    + "building one (spec 16.3).");
+            }
+
+            DeclareMethod(receiver, method, IrMethodKind.Extend);
+        }
+
+        return receiver;
     }
 
     /// <summary>The second pass over one source's methods, now that every signature is visible.</summary>
-    private List<IrMethod> BindMethods(IEnumerable<(ExtendDeclaration Declaration, MessageDescriptor Receiver)> extends)
+    private List<IrMethod> BindMethods(IEnumerable<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)> blocks)
     {
         var methods = new List<IrMethod>();
 
-        foreach (var (declaration, receiver) in extends)
+        foreach (var (declarations, message) in blocks)
         {
-            foreach (var method in declaration.Methods)
+            foreach (var method in declarations)
             {
-                var bound = BindMethod(receiver, method);
+                var bound = BindMethod(message, method);
                 if (bound is not null)
                 {
                     methods.Add(bound);
@@ -347,9 +392,7 @@ public sealed partial class Binder
     /// </remarks>
     private void WarnIfWellKnown(MessageDescriptor receiver, ExtendDeclaration extend)
     {
-        // The same rule ScaffoldOptions applies when deciding which schemas an emitted project
-        // should generate, and for the same reason: these arrive with the runtime.
-        if (!receiver.File.Name.StartsWith("google/protobuf/", StringComparison.Ordinal))
+        if (!IsWellKnown(receiver))
         {
             return;
         }
@@ -365,6 +408,14 @@ public sealed partial class Binder
             + "extending this type declares the same names.");
     }
 
+    /// <summary>Whether a message is one of protobuf's well-known types, which consumers have from its runtime.</summary>
+    /// <remarks>
+    /// The same rule ScaffoldOptions applies when deciding which schemas an emitted project should
+    /// generate, and for the same reason: these arrive with the runtime.
+    /// </remarks>
+    private static bool IsWellKnown(MessageDescriptor message)
+        => message.File.Name.StartsWith("google/protobuf/", StringComparison.Ordinal);
+
     /// <summary>
     /// Records what a method declares, and registers it as callable when its name is one a call
     /// could use.
@@ -375,11 +426,16 @@ public sealed partial class Binder
     /// declaration states -- never against those of whichever other declaration happens to share its
     /// name. Refusal governs what may be *called*, and nothing else.
     /// </remarks>
-    private void DeclareMethod(MessageDescriptor receiver, MethodDeclaration method)
+    /// <param name="callable">
+    /// Whether a call may resolve to it. False for the methods of a factory refused as a second one for
+    /// its message: they are described and bound, for the names in them, and the first factory's are
+    /// what a call finds.
+    /// </param>
+    private void DeclareMethod(MessageDescriptor receiver, MethodDeclaration method, IrMethodKind kind, bool callable = true)
     {
-        _signatures[method] = DescribeMethod(receiver, method);
+        _signatures[method] = DescribeMethod(receiver, method, kind);
 
-        if (method.Name.IsMissing)
+        if (method.Name.IsMissing || !callable)
         {
             // Nothing can name it, so nothing can call it. Registering it under the empty name would
             // also make a second half-typed method collide with the first and report a duplicate the
@@ -421,11 +477,14 @@ public sealed partial class Binder
     /// message is the one thing that can say where the first one is. Within one source the first is
     /// in the file being read, and that message is published output that has never named a place.
     /// </remarks>
-    private string WhereElse(IrMethodSignature first)
-        => first.Declaration.Document == _document ? string.Empty : $", at {first.Declaration.Name.Span}";
+    private string WhereElse(IrMethodSignature first) => WhereElse(first.Declaration);
+
+    /// <inheritdoc cref="WhereElse(IrMethodSignature)"/>
+    private string WhereElse(DeclarationSite first)
+        => first.Document == _document ? string.Empty : $", at {first.Name.Span}";
 
     /// <summary>Resolves what a method declares into the signature the IR carries.</summary>
-    private IrMethodSignature DescribeMethod(MessageDescriptor receiver, MethodDeclaration method)
+    private IrMethodSignature DescribeMethod(MessageDescriptor receiver, MethodDeclaration method, IrMethodKind kind)
     {
         var returnType = method.ReturnType is null
             ? VoidType.Instance
@@ -458,7 +517,11 @@ public sealed partial class Binder
             returnType,
             parameters)
         {
-            IsMutating = method.IsMutating,
+            // A factory's method has no receiver to change. It is refused where it is declared, and
+            // bound as the method it would be without the word.
+            IsMutating = method.IsMutating && kind is IrMethodKind.Extend,
+            Kind = kind,
+            Refusal = DescribeRefusal(method),
         };
     }
 
@@ -526,7 +589,12 @@ public sealed partial class Binder
             Declare(scope, parameter.Declaration, parameter.Type, ScopeEntry.FirstOffsetInside(method.Body.Span));
         }
 
-        var context = new MethodContext(receiver, signature.ReturnType) { Method = signature };
+        // A factory's method has no message of its own, so a bare name reaches none of its fields:
+        // the rule a test's expressions already bind under (spec 16.3).
+        var context = new MethodContext(receiver, signature.ReturnType, HasImplicitReceiver: signature.HasReceiver)
+        {
+            Method = signature,
+        };
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !IrFlow.NeverFallsThrough(body))
@@ -554,6 +622,7 @@ public sealed partial class Binder
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
             InvocationExpression invocation => BindCallValue(invocation, scope, context),
+            OnRefusedExpression handled => BindOnRefused(handled, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
             UnaryExpression unary => BindUnary(unary, scope, context, expectedType),
             HasExpression has => BindHas(has, scope, context),
@@ -575,8 +644,10 @@ public sealed partial class Binder
     /// </param>
     /// <param name="HasImplicitReceiver">
     /// Whether a bare name may reach <paramref name="Receiver"/>: a field read as <c>count</c>, a
-    /// method called as <c>helper()</c>. A method body has one. A test does not (spec 25.3): the
-    /// receiver it names is the message its fixture builds, which nothing in the test is inside.
+    /// method called as <c>helper()</c>. An extend method's body has one. A test does not (spec 25.3):
+    /// the receiver it names is the message its fixture builds, which nothing in the test is inside.
+    /// Nor does a factory's method (spec 16.3), which builds the message <paramref name="Receiver"/>
+    /// names and is called on none.
     /// </param>
     /// <remarks>
     /// Carries no parameter list, deliberately. <see cref="Scope"/> is what answers a name, and it

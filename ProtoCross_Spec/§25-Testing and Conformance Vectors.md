@@ -51,14 +51,35 @@ Normative Requirements:
   behavior they test, or in a source of their own.
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
-  declares the expected return value or expected terminal failure.
+  declares the expected return value, the expected refusal, or expected terminal failure.
+- **A test of a factory's method names it through the factory, `test Invoice.factory.create`, and
+  supplies no receiver**, because the method is called on nothing ([16.3](./§16-Methods.md#163-factories)). A `receiver` block
+  there is `PC0132`. A test may not target a helper, which is `PC0129`: a test reaches only what a
+  factory offers. A factory's method named as the message's own, `test Invoice.create`, is `PC0058`,
+  whose help spells the target through the factory.
 - An `expect return` is met when the returned value equals the expected one under `==`, with one
   exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
   exception no test could say that a result is not a number; and which NaN it is cannot matter,
   because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
-- An `expect return` on a method that returns a message is `PC0092`, whatever is expected, until
-  [13.3](./§13-Messages.md#133-equality) says what makes two messages equal. Comparing them before then would settle it by
-  accident, and a C++ message has no `==` to compare with.
+- **An `expect return` of a message literal, on a method that returns a message, is met when every
+  field the literal sets has that value in the message returned.** The fields it leaves out are not
+  looked at. A field with presence ([8.4](./§8-Type%20System.md#84-nullability-and-presence)) -- a message, a member of a `oneof`, an `optional`
+  scalar -- must be set, since the literal would set it, and then has its value compared; one without
+  presence has its value compared alone. A message field given a literal is compared by the fields
+  that literal sets, at any depth. Each value is compared as an `expect return` of it alone would be,
+  a NaN meeting any NaN, and a failure names the field. This is not the language's `==`, which still
+  refuses two messages ([13.3](./§13-Messages.md#133-equality)): the literal says which fields decide it.
+- **A field such a literal cannot compare is `PC0134`**: a repeated field, a map, or a message given
+  by anything but a literal. The language has no length or index to compare a repetition by
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), and only a literal says which of a message's fields matter.
+- **`expect refuse value;` is met when the method refuses, with a refusal that meets `value`** as an
+  `expect return` of it would meet a result: under `==`, or, for a literal of a message, by the fields
+  it sets ([16.3.1](./§16-Methods.md#1631-refusals)). A method that builds its result instead fails the test. An `expect refuse` of a
+  method that declares no refusal is `PC0143`. A refusal is a return: an `expect return` is not met where
+  the method refuses, and an `expect fail` is not met where it refuses rather than ending the program.
+- **Any other `expect return` on a method that returns a message is `PC0092`**, until [13.3](./§13-Messages.md#133-equality)
+  says what makes two messages equal, and its help says to expect a literal instead. Comparing them
+  whole before then would settle it by accident, and a C++ message has no `==` to compare with.
 - Test declarations are never emitted into production behavior output. The compiler generates
   target-language test source files into a user-selected test output directory, and only when test
   generation is explicitly requested.
@@ -123,8 +144,18 @@ test InvoiceItem.discounted_total "applies discount" {
 }
 ```
 
+For a method expected to refuse ([16.3.1](./§16-Methods.md#1631-refusals)):
+
+```protocross
+test Invoice.factory.create "an invoice with no lines is refused" {
+    arg options = new InvoiceOptions { number: "A1", line_count: 0 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.NO_LINES };
+}
+```
+
 For methods expected to terminate through `on_zero fail`, through a conversion to an enum that
-fails ([12.1](./§12-Enums.md#121-an-enums-number)), or through another future terminal failure mechanism:
+fails ([12.1](./§12-Enums.md#121-an-enums-number)), or through another future terminal failure mechanism. In a project that forbids
+ending the program nothing can, so no `expect fail` there is met ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)):
 
 ```protocross
 test InvoiceItem.strict_ratio "zero divisor fails" {
@@ -177,8 +208,9 @@ Open Questions:
 - ~~Should a test build refuse a production source that names a type only a test source
   imports?~~ Decided: yes. Production behavior names only types in the production schema closure
   ([25.3.1](#2531-test-sources-and-the-two-builds)).
-- Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
-  three?
+- ~~Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
+  three?~~ Decided: a message literal, as a fixture is, compared by the fields it sets
+  ([25.3](#253-author-written-protocross-unit-tests)).
 - Should the compiler embed fixtures in generated source, copy fixture files beside the generated
   tests, or support both?
 - Should target test framework selection be a backend option such as

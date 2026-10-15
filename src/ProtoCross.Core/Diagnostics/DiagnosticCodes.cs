@@ -53,9 +53,13 @@ public static class DiagnosticCodes
     /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
     /// a reader can look up must not come to mean something else.
     /// </para>
+    /// <para>
+    /// PC0135 refused a refusal declared by a method of an extend block, from #84, which let only a
+    /// factory's methods refuse, until #16 let every method refuse. It did not reach a release either.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC0135", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -103,7 +107,7 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor UnexpectedToken =
         new("PC0010", DiagnosticSeverity.Error, "unexpected token");
 
-    /// <summary>A top-level declaration that is not an import, an extend or a test (spec 7.1).</summary>
+    /// <summary>A top-level declaration that is not an import, an extend, a factory or a test (spec 7.1).</summary>
     public static readonly DiagnosticDescriptor UnexpectedTopLevelDeclaration =
         new("PC0011", DiagnosticSeverity.Error, "unexpected top-level declaration");
 
@@ -474,8 +478,9 @@ public static class DiagnosticCodes
         new("PC0091", DiagnosticSeverity.Error, "literal of a type that is not a message");
 
     /// <summary>
-    /// <c>expect return</c> on a method that returns a message, which nothing can compare until spec
-    /// 13.3 says what message equality is (spec 25.3).
+    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal. A
+    /// literal is compared by the fields it sets, and nothing else can be until spec 13.3 says what
+    /// message equality is (spec 25.3).
     /// </summary>
     public static readonly DiagnosticDescriptor MessageReturnCannotBeExpected =
         new("PC0092", DiagnosticSeverity.Error, "a returned message cannot be expected yet");
@@ -651,6 +656,122 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor EntryNeedsKeyAndValue =
         new("PC0121", DiagnosticSeverity.Error, "entry needs a key and a value");
 
+    // ------------------------------------------------------- factories
+
+    /// <summary>A factory block contains something that is not a method or a helper (spec 7.1).</summary>
+    public static readonly DiagnosticDescriptor UnexpectedFactoryMember =
+        new("PC0122", DiagnosticSeverity.Error, "unexpected member in factory block");
+
+    /// <summary>
+    /// A factory method that returns something other than the message its factory builds, nothing
+    /// included (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryMethodMustReturnItsMessage =
+        new("PC0123", DiagnosticSeverity.Error, "factory method does not return its message");
+
+    /// <summary>A second factory block for a message the compilation already has one for (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor DuplicateFactory =
+        new("PC0124", DiagnosticSeverity.Error, "duplicate factory");
+
+    /// <summary>
+    /// A factory for a message that declares a nested type named <c>factory</c>, which
+    /// <c>Message.factory</c> would also name (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryNameIsTaken =
+        new("PC0125", DiagnosticSeverity.Error, "message has a nested type named factory");
+
+    /// <summary>
+    /// A factory whose generated class would have the name of another factory's, or of a schema's
+    /// message, in the namespace it is declared in (spec 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryClassNameCollides =
+        new("PC0126", DiagnosticSeverity.Error, "factory class name collides");
+
+    /// <summary>A method marked <c>helper</c> outside a factory block (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor HelperOutsideAFactory =
+        new("PC0127", DiagnosticSeverity.Error, "helper outside a factory");
+
+    /// <summary>A factory method or helper marked <c>mut</c>, which has no receiver to change (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor MutatingFactoryMethod =
+        new("PC0128", DiagnosticSeverity.Error, "factory method marked mut");
+
+    /// <summary>A helper called from outside its factory, or targeted by a test (spec 16.3, 25.3).</summary>
+    public static readonly DiagnosticDescriptor HelperUsedOutsideItsFactory =
+        new("PC0129", DiagnosticSeverity.Error, "helper used outside its factory");
+
+    /// <summary>A factory method called on a message, which it has no receiver to take (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryMethodCalledOnAValue =
+        new("PC0130", DiagnosticSeverity.Error, "factory method called on a value");
+
+    /// <summary><c>Message.factory</c> written where a value is expected rather than called through (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryUsedAsAValue =
+        new("PC0131", DiagnosticSeverity.Error, "factory used as a value");
+
+    /// <summary>A test of a factory method that declares a receiver fixture it has no use for (spec 25.3).</summary>
+    public static readonly DiagnosticDescriptor FactoryTestDeclaresAReceiver =
+        new("PC0132", DiagnosticSeverity.Error, "test of a factory method declares a receiver");
+
+    /// <summary>
+    /// A factory for a message protobuf's runtime declares, whose generated class goes beside it
+    /// without a project (spec 24).
+    /// </summary>
+    public static readonly DiagnosticDescriptor FactoryForAWellKnownType =
+        new("PC0133", DiagnosticSeverity.Warning, "factory for a well-known type");
+
+    /// <summary>
+    /// A field of an expected message literal that a test cannot compare: a repeated field, a map,
+    /// or a message given by anything but a literal (spec 25.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ExpectedFieldCannotBeCompared =
+        new("PC0134", DiagnosticSeverity.Error, "expected field cannot be compared");
+
+    // ------------------------------------------------------- refusals
+
+    /// <summary>A <c>refuse</c> in a method that declares no refusal (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefuseInAMethodThatCannotRefuse =
+        new("PC0136", DiagnosticSeverity.Error, "refuse in a method that cannot refuse");
+
+    /// <summary>A <c>refuse</c> whose value is not of the type the method refuses with (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalTypeMismatch =
+        new("PC0137", DiagnosticSeverity.Error, "refusal type mismatch");
+
+    /// <summary>A call to a method that may refuse, with no <c>on_refused</c> clause to say what a refusal makes of it (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalNotAnswered =
+        new("PC0138", DiagnosticSeverity.Error, "call needs on_refused");
+
+    /// <summary>An <c>on_refused</c> clause on a call to a method that cannot refuse, which cannot run (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor UnnecessaryOnRefusedClause =
+        new("PC0139", DiagnosticSeverity.Warning, "unnecessary on_refused clause");
+
+    /// <summary>An <c>on_refused</c> fallback that is not a value of what the call gives (spec 16.3).</summary>
+    public static readonly DiagnosticDescriptor OnRefusedTypeMismatch =
+        new("PC0140", DiagnosticSeverity.Error, "on_refused fallback type mismatch");
+
+    /// <summary>
+    /// <c>on_refused refuse</c> in a method that cannot refuse, or that refuses with another type (spec 16.3).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalCannotBePassedOn =
+        new("PC0141", DiagnosticSeverity.Error, "refusal cannot be passed on");
+
+    /// <summary>
+    /// A refusal from inside an expression, where the method cannot end before the rest of the expression is
+    /// evaluated: <c>on_refused refuse</c> on a call, or <c>refuse</c> after <c>on_zero</c>, <c>on_unknown</c> or
+    /// <c>on_missing</c> (spec 16.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalInsideAnExpression =
+        new("PC0142", DiagnosticSeverity.Error, "refusal inside an expression");
+
+    /// <summary><c>expect refuse</c> on a method that cannot refuse (spec 25.3).</summary>
+    public static readonly DiagnosticDescriptor RefusalExpectedOfAMethodThatCannotRefuse =
+        new("PC0143", DiagnosticSeverity.Error, "expected refusal of a method that cannot refuse");
+
+    /// <summary>
+    /// A construct that would end the program, in a project whose <c>protocross.config.xml</c> forbids it
+    /// (spec 10.4, 19).
+    /// </summary>
+    public static readonly DiagnosticDescriptor TerminationForbidden =
+        new("PC0144", DiagnosticSeverity.Error, "termination forbidden");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>
@@ -668,6 +789,13 @@ public static class DiagnosticCodes
     /// <summary>A configuration file stating one setting more than once (spec 10.4).</summary>
     public static readonly DiagnosticDescriptor DuplicateConfigurationSetting =
         new("PC2004", DiagnosticSeverity.Error, "duplicate configuration setting");
+
+    /// <summary>
+    /// A configuration file stating two settings that cannot both hold: termination forbidden, and checked
+    /// overflow or an enum fallback of <c>fail</c>, which end the program (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SettingsContradictEachOther =
+        new("PC2015", DiagnosticSeverity.Error, "configuration settings contradict each other");
 
     // ------------------------------------------------------- the driver
 

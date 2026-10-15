@@ -487,8 +487,10 @@ public sealed partial class Binder
                 $"'{symbol}' on '{resultType.DisplayName}' must state what to "
                 + "produce when the divisor is zero.",
                 binary.Span,
-                $"Write '{symbol} <divisor> on_zero <fallback>', or "
-                + $"'{symbol} <divisor> on_zero fail' if no value is correct.");
+                TerminationIsForbidden
+                    ? $"{Written(WaysNotToEnd("on_zero", resultType, context))} after '{symbol} <divisor>'."
+                    : $"Write '{symbol} <divisor> on_zero <fallback>', or "
+                        + $"'{symbol} <divisor> on_zero fail' if no value is correct.");
 
             return new IrIntegerDivision(
                 op, left, right, ZeroDivisorBehavior.Fallback, null, ErrorType.Instance,
@@ -497,9 +499,17 @@ public sealed partial class Binder
 
         if (binary.OnZero.IsFail)
         {
+            ReportIfTerminationIsForbidden("'on_zero fail'", binary.OnZero.Span, WaysNotToEnd("on_zero", resultType, context));
             return new IrIntegerDivision(
                 op, left, right, ZeroDivisorBehavior.Fail, null, resultType,
                 _policy.ResolveDivision(op, resultType), binary.Span);
+        }
+
+        if (binary.OnZero.Refusal is { } written)
+        {
+            return new IrIntegerDivision(
+                op, left, right, ZeroDivisorBehavior.Refuse, BindRefusal(written, binary.OnZero.Span, scope, context),
+                resultType, _policy.ResolveDivision(op, resultType), binary.Span);
         }
 
         var onZero = BindExpression(binary.OnZero.Fallback!, scope, context, resultType);

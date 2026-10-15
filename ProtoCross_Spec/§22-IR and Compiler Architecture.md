@@ -94,6 +94,17 @@ The IR preserves:
 - **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
   copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
   each backend asks rather than deciding what to copy.
+- **Which block declared each method, and so whether it has a receiver.** A method's signature says
+  whether it is an `extend` block's, a factory's, or a factory's helper ([16.3](./§16-Methods.md#163-factories)). A factory's
+  method keeps the message it builds as its receiver type, because that is the message whose names it
+  shares and whose class the backends generate it into, and a call to one has no receiver at all
+  rather than a stand-in. A module lists each factory block, by the message it builds and where its
+  `factory` word is written, so a reference to the factory can be followed to it; a factory declares
+  no type.
+- **A test of a message a method returns, by the fields that matter.** An `expect return` of a
+  literal on a method that returns a message is a node of its own, holding the literal. Which fields
+  it compares, in what order, and whether each must be set first are asked of the IR, so both
+  backends read one answer ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
   ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
   where it matters: what the receiver is passed as, and whether an argument is passed as a copy.
@@ -113,7 +124,8 @@ The IR preserves:
   compound is that its value reads its own target, because where that target is written through an
   element the read has to be evaluated before the target is reached. Which form was written is
   otherwise the syntax tree's to say.
-- Terminal-failure behavior for `on_zero fail`.
+- What a zero divisor does: the fallback, terminal failure for `on_zero fail`, or the refusal for
+  `on_zero refuse`, which the division holds where it would hold a fallback.
 - **An enum's number.** A conversion between an enum and its `int32` is a node of its own in each
   direction rather than a numeric conversion, since no conversion policy governs it. One to an enum
   carries what it makes of a number the enum does not name: keep it, a fallback, or fail. That is
@@ -131,6 +143,14 @@ The IR preserves:
   it lacks, so what was written in it is there to ask about while it is being typed.
   A compound store's place is a copy of what it reads, node for node, with each lookup made the
   element it looked up, so no node stands in two places.
+- **A refusal.** A method that may refuse carries the type it refuses with, on its signature, since a
+  call reaches the signature and not the method. `refuse` is a statement of its own that ends the method.
+  Every call to a method that may refuse is a node around the call holding what a refusal makes of it: a
+  fallback, which it holds too, `fail`, or `refuse`. A call written with no clause holds that it has
+  none, so a backend never meets a call to such a method bare ([16.3.1](./§16-Methods.md#1631-refusals)). A division, a conversion to an
+  enum and a lookup whose clause refuses carry that as their behavior, with the refusal where a fallback
+  would be, and the IR answers which operation's clause refuses and what with, and which expression of a
+  statement stands on its own, once for the binder and both backends.
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
   constants it lists, of the subject's type, and its block, and the default arm is the one listing
   none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the

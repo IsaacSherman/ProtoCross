@@ -85,8 +85,9 @@ public sealed partial class CSharpBackend
             _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "An element is a place, and is never read."),
         };
 
-        // A lookup's fallback is the value itself, so 'FindNullable(...) ?? 5L' is a value already.
-        return IsAStruct(scalar) && wrapper is not IrMapLookup { OnMissing: MissingKeyBehavior.Fallback }
+        // A lookup's fallback is the value itself, so 'FindNullable(...) ?? 5L' is a value already, and so is what
+        // a lookup whose clause refuses held once it found one.
+        return IsAStruct(scalar) && wrapper is not IrMapLookup { OnMissing: MissingKeyBehavior.Fallback or MissingKeyBehavior.Refuse }
             ? held + ".GetValueOrDefault()"
             : held;
     }
@@ -258,14 +259,21 @@ public sealed partial class CSharpBackend
     /// These are the places a <c>mut fn</c> call can stand (spec 18), and only its receiver can be a
     /// wrapper held so: a lookup's is a value nothing holds, so the binder refuses a change to it.
     /// </remarks>
-    private static IrMethodCall? ChangeToAHeldWrapper(IrStatement statement) => statement switch
-    {
-        IrExpressionStatement { Expression: IrMethodCall call } => call,
-        IrVariableDeclaration { Initializer: IrMethodCall call } => call,
-        IrAssignment { Value: IrMethodCall call } => call,
-        IrReturn { Value: IrMethodCall call } => call,
-        _ => null,
-    } is { Target.IsMutating: true } found && IsHeldAsItsValue(found.Receiver) ? found : null;
+    private static IrMethodCall? ChangeToAHeldWrapper(IrStatement statement)
+        => IrMutation.StandingExpressionOf(statement) is IrMethodCall { Target.IsMutating: true, Receiver: { } receiver } found
+            && IsHeldAsItsValue(receiver)
+                ? found
+                : null;
+
+    /// <summary>
+    /// The call to a <c>mut fn</c> that may refuse that <paramref name="statement"/> makes on a wrapper held as its
+    /// value, or null where it makes none (<see cref="ChangeToAHeldWrapper"/>).
+    /// </summary>
+    private static IrRefusableCall? RefusableChangeToAHeldWrapper(IrStatement statement)
+        => IrMutation.StandingExpressionOf(statement) is IrRefusableCall { Call: { Target.IsMutating: true, Receiver: { } receiver } } found
+            && IsHeldAsItsValue(receiver)
+                ? found
+                : null;
 
     /// <summary>
     /// A statement whose call changes a wrapper held as its value, written as a change to a message made
@@ -287,10 +295,12 @@ public sealed partial class CSharpBackend
     /// </remarks>
     private static void EmitChangeThroughACopy(SourceWriter writer, IrStatement statement, IrMethodCall call, Body body)
     {
+        // Only a mut fn's call is changed through a copy, and only an extend block's method is one.
+        var receiver = call.Receiver!;
         var placement = body.Placement;
-        var copy = new HeldCopy(body.Unused("wrapper"), call.Receiver.Type);
+        var copy = new HeldCopy(body.Unused("wrapper"), receiver.Type);
         var changed = call with { Receiver = copy };
-        var storeBack = $"{HeldPlace(call.Receiver, placement)} = {copy.Name}.Value;";
+        var storeBack = $"{HeldPlace(receiver, placement)} = {copy.Name}.Value;";
 
         if (statement is IrVariableDeclaration declared)
         {
@@ -298,7 +308,7 @@ public sealed partial class CSharpBackend
         }
 
         using var scope = writer.Block(string.Empty);
-        writer.WriteLine($"var {copy.Name} = {MessageOf(call.Receiver, placement, ReceiverName)};");
+        writer.WriteLine($"var {copy.Name} = {MessageOf(receiver, placement, ReceiverName)};");
 
         switch (statement)
         {
@@ -312,11 +322,19 @@ public sealed partial class CSharpBackend
                 writer.WriteLine(storeBack);
                 break;
 
-            case IrReturn:
-                var result = body.Unused("result");
-                writer.WriteLine($"var {result} = {Expression(changed, placement)};");
+            // A method that may refuse returns its value through its parameter, and says it built it.
+            case IrReturn when body.Outs is { Result: { } result } outs:
+                writer.WriteLine($"{result} = {Expression(changed, placement)};");
                 writer.WriteLine(storeBack);
-                writer.WriteLine($"return {result};");
+                writer.WriteLine($"{outs.Refusal} = default;");
+                writer.WriteLine("return true;");
+                break;
+
+            case IrReturn:
+                var returned = body.Unused("result");
+                writer.WriteLine($"var {returned} = {Expression(changed, placement)};");
+                writer.WriteLine(storeBack);
+                writer.WriteLine($"return {returned};");
                 break;
 
             default:
@@ -327,8 +345,108 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// The local <see cref="EmitChangeThroughACopy"/> declares, standing in the IR for the receiver it
-    /// copies, so the call is written by the same code as every other call.
+    /// A statement whose call to a method that may refuse changes a wrapper held as its value: the change is made
+    /// to a copy, as <see cref="EmitChangeThroughACopy"/> makes it, and stored back before the refusal is answered.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A method may change its receiver and then refuse, and C++ changes the field in place, so the change stands
+    /// whatever the method returned. So the copy is stored back first, and only then is the refusal answered:
+    /// a fallback that reads the field reads it changed, and a method that leaves with the refusal leaves the
+    /// field as C++ does.
+    /// </para>
+    /// <para>
+    /// The answer is written as the statement's own would be: a refusal passed on into the method's own
+    /// parameter, <c>fail</c> through the runtime, and a fallback in place of what the method built.
+    /// </para>
+    /// </remarks>
+    private static void EmitRefusableChangeThroughACopy(SourceWriter writer, IrStatement statement, IrRefusableCall refusable, Body body)
+    {
+        var call = refusable.Call;
+        var receiver = call.Receiver!;
+        var placement = body.Placement;
+        var copy = new HeldCopy(body.Unused("wrapper"), receiver.Type);
+        var refused = body.Unused("refused");
+        var built = placement.Built.GetValueOrDefault(refusable);
+        string[] outs =
+        [
+            .. built is null ? [] : new[] { $"out var {built}" },
+            refusable.OnRefused is RefusalBehavior.Refuse ? $"out {body.Outs!.Refusal}" : "out _",
+        ];
+
+        if (statement is IrVariableDeclaration declared)
+        {
+            writer.WriteLine($"{TypeName(declared.Local.Type)} {Escape(declared.Local.Name)};");
+        }
+
+        using var scope = writer.Block(string.Empty);
+        writer.WriteLine($"var {copy.Name} = {MessageOf(receiver, placement, ReceiverName)};");
+        writer.WriteLine($"var {refused} = !{EmitCall(call with { Receiver = copy }, placement, ReceiverName, outs)};");
+        writer.WriteLine($"{HeldPlace(receiver, placement)} = {copy.Name}.Value;");
+
+        switch (refusable.OnRefused)
+        {
+            case RefusalBehavior.Refuse:
+            {
+                using var leaving = writer.Block($"if ({refused})");
+                EmitLeaving(writer, body.Outs!);
+                break;
+            }
+
+            case RefusalBehavior.Fail:
+            {
+                using var failing = writer.Block($"if ({refused})");
+                writer.WriteLine($"{CSharpRuntime.RefusalsTypeName}.Fail({FormatString(call.Target.QualifiedName)});");
+                break;
+            }
+
+            // Evaluated for what it does where the method refused, as the language evaluates it, wherever no
+            // statement reads what it gives.
+            case RefusalBehavior.Fallback when built is null || statement is IrExpressionStatement:
+            {
+                using var falling = writer.Block($"if ({refused})");
+                writer.WriteLine($"_ = {Expression(refusable.Fallback!, placement)};");
+                break;
+            }
+        }
+
+        if (built is null)
+        {
+            return;
+        }
+
+        var value = BuiltValue(refusable, built, body);
+        if (refusable.OnRefused is RefusalBehavior.Fallback)
+        {
+            value = $"({refused} ? {body.ForLocal(refusable.Fallback!)} : {value})";
+        }
+
+        switch (statement)
+        {
+            case IrVariableDeclaration declaration:
+                writer.WriteLine($"{Escape(declaration.Local.Name)} = {value};");
+                break;
+
+            case IrAssignment assignment:
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {value};");
+                break;
+
+            case IrReturn when body.Outs is { Result: { } result } returning:
+                writer.WriteLine($"{result} = {value};");
+                writer.WriteLine($"{returning.Refusal} = default;");
+                writer.WriteLine("return true;");
+                break;
+
+            case IrReturn:
+                writer.WriteLine($"return {value};");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// A local generated code declares, standing in the IR for the value it holds, so what reads it is
+    /// written by the same code as every other value: the receiver <see cref="EmitChangeThroughACopy"/>
+    /// copies, or what a call that passes a refusal on built (<see cref="EmitPassedOn"/>).
     /// </summary>
     private sealed record HeldCopy(string Name, PlType Type) : IrExpression(Type, default);
 }

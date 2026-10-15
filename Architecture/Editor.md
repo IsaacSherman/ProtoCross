@@ -8,10 +8,10 @@
 | Debounce, cancel, publish | [CompileScheduler][sched]: `Schedule`, `CompileAsync` | [Compile supervision][sup-t] |
 | Deferred answers and staleness | [DeferredAnswers][defer]: `AnswerAsync`, `Require` | [Compile supervision][sup-t] |
 | Completion: context capture and imports | [CompletionProvider][comp]: `Read`, `Schemas` | [Import completion][imp-t] |
-| Completion: scope, dotted members, presence | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members` | [Schema completion][comp-t] |
+| Completion: scope, dotted members, presence, factories | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members`, `FactoryMembers` | [Schema completion][comp-t] |
 | Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted` | [Type edits][type-t] |
 | Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t], [Refused parts][refused-t] |
-| Completion: switch keywords | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t] |
+| Completion: statement keywords, switch arms, `refuse` | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t], [Refusal completion][ref-t] |
 | Hover and go-to-definition | [HoverProvider][hover], [DefinitionProvider][def]: `AnswerAsync` | [Hover][hover-t], [Definition][def-t] |
 | References, highlights, signature help | [Host][host]: `FindReferences`, `AtPosition` | [References][refs-t], [Signatures][sig-t] |
 | Document outline | [Host][host]: `Outline` | [Document symbols][out-t] |
@@ -47,6 +47,7 @@
 [entry-t]: ../tests/ProtoCross.Tests/MapEntryCompletionReviewTests.cs
 [refused-t]: ../tests/ProtoCross.Tests/RefusedPartTests.Completion.cs
 [sw-t]: ../tests/ProtoCross.Tests/SchemaCompletionTests.Switch.cs
+[ref-t]: ../tests/ProtoCross.Tests/SchemaCompletionTests.Refusals.cs
 [hover-t]: ../tests/ProtoCross.Tests/HoverTests.cs
 [def-t]: ../tests/ProtoCross.Tests/DefinitionTests.cs
 [refs-t]: ../tests/ProtoCross.Tests/ReferenceTests.cs

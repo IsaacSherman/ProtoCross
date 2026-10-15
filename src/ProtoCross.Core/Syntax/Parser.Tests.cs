@@ -56,18 +56,20 @@ public sealed partial class Parser
 
         if (receiver is null)
         {
-            _diagnostics.Report(
-                DiagnosticCodes.TestHasNoReceiver,
-                "A ProtoCross unit test must declare the protobuf receiver fixture.",
-                Spanning(start, end),
-                "Add a 'receiver { ... }' block.");
+            // A factory's method is called on nothing, so its test declares nothing to call it on. A
+            // fixture that is there anyway is the binder's to refuse, once it knows the target is a
+            // factory's.
+            if (target.Factory is null)
+            {
+                ReportTestHasNoReceiver(_diagnostics, Spanning(start, end));
+            }
 
             // The diagnostic is about the whole test; the node stands for a block that is not there,
             // and spans the empty point one would be typed at -- the rule SyntaxName.Missing and
             // IrMissingMemberAccess already follow. Spanning the test instead made a fixture nobody
             // wrote the innermost thing at every offset of the declaration, its header included, so a
             // position query on 'test Outer.f' answered with a receiver fixture.
-            receiver = new TestReceiverFixture([], insertionPoint);
+            receiver = new TestReceiverFixture([], insertionPoint) { IsWritten = false };
         }
 
         if (expectation is null)
@@ -90,6 +92,18 @@ public sealed partial class Parser
             expectation,
             Spanning(start, end));
     }
+
+    /// <summary>Reports a test of an extend method that declares no fixture to call it on (spec 25.3).</summary>
+    /// <remarks>
+    /// Shared with the binder, which is the one to report it for a target the parser read as a factory's
+    /// and that turned out to be a nested type's method, so the two say it in one way.
+    /// </remarks>
+    internal static void ReportTestHasNoReceiver(DiagnosticBag diagnostics, SourceSpan span)
+        => diagnostics.Report(
+            DiagnosticCodes.TestHasNoReceiver,
+            "A ProtoCross unit test must declare the protobuf receiver fixture.",
+            span,
+            "Add a 'receiver { ... }' block.");
 
     private TestReceiverFixture ParseTestReceiver()
     {
@@ -125,6 +139,13 @@ public sealed partial class Parser
             return new TestReturnExpectation(value, Spanning(start, end));
         }
 
+        if (Match(TokenKind.Refuse))
+        {
+            var value = ParseExpression();
+            var end = Expect(TokenKind.Semicolon).Span;
+            return new TestRefusalExpectation(value, Spanning(start, end));
+        }
+
         if (Match(TokenKind.Fail))
         {
             var end = Expect(TokenKind.Semicolon).Span;
@@ -133,7 +154,7 @@ public sealed partial class Parser
 
         _diagnostics.Report(
             DiagnosticCodes.ExpectedTestExpectation,
-            $"Expected 'return' or 'fail' but found {Current.Kind.Describe()}.",
+            $"Expected 'return', 'refuse' or 'fail' but found {Current.Kind.Describe()}.",
             Current.Span);
         Advance();
         var recoveredEnd = Current.Span;
@@ -171,7 +192,12 @@ public sealed partial class Parser
                 // The name stops here. What has been written names a receiver; the method is the
                 // hole after the dot, which TryExpect has already reported.
                 var hole = InsertionPointAfter(dot);
-                return new TestTarget(Joined(parts), SyntaxName.Missing(hole), Spanning(first.Span, hole));
+                return parts.Count > 1 && parts[^1].Text == ContextualKeywords.Factory
+                    ? new TestTarget(Joined(parts.GetRange(0, parts.Count - 1)), SyntaxName.Missing(hole), Spanning(first.Span, hole))
+                    {
+                        Factory = new SyntaxName(parts[^1].Text, parts[^1].Span),
+                    }
+                    : new TestTarget(Joined(parts), SyntaxName.Missing(hole), Spanning(first.Span, hole));
             }
 
             parts.Add(part);
@@ -179,12 +205,25 @@ public sealed partial class Parser
 
         var method = new SyntaxName(parts[^1].Text, parts[^1].Span);
 
-        return parts.Count == 1
-            ? new TestTarget(SyntaxName.Missing(insertionPoint), method, method.Span)
-            : new TestTarget(
-                Joined(parts.GetRange(0, parts.Count - 1)),
-                method,
-                Spanning(first.Span, method.Span));
+        if (parts.Count == 1)
+        {
+            return new TestTarget(SyntaxName.Missing(insertionPoint), method, method.Span);
+        }
+
+        // 'Invoice.factory.create': the word is set apart from the message it follows. With nothing
+        // before it, 'factory.create' is a method of a message named factory, as it always was.
+        if (parts.Count > 2 && parts[^2].Text == ContextualKeywords.Factory)
+        {
+            return new TestTarget(Joined(parts.GetRange(0, parts.Count - 2)), method, Spanning(first.Span, method.Span))
+            {
+                Factory = new SyntaxName(parts[^2].Text, parts[^2].Span),
+            };
+        }
+
+        return new TestTarget(
+            Joined(parts.GetRange(0, parts.Count - 1)),
+            method,
+            Spanning(first.Span, method.Span));
 
         SyntaxName Joined(IReadOnlyList<Token> tokens) => new(
             string.Join('.', tokens.Select(token => token.Text)),

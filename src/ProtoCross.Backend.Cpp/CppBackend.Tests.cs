@@ -4,6 +4,7 @@ using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Syntax;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -322,39 +323,147 @@ public sealed partial class CppBackend
             return;
         }
 
-        if (test.Expectation is not IrTestReturnExpectation returnExpectation)
-        {
-            throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C++ test expectation.");
-        }
-
         using var scope = writer.Block($"static bool {functionName}()");
 
         EmitCppReceiver(writer, test, placement);
 
-        writer.WriteLine($"const auto actual = {CppInvocation(test, placement)};");
-        writer.WriteLine($"const auto expected = {Expression(returnExpectation.Value, placement)};");
-        using (writer.Block($"if ({ExpectationUnmet(test)})"))
+        if (test.Target.CanRefuse)
         {
-            // Printed on stdout rather than stderr so a harness reading the driver sees every
-            // result line in the order they happened.
-            writer.WriteLine(
-                $"::std::cout << \"[FAIL] {EscapeString(test.Identity)}\""
-                + " << \" (expected \" << expected << \", actual \" << actual << \")\" << ::std::endl;");
-            writer.WriteLine("return false;");
+            EmitCppRefusingCall(writer, test, placement);
         }
+        else
+        {
+            writer.WriteLine($"const auto {IrExpectedFields.ResultName} = {CppInvocation(test, placement)};");
+        }
+
+        EmitCppComparison(writer, test, test.Expectation.Compared(), placement);
 
         writer.WriteLine();
         writer.WriteLine($"::std::cout << \"[ok] {EscapeString(test.Identity)}\" << ::std::endl;");
         writer.WriteLine("return true;");
     }
 
+    /// <summary>
+    /// Compares what the method gave, held in <c>actual</c>, with what the test expects of it: a value, or the
+    /// fields an expected literal sets (spec 25.3).
+    /// </summary>
+    private static void EmitCppComparison(SourceWriter writer, IrTest test, IrTestExpectation compared, Placement placement)
+    {
+        switch (compared)
+        {
+            case IrTestReturnExpectation returnExpectation:
+                writer.WriteLine($"const auto expected = {Expression(returnExpectation.Value, placement)};");
+                using (writer.Block($"if ({ExpectationUnmet(returnExpectation.Value.Type)})"))
+                {
+                    // Printed on stdout rather than stderr so a harness reading the driver sees every
+                    // result line in the order they happened.
+                    writer.WriteLine(
+                        $"::std::cout << \"[FAIL] {EscapeString(test.Identity)}\""
+                        + " << \" (expected \" << expected << \", actual \" << actual << \")\" << ::std::endl;");
+                    writer.WriteLine("return false;");
+                }
+
+                break;
+
+            case IrTestFieldsExpectation fields:
+                EmitCppFieldChecks(writer, test, fields, placement);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(test), test.Expectation, "Unhandled C++ test expectation.");
+        }
+    }
+
+    /// <summary>
+    /// Calls a method that may refuse, and fails the test unless it built its result or refused as the test
+    /// expects. Whichever the test expects is left in <c>actual</c>, which the comparison after it reads as it
+    /// reads any result.
+    /// </summary>
+    /// <remarks>
+    /// The refusal is not printed: C++ has no one way to print a message, and a scalar's would be the only one shown.
+    /// </remarks>
+    private static void EmitCppRefusingCall(SourceWriter writer, IrTest test, Placement placement)
+    {
+        var target = test.Target;
+        var refuses = test.Expectation is IrTestRefusalExpectation;
+        var result = target.ReturnType is VoidType ? null : refuses ? "built" : IrExpectedFields.ResultName;
+        var refusal = refuses ? IrExpectedFields.ResultName : "refusal";
+
+        if (result is not null)
+        {
+            writer.WriteLine($"{TypeName(target.ReturnType)} {result}{{}};");
+        }
+
+        writer.WriteLine($"{TypeName(target.Refusal!)} {refusal}{{}};");
+        var call = CppInvocation(test, placement, [.. new[] { result, refusal }.OfType<string>()]);
+        using (writer.Block(refuses ? $"if ({call})" : $"if (!{call})"))
+        {
+            var instead = refuses ? "a refusal, but the method built its result" : "a result, but the method refused";
+            writer.WriteLine($"::std::cout << \"[FAIL] {EscapeString(test.Identity)} (expected {instead})\" << ::std::endl;");
+            writer.WriteLine("return false;");
+        }
+    }
+
+    /// <summary>
+    /// Emits what an expected message literal checks: each field the literal sets, of the local the method's
+    /// result is held in, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// Each value is compared in a block of its own, as an <c>expect return</c> of it alone would be, so
+    /// that every one is named <c>expected</c> and <c>found</c> and a failure prints both beside the field.
+    /// </remarks>
+    private static void EmitCppFieldChecks(SourceWriter writer, IrTest test, IrTestFieldsExpectation fields, Placement placement)
+    {
+        var expected = IrExpectedFields.Of(fields);
+
+        foreach (var check in expected.Checks)
+        {
+            var failed = $"::std::cout << \"[FAIL] {EscapeString(test.Identity)} ('{EscapeString(check.Path)}'";
+            switch (check)
+            {
+                case IrPresenceCheck presence:
+                    using (writer.Block($"if (!{Expression(presence.Presence, placement)})"))
+                    {
+                        writer.WriteLine($"{failed} is not set)\" << ::std::endl;");
+                        writer.WriteLine("return false;");
+                    }
+
+                    break;
+
+                case IrValueCheck value:
+                    using (writer.Block(string.Empty))
+                    {
+                        writer.WriteLine($"const auto expected = {Expression(value.Expected, placement)};");
+                        writer.WriteLine($"const auto found = {Expression(value.Actual, placement)};");
+                        using (writer.Block($"if ({ExpectationUnmet(value.Actual.Type, "found")})"))
+                        {
+                            writer.WriteLine($"{failed}: expected \" << expected << \", actual \" << found << \")\" << ::std::endl;");
+                            writer.WriteLine("return false;");
+                        }
+                    }
+
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(fields), check, "Unhandled field check.");
+            }
+        }
+    }
+
     /// <summary>Whether a test expects a floating-point value, and so has a NaN case to meet.</summary>
     /// <remarks>
     /// Asked by the condition each such test emits and by the <c>&lt;cmath&gt;</c> include that
-    /// condition needs, so the two cannot fall out of step.
+    /// condition needs, so the two cannot fall out of step. A field an expected literal checks counts
+    /// as one, since each is compared as an expectation of its own.
     /// </remarks>
-    private static bool ExpectsFloatingPoint(IrTest test)
-        => test.Expectation is IrTestReturnExpectation { Value.Type: ScalarType { IsFloatingPoint: true } };
+    private static bool ExpectsFloatingPoint(IrTest test) => test.Expectation.Compared() switch
+    {
+        IrTestReturnExpectation returned => IsFloatingPoint(returned.Value.Type),
+        IrTestFieldsExpectation fields => IrExpectedFields.Of(fields).Checks.OfType<IrValueCheck>().Any(check => IsFloatingPoint(check.Actual.Type)),
+        _ => false,
+    };
+
+    private static bool IsFloatingPoint(PlType type) => type is ScalarType { IsFloatingPoint: true };
 
     /// <summary>
     /// The condition under which a returned value does not meet its <c>expect return</c>: they are
@@ -378,10 +487,12 @@ public sealed partial class CppBackend
     /// <c>-0.0</c>, as it does under <c>Equals</c>.
     /// </para>
     /// </remarks>
-    private static string ExpectationUnmet(IrTest test)
-        => ExpectsFloatingPoint(test)
-            ? "!(actual == expected || (::std::isnan(actual) && ::std::isnan(expected)))"
-            : "actual != expected";
+    /// <param name="type">What is compared: the value expected and the one returned are both of it.</param>
+    /// <param name="actual">The local holding the value returned.</param>
+    private static string ExpectationUnmet(PlType type, string actual = "actual")
+        => IsFloatingPoint(type)
+            ? $"!({actual} == expected || (::std::isnan({actual}) && ::std::isnan(expected)))"
+            : $"{actual} != expected";
 
     /// <summary>
     /// Emits the body a child process runs for an <c>expect fail</c> test. It is never called in
@@ -394,26 +505,54 @@ public sealed partial class CppBackend
         EmitCppReceiver(writer, test, placement);
 
         writer.WriteLine("// The call is expected not to return, so its result is deliberately unused.");
+        if (test.Target.CanRefuse)
+        {
+            // A refusal is a return, which the parent reports as one.
+            var outs = test.Target.ReturnType is VoidType ? new[] { "refusal" } : ["result", "refusal"];
+            if (test.Target.ReturnType is not VoidType)
+            {
+                writer.WriteLine($"{TypeName(test.Target.ReturnType)} result{{}};");
+            }
+
+            writer.WriteLine($"{TypeName(test.Target.Refusal!)} refusal{{}};");
+            writer.WriteLine($"static_cast<void>({CppInvocation(test, placement, outs)});");
+            return;
+        }
+
         writer.WriteLine(test.Target.ReturnType is VoidType
             ? $"{CppInvocation(test, placement)};"
             : $"static_cast<void>({CppInvocation(test, placement)});");
     }
 
-    /// <summary>Declares the local named <c>receiver</c> that a test calls its method on.</summary>
+    /// <summary>
+    /// Declares the local named <c>receiver</c> that a test calls its method on; nothing for a factory's
+    /// method, which is called on nothing.
+    /// </summary>
     private static void EmitCppReceiver(SourceWriter writer, IrTest test, Placement placement)
-        => EmitConstruction(writer, test.Receiver, TestReceiverName, NamesFor(test.Receiver, TestReceiverName), placement);
-
-    private static string CppInvocation(IrTest test, Placement placement)
     {
-        var arguments = new List<string> { TestReceiverName };
+        if (test.Target.HasReceiver)
+        {
+            EmitConstruction(writer, test.Receiver, TestReceiverName, NamesFor(test.Receiver, TestReceiverName), placement);
+        }
+    }
+
+    /// <param name="outs">What a call to a method that may refuse passes for the references it gives its result and refusal through.</param>
+    private static string CppInvocation(IrTest test, Placement placement, params string[] outs)
+    {
+        var arguments = test.Target.HasReceiver ? [TestReceiverName] : new List<string>();
         arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement)));
+        arguments.AddRange(outs);
 
         return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
     }
 
     private static string UniqueTestFunctionName(IrTest test, HashSet<string> usedNames)
     {
-        var baseName = ToIdentifier($"{test.Target.Receiver.Name}_{test.Target.Name}_{test.Name}");
+        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create'.
+        var target = test.Target.HasReceiver
+            ? $"{test.Target.Receiver.Name}_{test.Target.Name}"
+            : $"{test.Target.Receiver.Name}_{ContextualKeywords.Factory}_{test.Target.Name}";
+        var baseName = ToIdentifier($"{target}_{test.Name}");
         var candidate = baseName;
         var suffix = 2;
         while (!usedNames.Add(candidate))

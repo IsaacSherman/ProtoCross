@@ -70,10 +70,17 @@ public static class DocumentOutline
             switch (declarations[index])
             {
                 case ExtendDeclaration extend:
-                    var beside = TestsBeside(declarations, index, extend.MessageName.Text);
+                    var beside = TestsBeside(declarations, index, extend.MessageName.Text, ofAFactory: false);
 
                     outline.Add(Block(extend, beside));
                     index += beside.Count;
+                    break;
+
+                case FactoryDeclaration factory:
+                    var testedBeside = TestsBeside(declarations, index, factory.MessageName.Text, ofAFactory: true);
+
+                    outline.Add(Block(factory, testedBeside));
+                    index += testedBeside.Count;
                     break;
 
                 // Whatever was not taken by the block above it: a test of a message extended
@@ -107,6 +114,7 @@ public static class DocumentOutline
     private static IReadOnlyList<SyntaxNode> InSourceOrder(CompilationUnit unit)
         => [.. unit.Extends
             .Cast<SyntaxNode>()
+            .Concat(unit.Factories)
             .Concat(unit.Tests)
             .OrderBy(declaration => declaration.Span.Start.Offset)];
 
@@ -126,6 +134,18 @@ public static class DocumentOutline
             extend.MessageName.Span,
             [.. extend.Methods.Select(Method), .. beside.Select(Test)]);
 
+    /// <summary>A factory block, named as its methods are reached: <c>Invoice.factory</c>.</summary>
+    private static DocumentSymbol Block(FactoryDeclaration factory, IReadOnlyList<TestDeclaration> beside)
+        => Entry(
+            factory.MessageName.Text.Length > 0
+                ? $"{factory.MessageName.Text}.{ContextualKeywords.Factory}"
+                : ContextualKeywords.Factory,
+            detail: null,
+            SymbolKind.Class,
+            Covering(factory.Span, beside),
+            factory.MessageName.IsMissing ? factory.Keyword.Span : factory.MessageName.Span,
+            [.. factory.Methods.Select(Method), .. beside.Select(Test)]);
+
     /// <summary>The run of tests written straight after a block, all of them naming it.</summary>
     /// <remarks>
     /// <para>
@@ -143,14 +163,20 @@ public static class DocumentOutline
     /// whose receiver names no block at all already gets.
     /// </para>
     /// </remarks>
+    /// <param name="ofAFactory">
+    /// Whether the block is a factory, whose tests target <c>Invoice.factory.create</c>, rather than an
+    /// extend block, whose tests target <c>Invoice.total</c>. A test of one is never nested under the other.
+    /// </param>
     private static List<TestDeclaration> TestsBeside(
-        IReadOnlyList<SyntaxNode> declarations, int block, string receiver)
+        IReadOnlyList<SyntaxNode> declarations, int block, string receiver, bool ofAFactory)
     {
         List<TestDeclaration> beside = [];
 
         for (var index = block + 1; index < declarations.Count; index++)
         {
-            if (declarations[index] is not TestDeclaration test || !Targets(test, receiver))
+            if (declarations[index] is not TestDeclaration test
+                || !Targets(test, receiver)
+                || test.Target.Factory is not null != ofAFactory)
             {
                 break;
             }
@@ -226,7 +252,9 @@ public static class DocumentOutline
     /// </remarks>
     private static DocumentSymbol Test(TestDeclaration test)
     {
-        var target = $"{test.Target.Receiver.Text}.{test.Target.Method.Text}";
+        var target = test.Target.Factory is { } factory
+            ? $"{test.Target.Receiver.Text}.{factory.Text}.{test.Target.Method.Text}"
+            : $"{test.Target.Receiver.Text}.{test.Target.Method.Text}";
 
         return Entry(
             test.Name.Length > 0 ? test.Name : Named(test.Target.Method, "test"),
@@ -237,7 +265,7 @@ public static class DocumentOutline
             children: null);
     }
 
-    /// <summary>The method's parameter list and return type, as the author wrote them.</summary>
+    /// <summary>The method's parameter list, return type and refusal, as the author wrote them.</summary>
     /// <remarks>
     /// The return type is written even where the author left the arrow off, because what a call
     /// produces is what decides whether it may be used as a value -- the same argument
@@ -248,7 +276,9 @@ public static class DocumentOutline
         var parameters = method.Parameters.Select(
             parameter => $"{parameter.Name.Text}: {parameter.Type.Name.Text}");
 
-        return $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}";
+        var signature = $"({string.Join(", ", parameters)}) -> {method.ReturnType?.Name.Text ?? "void"}"
+            + (method.Refusal is { Name.IsMissing: false } refusal ? $" {ContextualKeywords.Refuses} {refusal.Name.Text}" : string.Empty);
+        return method.IsHelper ? $"{ContextualKeywords.Helper} {signature}" : signature;
     }
 
     // ------------------------------------------------------- the shape of an entry

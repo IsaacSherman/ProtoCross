@@ -15,7 +15,13 @@ This section should be maintained as the authoritative list of open decisions.
   in 7.1.
 - ~~Type inference policy.~~ Decided: local variables may state an explicit type or infer from the
   initializer ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), [8](./§8-Type%20System.md#8-type-system)).
-- Helper functions and whether top-level functions belong in the language.
+- ~~Helper functions~~ Decided: a factory's `helper fn`, which only that factory may call, is the
+  only helper, and there are no access modifiers ([16.3](./§16-Methods.md#163-factories)). Whether top-level functions belong in
+  the language remains open.
+- ~~Where a factory lives, and what it generates.~~ Decided: a `factory Message { … }` block, whose
+  methods build the message, are called as `Message.factory.method(…)`, and are generated into a
+  `MessageFactory` class in the namespace the message's behavior goes in ([16.3](./§16-Methods.md#163-factories),
+  [24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). Injection and mocking are not supported in 1.0.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
   comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)).
 - ~~Complete scalar type support.~~ Decided: all protobuf scalar spellings map into the supported
@@ -44,6 +50,10 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Integer overflow model.~~ Decided: wrapping ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
 - ~~Division and modulo by zero.~~ Decided: mandatory `on_zero` clause, with `fail` for the case
   where no substitute value is correct ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). `Result` ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)) is explicitly deferred, not blocked.
+- ~~Whether `on_zero fail` may end the process that hosts generated code (#16).~~ Decided: it may,
+  unless the project forbids it with `Failure/Termination = Forbidden`, which makes every construct
+  that would end the program a compile error ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy), [19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)). A method that must not end it refuses instead,
+  `on_zero refuse value` ([16.3.1](./§16-Methods.md#1631-refusals)).
 - ~~Explicit cast syntax.~~ Decided: `x as int64`, numeric scalars only ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
 - ~~Numeric conversion rules.~~ Decided: integer targets wrap, floating point to integer
   truncates and saturates with NaN mapping to zero ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
@@ -65,7 +75,8 @@ This section should be maintained as the authoritative list of open decisions.
   `items: other.items`.~~ Not for now: only a list, and accepting one later breaks nothing
   ([13.2](./§13-Messages.md#132-message-construction)).
 - Message equality semantics. Until they are decided, `==` and `!=` refuse two messages and two
-  repeated values ([13.3](./§13-Messages.md#133-equality)).
+  repeated values ([13.3](./§13-Messages.md#133-equality)). A test compares an expected message literal by the fields it sets
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), which leaves `==` undecided.
 - ~~Repeated field mutation rules for current implementation.~~ Decided: an element changes through
   the name a `for` binds; a repeated field cannot be assigned, cleared or have an element removed; an
   element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
@@ -87,7 +98,11 @@ This section should be maintained as the authoritative list of open decisions.
   identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to
   register ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
-- Error result model.
+- ~~Error result model.~~ Decided: any method declares a refusal of the author's type after its return
+  type, ends with `refuse`, and every call answers it with a fallback, `fail`, or `refuse` to pass it
+  on. A division, a conversion to an enum and a lookup refuse with `on_zero refuse`, `on_unknown refuse`
+  and `on_missing refuse` ([16.3.1](./§16-Methods.md#1631-refusals)). Whether a value may hold a refusal remains open
+  ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).
 - `protoc` plugin and Buf integration strategy.

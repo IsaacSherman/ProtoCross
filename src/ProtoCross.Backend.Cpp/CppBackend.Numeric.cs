@@ -164,32 +164,43 @@ public sealed partial class CppBackend
     /// <remarks>
     /// A fallback is handed over as a lambda (<see cref="Deferred"/>), so the helper calls it only for
     /// a zero divisor, and a fallback that can end the program does not end one whose divisor was not
-    /// zero (spec 10.2.1).
+    /// zero (spec 10.2.1). A division whose clause refuses was tested before its statement, and is what
+    /// that test held (<see cref="EmitClauseRefusal"/>).
     /// </remarks>
     private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement)
-    {
-        if (division.ResultType is not ScalarType scalar)
+        => division.ZeroBehavior switch
         {
-            throw new ArgumentOutOfRangeException(
-                nameof(division), division.ResultType, "Integer division must produce a scalar.");
-        }
-
-        var left = Expression(division.Left, placement);
-        var right = Expression(division.Right, placement);
-        var stem = CppRuntime.Stem(division.Behavior)
-            + (division.Operator == IrBinaryOperator.Modulo ? "_mod" : "_div");
-        var suffix = HelperSuffix(scalar);
-
-        return division.ZeroBehavior switch
-        {
-            ZeroDivisorBehavior.Unreachable => $"{RuntimeNamespace}::{stem}_{suffix}({left}, {right})",
-            ZeroDivisorBehavior.Fail => $"{RuntimeNamespace}::{stem}_or_fail_{suffix}({left}, {right})",
-            ZeroDivisorBehavior.Fallback =>
-                $"{RuntimeNamespace}::{stem}_or_{suffix}({left}, {right}, {Deferred(Expression(division.OnZero!, placement))})",
+            ZeroDivisorBehavior.Unreachable => Divided(division, string.Empty, placement),
+            ZeroDivisorBehavior.Fail => Divided(division, "_or_fail", placement),
+            ZeroDivisorBehavior.Fallback => DividedOr(division, Deferred(Expression(division.OnZero!, placement)), placement),
+            ZeroDivisorBehavior.Refuse => placement.Held[division],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
-    }
+
+    /// <summary>
+    /// <paramref name="division"/> through the runtime's helper for it, of <paramref name="form"/>: the bare
+    /// helper, or <c>_or_fail</c>.
+    /// </summary>
+    private static string Divided(IrIntegerDivision division, string form, Placement placement)
+        => $"{RuntimeNamespace}::{DivisionStem(division)}{form}_{DivisionSuffix(division)}("
+            + $"{Expression(division.Left, placement)}, {Expression(division.Right, placement)})";
+
+    /// <summary><paramref name="division"/>, calling <paramref name="onZero"/>, a lambda, for a zero divisor.</summary>
+    private static string DividedOr(IrIntegerDivision division, string onZero, Placement placement)
+        => $"{RuntimeNamespace}::{DivisionStem(division)}_or_{DivisionSuffix(division)}("
+            + $"{Expression(division.Left, placement)}, {Expression(division.Right, placement)}, {onZero})";
+
+    /// <summary>The runtime's name for the division under its overflow behavior, before any form: <c>wrap_div</c>.</summary>
+    private static string DivisionStem(IrIntegerDivision division)
+        => CppRuntime.Stem(division.Behavior) + (division.Operator == IrBinaryOperator.Modulo ? "_mod" : "_div");
+
+    /// <summary>The runtime's suffix for the type the division gives: <c>i64</c>.</summary>
+    private static string DivisionSuffix(IrIntegerDivision division)
+        => division.ResultType is ScalarType scalar
+            ? HelperSuffix(scalar)
+            : throw new ArgumentOutOfRangeException(
+                nameof(division), division.ResultType, "Integer division must produce a scalar.");
 
     private static string EmitUnary(IrUnary unary, Placement placement)
     {
@@ -275,24 +286,33 @@ public sealed partial class CppBackend
     /// <c>_IsValid</c> whether the schema names the number, passed to the runtime by address. That
     /// answer is the one the generated code would give, rather than a list of numbers this backend
     /// wrote out and could get wrong. A fallback is handed over as a lambda (<see cref="Deferred"/>),
-    /// so it is evaluated only for a number the schema does not name (spec 12.1).
+    /// so it is evaluated only for a number the schema does not name (spec 12.1). A conversion whose
+    /// clause refuses was tested before its statement, and is what that test held
+    /// (<see cref="EmitClauseRefusal"/>).
     /// </remarks>
     private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement)
     {
         var enumType = QualifiedEnumName(conversion.EnumType.Descriptor);
         var value = $"static_cast<{enumType}>({Expression(conversion.Operand, placement)})";
-        var isNamed = $"&{enumType}_IsValid";
 
         return conversion.OnUnnamed switch
         {
             UnnamedNumberBehavior.Keep => value,
-            UnnamedNumberBehavior.Fallback =>
-                $"{RuntimeNamespace}::named_or({value}, {isNamed}, {Deferred(FallbackOf(conversion, placement))})",
+            UnnamedNumberBehavior.Fallback => NamedOr(conversion, Deferred(FallbackOf(conversion, placement)), placement),
             UnnamedNumberBehavior.Fail =>
-                $"{RuntimeNamespace}::named_or_fail({value}, {isNamed}, {FormatString(conversion.EnumType.DisplayName)})",
+                $"{RuntimeNamespace}::named_or_fail({value}, &{enumType}_IsValid, {FormatString(conversion.EnumType.DisplayName)})",
+            UnnamedNumberBehavior.Refuse => placement.Held[conversion],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
+    }
+
+    /// <summary>The enum value, calling <paramref name="fallback"/>, a lambda, for a number the enum does not name.</summary>
+    private static string NamedOr(IrNumberToEnum conversion, string fallback, Placement placement)
+    {
+        var enumType = QualifiedEnumName(conversion.EnumType.Descriptor);
+        return $"{RuntimeNamespace}::named_or(static_cast<{enumType}>({Expression(conversion.Operand, placement)}), "
+            + $"&{enumType}_IsValid, {fallback})";
     }
 
     /// <summary>

@@ -46,6 +46,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             IDisposable? namespaceScope = hasNamespace ? writer.Block($"namespace {namespaceGroup.Key}") : null;
 
             var byPart = namespaceGroup
+                .Where(m => m.Signature.HasReceiver)
                 .GroupBy(m => placement.PartOf(m.Receiver), StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 
@@ -63,6 +64,23 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
                 // project's one part lists each receiver's methods together.
                 var methods = part.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal).ToList();
                 EmitExtensionClass(writer, placement.ClassOf(methods[0].Receiver), methods, placement);
+            }
+
+            // After the extension classes, so a source with no factory is generated as it always was.
+            var factories = namespaceGroup
+                .Where(m => !m.Signature.HasReceiver)
+                .GroupBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+                .OrderBy(g => g.Key, StringComparer.Ordinal);
+
+            foreach (var factory in factories)
+            {
+                if (!firstClass)
+                {
+                    writer.WriteLine();
+                }
+
+                firstClass = false;
+                EmitFactoryClass(writer, [.. factory], placement);
             }
 
             namespaceScope?.Dispose();
@@ -142,22 +160,73 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         }
     }
 
+    /// <summary>Emits the static class a message's factory is generated into (spec 24.1).</summary>
+    /// <remarks>
+    /// <para>
+    /// Not <c>partial</c>, unlike an extension class: a message has one factory in a compilation, and
+    /// its block is in one source (spec 16.3), so one file declares the whole class. A consumer who wants
+    /// to add to it writes a class of their own.
+    /// </para>
+    /// <para>
+    /// A helper is <c>private</c>. The binder already refuses a call to one from anywhere but its own
+    /// factory, so this changes nothing a ProtoCross caller can do; it keeps a C# caller to the same
+    /// methods.
+    /// </para>
+    /// </remarks>
+    private static void EmitFactoryClass(SourceWriter writer, IReadOnlyList<IrMethod> methods, Placement placement)
+    {
+        var message = methods[0].Receiver;
+
+        writer.WriteLine($"/// <summary>Builds <c>{message.FullName}</c>: its ProtoCross factory.</summary>");
+        using var classScope = writer.Block($"public static class {placement.FactoryClassOf(message)}");
+
+        var first = true;
+        foreach (var method in methods)
+        {
+            if (!first)
+            {
+                writer.WriteLine();
+            }
+
+            first = false;
+            EmitMethod(writer, method, placement);
+        }
+    }
+
+    /// <remarks>
+    /// A method that may refuse returns whether it built its result, and gives the result or the refusal through
+    /// an <c>out</c> parameter (spec 24.1): <c>Dictionary.TryGetValue</c>'s shape, which a C# caller already reads
+    /// and which C++ writes the same way. Every other method is declared as it always was.
+    /// </remarks>
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
-        var returnType = TypeName(method.ReturnType);
         var methodName = placement.MethodNameOf(method.Signature);
         var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
+        var taken = NamesDeclaredIn(method);
+        var outs = Outs.Of(method.Signature, taken);
+        var returnType = outs is null ? TypeName(method.ReturnType) : "bool";
 
-        var parameters = new List<string> { $"this {receiverType} {ReceiverName}" };
+        // A factory's method is called on nothing, so it is a plain static method of its class.
+        var parameters = method.Signature.HasReceiver ? [$"this {receiverType} {ReceiverName}"] : new List<string>();
         parameters.AddRange(method.Parameters.Select(p => $"{TypeName(p.Type)} {Escape(p.Name)}"));
+        parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
+        var access = method.Signature.Kind is IrMethodKind.Helper ? "private" : "public";
         using var methodScope = writer.Block(
-            $"public static {returnType} {methodName}({string.Join(", ", parameters)})");
+            $"{access} static {returnType} {methodName}({string.Join(", ", parameters)})");
 
-        EmitStatements(
-            writer,
-            method.Body.Statements,
-            new Body(placement, IrMutation.ChangesAMessage(method)) { Taken = NamesDeclaredIn(method) });
+        var body = new Body(placement with { Built = BuiltNamesIn(method, taken) }, IrMutation.ChangesAMessage(method))
+        {
+            Taken = taken,
+            Outs = outs,
+        };
+        EmitStatements(writer, method.Body.Statements, body);
+
+        // A method that returns nothing may reach the end of its body, and one that may refuse says there that it did not.
+        if (outs is { Result: null } && !IrFlow.NeverFallsThrough(method.Body))
+        {
+            EmitFallingOffTheEnd(writer, method.Body, outs, placement);
+        }
     }
 
     private static string Expression(
@@ -172,6 +241,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrFieldAccess field => PropertyRead(field, placement, receiverName),
             IrFieldPresence presence => EmitPresence(presence, placement, receiverName),
         IrMethodCall call => EmitCall(call, placement, receiverName),
+        IrRefusableCall refusable => EmitRefusableCall(refusable, placement, receiverName),
         IrBinary binary => EmitBinary(binary, placement, receiverName),
         IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
         IrUnary unary => EmitUnary(unary, placement, receiverName),
@@ -194,15 +264,21 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static string PropertyRead(IrFieldAccess field, Placement placement, string receiverName)
         => $"{Expression(field.Receiver, placement, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}";
 
-    private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
+    /// <param name="outs">
+    /// What a call to a method that may refuse passes for its <c>out</c> parameters, after its arguments.
+    /// </param>
+    private static string EmitCall(IrMethodCall call, Placement placement, string receiverName, params string[] outs)
     {
-        var arguments = new List<string> { Expression(call.Receiver, placement, receiverName) };
+        var arguments = call.Receiver is { } receiver
+            ? [Expression(receiver, placement, receiverName)]
+            : new List<string>();
         arguments.AddRange(call.Arguments.Select(argument => IrMutation.IsPassedAsACopy(call, argument)
             ? StoredValue(argument, placement, receiverName)
             : Expression(argument, placement, receiverName)));
+        arguments.AddRange(outs);
 
         var methodName = placement.MethodNameOf(call.Target);
-        return $"{placement.QualifiedClassOf(call.Target.Receiver)}.{methodName}({string.Join(", ", arguments)})";
+        return $"{placement.QualifiedClassOf(call.Target)}.{methodName}({string.Join(", ", arguments)})";
     }
 
     /// <summary>

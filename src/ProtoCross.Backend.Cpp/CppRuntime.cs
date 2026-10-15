@@ -105,6 +105,11 @@ public static class CppRuntime
             writer.WriteLine();
 
             EmitMapHelpers(writer);
+
+            writer.WriteLine("// --- refusals (16.3) ---");
+            writer.WriteLine();
+
+            EmitRefusalHelper(writer);
         }
 
         writer.WriteLine();
@@ -666,6 +671,27 @@ public static class CppRuntime
     /// <c>sysexits.h</c>, and normative: every backend reports the same code (spec 10.2.1).
     /// </summary>
     public const int FailExitCode = 70;
+
+    /// <summary>Emits what a call makes of a refusal where the call says <c>on_refused fail</c> (spec 16.3).</summary>
+    /// <remarks>
+    /// The failure names the method by its name in the language, passed in by the call site, and writes the line the
+    /// C# runtime writes. It does not write the refusal: the two runtimes would print one message two different ways.
+    /// </remarks>
+    private static void EmitRefusalHelper(SourceWriter writer)
+    {
+        writer.WriteLine("// Reached only from an 'on_refused fail' clause, where the author declared that no");
+        writer.WriteLine("// substitute for what the method builds is correct.");
+        using (writer.Block("[[noreturn]] inline void refused(const char* method)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(method, stderr);");
+            writer.WriteLine("::std::fputs(\" refused\\n\", stderr);");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+    }
 
     /// <summary>
     /// Emits the deterministic-termination helper behind <c>on_zero fail</c>.
