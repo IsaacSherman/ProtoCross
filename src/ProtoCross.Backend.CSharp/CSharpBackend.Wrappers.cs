@@ -314,11 +314,19 @@ public sealed partial class CSharpBackend
                 writer.WriteLine(storeBack);
                 break;
 
-            case IrReturn:
-                var result = body.Unused("result");
-                writer.WriteLine($"var {result} = {Expression(changed, placement)};");
+            // A method that may refuse returns its value through its parameter, and says it built it.
+            case IrReturn when body.Outs is { Result: { } result } outs:
+                writer.WriteLine($"{result} = {Expression(changed, placement)};");
                 writer.WriteLine(storeBack);
-                writer.WriteLine($"return {result};");
+                writer.WriteLine($"{outs.Refusal} = default;");
+                writer.WriteLine("return true;");
+                break;
+
+            case IrReturn:
+                var returned = body.Unused("result");
+                writer.WriteLine($"var {returned} = {Expression(changed, placement)};");
+                writer.WriteLine(storeBack);
+                writer.WriteLine($"return {returned};");
                 break;
 
             default:
@@ -329,8 +337,9 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// The local <see cref="EmitChangeThroughACopy"/> declares, standing in the IR for the receiver it
-    /// copies, so the call is written by the same code as every other call.
+    /// A local generated code declares, standing in the IR for the value it holds, so what reads it is
+    /// written by the same code as every other value: the receiver <see cref="EmitChangeThroughACopy"/>
+    /// copies, or what a call that passes a refusal on built (<see cref="EmitPassedOn"/>).
     /// </summary>
     private sealed record HeldCopy(string Name, PlType Type) : IrExpression(Type, default);
 }

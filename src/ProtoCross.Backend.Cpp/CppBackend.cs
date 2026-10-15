@@ -326,23 +326,48 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
     /// <summary>A factory's method as its struct declares it: <c>static</c>, taking only its parameters.</summary>
     private static string FactoryMemberDeclaration(IrMethod method, Placement placement)
-        => $"static {TypeName(method.ReturnType)} {placement.MemberNameOf(method.Signature)}({ParameterList(method)})";
+        => $"static {FactoryReturnType(method)} {placement.MemberNameOf(method.Signature)}({ParameterList(method, Outs.Of(method))})";
 
     /// <summary>A factory's method as it is defined, after its struct: <c>inline</c>, and named through the struct.</summary>
-    private static string FactoryMemberDefinition(IrMethod method, Placement placement)
-        => $"inline {TypeName(method.ReturnType)} {placement.FactoryStructOf(method.Receiver)}::"
-            + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method)})";
+    private static string FactoryMemberDefinition(IrMethod method, Outs? outs, Placement placement)
+        => $"inline {FactoryReturnType(method)} {placement.FactoryStructOf(method.Receiver)}::"
+            + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method, outs)})";
 
-    /// <summary>A method's parameters as C++ declares them, without any receiver.</summary>
-    private static string ParameterList(IrMethod method)
-        => string.Join(", ", method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
+    /// <summary>
+    /// What a factory's method returns: what it builds, or, for one that may refuse, whether it built it rather
+    /// than refusing (spec 24.2).
+    /// </summary>
+    private static string FactoryReturnType(IrMethod method)
+        => method.Signature.CanRefuse ? "bool" : TypeName(method.ReturnType);
 
+    /// <summary>
+    /// A method's parameters as C++ declares them, without any receiver, and with the references a method that
+    /// may refuse gives its result and its refusal through.
+    /// </summary>
+    private static string ParameterList(IrMethod method, Outs? outs)
+        => string.Join(", ", method.Parameters
+            .Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}")
+            .Concat(outs?.Declared(method.Signature) ?? []));
+
+    /// <remarks>
+    /// A method that may refuse returns whether it built its result, and sets the result or the refusal through
+    /// a reference: the shape the C# backend gives it, so one method reads one way in both (spec 24.2). The other
+    /// reference is left as it was handed in. Every other method is defined as it always was.
+    /// </remarks>
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
+        var outs = Outs.Of(method);
         using var scope = writer.Block(method.Signature.HasReceiver
             ? Signature(method)
-            : FactoryMemberDefinition(method, placement));
-        EmitStatements(writer, method.Body.Statements, placement);
+            : FactoryMemberDefinition(method, outs, placement));
+
+        EmitStatements(writer, method.Body.Statements, placement with { Outs = outs });
+
+        // A method that returns nothing may reach the end of its body, and one that may refuse says there that it did not.
+        if (outs is { Result: null } && !IrFlow.NeverFallsThrough(method.Body))
+        {
+            writer.WriteLine("return true;");
+        }
     }
 
     private static string Expression(IrExpression expression, Placement placement) => expression switch
@@ -364,6 +389,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrFieldPresence presence
             => $"{Expression(presence.Receiver, placement)}.has_{NameConventions.GetCppFieldName(presence.Field)}()",
         IrMethodCall call => EmitCall(call, placement),
+        IrRefusableCall refusable => EmitRefusableCall(refusable, placement),
         IrBinary binary => EmitBinary(binary, placement),
         IrIntegerDivision division => EmitIntegerDivision(division, placement),
         IrUnary unary => EmitUnary(unary, placement),
@@ -405,7 +431,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>). A map's lookup is
     /// one too, since the runtime gives what it finds by value rather than as a reference into the map.
     /// </remarks>
-    private static string EmitCall(IrMethodCall call, Placement placement)
+    /// <param name="outs">
+    /// What a call to a method that may refuse passes for the references it gives its result and refusal through.
+    /// </param>
+    private static string EmitCall(IrMethodCall call, Placement placement, params string[] outs)
     {
         var arguments = call.Receiver switch
         {
@@ -415,6 +444,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         };
 
         arguments.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
+        arguments.AddRange(outs);
 
         return $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments)})";
     }

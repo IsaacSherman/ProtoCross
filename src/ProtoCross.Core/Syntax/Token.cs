@@ -60,6 +60,7 @@ public static class TokenKindExtensions
         [TokenKind.LessLessEquals] = "<<=",
         [TokenKind.GreaterGreaterEquals] = ">>=",
         [TokenKind.OnMissing] = "on_missing",
+        [TokenKind.OnRefused] = "on_refused",
         [TokenKind.OnZero] = "on_zero",
         [TokenKind.Identifier] = "identifier",
         [TokenKind.IntegerLiteral] = "integer literal",

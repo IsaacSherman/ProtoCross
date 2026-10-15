@@ -33,6 +33,42 @@ public sealed partial class CSharpBackend
                 break;
             }
 
+            // A call that passes a refusal on is tested before the statement it stands in does anything.
+            case IrVariableDeclaration { Initializer: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } declaration:
+            {
+                var built = placement.Built[passed];
+                EmitPassedOn(writer, passed, body, built);
+                writer.WriteLine(
+                    $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = {BuiltValue(passed, built, body)};");
+                break;
+            }
+
+            case IrAssignment { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } assignment:
+            {
+                var built = placement.Built[passed];
+                EmitPassedOn(writer, passed, body, built);
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {BuiltValue(passed, built, body)};");
+                break;
+            }
+
+            // Both methods give what they built and refused through parameters of one type, so the call is handed this one's.
+            case IrReturn { Value: IrRefusableCall { OnRefused: RefusalBehavior.Refuse } passed } when body.Outs is { Result: { } result } outs:
+                writer.WriteLine(
+                    $"return {EmitCall(passed.Call, placement, ReceiverName, $"out {result}", $"out {outs.Refusal}")};");
+                break;
+
+            case IrReturn returned when body.Outs is { } outs:
+                EmitBuilt(writer, returned.Value, outs, placement);
+                break;
+
+            case IrRefuse refusal:
+                EmitRefused(writer, refusal, body.Outs!, placement);
+                break;
+
+            case IrExpressionStatement { Expression: IrRefusableCall refusable }:
+                EmitStandingRefusableCall(writer, refusable, body);
+                break;
+
             case IrVariableDeclaration declaration:
                 writer.WriteLine(
                     $"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)} = "

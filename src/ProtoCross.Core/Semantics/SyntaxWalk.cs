@@ -37,9 +37,11 @@ public static class SyntaxWalk
 
             ExtendDeclaration extend => [.. extend.Methods],
             FactoryDeclaration factory => [.. factory.Methods],
-            MethodDeclaration method => method.ReturnType is { } returnType
-                ? [.. method.Parameters, returnType, method.Body]
-                : [.. method.Parameters, method.Body],
+            MethodDeclaration method => [
+                .. method.Parameters,
+                .. new[] { method.ReturnType, method.Refusal }.OfType<TypeReference>(),
+                method.Body,
+            ],
             ParameterDeclaration parameter => [parameter.Type],
 
             TestDeclaration test => [test.Target, test.Receiver, .. test.Arguments, test.Expectation],
@@ -47,12 +49,14 @@ public static class SyntaxWalk
             FieldInitializer field => [field.Value],
             TestArgumentDeclaration argument => [argument.Value],
             TestReturnExpectation expectation => [expectation.Value],
+            TestRefusalExpectation expectation => [expectation.Value],
 
             BlockStatement block => [.. block.Statements],
             VariableDeclarationStatement declaration => declaration.DeclaredType is { } declaredType
                 ? [declaredType, declaration.Initializer]
                 : [declaration.Initializer],
             ReturnStatement { Value: { } returned } => [returned],
+            RefuseStatement refusal => [refusal.Value],
             ForInStatement loop => [loop.Collection, loop.Body],
             IfStatement branch => branch.Else is { } otherwise
                 ? [branch.Condition, branch.Then, otherwise]
@@ -68,6 +72,8 @@ public static class SyntaxWalk
 
             MemberAccessExpression member => [member.Receiver],
             InvocationExpression invocation => [invocation.Callee, .. invocation.Arguments],
+            OnRefusedExpression handled => [handled.Call, handled.Clause],
+            OnRefusedClause { Fallback: { } fallback } => [fallback],
             BinaryExpression binary => binary.OnZero is { } onZero
                 ? [binary.Left, binary.Right, onZero]
                 : [binary.Left, binary.Right],

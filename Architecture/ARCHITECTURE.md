@@ -129,7 +129,10 @@ each with a form that takes a list of sources.
    signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
    implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
    block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
-   can be followed to it (`Binder.Factories.cs`). Declarations inside a resolvable receiver are kept as far as possible:
+   can be followed to it (`Binder.Factories.cs`). A factory's method that may refuse carries the type
+   it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is an `IrRefuse`, and every
+   call to such a method, from anywhere, is held by an `IrRefusableCall` saying what a refusal makes of
+   it, so a backend never meets one bare (`Binder.Refusals.cs`). Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
    [`DeclarationSite`](../src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
    declaration it means and say which symbol that is. It also records the other direction as it
@@ -707,6 +710,16 @@ check use. A test whose expectation is a message literal compares the fields it 
 are is [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer, which each
 backend emits as field reads off the result.
 
+A method that may refuse is generated in a shape of its own in both backends: it returns `bool`, and
+gives what it built or refused through two parameters, `out` in C# and references in C++
+(`*Backend.Refusals.cs`). A call answered with a fallback or `fail` is an expression. In C# it is a
+conditional over the call with what it built in an `out var`, each named once per method, before the
+method is written, and handed to every expression on the method's copy of `Placement`. In C++ it is a
+lambda called where it is written, as a literal is. A call that passes a refusal on stands on its own,
+so each backend tests it in an `if` before the rest of its statement. `on_refused fail` goes through a
+helper in each support file. A test of such a method checks how it ended, then compares the result or
+the refusal as any result is compared.
+
 A backend is handed one source's part of the module, and a call in it may name a method another
 source declares. C# reaches it by the `partial` extension class it is declared in, whichever file
 declares the part. A C++ header includes the headers of the sources it calls, after its own
@@ -736,7 +749,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `CompiledCorpusTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,

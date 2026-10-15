@@ -274,6 +274,40 @@ public sealed record IrMethodSignature(
     /// <summary>Whether the method is called on a message, which only an extend block's are.</summary>
     public bool HasReceiver => Kind is IrMethodKind.Extend;
 
+    /// <summary>
+    /// What the method may refuse with, as its <c>refuses T</c> declares, or null for a method that
+    /// cannot refuse (spec 16.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On the signature for the reason <see cref="IsMutating"/> is: a call reaches the signature, and the
+    /// call is where a refusal has to be answered, by the clause the caller writes. Each backend reads it
+    /// at the declaration too, since a method that can refuse is generated in a shape of its own (spec 24).
+    /// </para>
+    /// <para>
+    /// Init-only with a default of null, so every existing construction of a signature stays valid and
+    /// describes a method that cannot refuse, which every method was before #84.
+    /// </para>
+    /// </remarks>
+    public PlType? Refusal { get; init; }
+
+    /// <summary>Whether the method may refuse, so a call to it says what a refusal makes of it.</summary>
+    public bool CanRefuse => Refusal is not null;
+
+    /// <summary>
+    /// The method as the language names it, with its message's protobuf name: <c>acme.Invoice.total</c>,
+    /// or <c>acme.Invoice.factory.create</c> for a factory's.
+    /// </summary>
+    /// <remarks>
+    /// One spelling for every surface that names a method to someone reading a run rather than a source: a
+    /// test's identity, and the line a call that ends the program writes. A factory's method is named
+    /// through the factory, as code calls it. No method of the message can share its name (spec 16.1), so
+    /// the word distinguishes nothing; it says where the method is.
+    /// </remarks>
+    public string QualifiedName => HasReceiver
+        ? $"{Receiver.FullName}.{Name}"
+        : $"{Receiver.FullName}.{ContextualKeywords.Factory}.{Name}";
+
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
     /// int64</c>, or <c>mut fn …</c> for one that may change its receiver.</summary>
     /// <remarks>
@@ -291,7 +325,8 @@ public sealed record IrMethodSignature(
     /// </para>
     /// </remarks>
     public string DisplayName
-        => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}";
+        => $"{Opening}{string.Join(Separator, Parameters.Select(Describe))}) -> {ReturnType.DisplayName}"
+            + (Refusal is null ? string.Empty : $" {ContextualKeywords.Refuses} {Refusal.DisplayName}");
 
     /// <summary>
     /// Where each parameter sits inside <see cref="DisplayName"/>, in the order they are declared.
@@ -597,6 +632,14 @@ public sealed record IrMapUpdate(
     SourceSpan Span) : IrStatement(Span);
 
 public sealed record IrReturn(IrExpression? Value, SourceSpan Span) : IrStatement(Span);
+
+/// <summary><c>refuse value;</c>: the method ends with its refusal rather than its result (spec 16.3).</summary>
+/// <remarks>
+/// A statement of its own rather than a return with a flag, because the two end the method in different
+/// ways in every backend: one sets the result and says the method built it, the other sets the refusal
+/// and says it did not. A walk that met a refusal as a return would take the value for the result.
+/// </remarks>
+public sealed record IrRefuse(IrExpression Value, SourceSpan Span) : IrStatement(Span);
 
 /// <summary>Iteration over a repeated field, in protobuf field order (spec 14).</summary>
 public sealed record IrForEach(IrLocal Loop, IrExpression Collection, IrBlock Body, SourceSpan Span)
@@ -1018,6 +1061,57 @@ public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, S
     : IrExpression(ScalarType.BoolType, Span);
 
 /// <summary>What a map lookup gives when its key is missing (spec 14.2).</summary>
+/// <summary>What a call to a method that may refuse makes of a refusal (spec 16.3).</summary>
+public enum RefusalBehavior
+{
+    /// <summary>The fallback the clause wrote, evaluated only when the method refuses.</summary>
+    Fallback,
+
+    /// <summary>Terminate the program deterministically, as <c>on_zero fail</c> does.</summary>
+    Fail,
+
+    /// <summary>
+    /// End the calling method with the same refusal, <c>on_refused refuse</c>. Only a method that may refuse
+    /// with the same type can, and only from where a call stands on its own, which the binder says.
+    /// </summary>
+    Refuse,
+
+    /// <summary>
+    /// No clause was written, which is <c>PC0138</c>. Kept as a call of the method's return type rather
+    /// than collapsed to an error, so the expression around it reports nothing further; no backend is
+    /// handed one, because a compilation that reported it has failed.
+    /// </summary>
+    Unstated,
+}
+
+/// <summary>
+/// A call to a method that may refuse, with what a refusal makes of it:
+/// <c>Invoice.factory.create(options) on_refused fail</c> (spec 16.3).
+/// </summary>
+/// <param name="Fallback">
+/// The value a refusal gives. Non-null exactly when <paramref name="OnRefused"/> is
+/// <see cref="RefusalBehavior.Fallback"/>, and evaluated only when the method refuses.
+/// </param>
+/// <remarks>
+/// <para>
+/// A node around the call rather than more members on <see cref="IrMethodCall"/>, because a backend calls
+/// a method that may refuse in a shape of its own, and has to answer the refusal where the call is. One
+/// that met such a call as an ordinary one would emit a call to a method that is not there. Every call to
+/// a method that may refuse is one of these, the clause written or not, so a backend never meets one
+/// bare. What asks about calls, which methods change what and which header declares them, finds the
+/// call inside it, as it finds one inside <see cref="IrValuelessCall"/>.
+/// </para>
+/// <para>
+/// Its value is the call's: the message built, or the fallback, which has the same type. A refusal passed
+/// on with <see cref="RefusalBehavior.Refuse"/> never gives a value at all, since the calling method ends.
+/// </para>
+/// </remarks>
+public sealed record IrRefusableCall(
+    IrMethodCall Call,
+    RefusalBehavior OnRefused,
+    IrExpression? Fallback,
+    SourceSpan Span) : IrExpression(Call.Type, Span);
+
 public enum MissingKeyBehavior
 {
     /// <summary>The fallback the clause wrote, evaluated only when the key is missing.</summary>
@@ -1312,9 +1406,7 @@ public sealed record IrTest(
     /// of the message can share its name (spec 16.1), so the word distinguishes nothing; it says where
     /// the method is.
     /// </remarks>
-    public string Identity => Target.HasReceiver
-        ? $"{Target.Receiver.FullName}.{Target.Name}: {Name}"
-        : $"{Target.Receiver.FullName}.{ContextualKeywords.Factory}.{Target.Name}: {Name}";
+    public string Identity => $"{Target.QualifiedName}: {Name}";
 
     /// <summary>
     /// The source this test is declared in, or null for a test nothing bound.
@@ -1336,11 +1428,32 @@ public sealed record IrTest(
 
 public sealed record IrTestArgument(string Name, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
-public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span);
+public abstract record IrTestExpectation(SourceSpan Span) : IrNode(Span)
+{
+    /// <summary>
+    /// What a backend compares with what the method gives: for <c>expect refuse</c>, the comparison it holds
+    /// (<see cref="IrTestRefusalExpectation.Expected"/>), and for every other expectation, itself.
+    /// </summary>
+    /// <remarks>A method rather than a property, so a record's printing of its members does not print itself.</remarks>
+    public IrTestExpectation Compared() => this is IrTestRefusalExpectation refusal ? refusal.Expected : this;
+}
 
 public sealed record IrTestReturnExpectation(IrExpression Value, SourceSpan Span) : IrTestExpectation(Span);
 
 public sealed record IrTestFailExpectation(SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary><c>expect refuse value;</c>: met when the method refuses, with a refusal the inner expectation meets (spec 25.3).</summary>
+/// <param name="Expected">
+/// What the refusal is compared with, as an <c>expect return</c> of it would compare a result: an
+/// <see cref="IrTestReturnExpectation"/>, or an <see cref="IrTestFieldsExpectation"/> where the refusal
+/// is a message and the value a literal of one. It has this expectation's span, since it is the same text.
+/// </param>
+/// <remarks>
+/// Around an expectation rather than beside its kinds, because a refusal is compared exactly as a result
+/// is. Each backend already compares a result each way, and what it adds for this is the call that
+/// expects a refusal and hands it to that comparison.
+/// </remarks>
+public sealed record IrTestRefusalExpectation(IrTestExpectation Expected, SourceSpan Span) : IrTestExpectation(Span);
 
 /// <summary>
 /// <c>expect return new T { ... };</c> on a method that returns a message: met when every field the

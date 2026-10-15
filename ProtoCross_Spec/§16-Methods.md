@@ -60,8 +60,10 @@ Normative Requirements:
 
 Open Questions:
 
-- Should recoverable errors be represented through user-defined protobuf messages, a future standard
-  library `Result`, or some other convention?
+- ~~Should recoverable errors be represented through user-defined protobuf messages, a future standard
+  library `Result`, or some other convention?~~ Decided for a factory's methods: a refusal of a type the
+  author chooses, declared after the return type and answered at every call ([16.3.1](#1631-refusals)).
+  Whether any other method may refuse remains open ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
 
 ### 16.3 Factories
 
@@ -141,9 +143,76 @@ Normative Requirements:
 - **A factory whose generated class would share a name in its namespace is refused** with
   `PC0126`, whether with another factory's class or with a schema's type or namespace, in either
   backend ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
+- **A factory's method may refuse**, by declaring what it refuses with ([16.3.1](#1631-refusals)).
 
 Factories offer no support for injection or mocking in 1.0. A factory method is pure: it does no I/O
 and calls nothing outside ProtoCross ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), so nothing in it needs replacing in a test. A
 consumer who wants an interface writes a wrapper that forwards to the generated methods, which is
 how consumers already adapt protoc's sealed message classes. Generating one was considered and left
 out, because nobody needs it yet and adding it later breaks no caller.
+
+### 16.3.1 Refusals
+
+**Decided: a factory's method may refuse, by declaring what it refuses with after its return type,
+and every call to one says what a refusal makes of it.**
+
+```protocross
+factory Invoice {
+    fn create(options: InvoiceOptions) -> Invoice refuses InvoiceRefusal {
+        require_lines(options) on_refused refuse;
+        return new Invoice { number: options.number };
+    }
+
+    helper fn require_lines(options: InvoiceOptions) refuses InvoiceRefusal {
+        if options.line_count <= 0 {
+            refuse new InvoiceRefusal { reason: RefusalReason.NO_LINES };
+        }
+    }
+}
+
+extend Order {
+    fn draft() -> Invoice {
+        return Invoice.factory.create(options()) on_refused new Invoice { number: "draft" };
+    }
+}
+```
+
+A refusal is how a factory says no. Its type is the author's: a message that says why, an enum, a
+string, or any type a method may return. A team shapes it as it needs, and a consumer reads it as the
+ordinary value it is ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). A factory that only builds declares nothing, and is called as it always was.
+
+Normative Requirements:
+
+- **A method declares its refusal after its return type, `-> T refuses R`**, or after its parameters
+  where it returns nothing. Only a factory's methods and helpers may refuse. A refusal declared on a
+  method of an extend block is `PC0135`, and the method is bound as it was declared, so neither its
+  body nor its callers are told the same thing again. A refusal of `void` is `PC0024`.
+- **`refuse value;` ends the method with its refusal**, as `return` ends it with its result, so
+  nothing after it on its path runs and a path that refuses needs no `return`. The value must already
+  have the type the method refuses with (`PC0137`); no implicit conversion is applied. A `refuse` in a
+  method that declares no refusal is `PC0136`. The value is evaluated as the method ends, so it may not
+  itself pass a refusal on (`PC0142`) or call a `mut fn` (`PC0095`), as a value inside an expression may
+  not.
+- **A call to a method that may refuse says what a refusal makes of it**, with an `on_refused` clause
+  after the call. One without it is `PC0138`, whose help lists the forms that fit where it is written:
+  - `on_refused <fallback>` gives the fallback instead. It must have the type the call gives
+    (`PC0140`), and it is evaluated only where the method refused, after the call, as an `on_zero`
+    fallback is only for a zero divisor ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A method that returns nothing gives no value to fall
+    back from, so a fallback on a call to one is `PC0140` too.
+  - `on_refused fail` ends the program as `on_zero fail` does, with exit code 70 and a line on standard
+    error naming the method as the language does, `acme.Invoice.factory.create refused`
+    ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)).
+  - `on_refused refuse` ends the calling method with the same refusal. A refusal is passed on as it is,
+    so the caller must refuse with the same type (`PC0141`). The call must stand on its own, as a
+    statement, a `var` initializer, a local's new value or a `return` value, the places a mutating
+    call may stand ([18](./§18-Mutability.md#18-mutability)), because the method ends there and nothing beside the call may have been
+    evaluated. Anywhere else it is `PC0142`.
+- **An `on_refused` clause on a call that cannot refuse is `PC0139`**, a warning, as an `on_zero` on a
+  division by a non-zero literal is: it cannot run, and the call means what it would without it.
+- **A refusal is not a value a method can hold.** No type is "a message or a refusal", and nothing in
+  the language reads one but the test that expects it ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)). This is what lets a refusal need no
+  generic type: it exists only between the method that refuses and the call that answers it.
+
+This settles how a factory refuses, and nothing more. Whether a method outside a factory may refuse,
+whether a value may hold a refusal, and whether `on_zero fail` may become one remain open
+([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)). Each would extend this rather than change it.

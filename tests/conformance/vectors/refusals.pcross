@@ -1,0 +1,307 @@
+// Conformance vectors for refusals (spec 16.3): a factory's method that may refuse, what it refuses
+// with, and what each call makes of a refusal.
+//
+// C# generates a method that may refuse as 'bool Create(..., out result, out refusal)' and C++ as
+// 'bool create(..., result&, refusal&)'. These pin that the two refuse the same inputs with the same
+// refusal, and answer a refusal the same way: with a fallback, evaluated only where the method
+// refused; with 'fail', which ends the program; and with 'refuse', which passes it on from a
+// statement, a 'var', a local's new value and a 'return'. A refusal is a message, a string or an
+// enum, as its method declares, and a test expects one with 'expect refuse' (spec 25.3).
+
+import proto "refusals.proto";
+
+factory RefusalInvoice {
+    // Refuses with a message, passed on from helpers that refuse with it too: one that returns
+    // nothing, from a statement, and one that returns the number, from a 'var'.
+    fn create(options: RefusalInvoiceOptions) -> RefusalInvoice refuses InvoiceRefusal {
+        require_lines(options) on_refused refuse;
+        var number: string = checked_number(options) on_refused refuse;
+        return new RefusalInvoice {
+            number: number,
+            total_cents: options.line_count * options.unit_cents,
+            lines: [new RefusalLine { cents: options.unit_cents }],
+        };
+    }
+
+    // Passes a refusal on from the 'return' it stands in.
+    fn again(options: RefusalInvoiceOptions) -> RefusalInvoice refuses InvoiceRefusal {
+        return create(options) on_refused refuse;
+    }
+
+    // Passes a refusal on from a statement whose value is not used, and from a local's new value.
+    fn twice(options: RefusalInvoiceOptions) -> RefusalInvoice refuses InvoiceRefusal {
+        create(options) on_refused refuse;
+        var built: RefusalInvoice = new RefusalInvoice { number: "unset" };
+        built = create(options) on_refused refuse;
+        return built;
+    }
+
+    // Answers a refusal with a fallback.
+    fn or_draft(options: RefusalInvoiceOptions) -> RefusalInvoice {
+        return create(options) on_refused new RefusalInvoice { number: "draft" };
+    }
+
+    // A fallback that would end the program, which a call that builds never evaluates.
+    fn or_strict(options: RefusalInvoiceOptions, otherwise: RefusalInvoiceOptions) -> RefusalInvoice {
+        return create(options) on_refused create(otherwise) on_refused fail;
+    }
+
+    // Calls whose value is not used, answered as statements: a helper that returns nothing, with
+    // 'fail', and a method that builds, with a fallback and with 'fail'.
+    fn checked(options: RefusalInvoiceOptions) -> RefusalInvoice {
+        require_lines(options) on_refused fail;
+        create(options) on_refused new RefusalInvoice {};
+        create(options) on_refused fail;
+        return new RefusalInvoice { number: "checked" };
+    }
+
+    // Refuses before it divides, so a refused order never reaches the division that would end the
+    // program.
+    fn per_divisor(options: RefusalInvoiceOptions) -> RefusalInvoice refuses InvoiceRefusal {
+        require_lines(options) on_refused refuse;
+        return new RefusalInvoice { total_cents: options.unit_cents / options.divisor on_zero fail };
+    }
+
+    helper fn require_lines(options: RefusalInvoiceOptions) refuses InvoiceRefusal {
+        if options.line_count <= 0 {
+            refuse new InvoiceRefusal {
+                reason: RefusalReason.REFUSAL_REASON_NO_LINES,
+                detail: "an invoice needs a line",
+            };
+        }
+
+        if options.line_count > 2 {
+            refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_TOO_MANY_LINES };
+        }
+    }
+
+    helper fn checked_number(options: RefusalInvoiceOptions) -> string refuses InvoiceRefusal {
+        if options.number == "" {
+            refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_NO_NUMBER };
+        }
+
+        return options.number;
+    }
+}
+
+factory RefusalTicket {
+    // Refuses with a string.
+    fn issued(code: string) -> RefusalTicket refuses string {
+        if code == "" {
+            refuse "a ticket needs a code";
+        }
+
+        return new RefusalTicket { code: code };
+    }
+}
+
+factory RefusalBadge {
+    // Refuses with an enum.
+    fn levelled(level: int64) -> RefusalBadge refuses BadgeRefusal {
+        if level < 0 {
+            refuse BadgeRefusal.BADGE_REFUSAL_NEGATIVE;
+        }
+
+        return new RefusalBadge { level: level };
+    }
+}
+
+extend RefusalOrder {
+    // A call written for its value inside an expression, answered with a fallback.
+    fn billed_cents() -> int64 {
+        var options: RefusalInvoiceOptions = new RefusalInvoiceOptions {
+            number: number,
+            line_count: lines,
+            unit_cents: unit_cents,
+        };
+
+        return (RefusalInvoice.factory.create(options) on_refused new RefusalInvoice { total_cents: -1 }).total_cents;
+    }
+
+    // A loop over a field of what a call built, which C++ has to keep for as long as the loop runs.
+    fn line_cents() -> int64 {
+        var options: RefusalInvoiceOptions = new RefusalInvoiceOptions {
+            number: number,
+            line_count: lines,
+            unit_cents: unit_cents,
+        };
+        var total: int64 = 0;
+
+        for line in (RefusalInvoice.factory.create(options) on_refused new RefusalInvoice {}).lines {
+            total += line.cents;
+        }
+
+        return total;
+    }
+
+    // Ends the program where the call refuses.
+    fn strict_cents() -> int64 {
+        var options: RefusalInvoiceOptions = new RefusalInvoiceOptions {
+            number: number,
+            line_count: lines,
+            unit_cents: unit_cents,
+        };
+        var built: RefusalInvoice = RefusalInvoice.factory.create(options) on_refused fail;
+
+        return built.total_cents;
+    }
+
+    fn ticket_code() -> string {
+        return (RefusalTicket.factory.issued(number) on_refused new RefusalTicket { code: "none" }).code;
+    }
+}
+
+test RefusalInvoice.factory.create "builds from valid options" {
+    arg options = new RefusalInvoiceOptions { number: "A1", line_count: 2, unit_cents: 250 };
+    expect return new RefusalInvoice { number: "A1", total_cents: 500 };
+}
+
+test RefusalInvoice.factory.create "refuses an invoice with no lines" {
+    arg options = new RefusalInvoiceOptions { number: "A2", line_count: 0, unit_cents: 250 };
+    expect refuse new InvoiceRefusal {
+        reason: RefusalReason.REFUSAL_REASON_NO_LINES,
+        detail: "an invoice needs a line",
+    };
+}
+
+test RefusalInvoice.factory.create "refuses an invoice with too many lines" {
+    arg options = new RefusalInvoiceOptions { number: "A3", line_count: 3, unit_cents: 250 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_TOO_MANY_LINES };
+}
+
+test RefusalInvoice.factory.create "passes on a refusal from a var" {
+    arg options = new RefusalInvoiceOptions { number: "", line_count: 1, unit_cents: 250 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_NO_NUMBER };
+}
+
+test RefusalInvoice.factory.again "passes on a refusal from a return" {
+    arg options = new RefusalInvoiceOptions { number: "", line_count: 1, unit_cents: 250 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_NO_NUMBER };
+}
+
+test RefusalInvoice.factory.again "builds what the call it returns builds" {
+    arg options = new RefusalInvoiceOptions { number: "B1", line_count: 1, unit_cents: 40 };
+    expect return new RefusalInvoice { number: "B1", total_cents: 40 };
+}
+
+test RefusalInvoice.factory.twice "passes on a refusal from a statement" {
+    arg options = new RefusalInvoiceOptions { number: "B2", line_count: 0, unit_cents: 40 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_NO_LINES };
+}
+
+test RefusalInvoice.factory.twice "a local's new value is what the call built" {
+    arg options = new RefusalInvoiceOptions { number: "B3", line_count: 2, unit_cents: 40 };
+    expect return new RefusalInvoice { number: "B3", total_cents: 80 };
+}
+
+test RefusalInvoice.factory.or_draft "a call that builds gives what it built" {
+    arg options = new RefusalInvoiceOptions { number: "C1", line_count: 1, unit_cents: 10 };
+    expect return new RefusalInvoice { number: "C1", total_cents: 10 };
+}
+
+test RefusalInvoice.factory.or_draft "a refusal gives the fallback" {
+    arg options = new RefusalInvoiceOptions { number: "C2", line_count: 0, unit_cents: 10 };
+    expect return new RefusalInvoice { number: "draft", total_cents: 0 };
+}
+
+test RefusalInvoice.factory.or_strict "a fallback that would fail is not evaluated" {
+    arg options = new RefusalInvoiceOptions { number: "D1", line_count: 1, unit_cents: 5 };
+    arg otherwise = new RefusalInvoiceOptions { number: "", line_count: 0, unit_cents: 5 };
+    expect return new RefusalInvoice { number: "D1", total_cents: 5 };
+}
+
+test RefusalInvoice.factory.or_strict "a refused fallback ends the program" {
+    arg options = new RefusalInvoiceOptions { number: "D2", line_count: 0, unit_cents: 5 };
+    arg otherwise = new RefusalInvoiceOptions { number: "", line_count: 0, unit_cents: 5 };
+    expect fail;
+}
+
+test RefusalInvoice.factory.checked "calls standing as statements build" {
+    arg options = new RefusalInvoiceOptions { number: "F1", line_count: 1, unit_cents: 5 };
+    expect return new RefusalInvoice { number: "checked" };
+}
+
+test RefusalInvoice.factory.checked "a statement answered with fail ends the program" {
+    arg options = new RefusalInvoiceOptions { number: "F2", line_count: 0, unit_cents: 5 };
+    expect fail;
+}
+
+test RefusalInvoice.factory.per_divisor "a refusal comes before the division" {
+    arg options = new RefusalInvoiceOptions { number: "E1", line_count: 0, unit_cents: 5, divisor: 0 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.REFUSAL_REASON_NO_LINES };
+}
+
+test RefusalInvoice.factory.per_divisor "a zero divisor still ends the program" {
+    arg options = new RefusalInvoiceOptions { number: "E2", line_count: 1, unit_cents: 5, divisor: 0 };
+    expect fail;
+}
+
+test RefusalTicket.factory.issued "refuses with a string" {
+    arg code = "";
+    expect refuse "a ticket needs a code";
+}
+
+test RefusalTicket.factory.issued "builds a ticket with a code" {
+    arg code = "T1";
+    expect return new RefusalTicket { code: "T1" };
+}
+
+test RefusalBadge.factory.levelled "refuses with an enum" {
+    arg level = -1;
+    expect refuse BadgeRefusal.BADGE_REFUSAL_NEGATIVE;
+}
+
+test RefusalBadge.factory.levelled "builds a badge with a level" {
+    arg level = 3;
+    expect return new RefusalBadge { level: 3 };
+}
+
+test RefusalOrder.billed_cents "a call that builds inside an expression" {
+    receiver {
+        number: "O1",
+        lines: 2,
+        unit_cents: 125,
+    }
+
+    expect return 250;
+}
+
+test RefusalOrder.billed_cents "a refusal inside an expression gives the fallback" {
+    receiver {
+        number: "O2",
+        lines: 0,
+        unit_cents: 125,
+    }
+
+    expect return -1;
+}
+
+test RefusalOrder.line_cents "a loop over a field of what a call built" {
+    receiver {
+        number: "O3",
+        lines: 1,
+        unit_cents: 70,
+    }
+
+    expect return 70;
+}
+
+test RefusalOrder.strict_cents "on_refused fail ends the program" {
+    receiver {
+        number: "",
+        lines: 1,
+        unit_cents: 70,
+    }
+
+    expect fail;
+}
+
+test RefusalOrder.ticket_code "a refusal with a string gives the fallback" {
+    receiver {
+        number: "",
+        lines: 1,
+        unit_cents: 70,
+    }
+
+    expect return "none";
+}

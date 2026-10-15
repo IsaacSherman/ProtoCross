@@ -1774,13 +1774,21 @@ public sealed class CompletionProvider
         // switch that no loop holds (spec 15.2).
         var inArm = at is not null && at.Ancestors.Any(node => node is SwitchArm);
 
+        // A 'refuse' ends a method that declares what it refuses with, and is refused in any other (spec 16.3).
+        var refusing = at is not null && at.Ancestors.Any(node => node is MethodDeclaration { Refusal: not null });
+
         // Exclusive rather than nested. Where a statement begins, the caret is in front of whatever
         // is already written, and an operator keyword accepted there swallows the next name as its
         // operand: 'has' inserted before 'local = ...' asks for the presence of a local, which is
         // PC0041. Where an expression is being written the caret is on a name and replaces it, so the
         // operators are the ones that fit and a statement keyword is the one that cannot.
         var keywords = starting
-            ? [.. StatementStarters, .. inLoop || inArm ? LoopOrArmOnly : [], .. inLoop ? LoopOnly : []]
+            ? [
+                .. StatementStarters,
+                .. refusing ? RefusingOnly : [],
+                .. inLoop || inArm ? LoopOrArmOnly : [],
+                .. inLoop ? LoopOnly : [],
+            ]
             : ExpressionStarters;
 
         return keywords.Select(keyword => Member(
@@ -1789,6 +1797,8 @@ public sealed class CompletionProvider
 
     private static readonly IReadOnlyList<string> StatementStarters =
         ["var", "return", "if", "while", "for", "switch"];
+
+    private static readonly IReadOnlyList<string> RefusingOnly = ["refuse"];
 
     private static readonly IReadOnlyList<string> LoopOrArmOnly = ["break"];
 

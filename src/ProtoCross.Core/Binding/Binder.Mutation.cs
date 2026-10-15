@@ -514,6 +514,9 @@ public sealed partial class Binder
             IrVariableDeclaration declaration => [(declaration.Initializer, true)],
             IrAssignment assignment => [(assignment.Value, true)],
             IrReturn { Value: { } returned } => [(returned, true)],
+
+            // A refusal's value is evaluated as the method ends, so it may not end it first, nor change anything.
+            IrRefuse refusal => [(refusal.Value, false)],
             IrFieldAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
             IrAppend append => [(append.Collection, false), (append.Value, false)],
             IrElementAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
@@ -533,20 +536,44 @@ public sealed partial class Binder
     /// </summary>
     private IrStatement BindExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
     {
-        if (statement.Expression is not InvocationExpression invocation)
+        if (StandingCallOf(statement.Expression) is not var (invocation, handled))
         {
             return RefuseExpressionStatement(statement, scope, context);
         }
 
-        if (AppendCallee(invocation, scope, context) is { } callee)
+        // An append or a map's update with a clause after it is bound as a call, and told there what is wrong.
+        if (handled is null && AppendCallee(invocation, scope, context) is { } callee)
         {
             return BindAppend(invocation, callee, statement.Span, scope, context);
         }
 
-        return MapUpdateCallee(invocation, scope, context) is { } update
+        return handled is null && MapUpdateCallee(invocation, scope, context) is { } update
             ? BindMapUpdate(invocation, update.Callee, update.Method, statement.Span, scope, context)
-            : new IrExpressionStatement(BindInvocation(invocation, scope, context), statement.Span);
+            : new IrExpressionStatement(BindStandingCall(invocation, handled, scope, context), statement.Span);
     }
+
+    /// <summary>
+    /// The call <paramref name="expression"/> is, with the <c>on_refused</c> clause written after it if there is
+    /// one, or null where it is not a call.
+    /// </summary>
+    private static (InvocationExpression Invocation, OnRefusedExpression? Handled)? StandingCallOf(Expression expression)
+        => expression switch
+        {
+            InvocationExpression invocation => (invocation, null),
+            OnRefusedExpression handled => (handled.Call, handled),
+            _ => null,
+        };
+
+    /// <summary>
+    /// Binds a call that stands where its value is not used, as a statement or a void method's <c>return</c>
+    /// value, so a method that returns nothing may be called, and answers a refusal from it.
+    /// </summary>
+    private IrExpression BindStandingCall(
+        InvocationExpression invocation,
+        OnRefusedExpression? handled,
+        Scope scope,
+        MethodContext context)
+        => AnswerRefusal(BindInvocation(invocation, scope, context), handled, scope, context);
 
     /// <summary>
     /// Reports a statement that is an expression but not a call, whose value would be computed and

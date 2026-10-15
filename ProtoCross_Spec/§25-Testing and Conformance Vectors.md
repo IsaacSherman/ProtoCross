@@ -51,7 +51,7 @@ Normative Requirements:
   behavior they test, or in a source of their own.
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
-  declares the expected return value or expected terminal failure.
+  declares the expected return value, the expected refusal, or expected terminal failure.
 - **A test of a factory's method names it through the factory, `test Invoice.factory.create`, and
   supplies no receiver**, because the method is called on nothing ([16.3](./§16-Methods.md#163-factories)). A `receiver` block
   there is `PC0132`. A test may not target a helper, which is `PC0129`: a test reaches only what a
@@ -72,6 +72,11 @@ Normative Requirements:
 - **A field such a literal cannot compare is `PC0134`**: a repeated field, a map, or a message given
   by anything but a literal. The language has no length or index to compare a repetition by
   ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), and only a literal says which of a message's fields matter.
+- **`expect refuse value;` is met when the method refuses, with a refusal that meets `value`** as an
+  `expect return` of it would meet a result: under `==`, or, for a literal of a message, by the fields
+  it sets ([16.3.1](./§16-Methods.md#1631-refusals)). A method that builds its result instead fails the test. An `expect refuse` of a
+  method that declares no refusal is `PC0143`. A refusal is a return: an `expect return` is not met where
+  the method refuses, and an `expect fail` is not met where it refuses rather than ending the program.
 - **Any other `expect return` on a method that returns a message is `PC0092`**, until [13.3](./§13-Messages.md#133-equality)
   says what makes two messages equal, and its help says to expect a literal instead. Comparing them
   whole before then would settle it by accident, and a C++ message has no `==` to compare with.
@@ -136,6 +141,15 @@ test InvoiceItem.discounted_total "applies discount" {
 
     arg discount_cents = 50;
     expect return 550;
+}
+```
+
+For a factory's method expected to refuse ([16.3.1](./§16-Methods.md#1631-refusals)):
+
+```protocross
+test Invoice.factory.create "an invoice with no lines is refused" {
+    arg options = new InvoiceOptions { number: "A1", line_count: 0 };
+    expect refuse new InvoiceRefusal { reason: RefusalReason.NO_LINES };
 }
 ```
 

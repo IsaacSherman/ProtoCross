@@ -138,6 +138,7 @@ public static class IrWalk
             IrElementAssignment assignment => [assignment.Target, assignment.Value],
             IrMapUpdate update => [update.Map, .. update.Arguments],
             IrReturn { Value: { } returned } => [returned],
+            IrRefuse refusal => [refusal.Value],
             IrForEach loop => [loop.Collection, loop.Body],
             IrIf branch => branch.Else is { } otherwise
                 ? [branch.Condition, branch.Then, otherwise]
@@ -157,6 +158,9 @@ public static class IrWalk
                 : [.. call.Arguments],
             IrMissingMemberAccess awaiting => [awaiting.Receiver],
             IrValuelessCall valueless => [valueless.Call],
+            IrRefusableCall refusable => refusable.Fallback is { } fallback
+                ? [refusable.Call, fallback]
+                : [refusable.Call],
             IrBinary binary => [binary.Left, binary.Right],
             IrIntegerDivision division => division.OnZero is { } onZero
                 ? [division.Left, division.Right, onZero]
@@ -184,6 +188,7 @@ public static class IrWalk
             IrTestArgument argument => [argument.Value],
             IrTestReturnExpectation expectation => [expectation.Value],
             IrTestFieldsExpectation expectation => [expectation.Expected],
+            IrTestRefusalExpectation expectation => [expectation.Expected],
 
             _ => [],
         };

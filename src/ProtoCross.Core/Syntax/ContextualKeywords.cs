@@ -39,6 +39,9 @@ public static class ContextualKeywords
     /// <summary>The word that marks a method private to its factory (spec 16.3).</summary>
     public const string Helper = "helper";
 
+    /// <summary>The word that says what a factory's method may refuse with, after its return type (spec 16.3).</summary>
+    public const string Refuses = "refuses";
+
     /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
@@ -114,6 +117,34 @@ public static class ContextualKeywords
         => token is { Kind: TokenKind.Identifier, Text: Helper } && next.Kind == TokenKind.Fn;
 
     /// <summary>
+    /// Whether <paramref name="token"/> is a <c>refuses</c> that begins a method's refusal: one with a
+    /// type straight after it, a name or one of the scalar keywords.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name is followed by a type keyword nowhere else, and by another name only after <c>new</c>,
+    /// <c>on_unknown</c> and <c>factory</c>, none of which is this word. So a field, a local or a
+    /// message named <c>refuses</c> keeps its name wherever one can be written, as <c>factory</c>'s
+    /// does. The one place the two tokens misread it is a message named <c>refuses</c> returned by a
+    /// method that refuses, <c>-&gt; refuses refuses Refusal</c>, whose return type is coloured as the
+    /// word.
+    /// </para>
+    /// <para>
+    /// The parser asks less of it, as it does of <c>factory</c>: after a method's parameters and return
+    /// type only the body's brace can follow, so it reads the word there whatever follows, and a refusal
+    /// whose type has not been typed yet is still one.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsARefusal(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Refuses } && (next.Kind == TokenKind.Identifier || NamesABuiltInType(next.Kind));
+
+    /// <summary>Whether <paramref name="kind"/> is a keyword a type reference may be: a scalar, or <c>void</c> (spec 8.1).</summary>
+    public static bool NamesABuiltInType(TokenKind kind)
+        => kind is TokenKind.Int32 or TokenKind.Int64 or TokenKind.UInt32 or TokenKind.UInt64
+            or TokenKind.Double or TokenKind.Float or TokenKind.Bool or TokenKind.String
+            or TokenKind.Bytes or TokenKind.Void;
+
+    /// <summary>
     /// Whether <paramref name="token"/>, with <paramref name="next"/> after it, is one of these words
     /// where it is a keyword.
     /// </summary>
@@ -122,5 +153,6 @@ public static class ContextualKeywords
             || MarksAMutatingMethod(token, next)
             || BeginsAnOnUnknownClause(token, next)
             || BeginsAFactory(token, next)
-            || MarksAHelper(token, next);
+            || MarksAHelper(token, next)
+            || BeginsARefusal(token, next);
 }

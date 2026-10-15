@@ -193,24 +193,40 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         }
     }
 
+    /// <remarks>
+    /// A method that may refuse returns whether it built its result, and gives the result or the refusal through
+    /// an <c>out</c> parameter (spec 24.1): <c>Dictionary.TryGetValue</c>'s shape, which a C# caller already reads
+    /// and which C++ writes the same way. Every other method is declared as it always was.
+    /// </remarks>
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
-        var returnType = TypeName(method.ReturnType);
         var methodName = placement.MethodNameOf(method.Signature);
         var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
+        var taken = NamesDeclaredIn(method);
+        var outs = Outs.Of(method.Signature, taken);
+        var returnType = outs is null ? TypeName(method.ReturnType) : "bool";
 
         // A factory's method is called on nothing, so it is a plain static method of its class.
         var parameters = method.Signature.HasReceiver ? [$"this {receiverType} {ReceiverName}"] : new List<string>();
         parameters.AddRange(method.Parameters.Select(p => $"{TypeName(p.Type)} {Escape(p.Name)}"));
+        parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
         var access = method.Signature.Kind is IrMethodKind.Helper ? "private" : "public";
         using var methodScope = writer.Block(
             $"{access} static {returnType} {methodName}({string.Join(", ", parameters)})");
 
-        EmitStatements(
-            writer,
-            method.Body.Statements,
-            new Body(placement, IrMutation.ChangesAMessage(method)) { Taken = NamesDeclaredIn(method) });
+        var body = new Body(placement with { Built = BuiltNamesIn(method, taken) }, IrMutation.ChangesAMessage(method))
+        {
+            Taken = taken,
+            Outs = outs,
+        };
+        EmitStatements(writer, method.Body.Statements, body);
+
+        // A method that returns nothing may reach the end of its body, and one that may refuse says there that it did not.
+        if (outs is { Result: null } && !IrFlow.NeverFallsThrough(method.Body))
+        {
+            EmitFallingOffTheEnd(writer, method.Body, outs, placement);
+        }
     }
 
     private static string Expression(
@@ -225,6 +241,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrFieldAccess field => PropertyRead(field, placement, receiverName),
             IrFieldPresence presence => EmitPresence(presence, placement, receiverName),
         IrMethodCall call => EmitCall(call, placement, receiverName),
+        IrRefusableCall refusable => EmitRefusableCall(refusable, placement, receiverName),
         IrBinary binary => EmitBinary(binary, placement, receiverName),
         IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
         IrUnary unary => EmitUnary(unary, placement, receiverName),
@@ -247,7 +264,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static string PropertyRead(IrFieldAccess field, Placement placement, string receiverName)
         => $"{Expression(field.Receiver, placement, receiverName)}.{NameConventions.GetCSharpPropertyName(field.Field)}";
 
-    private static string EmitCall(IrMethodCall call, Placement placement, string receiverName)
+    /// <param name="outs">
+    /// What a call to a method that may refuse passes for its <c>out</c> parameters, after its arguments.
+    /// </param>
+    private static string EmitCall(IrMethodCall call, Placement placement, string receiverName, params string[] outs)
     {
         var arguments = call.Receiver is { } receiver
             ? [Expression(receiver, placement, receiverName)]
@@ -255,6 +275,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         arguments.AddRange(call.Arguments.Select(argument => IrMutation.IsPassedAsACopy(call, argument)
             ? StoredValue(argument, placement, receiverName)
             : Expression(argument, placement, receiverName)));
+        arguments.AddRange(outs);
 
         var methodName = placement.MethodNameOf(call.Target);
         return $"{placement.QualifiedClassOf(call.Target)}.{methodName}({string.Join(", ", arguments)})";

@@ -50,6 +50,7 @@ public sealed partial class Parser
         {
             TokenKind.Var => ParseVariableDeclaration(),
             TokenKind.Return => ParseReturnStatement(),
+            TokenKind.Refuse => ParseRefuseStatement(),
             TokenKind.If => ParseIfStatement(),
             TokenKind.While => ParseWhileStatement(),
             TokenKind.Break => ParseBreakStatement(),
@@ -92,6 +93,14 @@ public sealed partial class Parser
 
         var end = Expect(TokenKind.Semicolon).Span;
         return new ReturnStatement(value, Spanning(start, end));
+    }
+
+    private Statement ParseRefuseStatement()
+    {
+        var start = Expect(TokenKind.Refuse).Span;
+        var value = ParseExpression();
+        var end = Expect(TokenKind.Semicolon).Span;
+        return new RefuseStatement(value, Spanning(start, end));
     }
 
     private Statement ParseForInStatement()

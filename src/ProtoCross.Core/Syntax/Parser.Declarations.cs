@@ -181,12 +181,35 @@ public sealed partial class Parser
             returnType = ParseTypeReference();
         }
 
+        var refusal = ParseRefusal();
         var body = ParseBlock();
         return new MethodDeclaration(name, parameters, returnType, body, Spanning(start, body.Span))
         {
             IsMutating = mutating,
             IsHelper = helper,
+            Refusal = refusal,
         };
+    }
+
+    /// <summary>
+    /// Parses the <c>refuses T</c> after a method's return type (spec 16.3), or returns null where none is
+    /// written.
+    /// </summary>
+    /// <remarks>
+    /// The word is read here whatever follows it, and not only where
+    /// <see cref="ContextualKeywords.BeginsARefusal"/> would colour it, because nothing but the body's
+    /// brace can follow a signature: a refusal whose type is still being typed is one, and its missing type
+    /// is reported as any other is.
+    /// </remarks>
+    private TypeReference? ParseRefusal()
+    {
+        if (Current is not { Kind: TokenKind.Identifier, Text: ContextualKeywords.Refuses })
+        {
+            return null;
+        }
+
+        Advance();
+        return ParseTypeReference();
     }
 
     private TypeReference ParseTypeReference()
@@ -195,9 +218,7 @@ public sealed partial class Parser
 
         // Scalar type keywords and message/enum names both land here; the binder decides which
         // is which by asking the protobuf descriptor pool.
-        if (token.Kind is TokenKind.Int32 or TokenKind.Int64 or TokenKind.UInt32 or TokenKind.UInt64
-            or TokenKind.Double or TokenKind.Float or TokenKind.Bool or TokenKind.String
-            or TokenKind.Bytes or TokenKind.Void)
+        if (ContextualKeywords.NamesABuiltInType(token.Kind))
         {
             Advance();
             return new TypeReference(new SyntaxName(token.Text, token.Span), token.Span);

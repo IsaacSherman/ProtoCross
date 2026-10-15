@@ -69,16 +69,13 @@ public sealed partial class CSharpBackend
         public IReadOnlySet<string> Taken { get; init; } = new HashSet<string>(StringComparer.Ordinal);
 
         /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that the method does not declare.</summary>
-        public string Unused(string stem)
-        {
-            var name = stem;
-            for (var suffix = 1; Taken.Contains(name); suffix++)
-            {
-                name = stem + suffix.ToString(CultureInfo.InvariantCulture);
-            }
+        public string Unused(string stem) => FirstUnused(stem, Taken.Contains);
 
-            return name;
-        }
+        /// <summary>
+        /// The parameters a method that may refuse says what it built or refused through, or null for a method
+        /// that cannot refuse (spec 24.1).
+        /// </summary>
+        public Outs? Outs { get; init; }
 
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
@@ -96,9 +93,95 @@ public sealed partial class CSharpBackend
         /// else, and is traversed as it is.
         /// </remarks>
         public string Collection(IrForEach loop)
-            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrMapLookup) and var owner
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
+    }
+
+    /// <summary>
+    /// The <c>out</c> parameters a method that may refuse is declared with (spec 24.1): <c>result</c>, what it
+    /// built, which a method that returns nothing has none of, and <c>refusal</c>, what it refused with.
+    /// </summary>
+    /// <remarks>
+    /// Each is numbered, as a name generated code declares always is, where the method already declares the
+    /// name, so a parameter of its own called <c>result</c> keeps the name it was given.
+    /// </remarks>
+    private sealed record Outs(string? Result, string Refusal)
+    {
+        /// <summary>The parameters <paramref name="method"/> may refuse through, or null where it cannot refuse.</summary>
+        /// <param name="taken">Every name the method declares, which these are added to.</param>
+        public static Outs? Of(IrMethodSignature method, ISet<string> taken)
+            => method.Refusal is null
+                ? null
+                : new(method.ReturnType is VoidType ? null : Reserve(taken, "result"), Reserve(taken, "refusal"));
+
+        /// <summary>The parameters as the method's declaration writes them.</summary>
+        public IEnumerable<string> Declared(IrMethodSignature method)
+        {
+            if (Result is not null)
+            {
+                yield return OutParameter(method.ReturnType, Result, onSuccess: true);
+            }
+
+            yield return OutParameter(method.Refusal!, Refusal, onSuccess: false);
+        }
+
+        /// <summary>
+        /// One <c>out</c> parameter, marked as set exactly when the method says it is, where the type is a reference:
+        /// a result when it returns true, and a refusal when it returns false.
+        /// </summary>
+        private static string OutParameter(PlType type, string name, bool onSuccess)
+            => type is EnumPlType || (type is ScalarType scalar && IsAStruct(scalar))
+                ? $"out {TypeName(type)} {name}"
+                : $"[global::System.Diagnostics.CodeAnalysis.NotNullWhen({(onSuccess ? "true" : "false")})] out {TypeName(type)}? {name}";
+    }
+
+    /// <summary>
+    /// The local each call in <paramref name="node"/> to a method that may refuse holds what it built in, none of
+    /// them a name in <paramref name="taken"/>, to which each is added.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An <c>out var</c> declared in an expression is in scope in the whole block around its statement, and C#
+    /// refuses a second of one name there (CS0128) and one that gives a name used in an enclosing scope another
+    /// meaning (CS0136). So no two calls in a method share one, and none is a name the method declares. They are
+    /// given out before anything is written, because an expression is written by a function of the node alone
+    /// (<see cref="Expression"/>), which has no method to ask.
+    /// </para>
+    /// <para>
+    /// A call that passes a refusal on stands on its own, and its statement declares the local the same way. A call
+    /// to a method that returns nothing builds nothing, and is given none.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyDictionary<IrRefusableCall, string> BuiltNamesIn(IrNode node, ISet<string> taken)
+    {
+        var names = new Dictionary<IrRefusableCall, string>(ReferenceEqualityComparer.Instance);
+        foreach (var call in IrWalk.DescendantsAndSelf(node).OfType<IrRefusableCall>().Where(call => call.Type is not VoidType))
+        {
+            names[call] = Reserve(taken, "built");
+        }
+
+        return names;
+    }
+
+    /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on not in <paramref name="taken"/>, which it is then added to.</summary>
+    private static string Reserve(ISet<string> taken, string stem)
+    {
+        var name = FirstUnused(stem, taken.Contains);
+        taken.Add(name);
+        return name;
+    }
+
+    /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on that is not <paramref name="taken"/>.</summary>
+    private static string FirstUnused(string stem, Func<string, bool> taken)
+    {
+        var name = stem;
+        for (var suffix = 1; taken(name); suffix++)
+        {
+            name = stem + suffix.ToString(CultureInfo.InvariantCulture);
+        }
+
+        return name;
     }
 
     /// <summary>
@@ -138,6 +221,18 @@ public sealed partial class CSharpBackend
     {
         /// <summary>The class every extension method a project declares is in.</summary>
         public const string ProjectClassName = "ProtoCrossExtensions";
+
+        /// <summary>
+        /// The local each call to a method that may refuse holds what it built in, in the method or test being
+        /// written (<see cref="BuiltNamesIn"/>).
+        /// </summary>
+        /// <remarks>
+        /// Here because this is what every expression is handed: the names are the method's, given out before
+        /// it is written, and an expression is written by a function of the node and this alone. Each method
+        /// is written with a copy of its file's placement holding its own.
+        /// </remarks>
+        public IReadOnlyDictionary<IrRefusableCall, string> Built { get; init; }
+            = new Dictionary<IrRefusableCall, string>(ReferenceEqualityComparer.Instance);
 
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 
