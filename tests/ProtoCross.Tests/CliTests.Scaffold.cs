@@ -82,6 +82,7 @@ public partial class CliTests
     [InlineData("'net7.0' is not a target framework", "--test-out", "tests", "--scaffold", "--csharp-target-framework", "net7.0")]
     [InlineData("Write net8.0 or a later one", "--test-out", "tests", "--scaffold", "--csharp-target-framework", "net7.0")]
     [InlineData("'billing-' is not a prefix for CMake targets", "--test-out", "tests", "--scaffold", "--cpp-target-prefix", "billing-")]
+    [InlineData("--cpp-target-prefix is given more than once", "--test-out", "tests", "--scaffold", "--cpp-target-prefix", "a", "--cpp-target-prefix", "b")]
     public void AFlagThatShapesNothingOrCannotBeItsSettingIsRefused(string expected, params string[] flags)
     {
         var directory = TestPaths.CreateTempDirectory();
@@ -93,6 +94,41 @@ public partial class CliTests
         Assert.Contains(expected, run.Output, StringComparison.Ordinal);
         Assert.False(Directory.Exists(Path.Combine(directory, "generated")), run.Output);
         Assert.False(Directory.Exists(Path.Combine(directory, "tests")), run.Output);
+    }
+
+    /// <summary>
+    /// A C# project renamed since an earlier build leaves that build's project file beside the new one,
+    /// which the command line says, without deleting a file it cannot be sure it wrote.
+    /// </summary>
+    [Fact]
+    public void ARenamedTestProjectWarnsOfTheProjectFileBesideIt()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(directory, ("pricing.pcross", Pricing));
+        string[] build = ["pricing.pcross", "-t", "csharp", "-o", "out", "--test-out", "tests", "--scaffold"];
+        Assert.Equal(0, Run(directory, build).ExitCode);
+
+        var run = Run(directory, [.. build, "--csharp-project-name", "PricingTests"]);
+
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("ProtoCrossTests.csproj, which an earlier build wrote, is beside PricingTests.csproj", run.Output, StringComparison.Ordinal);
+        Assert.True(Wrote(directory, "tests/csharp/ProtoCrossTests.csproj"));
+        Assert.True(Wrote(directory, "tests/csharp/PricingTests.csproj"));
+    }
+
+    /// <summary>A build that writes the project it wrote before says nothing of it.</summary>
+    [Fact]
+    public void RebuildingTheSameTestProjectWarnsOfNothing()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(directory, ("pricing.pcross", Pricing));
+        string[] build = ["pricing.pcross", "-o", "out", "--test-out", "tests", "--scaffold"];
+        Assert.Equal(0, Run(directory, build).ExitCode);
+
+        var run = Run(directory, build);
+
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.DoesNotContain("warning:", run.Output, StringComparison.Ordinal);
     }
 
     /// <summary>A project whose scaffold cannot be read builds nothing, as any project that cannot be read.</summary>

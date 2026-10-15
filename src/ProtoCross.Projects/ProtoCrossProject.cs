@@ -364,37 +364,47 @@ public sealed record ProtoCrossProject
             var stated = new HashSet<string>(StringComparer.Ordinal);
             foreach (var target in element.Elements())
             {
-                var name = target.Name.LocalName;
-                var ofTarget = ScaffoldSetting.All.Where(setting => setting.Element == name).ToList();
-                if (ofTarget.Count == 0)
-                {
-                    Unknown(
-                        target,
-                        $"<{name}> is not an element ProtoCross knows about inside <Scaffold>.",
-                        $"Known elements inside <Scaffold>: {string.Join(", ", ScaffoldSetting.All.Select(setting => setting.Element).Distinct())}.");
-                    continue;
-                }
-
-                if (!stated.Add(name))
-                {
-                    Invalid(
-                        target,
-                        $"<{name}> is stated more than once inside <Scaffold>.",
-                        "A target has one test project, so state its settings on one element.");
-                    continue;
-                }
-
-                RefuseAttributes(target, [.. ofTarget.Select(setting => setting.Attribute)]);
-                RefuseChildren(target);
-                if (TextOf(target) is { Length: > 0 })
-                {
-                    Invalid(target, $"<{name}> states its settings with attributes, not with text.", ScaffoldExample);
-                }
-
-                settings = ofTarget.Aggregate(settings, (read, setting) => ReadScaffoldSetting(target, setting, read));
+                settings = ReadScaffoldTarget(target, stated, settings);
             }
 
             _scaffold = settings;
+        }
+
+        /// <summary>
+        /// <paramref name="settings"/>, with what one target's element inside <c>&lt;Scaffold&gt;</c>
+        /// states, where it is a target's element stated once.
+        /// </summary>
+        /// <param name="stated">The targets' elements already read, which this one joins.</param>
+        private ScaffoldSettings ReadScaffoldTarget(XElement target, HashSet<string> stated, ScaffoldSettings settings)
+        {
+            var name = target.Name.LocalName;
+            var ofTarget = ScaffoldSetting.All.Where(setting => setting.Element == name).ToList();
+            if (ofTarget.Count == 0)
+            {
+                Unknown(
+                    target,
+                    $"<{name}> is not an element ProtoCross knows about inside <Scaffold>.",
+                    $"Known elements inside <Scaffold>: {string.Join(", ", ScaffoldSetting.All.Select(setting => setting.Element).Distinct())}.");
+                return settings;
+            }
+
+            if (!stated.Add(name))
+            {
+                Invalid(
+                    target,
+                    $"<{name}> is stated more than once inside <Scaffold>.",
+                    "A target has one test project, so state its settings on one element.");
+                return settings;
+            }
+
+            RefuseAttributes(target, [.. ofTarget.Select(setting => setting.Attribute)]);
+            RefuseChildren(target);
+            if (TextOf(target) is { Length: > 0 })
+            {
+                Invalid(target, $"<{name}> states its settings with attributes, not with text.", ScaffoldExample);
+            }
+
+            return ofTarget.Aggregate(settings, (read, setting) => ReadScaffoldSetting(target, setting, read));
         }
 
         /// <summary>

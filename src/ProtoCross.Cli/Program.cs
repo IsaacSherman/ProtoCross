@@ -111,12 +111,15 @@ foreach (var backend in backends)
                 Settings = ScaffoldSettingsFor(project, options),
             };
 
-            foreach (var file in scaffold.EmitTestProject(scaffoldOptions, backendDiagnostics))
+            var buildFiles = scaffold.EmitTestProject(scaffoldOptions, backendDiagnostics);
+            foreach (var file in buildFiles)
             {
                 var path = Path.Combine(testOutputDirectory, file.RelativePath);
                 File.WriteAllText(path, file.Contents);
                 written.Add(path);
             }
+
+            WarnOfOtherBuildFiles(testOutputDirectory, buildFiles);
         }
     }
 }
@@ -268,6 +271,39 @@ static ProjectConfig? ApplyPolicyFlags(ProjectConfig config, CommandLineOptions 
 /// </remarks>
 static ScaffoldSettings ScaffoldSettingsFor(ProtoCrossProject? project, CommandLineOptions options)
     => (project?.Scaffold ?? ScaffoldSettings.Default).OverriddenBy(options.ScaffoldSettings);
+
+/// <summary>
+/// Warns of a build file an earlier build wrote beside the one just written, under another name: what is
+/// left when the test project is renamed (spec 25.3.2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Warned of rather than deleted, because the compiler writes into a directory and never removes from
+/// it. But <c>dotnet test</c> refuses a directory with two project files, so leaving it without a word
+/// leaves a build that worked yesterday failing for a reason the rename does not suggest.
+/// </para>
+/// <para>
+/// A file is the compiler's when it opens as the one just written does, with the comment saying what
+/// generated it. Its extension alone would take in any file of the user's that shares one.
+/// </para>
+/// </remarks>
+static void WarnOfOtherBuildFiles(string directory, IReadOnlyList<GeneratedFile> buildFiles)
+{
+    foreach (var file in buildFiles)
+    {
+        var header = file.Contents.Split('\n').Take(2).Select(line => line.TrimEnd('\r')).ToList();
+        var others = Directory.EnumerateFiles(directory, "*" + Path.GetExtension(file.RelativePath))
+            .Where(path => !string.Equals(Path.GetFileName(path), file.RelativePath, StringComparison.OrdinalIgnoreCase))
+            .Where(path => File.ReadLines(path).Take(2).SequenceEqual(header));
+
+        foreach (var other in others)
+        {
+            Console.Error.WriteLine(
+                $"warning: {Path.GetFileName(other)}, which an earlier build wrote, is beside {file.RelativePath}, "
+                    + "and a build there needs one; delete it");
+        }
+    }
+}
 
 static void PrintDiagnostics(DiagnosticBag diagnostics)
 {
@@ -425,6 +461,13 @@ internal sealed record CommandLineOptions(
                     {
                         Console.Error.WriteLine($"error: {arg}: {problem}");
                         Console.Error.WriteLine($"       {setting.Help}");
+                        return null;
+                    }
+
+                    if (setting.ValueIn(scaffoldSettings) is not null)
+                    {
+                        // A project refuses a setting stated twice, and a flag must not accept what a project refuses.
+                        Console.Error.WriteLine($"error: {arg} is given more than once; pass one");
                         return null;
                     }
 

@@ -176,20 +176,22 @@ public sealed class ScaffoldSetting
     public override string ToString() => $"{Element}/{Attribute}";
 
     /// <summary>
-    /// Whether <paramref name="value"/> names a .NET a test project can target: <c>net</c>, then a
-    /// major and a minor version no older than <see cref="OldestDotNet"/>, with no platform after them.
+    /// Whether <paramref name="value"/> names a .NET a test project can target: <c>net</c>, then a major
+    /// version no older than <see cref="OldestDotNet"/> and <c>.0</c>, with no platform after them.
     /// </summary>
+    /// <remarks>
+    /// The minor version is always 0, because every .NET since 5 has been released as one. A
+    /// <c>net9.1</c> would pass a looser check here and fail at restore, where a build file nobody can
+    /// build is found later than it has to be.
+    /// </remarks>
     private static bool IsSupportedTargetFramework(string value)
         => value.StartsWith("net", StringComparison.Ordinal)
-            && value[3..].Split('.') is [var major, var minor]
-            && IsNumber(major)
-            && IsNumber(minor)
+            && value.EndsWith(".0", StringComparison.Ordinal)
+            && value[3..^2] is { Length: > 0 } major
+            && major.All(char.IsAsciiDigit)
+            && major[0] != '0'
             && int.TryParse(major, out var number)
             && number >= OldestDotNet;
-
-    /// <summary>Digits, with no zero in front of a number that has more than one.</summary>
-    private static bool IsNumber(string text)
-        => text.Length > 0 && text.All(char.IsAsciiDigit) && (text.Length == 1 || text[0] != '0');
 
     /// <summary><c>TargetFramework</c> as a flag spells it: <c>target-framework</c>.</summary>
     private static string InLowercaseWords(string pascalCase)
