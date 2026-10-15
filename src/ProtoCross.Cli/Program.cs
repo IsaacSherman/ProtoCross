@@ -32,9 +32,10 @@ if (options.Scaffold && options.TestOutputDirectory is null)
 }
 
 var setupDiagnostics = new DiagnosticBag();
-var compilation = options.ProjectPath is { } projectPath
-    ? CompilationOfProject(projectPath, options, setupDiagnostics)
-    : CompilationOfSources(options, setupDiagnostics);
+var project = options.ProjectPath is { } projectPath ? ProtoCrossProject.Load(projectPath, setupDiagnostics) : null;
+var compilation = options.ProjectPath is null
+    ? CompilationOfSources(options, setupDiagnostics)
+    : project is null ? null : CompilationOfProject(project, options, setupDiagnostics);
 PrintDiagnostics(setupDiagnostics);
 
 if (compilation is null)
@@ -105,7 +106,10 @@ foreach (var backend in backends)
                 result.Descriptors,
                 outputDirectory,
                 testOutputDirectory,
-                testFiles.Select(file => file.RelativePath).ToList());
+                testFiles.Select(file => file.RelativePath).ToList()) with
+            {
+                Settings = ScaffoldSettingsFor(project, options),
+            };
 
             foreach (var file in scaffold.EmitTestProject(scaffoldOptions, backendDiagnostics))
             {
@@ -152,9 +156,10 @@ static Compilation? CompilationOfSources(CommandLineOptions options, DiagnosticB
 /// <remarks>
 /// <para>
 /// A project that cannot be read compiles nothing, rather than the part of it that could be read: a
-/// project missing one of its lines would build a program nobody wrote. Which projects no build may
-/// compile once read is <see cref="ProjectSources.ExpandForBuild"/>'s to say, because an editor has to
-/// refuse exactly the ones this refuses.
+/// project missing one of its lines would build a program nobody wrote. So this is handed only a
+/// project that was read. Which projects no build may compile once read is
+/// <see cref="ProjectSources.ExpandForBuild"/>'s to say, because an editor has to refuse exactly the
+/// ones this refuses.
 /// </para>
 /// <para>
 /// The project's schema directories are searched before <c>-I</c>'s. They are the project's answer,
@@ -162,14 +167,8 @@ static Compilation? CompilationOfSources(CommandLineOptions options, DiagnosticB
 /// changing what the project's imports mean.
 /// </para>
 /// </remarks>
-static Compilation? CompilationOfProject(string projectPath, CommandLineOptions options, DiagnosticBag diagnostics)
+static Compilation? CompilationOfProject(ProtoCrossProject project, CommandLineOptions options, DiagnosticBag diagnostics)
 {
-    var project = ProtoCrossProject.Load(projectPath, diagnostics);
-    if (project is null)
-    {
-        return null;
-    }
-
     if (ProjectSources.ExpandForBuild(project, diagnostics) is not { } files)
     {
         return null;
@@ -260,6 +259,16 @@ static ProjectConfig? ApplyPolicyFlags(ProjectConfig config, CommandLineOptions 
     return overridden;
 }
 
+/// <summary>What the test projects <c>--scaffold</c> writes are named and target (spec 25.3.2).</summary>
+/// <remarks>
+/// A flag stands over the project, unlike a policy flag, which the configuration file refuses. Policy
+/// decides what the generated code means, so a build that changed it quietly would ship different
+/// behavior; a test project's name and framework change only what builds the tests, and trying another
+/// for one build is what the flags are for.
+/// </remarks>
+static ScaffoldSettings ScaffoldSettingsFor(ProtoCrossProject? project, CommandLineOptions options)
+    => (project?.Scaffold ?? ScaffoldSettings.Default).OverriddenBy(options.ScaffoldSettings);
+
 static void PrintDiagnostics(DiagnosticBag diagnostics)
 {
     foreach (var diagnostic in diagnostics)
@@ -290,6 +299,9 @@ internal sealed record CommandLineOptions(
     /// <summary>Whether this run builds the tests as well as the program (spec 25.3.1).</summary>
     public bool BuildsTests => TestOutputDirectory is not null;
 
+    /// <summary>The scaffold settings this run's flags state, each over the project's (spec 25.3.2).</summary>
+    public ScaffoldSettings ScaffoldSettings { get; init; } = ScaffoldSettings.Default;
+
     public static CommandLineOptions? Parse(string[] args)
     {
         var sourcePaths = new List<string>();
@@ -302,6 +314,7 @@ internal sealed record CommandLineOptions(
         var noConfig = false;
         OverflowPolicy? overflow = null;
         var overrideConfig = false;
+        var scaffoldSettings = ScaffoldSettings.Default;
 
         for (var i = 0; i < args.Length; i++)
         {
@@ -401,6 +414,23 @@ internal sealed record CommandLineOptions(
 
                     break;
 
+                case var flag when ScaffoldSetting.All.FirstOrDefault(setting => setting.Flag == flag) is { } setting:
+                    if (++i >= args.Length)
+                    {
+                        Console.Error.WriteLine($"error: {arg} requires a value");
+                        return null;
+                    }
+
+                    if (setting.ProblemWith(args[i]) is { } problem)
+                    {
+                        Console.Error.WriteLine($"error: {arg}: {problem}");
+                        Console.Error.WriteLine($"       {setting.Help}");
+                        return null;
+                    }
+
+                    scaffoldSettings = setting.With(scaffoldSettings, args[i]);
+                    break;
+
                 case "-h" or "--help":
                     return null;
 
@@ -435,6 +465,11 @@ internal sealed record CommandLineOptions(
             return null;
         }
 
+        if (!AreScaffoldFlagsUsed(scaffoldSettings, scaffold, targets))
+        {
+            return null;
+        }
+
         string? projectPath = null;
         if (sourcePaths.Any(ProtoCrossProject.IsProjectFile))
         {
@@ -458,7 +493,39 @@ internal sealed record CommandLineOptions(
             configPath,
             noConfig,
             overflow,
-            overrideConfig);
+            overrideConfig)
+        {
+            ScaffoldSettings = scaffoldSettings,
+        };
+    }
+
+    /// <summary>Whether every scaffold setting a flag states shapes a test project this run writes.</summary>
+    /// <remarks>
+    /// A flag that shapes nothing is refused rather than ignored: a build that took it and wrote no test
+    /// project, or none for its target, would look as if it had used it. A project's settings for a target
+    /// the build leaves out are another matter, because a project states every target's whatever one
+    /// build asks for.
+    /// </remarks>
+    private static bool AreScaffoldFlagsUsed(ScaffoldSettings settings, bool scaffold, IReadOnlySet<string> targets)
+    {
+        foreach (var setting in ScaffoldSetting.All.Where(setting => setting.ValueIn(settings) is not null))
+        {
+            if (!scaffold)
+            {
+                Console.Error.WriteLine($"error: {setting.Flag} needs --scaffold, because it shapes the test project --scaffold writes");
+                return false;
+            }
+
+            if (!targets.Contains(setting.Target))
+            {
+                Console.Error.WriteLine(
+                    $"error: {setting.Flag} shapes the {setting.Target} test project, and this build writes none; "
+                        + $"add {setting.Target} to -t");
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -545,6 +612,16 @@ internal sealed record CommandLineOptions(
         Console.Error.WriteLine("  --scaffold               Also write the build file that builds and runs the");
         Console.Error.WriteLine("                           generated tests: a .csproj for csharp, a CMakeLists.txt");
         Console.Error.WriteLine("                           for cpp. Requires --test-out.");
+        Console.Error.WriteLine($"  {ScaffoldSetting.CSharpTargetFramework.Flag} <tfm>");
+        Console.Error.WriteLine($"                           The C# test project's framework, net{ScaffoldSetting.OldestDotNet}.0 or later");
+        Console.Error.WriteLine($"                           (default: {CSharpTestProject.DefaultTargetFramework}).");
+        Console.Error.WriteLine($"  {ScaffoldSetting.CSharpProjectName.Flag} <name>");
+        Console.Error.WriteLine($"                           The C# test project's name (default: {CSharpTestProject.DefaultProjectName}).");
+        Console.Error.WriteLine($"  {ScaffoldSetting.CppProjectName.Flag} <name>");
+        Console.Error.WriteLine($"                           The CMake project's name (default: {CppTestProject.DefaultProjectName}).");
+        Console.Error.WriteLine($"  {ScaffoldSetting.CppTargetPrefix.Flag} <prefix>");
+        Console.Error.WriteLine("                           What begins each CMake target, followed by _ (default: none).");
+        Console.Error.WriteLine("                           Each needs --scaffold, and stands over the project's <Scaffold>.");
         Console.Error.WriteLine("  -t, --target <list>      Comma-separated targets: csharp, cpp (default: all).");
         Console.Error.WriteLine("  -h, --help               Show this help.");
         Console.Error.WriteLine();

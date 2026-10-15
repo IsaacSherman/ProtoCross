@@ -26,7 +26,10 @@ public static class CppTestProject
 {
     public const string FileName = "CMakeLists.txt";
 
-    /// <summary>The CMake target the generated protobuf message classes are compiled into.</summary>
+    /// <summary>The CMake project's name where nothing chose one (spec 25.3.2).</summary>
+    public const string DefaultProjectName = "protocross_tests";
+
+    /// <summary>The CMake target the generated protobuf message classes are compiled into, before any prefix.</summary>
     private const string SchemaTarget = "protocross_protos";
 
     public static string Build(ScaffoldOptions options)
@@ -47,7 +50,7 @@ public static class CppTestProject
         builder.AppendLine("#   cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/protobuf");
         builder.AppendLine();
         builder.AppendLine("cmake_minimum_required(VERSION 3.20)");
-        builder.AppendLine("project(protocross_tests CXX)");
+        builder.AppendLine($"project({options.Settings.CppProjectName ?? DefaultProjectName} CXX)");
         builder.AppendLine();
         builder.AppendLine("set(CMAKE_CXX_STANDARD 20)");
         builder.AppendLine("set(CMAKE_CXX_STANDARD_REQUIRED ON)");
@@ -95,7 +98,8 @@ public static class CppTestProject
     {
         builder.AppendLine("# Protobuf message classes, generated at build time. protobuf_generate writes them");
         builder.AppendLine("# into the binary directory, which is why that is an include root below.");
-        builder.AppendLine($"add_library({SchemaTarget} STATIC");
+        var schemaTarget = Prefixed(SchemaTarget, options.Settings);
+        builder.AppendLine($"add_library({schemaTarget} STATIC");
 
         foreach (var proto in options.ProtoFiles)
         {
@@ -104,12 +108,12 @@ public static class CppTestProject
 
         builder.AppendLine(")");
         builder.AppendLine();
-        builder.AppendLine($"target_link_libraries({SchemaTarget} PUBLIC protobuf::libprotobuf)");
+        builder.AppendLine($"target_link_libraries({schemaTarget} PUBLIC protobuf::libprotobuf)");
         builder.AppendLine(
-            $"target_include_directories({SchemaTarget} PUBLIC \"${{CMAKE_CURRENT_BINARY_DIR}}\")");
+            $"target_include_directories({schemaTarget} PUBLIC \"${{CMAKE_CURRENT_BINARY_DIR}}\")");
         builder.AppendLine();
         builder.AppendLine("protobuf_generate(");
-        builder.AppendLine($"    TARGET {SchemaTarget}");
+        builder.AppendLine($"    TARGET {schemaTarget}");
         builder.AppendLine("    IMPORT_DIRS");
 
         // Distinct roots, in the order they were given: protoc resolves an import against the first
@@ -132,7 +136,8 @@ public static class CppTestProject
 
     private static void EmitDriver(StringBuilder builder, ScaffoldOptions options, string driver)
     {
-        var target = TargetName(driver);
+        var target = Prefixed(TargetName(driver), options.Settings);
+        var schemaTarget = Prefixed(SchemaTarget, options.Settings);
         var hasSchemaTarget = options.ProtoFiles.Count > 0;
 
         builder.AppendLine($"add_executable({target} {Quote(Normalize(driver))})");
@@ -142,7 +147,7 @@ public static class CppTestProject
         {
             builder.AppendLine("# Three include roots, all load-bearing: this directory for the driver, the behavior");
             builder.AppendLine("# directory because the driver includes its ProtoCross header unqualified, and the");
-            builder.AppendLine($"# binary directory, which {SchemaTarget} supplies for the generated .pb.h files.");
+            builder.AppendLine($"# binary directory, which {schemaTarget} supplies for the generated .pb.h files.");
         }
         else
         {
@@ -159,7 +164,7 @@ public static class CppTestProject
         builder.AppendLine();
         builder.AppendLine(
             $"target_link_libraries({target} PRIVATE "
-            + (hasSchemaTarget ? SchemaTarget : "protobuf::libprotobuf")
+            + (hasSchemaTarget ? schemaTarget : "protobuf::libprotobuf")
             + ")");
         builder.AppendLine();
         builder.AppendLine("# The driver runs every test it was generated with and returns non-zero if any");
@@ -214,6 +219,17 @@ public static class CppTestProject
 
         return builder.Length == 0 ? "protocross_tests" : builder.ToString() + "_tests";
     }
+
+    /// <summary>
+    /// <paramref name="target"/> as the project declares it: after the prefix the settings chose and an
+    /// underscore, or as it stands where they chose none.
+    /// </summary>
+    /// <remarks>
+    /// Every target the file declares takes the prefix, so test projects built together in one CMake
+    /// build, where target names share one namespace, can be told apart by it alone.
+    /// </remarks>
+    private static string Prefixed(string target, ScaffoldSettings settings)
+        => settings.CppTargetPrefix is { } prefix ? prefix + "_" + target : target;
 
     private static bool IsCppSource(string fileName)
         => fileName.EndsWith(".cc", StringComparison.OrdinalIgnoreCase)

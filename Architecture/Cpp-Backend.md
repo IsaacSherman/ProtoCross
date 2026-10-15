@@ -16,7 +16,7 @@
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MutableElement`. | [map emission] |
 | Runtime support | [Runtime]: `CppRuntime.Source`, `Stem`, `EmitFloatToIntegerHelper`, `EmitEnumHelpers`, `EmitMapHelpers`, `EmitRefusalHelper`, `EmitFailHelper`. | [Backend tests]; [conformance] |
 | Schema includes and type names | [Schemas]: `SchemasNamedBeyond`, `SchemasNamedBy`, `ProtoHeadersOf`; [Names]: `NameConventions.GetCppProtoHeader`, `GetCppTypeName`, `GetCppFieldName`, `GetCppValueName`; [Context]: `TypeName`, `QualifiedTypeName`, `QualifiedEnumName`, `Escape`. | [schema includes]; [type names]; [field names] |
-| Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitCppRefusingCall`, `EmitCppComparison`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`. | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
+| Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitCppRefusingCall`, `EmitCppComparison`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`, naming the project and prefixing every target as `ScaffoldOptions.Settings` says (`Prefixed`). | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
 
 [Emitter]: ../src/ProtoCross.Backend.Cpp/CppBackend.cs
 [Statements]: ../src/ProtoCross.Backend.Cpp/CppBackend.Statements.cs

@@ -388,7 +388,7 @@ Output layout:
 | `generated/tests/csharp/simpleScript.tests.g.cs` | C# xUnit tests generated from ProtoCross `test` declarations |
 | `generated/tests/csharp/ProtoCrossTestSupport.g.cs` | C# support for `expect fail` tests. Emitted only when the source has one |
 | `generated/tests/cpp/simpleScript.tests.cc` | C++ standalone test executable source generated from ProtoCross `test` declarations |
-| `generated/tests/csharp/ProtoCrossTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold` |
+| `generated/tests/csharp/ProtoCrossTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold`, and named otherwise where a setting says (see [Naming the test projects](#naming-the-test-projects)) |
 | `generated/tests/cpp/CMakeLists.txt` | CMake project that builds and runs the C++ tests. Emitted only with `--scaffold` |
 
 The compiler options used in those commands are:
@@ -399,6 +399,10 @@ The compiler options used in those commands are:
 | `-o`, `--out <dir>` | Root directory for generated behavior artifacts. Each backend writes below `<dir>/<target>/`. |
 | `--test-out <dir>` | Build the tests too, into this root directory. Each test backend writes below `<dir>/<target>/`. Without it, tests are neither checked nor generated. |
 | `--scaffold` | Also write the build file that builds and runs the generated tests. Requires `--test-out`. |
+| `--csharp-target-framework <tfm>` | With `--scaffold`: the C# test project's framework, `net8.0` or later. Defaults to `net10.0`. |
+| `--csharp-project-name <name>` | With `--scaffold`: the C# test project's name, and so its `.csproj`'s. Defaults to `ProtoCrossTests`. |
+| `--cpp-project-name <name>` | With `--scaffold`: the CMake project's name. Defaults to `protocross_tests`. |
+| `--cpp-target-prefix <prefix>` | With `--scaffold`: what begins each CMake target, followed by `_`. Defaults to none. |
 | `-t`, `--target <list>` | Comma-separated backend list: `csharp`, `cpp`. Defaults to all current backends. |
 | `--config <file>` | Use this `protocross.config.xml` instead of searching for one. Not with a project, which settles its own. |
 | `--no-config` | Ignore any config file and use the built-in defaults. Not with a project. |
@@ -545,6 +549,32 @@ protocross: 12 test(s), 0 failed
 
 Passing `--run <name>` runs a single test instead; that is how the driver observes a test that
 expects the process to terminate, described next.
+
+### Naming the Test Projects
+
+A test project dropped into an existing repository may need another name, an older .NET, or CMake
+targets that cannot collide with the repository's own. A project states that once, in `<Scaffold>`:
+
+```xml
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Scaffold>
+    <CSharp TargetFramework="net8.0" ProjectName="Acme.Billing.Tests" />
+    <Cpp ProjectName="billing_tests" TargetPrefix="billing" />
+  </Scaffold>
+</ProtoCrossProject>
+```
+
+That writes `Acme.Billing.Tests.csproj` targeting `net8.0`, and a CMake project `billing_tests` whose
+targets all begin `billing_`. Every setting is optional, and one left out keeps its default. The
+same four settings are flags for one build: `--csharp-target-framework`, `--csharp-project-name`,
+`--cpp-project-name` and `--cpp-target-prefix`. A flag stands over the project for the setting it
+states, and needs `--scaffold` and its target in `-t`.
+
+A value is refused, not rewritten: a framework older than `net8.0`, which the pinned test SDK does not
+support, or a name that is not letters, digits and underscores (and, for the C# project, periods
+between them). The package versions and the test frameworks are fixed: Google.Protobuf has to match
+the protoc that Grpc.Tools runs, and the C# tests are xUnit tests (spec 25.3.2).
 
 ### Tests That Expect Failure
 

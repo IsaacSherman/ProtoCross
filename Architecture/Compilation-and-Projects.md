@@ -16,6 +16,7 @@
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
 | CLI arguments, source/project builds | [Program][cli]: `CommandLineOptions.Parse`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t] |
+| Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [Program][cli]: `ScaffoldSettingsFor`, `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
 | Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [Program][cli]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
 | Attribute and publish editor diagnostics | [CompilationDiagnostics][routing]: `Build`; [DiagnosticRouter][router]: `PublishAsync`, `ClearAsync` | [Diagnostic routing][routing-t] |
 
@@ -36,6 +37,7 @@
 [members]: ../src/ProtoCross.Projects/ProjectSources.cs
 [policy]: ../src/ProtoCross.Projects/ProjectPolicy.cs
 [cli]: ../src/ProtoCross.Cli/Program.cs
+[scaffold]: ../src/ProtoCross.Core/Backend/ScaffoldSettings.cs
 [diagnostics]: ../src/ProtoCross.Core/Diagnostics/Diagnostic.cs
 [routing]: ../src/ProtoCross.LanguageServer/Hosting/CompilationDiagnostics.cs
 [router]: ../src/ProtoCross.LanguageServer/Hosting/DiagnosticRouter.cs
@@ -55,5 +57,9 @@
 [members-t]: ../tests/ProtoCross.Tests/ProjectSourcesTests.cs
 [refusal-t]: ../tests/ProtoCross.Tests/ProjectBuildRefusalTests.cs
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
+[scaffold-t]: ../tests/ProtoCross.Tests/ScaffoldSettingsTests.cs
+[scaffold-project-t]: ../tests/ProtoCross.Tests/ProjectFileTests.Scaffold.cs
+[scaffold-cli-t]: ../tests/ProtoCross.Tests/CliTests.Scaffold.cs
+[scaffold-run-t]: ../tests/ProtoCross.Tests/ScaffoldExecutionTests.Settings.cs
 [diagnostic-t]: ../tests/ProtoCross.Tests/DiagnosticCodeTests.cs
 [routing-t]: ../tests/ProtoCross.Tests/LanguageServerDiagnosticRoutingTests.cs

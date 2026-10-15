@@ -114,7 +114,10 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Whether a test build should refuse a production source that names a type only a test source
   imports.~~ Decided: yes; production behavior names only types in the production schema closure
   ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)).
-- Generated test output framework options and future `protoc` plugin flag names.
+- ~~Generated test output framework options.~~ Decided: a project's `<Scaffold>` or a flag names each
+  test project and, for C#, its target framework, and the test framework is not an option in 1.0
+  ([25.3.2](./§25-Testing%20and%20Conformance%20Vectors.md#2532-test-projects)). Future `protoc`
+  plugin flag names remain open.
 - Stable IR format.
 - Third-party backend support.
 - ~~Generated API shape for implemented backends.~~ Decided: C# extension methods and C++ header-only
