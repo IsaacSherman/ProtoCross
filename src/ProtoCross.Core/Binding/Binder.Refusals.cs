@@ -287,14 +287,23 @@ public sealed partial class Binder
     /// The places it may stand are the ones a mutating call may (spec 18), for the same reason, so it asks the
     /// same question of the statement (<see cref="ExpressionsOf"/>).
     /// </para>
+    /// <para>
+    /// Each refusal is reported once, where it is written, by its span, as a mutating call is
+    /// (<see cref="ReportMutatingCallsInsideExpressions"/>): a compound store's place is a copy of the key it
+    /// reads through, so a refusal in that key is in the statement twice.
+    /// </para>
     /// </remarks>
     private void ReportRefusalsInsideExpressions(IrStatement statement)
     {
+        var reported = new HashSet<SourceSpan>();
+
         foreach (var (expression, mayStand) in ExpressionsOf(statement))
         {
             foreach (var node in IrWalk.DescendantsAndSelf(expression).OfType<IrExpression>())
             {
-                if (RefusalInsideAnExpression(node) is not var (message, standing) || (mayStand && ReferenceEquals(node, expression)))
+                if (RefusalInsideAnExpression(node) is not var (message, standing)
+                    || (mayStand && ReferenceEquals(node, expression))
+                    || !reported.Add(node.Span))
                 {
                     continue;
                 }
