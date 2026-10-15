@@ -1,3 +1,4 @@
+using ProtoCross.Config;
 using ProtoCross.Diagnostics;
 using Xunit;
 
@@ -6,6 +7,34 @@ namespace ProtoCross.Tests;
 /// <summary>A refusal is reported once where it is written, and help offers only what the project allows.</summary>
 public class SprintCompletionReviewTests
 {
+    [Fact]
+    public void AnOpenEnumConversionDoesNotSuggestForbiddenTermination()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        File.WriteAllText(Path.Combine(directory, "meter.proto"), """
+            syntax = "proto3";
+            message Meter { int32 number = 1; }
+            enum Grade { GRADE_NONE = 0; }
+            """);
+        var source = Path.Combine(directory, "meter.pcross");
+        File.WriteAllText(source, """
+            import proto "meter.proto";
+            extend Meter {
+                fn grade() -> Grade { return number as Grade; }
+            }
+            """);
+        var result = new Compilation(SourceDocument.ReadFrom(source), new CompilationOptions
+        {
+            IncludePaths = [directory],
+            Config = ProjectConfig.Default with { Termination = TerminationPolicy.Forbidden },
+        }).Compile();
+        Assert.True(result.Success, string.Join("\n", result.Diagnostics));
+        var note = Assert.Single(result.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.UnnamedNumberIsKept.Code);
+        Assert.Contains("on_unknown Grade.GRADE_NONE", note.Help, StringComparison.Ordinal);
+        Assert.Contains("'on_unknown refuse'", note.Help, StringComparison.Ordinal);
+        Assert.DoesNotContain("on_unknown fail", note.Help, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("key() on_refused refuse")]
     [InlineData("number / divisor on_zero refuse \"no key\"")]
