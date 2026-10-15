@@ -239,8 +239,14 @@ public sealed partial class Binder
     /// (<c>PC0141</c>).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A refusal is passed on as it is, so the two methods have to refuse with one type. Turning one refusal
     /// into another needs a value to refuse with, which this clause has nowhere to write.
+    /// </para>
+    /// <para>
+    /// Where no other clause is left to offer (<see cref="InsteadOfPassingItOn"/>), the help says only how to
+    /// pass the refusal on, rather than ending on an alternative that is not there.
+    /// </para>
     /// </remarks>
     private void ReportIfItCannotBePassedOn(IrMethodCall call, OnRefusedClause clause, MethodContext context)
     {
@@ -251,24 +257,48 @@ public sealed partial class Binder
             return;
         }
 
-        var instead = call.Type is VoidType
-            ? "write 'on_refused fail' instead"
-            : "write 'on_refused' and a fallback, or 'on_refused fail', instead";
+        var instead = InsteadOfPassingItOn(call);
+        var orInstead = instead is null ? "" : $", or {instead}";
+        var otherwise = instead is null ? "" : $". Otherwise {instead}";
         var (message, help) = (context.Method, own) switch
         {
             (null, _) => (
                 "A test has no refusal of its own to pass this one on as.",
-                $"Expect the refusal, 'expect refuse …;', or {instead} (spec 25.3)."),
+                $"Expect the refusal, 'expect refuse …;'{orInstead} (spec 25.3)."),
             ({ } method, null) => (
                 $"'{method.Name}' declares no refusal, so it cannot pass on a refusal from '{call.Target.Name}'.",
-                $"Declare it '-> {method.ReturnType.DisplayName} refuses {refusal.DisplayName}', or {instead} (spec 16.3)."),
+                $"Declare it '-> {method.ReturnType.DisplayName} refuses {refusal.DisplayName}'{orInstead} (spec 16.3)."),
             ({ } method, { } declared) => (
                 $"'{call.Target.Name}' refuses with '{refusal.DisplayName}', and '{method.Name}' refuses with "
                 + $"'{declared.DisplayName}'.",
-                $"A refusal is passed on as it is, so the two have to refuse with one type. Otherwise {instead} (spec 16.3)."),
+                $"A refusal is passed on as it is, so the two have to refuse with one type{otherwise} (spec 16.3)."),
         };
 
         _diagnostics.Report(DiagnosticCodes.RefusalCannotBePassedOn, message, clause.Span, help);
+    }
+
+    /// <summary>
+    /// What a call whose refusal cannot be passed on may write instead, as help: <c>write 'on_refused' and a
+    /// fallback, or 'on_refused fail', instead</c>, or null where nothing is left.
+    /// </summary>
+    /// <remarks>
+    /// A fallback only where the call gives a value, and <c>on_refused fail</c> only where the project allows
+    /// ending the program: offered where it is forbidden, writing it would trade this error for <c>PC0144</c>.
+    /// </remarks>
+    private string? InsteadOfPassingItOn(IrMethodCall call)
+    {
+        List<string> clauses = call.Type is VoidType ? [] : ["'on_refused' and a fallback"];
+        if (!TerminationIsForbidden)
+        {
+            clauses.Add("'on_refused fail'");
+        }
+
+        return clauses switch
+        {
+            [] => null,
+            [var only] => $"write {only} instead",
+            _ => $"write {string.Join(", or ", clauses)}, instead",
+        };
     }
 
     /// <summary>

@@ -14,7 +14,7 @@ namespace ProtoCross.Tests;
 /// conformance corpus, <c>forbidden_termination/refusing_methods.pcross</c>. These cover what it cannot: every
 /// construct the setting refuses, and the file contradicting itself.
 /// </remarks>
-public class TerminationTests
+public partial class TerminationTests
 {
     private const string Schema =
         """
