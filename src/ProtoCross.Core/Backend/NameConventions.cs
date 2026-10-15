@@ -84,20 +84,28 @@ public static partial class NameConventions
 
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> by capitalizing the first letter and every
-    /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>. The C#
-    /// backend names methods and extension classes with it.
+    /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>, and keeps an
+    /// underscore in front of a name that would otherwise begin with a digit. The C# backend names
+    /// methods and extension classes with it, and every backend a factory's class.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Close to protoc's C# rule, and not it: <see cref="UnderscoresToPascalCase"/> also capitalizes a
-    /// letter after a digit and keeps an underscore before a leading digit. A field's property and a
-    /// file's namespace have to be exactly the ones protoc declared, so they are named by
-    /// <see cref="GetCSharpPropertyName"/> and <see cref="GetCSharpNamespace"/> instead. A method name
-    /// only has to agree with itself, and moving this rule would rename methods that callers already
-    /// compile against.
+    /// letter after a digit. A field's property and a file's namespace have to be exactly the ones
+    /// protoc declared, so they are named by <see cref="GetCSharpPropertyName"/> and
+    /// <see cref="GetCSharpNamespace"/> instead. A method name only has to agree with itself, and moving
+    /// that rule would rename methods that callers already compile against.
+    /// </para>
+    /// <para>
+    /// The underscore before a leading digit is protoc's too, and kept for another reason: without it
+    /// the message <c>_1Ticket</c> names its factory <c>1TicketFactory</c>, which neither C# nor C++
+    /// accepts as a name. Keeping it renames nothing that compiled, since every name it changes began
+    /// with a digit.
+    /// </para>
     /// </remarks>
     public static string ToPascalCase(string name)
     {
-        var builder = new StringBuilder(name.Length);
+        var builder = new StringBuilder(name.Length + 1);
         var capitalizeNext = true;
 
         foreach (var c in name)
@@ -110,6 +118,11 @@ public static partial class NameConventions
 
             builder.Append(capitalizeNext ? char.ToUpperInvariant(c) : c);
             capitalizeNext = false;
+        }
+
+        if (builder.Length > 0 && char.IsAsciiDigit(builder[0]))
+        {
+            builder.Insert(0, '_');
         }
 
         return builder.ToString();

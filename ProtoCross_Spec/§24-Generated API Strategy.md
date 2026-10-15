@@ -19,7 +19,7 @@ in, as it always has been.
 behavior goes in** ([16.3](./§16-Methods.md#163-factories)). The class of `Invoice`'s factory is `InvoiceFactory`. Its name is the
 message's name and the names of the messages enclosing it, each PascalCased as a C# method name is
 ([24.1](#241-c)) and joined by underscores, then `Factory`: `Outer.invoice_line` is
-`Outer_InvoiceLineFactory`. One name in every backend, because it is the name a consumer types, and a
+`Outer_InvoiceLineFactory`, and `_1Ticket` is `_1TicketFactory`. One name in every backend, because it is the name a consumer types, and a
 nested message's factory never takes a top-level one's. It goes where the project's behavior goes, so
 a consumer writes `using Acme.App;` and `InvoiceFactory.Create(options)` in C#, or
 `acme::app::InvoiceFactory::create(options)` in C++. Compiled without a project, it is declared beside
@@ -95,7 +95,8 @@ source's part lists its methods by the message they extend. One class rather tha
 because the namespace is the project's rather than a schema's, and two messages of one name from
 two packages would otherwise need two classes of one name in it. Method names are PascalCased to
 match the C# protobuf generator, so `line_total_cents` becomes `LineTotalCents` and reads the same
-as a hand-written member. A method whose name would then be the name of the class it is declared in,
+as a hand-written member. An underscore in front of a digit at the start is kept, as protoc keeps
+one, because a name cannot begin with a digit: `_2nd_try` is `_2ndTry`. A method whose name would then be the name of the class it is declared in,
 which C# does not allow, has an underscore appended wherever it is declared or called, as protoc
 appends one to a property named after its message: `proto_cross_extensions` is
 `ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
