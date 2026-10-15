@@ -403,8 +403,9 @@ method a test targets, and any method its fixture, arguments or expectation call
 
 A header includes the protobuf header of each schema its methods' receivers are declared in. Each of
 those includes the header of every schema its own schema imports. Any other schema a header names a
-type from also gets its header included: through a literal, a parameter, a return value, a local or
-an enum value. So does any such schema a test driver names beyond its targets' schemas. A schema
+type from also gets its header included: through a literal, a parameter, a return value, a refusal, a
+local or an enum value. A refusal is named by the method that declares it, and by every call to such a
+method, which declares one to be handed. So does any such schema a test driver names beyond its targets' schemas. A schema
 that is already declared by those includes is not included a second time.
 
 **A `mut fn` takes its receiver as `T&`; every other receiver, and every parameter, stays `const`**

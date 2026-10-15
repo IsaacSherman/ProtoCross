@@ -514,6 +514,9 @@ public sealed partial class Binder
             IrVariableDeclaration declaration => [(declaration.Initializer, true)],
             IrAssignment assignment => [(assignment.Value, true)],
             IrReturn { Value: { } returned } => [(returned, true)],
+
+            // A refusal's value is evaluated as the method ends, so it may not end it first, nor change anything.
+            IrRefuse refusal => [(refusal.Value, false)],
             IrFieldAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],
             IrAppend append => [(append.Collection, false), (append.Value, false)],
             IrElementAssignment assignment => [(assignment.Target, false), (assignment.Value, false)],

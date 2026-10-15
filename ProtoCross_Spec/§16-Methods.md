@@ -190,7 +190,9 @@ Normative Requirements:
 - **`refuse value;` ends the method with its refusal**, as `return` ends it with its result, so
   nothing after it on its path runs and a path that refuses needs no `return`. The value must already
   have the type the method refuses with (`PC0137`); no implicit conversion is applied. A `refuse` in a
-  method that declares no refusal is `PC0136`.
+  method that declares no refusal is `PC0136`. The value is evaluated as the method ends, so it may not
+  itself pass a refusal on (`PC0142`) or call a `mut fn` (`PC0095`), as a value inside an expression may
+  not.
 - **A call to a method that may refuse says what a refusal makes of it**, with an `on_refused` clause
   after the call. One without it is `PC0138`, whose help lists the forms that fit where it is written:
   - `on_refused <fallback>` gives the fallback instead. It must have the type the call gives

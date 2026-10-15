@@ -393,6 +393,46 @@ public class RefusalTests
             Compile(WithCreate($"    fn f(o: TicketOptions) -> Ticket refuses Refusal {{\n        {statements}\n    }}\n")),
             DiagnosticCodes.RefusalPassedOnInsideAnExpression);
 
+    [Theory]
+    [InlineData("reason() on_refused refuse")]
+    [InlineData("1 + (reason() on_refused refuse)")]
+    public void ARefusalCannotBePassedOnFromARefuseValue(string value)
+        => TheOnly(
+            Compile($$"""
+                factory Ticket {
+                    fn create() -> Ticket refuses int64 {
+                        refuse {{value}};
+                    }
+
+                    helper fn reason() -> int64 refuses int64 {
+                        refuse 7;
+                    }
+                }
+                """),
+            DiagnosticCodes.RefusalPassedOnInsideAnExpression);
+
+    [Theory]
+    [InlineData("holder.rename()")]
+    [InlineData("1 + holder.rename()")]
+    public void AMutatingCallCannotBeNestedInARefuseValue(string value)
+        => TheOnly(
+            Compile($$"""
+                extend Holder {
+                    mut fn rename() -> int64 {
+                        name = "changed";
+                        return 7;
+                    }
+                }
+
+                factory Ticket {
+                    fn create() -> Ticket refuses int64 {
+                        var holder: Holder = new Holder {};
+                        refuse {{value}};
+                    }
+                }
+                """),
+            DiagnosticCodes.MutatingCallInsideAnExpression);
+
     /// <summary>A call that has no value is told so once, and not also asked what a refusal makes of it.</summary>
     [Fact]
     public void ACallThatReturnsNothingUsedAsAValueIsOneDiagnostic()
