@@ -468,9 +468,13 @@ public sealed record OnZeroClause(Expression? Fallback, SourceSpan Span) : Synta
     public Expression? Refusal { get; init; }
 
     /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
-    public Expression? Value => Fallback ?? Refusal;
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
 
-    public bool IsFail => Value is null;
+    public bool IsFail => WrittenValue() is null;
 }
 
 public sealed record UnaryExpression(
@@ -530,9 +534,13 @@ public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : Sy
     public Expression? Refusal { get; init; }
 
     /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
-    public Expression? Value => Fallback ?? Refusal;
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
 
-    public bool IsFail => Value is null;
+    public bool IsFail => WrittenValue() is null;
 }
 
 /// <summary>
@@ -585,9 +593,13 @@ public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : Sy
     public Expression? Refusal { get; init; }
 
     /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
-    public Expression? Value => Fallback ?? Refusal;
+    /// <remarks>
+    /// A method rather than a property, so the record's own members hold each node once: what reflects over
+    /// them, and the record's printing of them, would otherwise meet the value twice.
+    /// </remarks>
+    public Expression? WrittenValue() => Fallback ?? Refusal;
 
-    public bool IsFail => Value is null;
+    public bool IsFail => WrittenValue() is null;
 }
 
 /// <summary>

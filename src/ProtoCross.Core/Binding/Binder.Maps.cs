@@ -158,7 +158,7 @@ public sealed partial class Binder
     /// kept among what was refused.
     /// </summary>
     private IReadOnlyList<IrExpression> BindRefusedClause(OnMissingClause? clause, Scope scope, MethodContext context)
-        => clause?.Value is { } written ? [BindRefused(written, scope, context)] : [];
+        => clause?.WrittenValue() is { } written ? [BindRefused(written, scope, context)] : [];
 
     /// <summary>
     /// Binds <c>value in something</c> whose right side begins with a name: a key looked for in a map

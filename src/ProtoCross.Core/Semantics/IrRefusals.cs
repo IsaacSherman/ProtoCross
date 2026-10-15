@@ -29,4 +29,20 @@ public static class IrRefusals
         IrMapLookup { OnMissing: MissingKeyBehavior.Refuse, Fallback: { } refusal } => refusal,
         _ => null,
     };
+
+    /// <summary>
+    /// What a backend names the local an operation whose clause refuses holds what it gave in, before any
+    /// number is added to keep it apart from another: <c>quotient</c>, <c>remainder</c>, <c>named</c> or
+    /// <c>found</c> (spec 24). Null where <paramref name="expression"/> is no such operation.
+    /// </summary>
+    /// <remarks>Here so that both backends give one operation one name, as spec 24 says they do.</remarks>
+    public static string? HeldNameOf(IrExpression expression) => ClauseRefusalOf(expression) is null
+        ? null
+        : expression switch
+        {
+            IrIntegerDivision { Operator: IrBinaryOperator.Modulo } => "remainder",
+            IrIntegerDivision => "quotient",
+            IrNumberToEnum => "named",
+            _ => "found",
+        };
 }

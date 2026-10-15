@@ -313,7 +313,7 @@ public sealed partial class Binder
                 "Delete the clause (spec 12.1).");
         }
 
-        return clause.Value is { } written ? [BindRefused(written, scope, context)] : [];
+        return clause.WrittenValue() is { } written ? [BindRefused(written, scope, context)] : [];
     }
 
     // --- what the project says about an enum's numbers ---

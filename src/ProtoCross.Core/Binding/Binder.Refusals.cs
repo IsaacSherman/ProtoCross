@@ -195,6 +195,11 @@ public sealed partial class Binder
             case { Refusal: null } method when TerminationIsForbidden:
                 ways.Add($"'on_refused refuse', declaring that '{method.Name}' refuses with '{refusal.DisplayName}'");
                 break;
+
+            // A call that gives nothing has no fallback, so with fail forbidden only passing it on is left.
+            case { Refusal: { } own } method when TerminationIsForbidden && ways.Count == 0:
+                ways.Add($"'on_refused refuse', with '{method.Name}' refusing with '{refusal.DisplayName}' rather than '{own.DisplayName}'");
+                break;
         }
 
         return ways;
@@ -315,13 +320,10 @@ public sealed partial class Binder
             IrRefusableCall { OnRefused: RefusalBehavior.Refuse } refusable => (
                 $"A refusal from '{refusable.Call.Target.Name}' is passed on only from a call that stands on its own.",
                 $"Call it as a statement, {Standing}"),
-            IrIntegerDivision when IrRefusals.ClauseRefusalOf(node) is not null => (
-                "'on_zero refuse' refuses only from a division that stands on its own.", $"Divide as {Standing}"),
-            IrNumberToEnum when IrRefusals.ClauseRefusalOf(node) is not null => (
-                "'on_unknown refuse' refuses only from a conversion that stands on its own.", $"Convert as {Standing}"),
-            IrMapLookup when IrRefusals.ClauseRefusalOf(node) is not null => (
-                "'on_missing refuse' refuses only from a lookup that stands on its own.", $"Look it up as {Standing}"),
-            _ => null,
+            _ when IrRefusals.ClauseRefusalOf(node) is null => null,
+            IrIntegerDivision => ("'on_zero refuse' refuses only from a division that stands on its own.", $"Divide as {Standing}"),
+            IrNumberToEnum => ("'on_unknown refuse' refuses only from a conversion that stands on its own.", $"Convert as {Standing}"),
+            _ => ("'on_missing refuse' refuses only from a lookup that stands on its own.", $"Look it up as {Standing}"),
         };
     }
 }

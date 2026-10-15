@@ -174,16 +174,8 @@ public sealed partial class CSharpBackend
     /// none: what a call to a method that may refuse built, or what a division, a conversion to an enum or a
     /// lookup gave where its clause refuses.
     /// </summary>
-    private static string? HeldStemOf(IrExpression expression) => expression switch
-    {
-        IrRefusableCall { Type: not VoidType } => "built",
-        _ when IrRefusals.ClauseRefusalOf(expression) is null => null,
-        IrIntegerDivision { Operator: IrBinaryOperator.Modulo } => "remainder",
-        IrIntegerDivision => "quotient",
-        IrNumberToEnum => "named",
-        IrMapLookup => "found",
-        _ => null,
-    };
+    private static string? HeldStemOf(IrExpression expression)
+        => expression is IrRefusableCall { Type: not VoidType } ? "built" : IrRefusals.HeldNameOf(expression);
 
     /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on not in <paramref name="taken"/>, which it is then added to.</summary>
     private static string Reserve(ISet<string> taken, string stem)

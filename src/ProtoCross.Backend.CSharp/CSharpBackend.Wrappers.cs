@@ -400,8 +400,9 @@ public sealed partial class CSharpBackend
                 break;
             }
 
-            // Evaluated for what it does where the method refused, as the language evaluates it.
-            case RefusalBehavior.Fallback when built is null:
+            // Evaluated for what it does where the method refused, as the language evaluates it, wherever no
+            // statement reads what it gives.
+            case RefusalBehavior.Fallback when built is null || statement is IrExpressionStatement:
             {
                 using var falling = writer.Block($"if ({refused})");
                 writer.WriteLine($"_ = {Expression(refusable.Fallback!, placement)};");

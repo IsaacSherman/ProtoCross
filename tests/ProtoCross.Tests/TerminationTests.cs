@@ -190,6 +190,17 @@ public class TerminationTests
         Assert.True(refused.TryOverrideOverflow(OverflowPolicy.Saturating, allowOverride, out _, out _));
     }
 
+    /// <summary>A configuration handed to a compilation rather than read from a file is held to the same rule.</summary>
+    [Fact]
+    public void ACompilationRefusesAConfigurationThatContradictsItself()
+    {
+        var result = Compile(InMeter("int64", "return count;"), Forbidden with { Overflow = OverflowPolicy.Checked });
+
+        Assert.False(result.Success);
+        Assert.Null(result.Module);
+        Assert.Equal(DiagnosticCodes.SettingsContradictEachOther.Code, Assert.Single(result.Diagnostics).Code);
+    }
+
     // ------- what the setting refuses
 
     [Theory]
@@ -240,6 +251,20 @@ public class TerminationTests
 
         Assert.Equal(
             "Write 'on_refused refuse', declaring that 'f' refuses with 'acme.meters.Refusal' (spec 10.4, 16.3).",
+            diagnostic.Help);
+    }
+
+    /// <summary>Where nothing but passing the refusal on is left, the help says so rather than offering nothing.</summary>
+    [Fact]
+    public void AVoidCallInAMethodRefusingWithAnotherTypeIsToldToRefuseWithItsType()
+    {
+        var diagnostic = TheOnly(
+            Compile("extend Meter {\n    fn f() -> int64 refuses string {\n        check() on_refused fail;\n        return 1;\n    }\n\n"
+                + "    fn check() refuses Refusal {\n        return;\n    }\n}\n"),
+            DiagnosticCodes.TerminationForbidden);
+
+        Assert.Equal(
+            "Write 'on_refused refuse', with 'f' refusing with 'acme.meters.Refusal' rather than 'string' (spec 10.4, 16.3).",
             diagnostic.Help);
     }
 

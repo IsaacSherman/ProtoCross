@@ -259,7 +259,7 @@ public sealed record ProjectConfig(
             return false;
         }
 
-        if (overflow is OverflowPolicy.Checked && Termination is TerminationPolicy.Forbidden)
+        if (Forbids(overflow))
         {
             result = this;
             conflict = $"{flag} ends the program on an overflow, which {TerminationKey} = Forbidden in {Path} forbids";
@@ -270,6 +270,25 @@ public sealed record ProjectConfig(
         conflict = null;
         return true;
     }
+
+    /// <summary>Whether <paramref name="overflow"/> would end the program where this configuration forbids it.</summary>
+    /// <remarks>Asked by the command line too, which offers the override flag only where it could help.</remarks>
+    public bool Forbids(OverflowPolicy overflow)
+        => overflow is OverflowPolicy.Checked && Termination is TerminationPolicy.Forbidden;
+
+    /// <summary>
+    /// Reports each setting of this configuration that would end the program where it forbids that
+    /// (<c>PC2015</c>), and returns whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// A file that contradicts itself is refused as it is read, and reported at the setting. This is for a
+    /// configuration built any other way, which a compilation asks before it binds anything, so no way of
+    /// making one forbids termination and still ends the program. It has no setting to point at for its
+    /// overflow, so that one is reported with no span.
+    /// </remarks>
+    public bool ReportContradictions(DiagnosticBag diagnostics)
+        => Termination is TerminationPolicy.Forbidden
+            && ReportWhatEndsTheProgram(diagnostics, Overflow, SourceSpan.None, EnumFallbacks);
 
     /// <summary>
     /// Searches <paramref name="startDirectory"/> and each directory above it for
@@ -312,7 +331,7 @@ public sealed record ProjectConfig(
         var explicitKeys = new HashSet<string>(StringComparer.Ordinal);
         var enumFallbacks = new List<EnumUnknownFallback>();
         var failed = false;
-        SourceSpan? overflowSetting = null;
+        var overflowSetting = SourceSpan.None;
 
         foreach (var section in file.Root.Elements())
         {
@@ -451,16 +470,16 @@ public sealed record ProjectConfig(
     private static bool ReportWhatEndsTheProgram(
         DiagnosticBag diagnostics,
         OverflowPolicy overflow,
-        SourceSpan? overflowSetting,
+        SourceSpan overflowSetting,
         IReadOnlyList<EnumUnknownFallback> enumFallbacks)
     {
         var found = false;
-        if (overflow is OverflowPolicy.Checked && overflowSetting is { } span)
+        if (overflow is OverflowPolicy.Checked)
         {
             diagnostics.Report(
                 DiagnosticCodes.SettingsContradictEachOther,
                 $"Arithmetic/Overflow = Checked ends the program on an overflow, which {TerminationKey} = Forbidden forbids.",
-                span,
+                overflowSetting,
                 $"Choose {OverflowPolicy.Wrapping} or {OverflowPolicy.Saturating}, or allow termination (spec 10.4).");
             found = true;
         }

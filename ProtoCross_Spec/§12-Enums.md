@@ -108,7 +108,9 @@ Normative Requirements:
     code 70.
   - `on_unknown refuse <value>` ends the method with that refusal, as `on_zero refuse` does: only in a
     method that declares a refusal, with a value of its type, and from a conversion that stands on its
-    own ([16.3.1](./§16-Methods.md#1631-refusals)). The value is evaluated only for a number the enum does not name.
+    own ([16.3.1](./§16-Methods.md#1631-refusals)). The value is evaluated only for a number the enum does not name. It parses
+    as the fallback does, a postfix expression, so a refusal that begins with `-` is parenthesized:
+    `on_unknown refuse (-1)`.
   - The clause binds to the one conversion it follows. Its fallback is a postfix expression, so an
     `as` after it converts the whole conversion: `n as Level on_unknown Level.LOW as int32` is a
     number again.

@@ -216,6 +216,7 @@ public class ClauseRefusalTests
     [InlineData("return count % seconds on_zero refuse " + NoTime + ";", "global::ProtoCross.Runtime.ProtoCrossArithmetic.WrapModuloOrNull(self.Count, self.Seconds) is not { } remainder", "result = remainder;")]
     [InlineData("var g: Grade = grade as Grade on_unknown refuse " + NoTime + ";\n        return 1;", "global::ProtoCross.Runtime.ProtoCrossEnums.NamedOrNull(((global::Acme.Meters.Grade)self.Grade)) is not { } named", "global::Acme.Meters.Grade g = named;")]
     [InlineData("var x: int64 = prices[sku] on_missing refuse " + NoTime + ";\n        return x;", "global::ProtoCross.Runtime.ProtoCrossMaps.FindValue(self.Prices, self.Sku) is not { } found", "long x = found;")]
+    [InlineData("var x: int64 = count;\n        x /= seconds on_zero refuse " + NoTime + ";\n        return x;", "global::ProtoCross.Runtime.ProtoCrossArithmetic.WrapDivideOrNull(x, self.Seconds) is not { } quotient", "x = quotient;")]
     public void CSharpTestsAClauseThatRefusesBeforeItsStatement(string statements, string test, string statement)
     {
         var generated = Generated(Refusing(statements), new CSharpBackend());
@@ -229,6 +230,7 @@ public class ClauseRefusalTests
     [InlineData("return count / seconds on_zero refuse " + NoTime + ";", "auto quotient = ::protocross_runtime::wrap_div_or_i64(self.count(), self.seconds(), [&] { refused = true; return ::std::int64_t{}; });", "result = quotient;")]
     [InlineData("var g: Grade = grade as Grade on_unknown refuse " + NoTime + ";\n        return 1;", "auto named = ::protocross_runtime::named_or(static_cast<::acme::meters::Grade>(self.grade()), &::acme::meters::Grade_IsValid, [&] { refused = true; return ::acme::meters::Grade{}; });", "g = named;")]
     [InlineData("var x: int64 = prices[sku] on_missing refuse " + NoTime + ";\n        return x;", "auto found = ::protocross_runtime::value_or(self.prices(), self.sku(), [&] { refused = true; return ::std::int64_t{}; });", "x = found;")]
+    [InlineData("var x: int64 = count;\n        x /= seconds on_zero refuse " + NoTime + ";\n        return x;", "auto quotient = ::protocross_runtime::wrap_div_or_i64(x, self.seconds(), [&] { refused = true; return ::std::int64_t{}; });", "x = quotient;")]
     public void CppTestsAClauseThatRefusesBeforeItsStatement(string statements, string held, string statement)
     {
         var generated = Generated(Refusing(statements), new CppBackend());
@@ -263,6 +265,20 @@ public class ClauseRefusalTests
             + @"self\.Spare = wrapper\.Value;\s+if \(refused\)\s+\{\s+result = default;\s+return false;\s+\}\s+result = built1;\s+refusal = default;\s+return true;",
             generated);
     }
+
+    /// <summary>A statement that does not read what the call gives still evaluates its fallback where the method refused.</summary>
+    [Fact]
+    public void CSharpEvaluatesAHeldWrappersFallbackWhereItsStatementReadsNothing()
+        => Assert.Matches(
+            @"self\.Spare = wrapper\.Value;\s+if \(refused\)\s+\{\s+_ = global::Acme\.Meters\.MeterProtoCrossExtensions\.Zero\(self\);\s+\}",
+            Generated(
+                Compile(
+                    "extend google.protobuf.Int64Value {\n    mut fn bump() -> int64 refuses Refusal {\n        value += 1;\n"
+                    + "        return value;\n    }\n}\n\n"
+                    + "extend Meter {\n    fn zero() -> int64 {\n        return 0;\n    }\n\n"
+                    + "    mut fn f() {\n        if not has spare {\n            return;\n        }\n\n"
+                    + "        spare.bump() on_refused zero();\n    }\n}\n"),
+                new CSharpBackend()));
 
     private static string Regex(string text) => System.Text.RegularExpressions.Regex.Escape(text);
 }

@@ -399,9 +399,10 @@ Normative Requirements:
     is emitted, as `Presence/UnsetMessageRead` does, and no generated file's header states it.
   - **A file that forbids termination and states a setting that ends the program contradicts itself**:
     `Arithmetic/Overflow = Checked`, or an `<UnknownFallback>` of `fail`. Each is `PC2015` at that
-    setting, and the compilation stops, as for any other file in error. `--arithmetic-overflow checked`
-    is refused under it, even with the override flag, which answers one setting in the file's place and
-    would leave two that cannot both hold.
+    setting, and the compilation stops, as for any other file in error. A policy handed to a compiler
+    rather than read from a file is held to the same rule. `--arithmetic-overflow checked` is refused
+    under it, even with the override flag, which answers one setting in the file's place and would
+    leave two that cannot both hold, and the command line does not offer that flag there.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value
   (`PC2002`), a malformed file (`PC2003`), or a setting stated twice (`PC2004`) is an error, and the
   compilation stops. A file declaring a document type is malformed: the file has no use for one, and

@@ -466,7 +466,7 @@ public sealed partial class Binder
         {
             return BindRefusedAssignment(
                 statement.Target,
-                statement.OnZero?.Value is { } written ? [statement.Value, written] : [statement.Value],
+                statement.OnZero?.WrittenValue() is { } written ? [statement.Value, written] : [statement.Value],
                 statement.Span,
                 scope,
                 context);

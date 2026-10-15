@@ -1,5 +1,6 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -135,13 +136,7 @@ public sealed partial class CppBackend
         using var scope = writer.Block(string.Empty);
         var names = NamesFor(statement, [.. OutNames(placement)]);
         var refused = names.Next("refused");
-        var held = names.Next(operation switch
-        {
-            IrIntegerDivision { Operator: IrBinaryOperator.Modulo } => "remainder",
-            IrIntegerDivision => "quotient",
-            IrNumberToEnum => "named",
-            _ => "found",
-        });
+        var held = names.Next(IrRefusals.HeldNameOf(operation)!);
 
         var marked = $"[&] {{ {refused} = true; return {TypeName(operation.Type)}{{}}; }}";
         writer.WriteLine($"bool {refused} = false;");

@@ -758,7 +758,9 @@ public sealed class Compilation
         }
 
         var config = Options.Config ?? ResolveSharedConfig([.. Sources.Select(source => source.Identity)], diagnostics);
-        if (config is null)
+
+        // A file that contradicts itself was refused as it was read; one handed over is asked here.
+        if (config is null || config.ReportContradictions(diagnostics))
         {
             // A project that states a policy and is then silently ignored is worse off than one that
             // states nothing, so a bad config file stops the compilation.

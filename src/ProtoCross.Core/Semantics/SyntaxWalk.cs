@@ -77,7 +77,8 @@ public static class SyntaxWalk
             BinaryExpression binary => binary.OnZero is { } onZero
                 ? [binary.Left, binary.Right, onZero]
                 : [binary.Left, binary.Right],
-            OnZeroClause { Value: { } value } => [value],
+            OnZeroClause { Fallback: { } fallback } => [fallback],
+            OnZeroClause { Refusal: { } refusal } => [refusal],
             UnaryExpression unary => [unary.Operand],
             HasExpression has => [has.Operand],
             EnumMembershipExpression membership => [membership.Value, membership.EnumType],
@@ -85,12 +86,14 @@ public static class SyntaxWalk
             IndexExpression index => index.OnMissing is { } onMissing
                 ? [index.Collection, index.Key, onMissing]
                 : [index.Collection, index.Key],
-            OnMissingClause { Value: { } value } => [value],
+            OnMissingClause { Fallback: { } fallback } => [fallback],
+            OnMissingClause { Refusal: { } refusal } => [refusal],
             MapEntryExpression entry => [.. entry.Fields],
             CastExpression cast => cast.OnUnknown is { } onUnknown
                 ? [cast.Operand, cast.TargetType, onUnknown]
                 : [cast.Operand, cast.TargetType],
-            OnUnknownClause { Value: { } value } => [value],
+            OnUnknownClause { Fallback: { } fallback } => [fallback],
+            OnUnknownClause { Refusal: { } refusal } => [refusal],
             MessageLiteralExpression literal => [literal.Type, .. literal.Fields],
             ListExpression list => [.. list.Elements],
 
