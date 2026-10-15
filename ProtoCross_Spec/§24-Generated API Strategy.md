@@ -18,8 +18,10 @@ in, as it always has been.
 **Decided: a message's factory is a class of its own, named after the message, in the namespace its
 behavior goes in** ([16.3](./§16-Methods.md#163-factories)). The class of `Invoice`'s factory is `InvoiceFactory`. Its name is the
 message's name and the names of the messages enclosing it, each PascalCased as a C# method name is
-([24.1](#241-c)) and joined by underscores, then `Factory`: `Outer.invoice_line` is
-`Outer_InvoiceLineFactory`, and `_1Ticket` is `_1TicketFactory`. One name in every backend, because it is the name a consumer types, and a
+([24.1](#241-c)) and joined by underscores, then `Factory`. The underscore kept in front of a
+leading digit goes only at the start, because a nested name already follows one:
+`Outer.invoice_line` is `Outer_InvoiceLineFactory`, `_1Ticket` is `_1TicketFactory`, and
+`Outer._1Ticket` is `Outer_1TicketFactory`. One name in every backend, because it is the name a consumer types, and a
 nested message's factory never takes a top-level one's. It goes where the project's behavior goes, so
 a consumer writes `using Acme.App;` and `InvoiceFactory.Create(options)` in C#, or
 `acme::app::InvoiceFactory::create(options)` in C++. Compiled without a project, it is declared beside
