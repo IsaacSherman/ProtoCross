@@ -127,7 +127,8 @@ Normative Requirements:
     schema rules out. In a project that forbids ending the program, the conversion is `PC0144`
     instead, an error, since it is the one termination nobody wrote ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
   - Either one's help writes the clause out with one of the enum's values, and names `<Enums>` as
-    the place to say it once for the project.
+    the place to say it once for the project. In a project that forbids ending the program, the
+    note's help offers a refusal where it would have offered `on_unknown fail`, as `PC0144`'s does.
 - A proto2 enum is closed and a proto3 enum is open. An editions enum is closed where its
   `enum_type` feature says `CLOSED`, stated on the enum or else on its file. protoc accepts the
   feature nowhere between the two, and every edition so far defaults to open.

@@ -172,19 +172,22 @@ public sealed partial class Binder
     /// decided such a number cannot be held. Code that makes one anyway should say what it wants
     /// instead, and its help names the clause that does.
     /// </para>
+    /// <para>
+    /// Where the project forbids ending the program, an open enum's note offers the ways a closed enum's
+    /// refusal does, rather than <c>on_unknown fail</c>: writing what the help said would otherwise trade a
+    /// note for <c>PC0144</c>.
+    /// </para>
     /// </remarks>
     private void ReportUnstatedOnUnknown(CastExpression cast, EnumPlType target, MethodContext context)
     {
         var example = ExampleValueOf(cast, target);
+        List<string> waysNotToEnd = [$"'on_unknown {example}' to use a value instead", .. WaysNotToEnd("on_unknown", null, context)];
 
         // A closed enum's default is the one termination a project cannot see written, so where termination is
         // forbidden it is refused here, in place of the warning that says it happens.
         if (target.IsClosed && TerminationIsForbidden)
         {
-            ReportIfTerminationIsForbidden(
-                $"A number '{target.DisplayName}' does not name",
-                cast.Span,
-                [$"'on_unknown {example}' to use a value instead", .. WaysNotToEnd("on_unknown", null, context)]);
+            ReportIfTerminationIsForbidden($"A number '{target.DisplayName}' does not name", cast.Span, waysNotToEnd);
             return;
         }
 
@@ -205,7 +208,9 @@ public sealed partial class Binder
             $"'{target.DisplayName}' is open, so a number it does not name is kept, as a value equal to "
             + "none of its names.",
             cast.Span,
-            $"Write 'on_unknown {example}' to use a value instead, or 'on_unknown fail' to end the program. "
+            (TerminationIsForbidden
+                ? $"{Written(waysNotToEnd)}. "
+                : $"Write 'on_unknown {example}' to use a value instead, or 'on_unknown fail' to end the program. ")
             + $"<Enums> in {ProjectConfig.FileName} says it once for every conversion (spec 12.1).");
     }
 

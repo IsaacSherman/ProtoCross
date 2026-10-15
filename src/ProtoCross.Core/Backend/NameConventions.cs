@@ -84,18 +84,32 @@ public static partial class NameConventions
 
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> by capitalizing the first letter and every
-    /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>. The C#
-    /// backend names methods and extension classes with it.
+    /// letter after an underscore, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>, and keeps an
+    /// underscore in front of a name that would otherwise begin with a digit. The C# backend names
+    /// methods with it, and <see cref="GetFlattenedPascalCaseName"/> follows it for a message's classes.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Close to protoc's C# rule, and not it: <see cref="UnderscoresToPascalCase"/> also capitalizes a
-    /// letter after a digit and keeps an underscore before a leading digit. A field's property and a
-    /// file's namespace have to be exactly the ones protoc declared, so they are named by
-    /// <see cref="GetCSharpPropertyName"/> and <see cref="GetCSharpNamespace"/> instead. A method name
-    /// only has to agree with itself, and moving this rule would rename methods that callers already
-    /// compile against.
+    /// letter after a digit. A field's property and a file's namespace have to be exactly the ones
+    /// protoc declared, so they are named by <see cref="GetCSharpPropertyName"/> and
+    /// <see cref="GetCSharpNamespace"/> instead. A method name only has to agree with itself, and moving
+    /// that rule would rename methods that callers already compile against.
+    /// </para>
+    /// <para>
+    /// The underscore before a leading digit is protoc's too, and kept for another reason: without it
+    /// the message <c>_1Ticket</c> names its factory <c>1TicketFactory</c>, which neither C# nor C++
+    /// accepts as a name. Keeping it renames nothing that compiled, since every name it changes began
+    /// with a digit.
+    /// </para>
     /// </remarks>
-    public static string ToPascalCase(string name)
+    public static string ToPascalCase(string name) => NotStartingWithADigit(CapitalizeWords(name));
+
+    /// <summary>
+    /// Drops every underscore in <paramref name="name"/> and capitalizes the first letter and each
+    /// letter that followed one, so <c>line_total_cents</c> becomes <c>LineTotalCents</c>.
+    /// </summary>
+    private static string CapitalizeWords(string name)
     {
         var builder = new StringBuilder(name.Length);
         var capitalizeNext = true;
@@ -114,6 +128,13 @@ public static partial class NameConventions
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// <paramref name="name"/> with an underscore in front if it begins with a digit, as protoc writes
+    /// one, so that it is a name in C# and C++.
+    /// </summary>
+    private static string NotStartingWithADigit(string name)
+        => name.Length > 0 && char.IsAsciiDigit(name[0]) ? "_" + name : name;
 
     /// <summary>
     /// The class a message's factory is generated into, in every backend: the message's name and the
@@ -143,12 +164,22 @@ public static partial class NameConventions
     }
 
     /// <summary>
-    /// A message's name and the names of the messages enclosing it, each <see cref="ToPascalCase"/>d
-    /// and joined by underscores: <c>Outer.invoice_line</c> is <c>Outer_InvoiceLine</c>.
+    /// A message's name and the names of the messages enclosing it, each PascalCased and joined by
+    /// underscores, with an underscore in front if the result begins with a digit:
+    /// <c>Outer.invoice_line</c> is <c>Outer_InvoiceLine</c>, <c>_1Ticket</c> is <c>_1Ticket</c>, and
+    /// <c>Outer._1Ticket</c> is <c>Outer_1Ticket</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// What a class generated for a message is named from: a factory's, and a C# extension class beside
     /// its message. One rule rather than a walk in each, because spec 24 describes them as one.
+    /// </para>
+    /// <para>
+    /// The underscore before a leading digit goes in front of the joined name, not each part. Only the
+    /// outermost part can begin the name, and a nested part already follows the joining underscore. One
+    /// for each part would spell <c>Outer._1Ticket</c>'s classes <c>Outer__1Ticket</c>, renaming a
+    /// factory and an extension class that compile as <c>Outer_1Ticket</c>.
+    /// </para>
     /// </remarks>
     public static string GetFlattenedPascalCaseName(MessageDescriptor message)
     {
@@ -157,10 +188,10 @@ public static partial class NameConventions
         var parts = new List<string>();
         for (var current = message; current is not null; current = current.ContainingType)
         {
-            parts.Insert(0, ToPascalCase(current.Name));
+            parts.Insert(0, CapitalizeWords(current.Name));
         }
 
-        return string.Join('_', parts);
+        return NotStartingWithADigit(string.Join('_', parts));
     }
 
     /// <summary>

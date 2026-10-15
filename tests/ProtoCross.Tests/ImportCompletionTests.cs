@@ -820,13 +820,14 @@ public class ImportCompletionTests
 
             // An ordered request behind the edits: its answer cannot come back until they have been
             // applied, so releasing the walk now means the walk is answering about text that moved.
-            // Capped well under the client's own patience, because a server that has stopped reading
-            // the wire should fail this in seconds rather than in half a minute per repetition.
+            // Capped at half the client's own patience, because a server that has stopped reading the
+            // wire should fail this sooner than in half a minute per repetition. Not lower: alone it
+            // answers in well under a second, but a loaded full run tripped a 5 second cap repeatedly.
             await client
                 .RequestAsync(
                     Methods.SemanticTokensFull,
                     new SemanticTokensParams { TextDocument = new TextDocumentIdentifier { Uri = uri } })
-                .WaitAsync(TimeSpan.FromSeconds(5));
+                .WaitAsync(TimeSpan.FromSeconds(15));
 
             gate.Open();
 
