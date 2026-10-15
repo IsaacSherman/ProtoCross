@@ -294,7 +294,7 @@ static void WarnOfOtherBuildFiles(string directory, IReadOnlyList<GeneratedFile>
         var header = file.Contents.Split('\n').Take(2).Select(line => line.TrimEnd('\r')).ToList();
         var others = Directory.EnumerateFiles(directory, "*" + Path.GetExtension(file.RelativePath))
             .Where(path => !string.Equals(Path.GetFileName(path), file.RelativePath, StringComparison.OrdinalIgnoreCase))
-            .Where(path => File.ReadLines(path).Take(2).SequenceEqual(header));
+            .Where(path => OpensWith(path, header));
 
         foreach (var other in others)
         {
@@ -302,6 +302,23 @@ static void WarnOfOtherBuildFiles(string directory, IReadOnlyList<GeneratedFile>
                 $"warning: {Path.GetFileName(other)}, which an earlier build wrote, is beside {file.RelativePath}, "
                     + "and a build there needs one; delete it");
         }
+    }
+}
+
+/// <summary>Whether the file at <paramref name="path"/> begins with <paramref name="lines"/>.</summary>
+/// <remarks>
+/// False for a file that cannot be read: it is only being asked about for a warning, and a file the
+/// build cannot open must not end a build that has already written everything it set out to.
+/// </remarks>
+static bool OpensWith(string path, IReadOnlyList<string> lines)
+{
+    try
+    {
+        return File.ReadLines(path).Take(lines.Count).SequenceEqual(lines);
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+    {
+        return false;
     }
 }
 
