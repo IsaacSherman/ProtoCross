@@ -15,24 +15,26 @@ the table on #108. A sprint branch is cut from `main`, each issue branches off i
 into it by pull request, and the sprint then goes to `main` as one pull request, the way
 `epics/language-server-N` did.
 
-The current sprint branch is **`sprints/language-1-5`**. This line is the only record of that, so
+The current sprint branch is **`sprints/language-1-6`**. This line is the only record of that, so
 moving to the next sprint means editing it here. `sprints/language-1-1` carried sprint 1 — #10,
 #65, #105, #28 and the catch-up half of #107 — and reached `main` as #129. `sprints/language-1-2`
 carried the multi-file sprint — #69, #127, #27, #106 and #29 — and reached `main` as #150.
 `sprints/language-1-3` carried construction and then mutation — #151, #80, #81, #13 and #153 — and
 reached `main` as #165. `sprints/language-1-4` carried the rest of the core language — #158, #159,
-#168, #166, #6, #11, #175, #177, #173 and #162 — and reached `main` as #181. Sprint 5 is factories
-and refusal: #163, #82, #83, #84 and #16, in that order, with the plan and its decisions in the
-comments on #108 and on each issue.
+#168, #166, #6, #11, #175, #177, #173 and #162 — and reached `main` as #181. `sprints/language-1-5`
+carried factories and refusal — #163, #82, #83, #84 and #16, and #135, found on the way — and reached
+`main` as #188. Sprint 6 is what makes 1.0 usable outside this repository: #30, #23, #8 and the
+close-out of #107, in that order, with the plan and its decisions in the comments on #108 and on each
+issue.
 
 ```bash
-git checkout sprints/language-1-5 && git pull && git checkout -b issue-163-protoc-version-order
+git checkout sprints/language-1-6 && git pull && git checkout -b issue-30-scaffold-options
 ```
 
 Issue pull requests use the sprint branch as their base, never `main`:
 
 ```bash
-gh pr create --draft --base sprints/language-1-5 --title "..." --body-file pr-body.md
+gh pr create --draft --base sprints/language-1-6 --title "..." --body-file pr-body.md
 ```
 
 They land one at a time. A ruleset on `sprints/**` requires a pull request, the CI checks, and a
@@ -48,15 +50,15 @@ as the sprints are: **`0.<sprint>.<pull request>`**. The server inside the packa
 number, because `npm run stage` publishes it with the extension's version, so a status report names
 one version for both.
 
-- **Every pull request into a sprint branch increments the third number.** Sprint 5 began at
-  `0.5.0`, and the pull request that opened it made it `0.5.1`, so #163's makes it `0.5.2`.
+- **Every pull request into a sprint branch increments the third number.** Sprint 6 began at
+  `0.6.0`, and the pull request that opened it made it `0.6.1`, so #30's makes it `0.6.2`.
 - **The pull request that takes a sprint to `main` increments the second number and resets the
-  third**, so sprint 5 reaches `main` as `0.6.0`, and the pull request that opens sprint 6 makes it
-  `0.6.1`.
+  third**, so sprint 6 reaches `main` as `0.7.0`, and the pull request that opens sprint 7 makes it
+  `0.7.1`.
 
-Each part is a number, not a digit, so a sprint never runs out: `0.5.9` is followed by `0.5.10`,
+Each part is a number, not a digit, so a sprint never runs out: `0.6.9` is followed by `0.6.10`,
 which npm and VS Code order after it. Never pad one to keep the width. Semver forbids a leading zero,
-so `0.5.01` is not a version: `npm version` silently rewrites it to `0.5.1`, and `vsce package`
+so `0.6.01` is not a version: `npm version` silently rewrites it to `0.6.1`, and `vsce package`
 refuses a `package.json` that says it.
 
 Bump it with `npm version <next> --no-git-tag-version` in `editors/vscode`, which changes both
@@ -129,5 +131,5 @@ issue over, name what to try in the extension alongside the short list of what d
 ## What is not different
 
 The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, and the
-byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-5` in
+byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-6` in
 place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.`
