@@ -46,6 +46,33 @@ public partial class ContextualKeywordTests
             painted.Select(token => token.Type));
     }
 
+    /// <summary><c>refuse</c> after <c>on_unknown</c> begins a clause, as <c>fail</c> does (spec 16.3.1).</summary>
+    private const string OnUnknownRefusing =
+        """
+        import proto "fixtures.proto";
+
+        extend Outer {
+            fn f() -> TopLevelStatus refuses string {
+                var named: TopLevelStatus = small_count as TopLevelStatus on_unknown refuse "unnamed";
+                return named;
+            }
+        }
+        """;
+
+    [Fact]
+    public void OnUnknownBeforeRefuseBeginsAClauseAndIsColouredAsAKeyword()
+    {
+        var unit = Parse(OnUnknownRefusing, out var diagnostics);
+
+        Assert.Empty(diagnostics);
+        var clause = ClauseOf(unit.Extends[0].Methods[0].Body.Statements[0]);
+        Assert.Null(clause.Fallback);
+        Assert.IsType<StringLiteralExpression>(clause.Refusal);
+        Assert.Equal(
+            SemanticTokenLegend.Keyword,
+            Assert.Single(Paint(OnUnknownRefusing), token => token.TextIn(OnUnknownRefusing) == "on_unknown").Type);
+    }
+
     private static OnUnknownClause ClauseOf(Statement statement)
     {
         var initializer = Assert.IsType<VariableDeclarationStatement>(statement).Initializer;

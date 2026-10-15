@@ -124,7 +124,8 @@ The IR preserves:
   compound is that its value reads its own target, because where that target is written through an
   element the read has to be evaluated before the target is reached. Which form was written is
   otherwise the syntax tree's to say.
-- Terminal-failure behavior for `on_zero fail`.
+- What a zero divisor does: the fallback, terminal failure for `on_zero fail`, or the refusal for
+  `on_zero refuse`, which the division holds where it would hold a fallback.
 - **An enum's number.** A conversion between an enum and its `int32` is a node of its own in each
   direction rather than a numeric conversion, since no conversion policy governs it. One to an enum
   carries what it makes of a number the enum does not name: keep it, a fallback, or fail. That is
@@ -146,7 +147,10 @@ The IR preserves:
   call reaches the signature and not the method. `refuse` is a statement of its own that ends the method.
   Every call to a method that may refuse is a node around the call holding what a refusal makes of it: a
   fallback, which it holds too, `fail`, or `refuse`. A call written with no clause holds that it has
-  none, so a backend never meets a call to such a method bare ([16.3.1](./§16-Methods.md#1631-refusals)).
+  none, so a backend never meets a call to such a method bare ([16.3.1](./§16-Methods.md#1631-refusals)). A division, a conversion to an
+  enum and a lookup whose clause refuses carry that as their behavior, with the refusal where a fallback
+  would be, and the IR answers which operation's clause refuses and what with, and which expression of a
+  statement stands on its own, once for the binder and both backends.
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
   constants it lists, of the subject's type, and its block, and the default arm is the one listing
   none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the

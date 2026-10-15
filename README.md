@@ -157,14 +157,17 @@ Implemented:
   of static members, in the project's namespace or beside the message. A test targets one as
   `test Invoice.factory.create`, with no receiver, and may expect the message it builds as a literal,
   which is compared by the fields it sets. The spec has the rules in sections 16.3, 24 and 25.3.
-- Refusals. A factory's method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
-  InvoiceRefusal`, ending with `refuse value;` instead of its message, with a type of the author's
+- Refusals. Any method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
+  InvoiceRefusal`, ending with `refuse value;` instead of its result, with a type of the author's
   choosing. Every call to one says what a refusal makes of it: `on_refused <fallback>`,
-  `on_refused fail`, or `on_refused refuse` to pass it on. A factory that only builds is called as
-  before. C# and C++ both generate the method as `bool Create(…, out result, out refusal)`, references
-  in C++, and a test expects a refusal with `expect refuse`. The spec has the rules in section 16.3.1.
+  `on_refused fail`, or `on_refused refuse` to pass it on. A method that only returns is called as
+  before. A division, a conversion to an enum and a map lookup may refuse where they have no value:
+  `count / seconds on_zero refuse value`, and likewise `on_unknown refuse` and `on_missing refuse`.
+  C# and C++ both generate the method as `bool Create(…, out result, out refusal)`, references in C++,
+  and a test expects a refusal with `expect refuse`. The spec has the rules in section 16.3.1.
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
-  integer overflow, and what each enum's unnamed numbers become
+  integer overflow, what each enum's unnamed numbers become, and whether generated code may end the
+  program at all
 - C# backend (extension methods, and a static class per factory) and C++ backend (header-only free
   functions, and a struct per factory)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
@@ -176,7 +179,7 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `Result` types, a refusal from a method outside a factory, `==` between two messages (a test compares an expected literal by
+Not implemented: `Result` types, a value that holds a refusal, `==` between two messages (a test compares an expected literal by
 the fields it sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
 tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
 does not implement, such as iterating a map, rather than emitting something whose semantics differ
@@ -323,6 +326,9 @@ project's with a warning.
     <!-- What a number an enum does not name becomes: a value name, or fail -->
     <UnknownFallback Type="shop.OrderStatus">ORDER_STATUS_UNSPECIFIED</UnknownFallback>
   </Enums>
+  <Failure>
+    <Termination>Allowed</Termination>        <!-- Allowed | Forbidden -->
+  </Failure>
 </ProtoCross>
 ```
 
@@ -341,6 +347,14 @@ error: --arithmetic-overflow saturating contradicts Arithmetic/Overflow = Checke
        The config file wins, so that a build means the same thing however it was run.
        Pass --override-config to use the flag anyway.
 ```
+
+**Code that runs inside someone else's process can forbid ending it.** `fail` ends the program with
+exit code 70, which is right for a command-line tool and wrong for a library loaded into a server.
+`<Termination>Forbidden</Termination>` makes every construct that would end the program a compile
+error where it is written, each with help that says what to write instead: a fallback, or a refusal
+from a method that declares one. Nothing is reinterpreted, so a source that compiles means the same
+thing under either setting. Checked overflow ends the program on an overflow, so a file that states
+it and forbids termination is refused.
 
 Every mode of every setting produces identical observable behavior in both backends. No mode means
 "whatever C# or C++ happens to do" -- `checked` overflow terminates with the same exit code and the

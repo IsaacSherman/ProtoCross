@@ -521,7 +521,7 @@ public sealed partial class Binder
             // bound as the method it would be without the word.
             IsMutating = method.IsMutating && kind is IrMethodKind.Extend,
             Kind = kind,
-            Refusal = DescribeRefusal(method, kind),
+            Refusal = DescribeRefusal(method),
         };
     }
 

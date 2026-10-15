@@ -263,6 +263,18 @@ public partial class HoverTests
         Assert.DoesNotContain("Overflow", card, StringComparison.Ordinal);
     }
 
+    /// <summary>A clause that refuses ends the method there, which the card of what it is on says (spec 16.3.1).</summary>
+    [Theory]
+    [InlineData("count / by on_zero refuse \"none\"", "/ by", "A zero divisor ends the method, which refuses with the value after `refuse`")]
+    [InlineData("(small_count as TopLevelStatus on_unknown refuse \"none\") as int32 as int64", "as TopLevelStatus", "A number the enum does not name ends the method")]
+    public async Task AClauseThatRefusesSaysTheMethodEndsThere(string expression, string marker, string expected)
+    {
+        var text = "import proto \"fixtures.proto\";\n"
+            + "extend Outer { fn f(by: int64) -> int64 refuses string { var x: int64 = " + expression + "; return x; } }";
+
+        Assert.Contains(expected, await TextAsync(text, EditorFixture.At(text, marker)), StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// A compound assignment is the operation it stands for (spec 9.2), so its operator's card says
     /// what that operation does, and says nothing about overflow where no policy governs it.

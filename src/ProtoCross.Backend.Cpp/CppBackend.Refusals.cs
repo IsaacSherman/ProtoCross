@@ -1,5 +1,6 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.Cpp;
@@ -17,6 +18,10 @@ namespace ProtoCross.Backend.Cpp;
 /// The fallback is evaluated only where the method refused, as the language orders it. A call that passes a
 /// refusal on stands on its own (spec 16.3), so its statement tests it before anything else, and leaves the method
 /// with the same refusal.
+/// </para>
+/// <para>
+/// A division, a conversion to an enum or a lookup whose clause refuses stands on its own too, and is tested the same
+/// way (<see cref="EmitClauseRefusal"/>).
 /// </para>
 /// </remarks>
 public sealed partial class CppBackend
@@ -99,6 +104,58 @@ public sealed partial class CppBackend
         {
             writer.WriteLine($"{target} = {built};");
         }
+    }
+
+    /// <summary>
+    /// Tests <paramref name="operation"/>, a division, a conversion to an enum or a lookup whose clause refuses and
+    /// which stands in <paramref name="statement"/>, and leaves the method with <paramref name="refusal"/> where it
+    /// gave no value, before the statement does anything (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The operation goes through the runtime's helper that takes a fallback, as a lambda that marks the
+    /// operation refused and gives a value nothing reads. What it gave is held in a local the statement then
+    /// reads (<see cref="Placement.Held"/>), so nothing is stored, and no result is given, where it refused. The
+    /// refusal is evaluated only there, as the language orders it.
+    /// </para>
+    /// <para>
+    /// In a block of its own, so its locals are gone after it, under names nothing in the statement reads. A
+    /// declaration's local is declared above the block, to stay in scope after it, and given the value inside it.
+    /// </para>
+    /// </remarks>
+    private static void EmitClauseRefusal(
+        SourceWriter writer, IrStatement statement, IrExpression operation, IrExpression refusal, Placement placement)
+    {
+        if (statement is IrVariableDeclaration declaration)
+        {
+            writer.WriteLine($"{TypeName(declaration.Local.Type)} {Escape(declaration.Local.Name)}{{}};");
+            statement = new IrAssignment(
+                new IrLocalReference(declaration.Local, declaration.Span), declaration.Initializer, declaration.Span);
+        }
+
+        using var scope = writer.Block(string.Empty);
+        var names = NamesFor(statement, [.. OutNames(placement)]);
+        var refused = names.Next("refused");
+        var held = names.Next(IrRefusals.HeldNameOf(operation)!);
+
+        var marked = $"[&] {{ {refused} = true; return {TypeName(operation.Type)}{{}}; }}";
+        writer.WriteLine($"bool {refused} = false;");
+        writer.WriteLine($"auto {held} = {operation switch
+        {
+            IrIntegerDivision division => DividedOr(division, marked, placement),
+            IrNumberToEnum conversion => NamedOr(conversion, marked, placement),
+            IrMapLookup lookup => ValueOr(lookup, marked, placement),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Not an operation a clause may refuse from."),
+        }};");
+
+        using (writer.Block($"if ({refused})"))
+        {
+            writer.WriteLine($"{placement.Outs!.Refusal} = {Expression(refusal, placement)};");
+            writer.WriteLine("return false;");
+        }
+
+        var holding = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance) { [operation] = held };
+        EmitStatement(writer, statement, placement with { Held = holding });
     }
 
     /// <summary>The references the method being written refuses through, which nothing declared inside it may shadow.</summary>

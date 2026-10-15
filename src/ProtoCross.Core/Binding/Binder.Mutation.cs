@@ -480,7 +480,7 @@ public sealed partial class Binder
 
             foreach (var call in IrWalk.DescendantsAndSelf(expression).OfType<IrMethodCall>())
             {
-                if (!call.Target.IsMutating || (mayBeOne && ReferenceEquals(call, expression)))
+                if (!call.Target.IsMutating || (mayBeOne && IsTheCallOf(expression, call)))
                 {
                     continue;
                 }
@@ -505,15 +505,23 @@ public sealed partial class Binder
     }
 
     /// <summary>
+    /// Whether <paramref name="expression"/> is <paramref name="call"/>, or a call to a method that may refuse
+    /// that is <paramref name="call"/> with what a refusal makes of it (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// The clause is answered after the call returns, as the rest of a statement runs after a call that
+    /// stands on its own, so a <c>mut fn</c> that may refuse stands wherever one that cannot may.
+    /// </remarks>
+    private static bool IsTheCallOf(IrExpression expression, IrMethodCall call)
+        => ReferenceEquals(expression, call) || (expression is IrRefusableCall refusable && ReferenceEquals(refusable.Call, call));
+
+    /// <summary>
     /// The expressions a statement holds directly, and whether each may itself be a mutating call.
     /// </summary>
     private static IEnumerable<(IrExpression Expression, bool MayBeAMutatingCall)> ExpressionsOf(IrStatement statement)
         => statement switch
         {
-            IrExpressionStatement expression => [(expression.Expression, true)],
-            IrVariableDeclaration declaration => [(declaration.Initializer, true)],
-            IrAssignment assignment => [(assignment.Value, true)],
-            IrReturn { Value: { } returned } => [(returned, true)],
+            _ when IrMutation.StandingExpressionOf(statement) is { } standing => [(standing, true)],
 
             // A refusal's value is evaluated as the method ends, so it may not end it first, nor change anything.
             IrRefuse refusal => [(refusal.Value, false)],

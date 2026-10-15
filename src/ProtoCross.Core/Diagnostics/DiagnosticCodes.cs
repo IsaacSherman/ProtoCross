@@ -53,9 +53,13 @@ public static class DiagnosticCodes
     /// step, and C++ in #81. Neither reached a release, but the decision log records both, and a code
     /// a reader can look up must not come to mean something else.
     /// </para>
+    /// <para>
+    /// PC0135 refused a refusal declared by a method of an extend block, from #84, which let only a
+    /// factory's methods refuse, until #16 let every method refuse. It did not reach a release either.
+    /// </para>
     /// </remarks>
     public static readonly IReadOnlySet<string> Retired =
-        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC1001", "PC1002", "PC1101", "PC1102" };
+        new HashSet<string>(StringComparer.Ordinal) { "PC0038", "PC0060", "PC0062", "PC0135", "PC1001", "PC1002", "PC1101", "PC1102" };
 
     // ------------------------------------------------------- sources and schemas
 
@@ -723,10 +727,6 @@ public static class DiagnosticCodes
 
     // ------------------------------------------------------- refusals
 
-    /// <summary>A method of an extend block that declares a refusal, which only a factory's may (spec 16.3).</summary>
-    public static readonly DiagnosticDescriptor RefusalOutsideAFactory =
-        new("PC0135", DiagnosticSeverity.Error, "refusal outside a factory");
-
     /// <summary>A <c>refuse</c> in a method that declares no refusal (spec 16.3).</summary>
     public static readonly DiagnosticDescriptor RefuseInAMethodThatCannotRefuse =
         new("PC0136", DiagnosticSeverity.Error, "refuse in a method that cannot refuse");
@@ -754,15 +754,23 @@ public static class DiagnosticCodes
         new("PC0141", DiagnosticSeverity.Error, "refusal cannot be passed on");
 
     /// <summary>
-    /// <c>on_refused refuse</c> on a call inside an expression, where the method cannot end before the rest of
-    /// the expression is evaluated (spec 16.3).
+    /// A refusal from inside an expression, where the method cannot end before the rest of the expression is
+    /// evaluated: <c>on_refused refuse</c> on a call, or <c>refuse</c> after <c>on_zero</c>, <c>on_unknown</c> or
+    /// <c>on_missing</c> (spec 16.3.1).
     /// </summary>
-    public static readonly DiagnosticDescriptor RefusalPassedOnInsideAnExpression =
-        new("PC0142", DiagnosticSeverity.Error, "refusal passed on inside an expression");
+    public static readonly DiagnosticDescriptor RefusalInsideAnExpression =
+        new("PC0142", DiagnosticSeverity.Error, "refusal inside an expression");
 
     /// <summary><c>expect refuse</c> on a method that cannot refuse (spec 25.3).</summary>
     public static readonly DiagnosticDescriptor RefusalExpectedOfAMethodThatCannotRefuse =
         new("PC0143", DiagnosticSeverity.Error, "expected refusal of a method that cannot refuse");
+
+    /// <summary>
+    /// A construct that would end the program, in a project whose <c>protocross.config.xml</c> forbids it
+    /// (spec 10.4, 19).
+    /// </summary>
+    public static readonly DiagnosticDescriptor TerminationForbidden =
+        new("PC0144", DiagnosticSeverity.Error, "termination forbidden");
 
     // ------------------------------------------------------- the configuration file
 
@@ -781,6 +789,13 @@ public static class DiagnosticCodes
     /// <summary>A configuration file stating one setting more than once (spec 10.4).</summary>
     public static readonly DiagnosticDescriptor DuplicateConfigurationSetting =
         new("PC2004", DiagnosticSeverity.Error, "duplicate configuration setting");
+
+    /// <summary>
+    /// A configuration file stating two settings that cannot both hold: termination forbidden, and checked
+    /// overflow or an enum fallback of <c>fail</c>, which end the program (spec 10.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor SettingsContradictEachOther =
+        new("PC2015", DiagnosticSeverity.Error, "configuration settings contradict each other");
 
     // ------------------------------------------------------- the driver
 

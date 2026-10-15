@@ -122,11 +122,13 @@ Normative Requirements:
   value is one.
 - **Reading.** `m[k] on_missing v` is the value `m` holds at `k`, or `v` where it holds none.
   `m[k] on_missing fail` ends the program there instead, with a diagnostic naming the map on standard
-  error and exit code 70, as `on_zero fail` does ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)).
+  error and exit code 70, as `on_zero fail` does ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). `m[k] on_missing refuse r` ends the method with the
+  refusal `r` instead, as `on_zero refuse` does: only in a method that declares a refusal, and from a
+  lookup that stands on its own, so not from a compound that reads an element ([16.3.1](./§16-Methods.md#1631-refusals)).
   - A read without a clause is `PC0115`. It is the choice `on_zero` makes for a zero divisor, made
     where the read is written.
   - **The fallback is evaluated only when the key is missing**, so a fallback that would end the
-    program does not end one whose key was there. It must already have the map's value type
+    program does not end one whose key was there. So is a refusal. It must already have the map's value type
     (`PC0116`); no implicit conversion is applied.
   - The clause belongs to the one lookup it follows, and its fallback parses at unary precedence, as
     `on_zero`'s does: `prices[sku] on_missing 0 + 1` adds one to whichever value the lookup gives. A

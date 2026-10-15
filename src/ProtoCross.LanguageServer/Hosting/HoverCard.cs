@@ -385,6 +385,7 @@ internal static class HoverCard
             (UnnamedNumberBehavior.Fail, UnnamedNumberSource.Default) =>
                 "terminates the program, exit code 70, because the enum is closed (spec 12.1).",
             (UnnamedNumberBehavior.Fail, _) => "terminates the program, exit code 70 (spec 12.1).",
+            (UnnamedNumberBehavior.Refuse, _) => "ends the method, which refuses with the value after `refuse` (spec 16.3).",
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
@@ -413,6 +414,8 @@ internal static class HoverCard
             + "(spec 10.2.1).",
         ZeroDivisorBehavior.Fail => "A zero divisor terminates the program, exit code 70 "
             + "(spec 10.2.1).",
+        ZeroDivisorBehavior.Refuse => "A zero divisor ends the method, which refuses with the value after `refuse` "
+            + "(spec 16.3).",
         _ => throw new ArgumentOutOfRangeException(
             nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
     };

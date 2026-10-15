@@ -1,0 +1,277 @@
+// Conformance vectors for refusals from every method (spec 16.3.1), in a project that forbids ending
+// the program (spec 10.4).
+//
+// Nothing here may end the program, so a method that has no value to give refuses instead: a method
+// of an extend block that declares a refusal, a division whose zero divisor refuses, a conversion to
+// an enum whose unnamed number refuses, and a lookup whose missing key refuses. Each such clause stands
+// on its own, as a 'var' initializer, a local's new value or a 'return' value, and each backend tests
+// it before the statement does anything. A 'mut fn' that changes its receiver and then refuses leaves
+// the change standing, in C# where it changes a wrapper through a copy as in C++, where it changes the
+// field in place.
+
+import proto "refusing_methods.proto";
+import proto "google/protobuf/wrappers.proto";
+
+extend Meter {
+    // A division that refuses for a zero divisor, from a 'return'.
+    fn rate() -> int64 refuses MeterRefusal {
+        return count / seconds on_zero refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+            detail: "rate",
+        };
+    }
+
+    // A division from a 'var' initializer, and a remainder from a local's new value, each refusing with
+    // its own detail.
+    fn rate_and_rest() -> int64 refuses MeterRefusal {
+        var whole: int64 = count / seconds on_zero refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+            detail: "whole",
+        };
+        var rest: int64 = 0;
+        rest = count % seconds on_zero refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+            detail: "rest",
+        };
+
+        return whole * 1000 + rest;
+    }
+
+    // A conversion to an enum that refuses for a number the enum does not name.
+    fn grade() -> MeterGrade refuses MeterRefusal {
+        return grade_number as MeterGrade on_unknown refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_UNKNOWN_GRADE,
+        };
+    }
+
+    // A lookup that refuses for a missing key, with the key as its detail.
+    fn price() -> int64 refuses MeterRefusal {
+        var found: int64 = prices[sku] on_missing refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_PRICE,
+            detail: sku,
+        };
+
+        return found;
+    }
+
+    // A lookup of a message, which the local holds a copy of.
+    fn offer_cents() -> int64 refuses MeterRefusal {
+        var offer: MeterPrice = offers[sku] on_missing refuse new MeterRefusal {
+            reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_PRICE,
+            detail: "offer",
+        };
+
+        return offer.cents;
+    }
+
+    // Refusals passed on from methods of its own block, and one of its own.
+    fn charge() -> int64 refuses MeterRefusal {
+        var per_second: int64 = rate() on_refused refuse;
+        var unit: int64 = price() on_refused refuse;
+        if per_second * unit < 10 {
+            refuse new MeterRefusal { reason: MeterRefusalReason.METER_REFUSAL_REASON_TOO_LOW };
+        }
+
+        return per_second * unit;
+    }
+
+    // A method that cannot refuse answers a refusal with a fallback.
+    fn charge_or_zero() -> int64 {
+        return charge() on_refused 0;
+    }
+
+    // Changes its receiver, then may refuse: the change stands where it refuses.
+    mut fn tally() -> int64 refuses MeterRefusal {
+        total += count;
+        if seconds == 0 {
+            refuse new MeterRefusal {
+                reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+                detail: "tally",
+            };
+        }
+
+        total += seconds;
+        return total;
+    }
+
+    // Passes on a refusal from a mutating call that stands as a statement, and from one it returns.
+    mut fn tally_twice() -> int64 refuses MeterRefusal {
+        tally() on_refused refuse;
+        return tally() on_refused refuse;
+    }
+
+    // Answers a refusal with a fallback, which reads the receiver after the call changed it.
+    mut fn tallied() -> int64 {
+        return tally_twice() on_refused -total;
+    }
+
+    // A wrapper changed by a method that may refuse. Where it refuses, the change stands, and the
+    // fallback reads the field changed.
+    mut fn bumped_spare(limit: int64) -> int64 {
+        if not has spare {
+            return -1;
+        }
+
+        var bumped: int64 = spare.bump_below(limit) on_refused (spare.value * 100);
+        return bumped;
+    }
+}
+
+extend google.protobuf.Int64Value {
+    mut fn bump_below(limit: int64) -> int64 refuses MeterRefusal {
+        value += 1;
+        if value > limit {
+            refuse new MeterRefusal {
+                reason: MeterRefusalReason.METER_REFUSAL_REASON_TOO_LOW,
+                detail: "over",
+            };
+        }
+
+        return value;
+    }
+}
+
+test Meter.rate "divides" {
+    receiver { count: 10, seconds: 4 }
+    expect return 2;
+}
+
+test Meter.rate "refuses a zero divisor" {
+    receiver { count: 10, seconds: 0 }
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+        detail: "rate",
+    };
+}
+
+test Meter.rate_and_rest "divides from a var and a local's new value" {
+    receiver { count: 10, seconds: 4 }
+    expect return 2002;
+}
+
+test Meter.rate_and_rest "refuses from the var first" {
+    receiver { count: 10, seconds: 0 }
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+        detail: "whole",
+    };
+}
+
+test Meter.grade "converts a named number" {
+    receiver { grade_number: 2 }
+    expect return MeterGrade.METER_GRADE_PREMIUM;
+}
+
+test Meter.grade "refuses an unnamed number" {
+    receiver { grade_number: 9 }
+    expect refuse new MeterRefusal { reason: MeterRefusalReason.METER_REFUSAL_REASON_UNKNOWN_GRADE };
+}
+
+test Meter.price "finds a key" {
+    receiver {
+        sku: "a",
+        prices: [{ key: "a", value: 7 }],
+    }
+
+    expect return 7;
+}
+
+test Meter.price "refuses a missing key" {
+    receiver {
+        sku: "b",
+        prices: [{ key: "a", value: 7 }],
+    }
+
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_PRICE,
+        detail: "b",
+    };
+}
+
+test Meter.offer_cents "finds a message" {
+    receiver {
+        sku: "a",
+        offers: [{ key: "a", value: new MeterPrice { cents: 30 } }],
+    }
+
+    expect return 30;
+}
+
+test Meter.offer_cents "refuses a missing message" {
+    receiver { sku: "a" }
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_PRICE,
+        detail: "offer",
+    };
+}
+
+test Meter.charge "charges" {
+    receiver {
+        count: 20,
+        seconds: 2,
+        sku: "a",
+        prices: [{ key: "a", value: 3 }],
+    }
+
+    expect return 30;
+}
+
+test Meter.charge "passes on the rate's refusal" {
+    receiver {
+        count: 20,
+        seconds: 0,
+        sku: "a",
+        prices: [{ key: "a", value: 3 }],
+    }
+
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_TIME,
+        detail: "rate",
+    };
+}
+
+test Meter.charge "passes on the price's refusal" {
+    receiver { count: 20, seconds: 2, sku: "z" }
+    expect refuse new MeterRefusal {
+        reason: MeterRefusalReason.METER_REFUSAL_REASON_NO_PRICE,
+        detail: "z",
+    };
+}
+
+test Meter.charge "refuses for itself" {
+    receiver {
+        count: 2,
+        seconds: 2,
+        sku: "a",
+        prices: [{ key: "a", value: 3 }],
+    }
+
+    expect refuse new MeterRefusal { reason: MeterRefusalReason.METER_REFUSAL_REASON_TOO_LOW };
+}
+
+test Meter.charge_or_zero "a refusal gives the fallback" {
+    receiver { count: 20, seconds: 0 }
+    expect return 0;
+}
+
+test Meter.tallied "tallies twice" {
+    receiver { count: 5, seconds: 1 }
+    expect return 12;
+}
+
+test Meter.tallied "the change before a refusal stands" {
+    receiver { count: 5, seconds: 0 }
+    expect return -5;
+}
+
+test Meter.bumped_spare "bumps under the limit" {
+    receiver { spare: new google.protobuf.Int64Value { value: 1 } }
+    arg limit = 5;
+    expect return 2;
+}
+
+test Meter.bumped_spare "a refusal leaves the wrapper changed" {
+    receiver { spare: new google.protobuf.Int64Value { value: 5 } }
+    arg limit = 5;
+    expect return 600;
+}

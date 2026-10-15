@@ -117,8 +117,8 @@ Defined behavior:
 
 ### 10.2.1 The `on_zero` clause
 
-Integer `/` and `%` require an `on_zero` clause. It takes one of two forms: a fallback value, or
-`fail`.
+Integer `/` and `%` require an `on_zero` clause. It takes one of three forms: a fallback value,
+`fail`, or `refuse` and a refusal ([16.3.1](./§16-Methods.md#1631-refusals)).
 
 ```protocross
 // A zero divisor has a sensible answer here.
@@ -129,6 +129,11 @@ fn mean_item_cents() -> int64 {
 // A zero divisor means the caller handed us something impossible. Stop.
 fn strict_rate() -> int64 {
     return counts / live_time on_zero fail;
+}
+
+// The same, said to whoever called the method rather than to the whole program.
+fn checked_rate() -> int64 refuses RateRefusal {
+    return counts / live_time on_zero refuse new RateRefusal { reason: RateReason.NO_TIME };
 }
 ```
 
@@ -145,7 +150,12 @@ Normative Requirements:
 - `on_zero fail` terminates the program deterministically, with a diagnostic naming the operation
   written to standard error. It is not catchable and not recoverable. The process exit code is
   **70** (`EX_SOFTWARE`) in every backend. `on_unknown fail`, `on_missing fail` and `on_refused fail`
-  end the program the same way ([12.1](./§12-Enums.md#121-an-enums-number), [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps), [16.3.1](./§16-Methods.md#1631-refusals)).
+  end the program the same way ([12.1](./§12-Enums.md#121-an-enums-number), [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps), [16.3.1](./§16-Methods.md#1631-refusals)). A project that forbids ending the
+  program refuses each of them where it is written, `PC0144` ([10.4](#104-compile-time-policy)).
+- `on_zero refuse <value>` ends the method with that refusal where the divisor is zero. Only a method
+  that declares a refusal may write it, with a value of the type it declares, and only on a division
+  that stands on its own: a `var` initializer, a local's new value, or a `return` value
+  ([16.3.1](./§16-Methods.md#1631-refusals)). The value is evaluated only for a zero divisor, after both operands.
 - A backend must terminate with a primitive that cannot be intercepted and does not engage the
   platform's crash reporting: `Environment.Exit` in C#, `std::_Exit` in C++. `Environment.FailFast`
   and `std::abort` are the wrong tools even though they look like the obvious ones. Both are
@@ -186,11 +196,12 @@ Open Questions:
 - Should division by zero be a compile-time error when the divisor is a statically known zero
   expression rather than a literal? Today only literal `0` is caught, and only because it fails the
   proven-non-zero test rather than by any dedicated analysis.
-- `on_zero fail` gives generated library code the ability to terminate the host process. That is
-  intentional, but it is a larger capability than anything else the language permits ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), and a
-  server embedding ProtoCross behavior has no way to opt out. A factory has a way not to: it may
-  refuse instead, and leave the answer to its caller ([16.3.1](./§16-Methods.md#1631-refusals)). Whether any other method may, and
-  whether `fail` may become a refusal, is #16's to decide.
+- ~~`on_zero fail` gives generated library code the ability to terminate the host process, and a
+  server embedding ProtoCross behavior has no way to opt out.~~ Decided: termination stays, and a
+  project may forbid it. `Failure/Termination = Forbidden` makes every construct that would end the
+  program a compile error where it is written ([10.4](#104-compile-time-policy)), and every method may refuse instead, leaving the
+  answer to its caller, with `on_zero refuse` for a zero divisor ([16.3.1](./§16-Methods.md#1631-refusals)). `fail` does not become a
+  refusal by itself; a refusal's type is the author's.
 - Python's `/` produces a float and `//` floors, so neither maps to truncating division, and Python
   raises on float division by zero rather than yielding `inf`. The Python backend will need explicit
   helpers for both.
@@ -336,6 +347,9 @@ wants is a property of the project rather than of the language. Those answers li
     <!-- One per enum: a value name, or fail (12.1) -->
     <UnknownFallback Type="shop.OrderStatus">ORDER_STATUS_UNSPECIFIED</UnknownFallback>
   </Enums>
+  <Failure>
+    <Termination>Allowed</Termination>       <!-- Allowed | Forbidden (10.4, 19) -->
+  </Failure>
 </ProtoCross>
 ```
 
@@ -373,6 +387,22 @@ Normative Requirements:
   enum does not declare, or one enum named twice in two spellings is `PC2014` or `PC2004` there,
   reported at the setting. A setting naming an enum the compilation did not load is passed over,
   because every source under the file shares it and each imports schemas of its own.
+- `<Failure>` holds `<Termination>`, which says whether generated code may end the program it runs in.
+  `Allowed`, the default, is what every `fail` has always meant. Under `Forbidden`, every construct
+  that would end the program is `PC0144` where it is written: `on_zero fail`, `on_unknown fail`,
+  `on_missing fail`, `on_refused fail`, and a conversion to a closed enum that says nothing, which is
+  then refused rather than warned about ([12.1](./§12-Enums.md#121-an-enums-number)). Each one's help offers a fallback, and a refusal
+  from a method that declares one ([16.3.1](./§16-Methods.md#1631-refusals)). The rule holds in tests as well, so a source means one
+  thing wherever it compiles.
+  - **It refuses and never reinterprets.** A source that compiles under `Forbidden` means what it means
+    under `Allowed`; one that does not compile says why. So it governs what compiles rather than what
+    is emitted, as `Presence/UnsetMessageRead` does, and no generated file's header states it.
+  - **A file that forbids termination and states a setting that ends the program contradicts itself**:
+    `Arithmetic/Overflow = Checked`, or an `<UnknownFallback>` of `fail`. Each is `PC2015` at that
+    setting, and the compilation stops, as for any other file in error. A policy handed to a compiler
+    rather than read from a file is held to the same rule. `--arithmetic-overflow checked` is refused
+    under it, even with the override flag, which answers one setting in the file's place and would
+    leave two that cannot both hold, and the command line does not offer that flag there.
 - Values are matched exactly, including case. An unknown element (`PC2001`), an unknown value
   (`PC2002`), a malformed file (`PC2003`), or a setting stated twice (`PC2004`) is an error, and the
   compilation stops. A file declaring a document type is malformed: the file has no use for one, and

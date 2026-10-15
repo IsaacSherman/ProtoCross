@@ -144,7 +144,7 @@ test InvoiceItem.discounted_total "applies discount" {
 }
 ```
 
-For a factory's method expected to refuse ([16.3.1](./§16-Methods.md#1631-refusals)):
+For a method expected to refuse ([16.3.1](./§16-Methods.md#1631-refusals)):
 
 ```protocross
 test Invoice.factory.create "an invoice with no lines is refused" {
@@ -154,7 +154,8 @@ test Invoice.factory.create "an invoice with no lines is refused" {
 ```
 
 For methods expected to terminate through `on_zero fail`, through a conversion to an enum that
-fails ([12.1](./§12-Enums.md#121-an-enums-number)), or through another future terminal failure mechanism:
+fails ([12.1](./§12-Enums.md#121-an-enums-number)), or through another future terminal failure mechanism. In a project that forbids
+ending the program nothing can, so no `expect fail` there is met ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)):
 
 ```protocross
 test InvoiceItem.strict_ratio "zero divisor fails" {

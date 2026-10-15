@@ -66,26 +66,36 @@ public sealed partial class CSharpBackend
     /// <remarks>
     /// A fallback is written after <c>??</c>, which evaluates it only where the helper found a zero
     /// divisor, so a fallback that can end the program does not end one whose divisor was not zero
-    /// (spec 10.2.1).
+    /// (spec 10.2.1). A division whose clause refuses was tested before its statement, and is what that
+    /// test held (<see cref="EmitClauseRefusal"/>).
     /// </remarks>
     private static string EmitIntegerDivision(IrIntegerDivision division, Placement placement, string receiverName)
-    {
-        var left = Expression(division.Left, placement, receiverName);
-        var right = Expression(division.Right, placement, receiverName);
-        var stem = CSharpRuntime.Stem(division.Behavior)
-            + (division.Operator == IrBinaryOperator.Modulo ? "Modulo" : "Divide");
-
-        // Every form goes through a helper, even Unreachable: MIN / -1 traps at the hardware level
-        // regardless of unchecked.
-        return division.ZeroBehavior switch
+        => division.ZeroBehavior switch
         {
-            ZeroDivisorBehavior.Unreachable => $"{CSharpRuntime.TypeName}.{stem}({left}, {right})",
-            ZeroDivisorBehavior.Fail => $"{CSharpRuntime.TypeName}.{stem}OrFail({left}, {right})",
+            ZeroDivisorBehavior.Unreachable => Divided(division, string.Empty, placement, receiverName),
+            ZeroDivisorBehavior.Fail => Divided(division, "OrFail", placement, receiverName),
             ZeroDivisorBehavior.Fallback =>
-                $"({CSharpRuntime.TypeName}.{stem}OrNull({left}, {right}) ?? {Expression(division.OnZero!, placement, receiverName)})",
+                $"({Divided(division, "OrNull", placement, receiverName)} ?? {Expression(division.OnZero!, placement, receiverName)})",
+            ZeroDivisorBehavior.Refuse => placement.Built[division],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(division), division.ZeroBehavior, "Unhandled zero-divisor behavior."),
         };
+
+    /// <summary>
+    /// <paramref name="division"/> through the runtime's helper for it, of <paramref name="form"/>: the bare
+    /// helper, <c>OrFail</c>, or <c>OrNull</c>, which gives null for a zero divisor.
+    /// </summary>
+    /// <remarks>
+    /// Every form goes through a helper, even one whose divisor is a non-zero literal: <c>MIN / -1</c> traps at
+    /// the hardware level regardless of <c>unchecked</c>.
+    /// </remarks>
+    private static string Divided(IrIntegerDivision division, string form, Placement placement, string receiverName)
+    {
+        var stem = CSharpRuntime.Stem(division.Behavior)
+            + (division.Operator == IrBinaryOperator.Modulo ? "Modulo" : "Divide");
+
+        return $"{CSharpRuntime.TypeName}.{stem}{form}("
+            + $"{Expression(division.Left, placement, receiverName)}, {Expression(division.Right, placement, receiverName)})";
     }
 
     private static string EmitUnary(IrUnary unary, Placement placement, string receiverName)
@@ -151,23 +161,30 @@ public sealed partial class CSharpBackend
     /// failure go through the runtime, which asks <c>Enum.IsDefined</c> whether the schema names the
     /// number. protoc's C# enum declares exactly the values the schema does, aliases included, so the
     /// answer is the one C++'s <c>_IsValid</c> gives. A fallback is written after <c>??</c>, so it is
-    /// evaluated only for a number the schema does not name (spec 12.1).
+    /// evaluated only for a number the schema does not name (spec 12.1). A conversion whose clause refuses was
+    /// tested before its statement, and is what that test held (<see cref="EmitClauseRefusal"/>).
     /// </remarks>
     private static string EmitNumberToEnum(IrNumberToEnum conversion, Placement placement, string receiverName)
-    {
-        var value = $"(({TypeName(conversion.EnumType)}){Expression(conversion.Operand, placement, receiverName)})";
-
-        return conversion.OnUnnamed switch
+        => conversion.OnUnnamed switch
         {
-            UnnamedNumberBehavior.Keep => value,
+            UnnamedNumberBehavior.Keep => CastToEnum(conversion, placement, receiverName),
             UnnamedNumberBehavior.Fallback =>
-                $"({CSharpRuntime.EnumsTypeName}.NamedOrNull({value}) ?? {FallbackOf(conversion, placement, receiverName)})",
+                $"({NamedOrNull(conversion, placement, receiverName)} ?? {FallbackOf(conversion, placement, receiverName)})",
             UnnamedNumberBehavior.Fail =>
-                $"{CSharpRuntime.EnumsTypeName}.NamedOrFail({value}, {FormatString(conversion.EnumType.DisplayName)})",
+                $"{CSharpRuntime.EnumsTypeName}.NamedOrFail({CastToEnum(conversion, placement, receiverName)}, "
+                + $"{FormatString(conversion.EnumType.DisplayName)})",
+            UnnamedNumberBehavior.Refuse => placement.Built[conversion],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
         };
-    }
+
+    /// <summary>The number cast to the enum, which C# allows whether or not the enum names it.</summary>
+    private static string CastToEnum(IrNumberToEnum conversion, Placement placement, string receiverName)
+        => $"(({TypeName(conversion.EnumType)}){Expression(conversion.Operand, placement, receiverName)})";
+
+    /// <summary>The enum value, or null where the enum does not name the number.</summary>
+    private static string NamedOrNull(IrNumberToEnum conversion, Placement placement, string receiverName)
+        => $"{CSharpRuntime.EnumsTypeName}.NamedOrNull({CastToEnum(conversion, placement, receiverName)})";
 
     /// <summary>
     /// The value a conversion to an enum falls back to: the one its clause wrote, or the one the

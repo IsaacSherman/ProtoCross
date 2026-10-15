@@ -137,8 +137,9 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// The local each call in <paramref name="node"/> to a method that may refuse holds what it built in, none of
-    /// them a name in <paramref name="taken"/>, to which each is added.
+    /// The local each call in <paramref name="node"/> to a method that may refuse holds what it built in, and each
+    /// operation whose clause refuses holds what it gave in, none of them a name in <paramref name="taken"/>, to
+    /// which each is added.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -149,20 +150,32 @@ public sealed partial class CSharpBackend
     /// (<see cref="Expression"/>), which has no method to ask.
     /// </para>
     /// <para>
-    /// A call that passes a refusal on stands on its own, and its statement declares the local the same way. A call
+    /// A call that passes a refusal on stands on its own, and its statement declares the local the same way, as
+    /// does the statement an operation whose clause refuses stands in (<see cref="EmitClauseRefusal"/>). A call
     /// to a method that returns nothing builds nothing, and is given none.
     /// </para>
     /// </remarks>
-    private static IReadOnlyDictionary<IrRefusableCall, string> BuiltNamesIn(IrNode node, ISet<string> taken)
+    private static IReadOnlyDictionary<IrExpression, string> BuiltNamesIn(IrNode node, ISet<string> taken)
     {
-        var names = new Dictionary<IrRefusableCall, string>(ReferenceEqualityComparer.Instance);
-        foreach (var call in IrWalk.DescendantsAndSelf(node).OfType<IrRefusableCall>().Where(call => call.Type is not VoidType))
+        var names = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
+        foreach (var expression in IrWalk.DescendantsAndSelf(node).OfType<IrExpression>())
         {
-            names[call] = Reserve(taken, "built");
+            if (HeldStemOf(expression) is { } stem)
+            {
+                names[expression] = Reserve(taken, stem);
+            }
         }
 
         return names;
     }
+
+    /// <summary>
+    /// What the local <paramref name="expression"/> holds its value in is named after, or null where it is held in
+    /// none: what a call to a method that may refuse built, or what a division, a conversion to an enum or a
+    /// lookup gave where its clause refuses.
+    /// </summary>
+    private static string? HeldStemOf(IrExpression expression)
+        => expression is IrRefusableCall { Type: not VoidType } ? "built" : IrRefusals.HeldNameOf(expression);
 
     /// <summary><paramref name="stem"/>, or the first of <c>stem1</c>, <c>stem2</c> and so on not in <paramref name="taken"/>, which it is then added to.</summary>
     private static string Reserve(ISet<string> taken, string stem)
@@ -223,16 +236,16 @@ public sealed partial class CSharpBackend
         public const string ProjectClassName = "ProtoCrossExtensions";
 
         /// <summary>
-        /// The local each call to a method that may refuse holds what it built in, in the method or test being
-        /// written (<see cref="BuiltNamesIn"/>).
+        /// The local each call to a method that may refuse holds what it built in, and each operation whose clause
+        /// refuses holds what it gave in, in the method or test being written (<see cref="BuiltNamesIn"/>).
         /// </summary>
         /// <remarks>
         /// Here because this is what every expression is handed: the names are the method's, given out before
         /// it is written, and an expression is written by a function of the node and this alone. Each method
         /// is written with a copy of its file's placement holding its own.
         /// </remarks>
-        public IReadOnlyDictionary<IrRefusableCall, string> Built { get; init; }
-            = new Dictionary<IrRefusableCall, string>(ReferenceEqualityComparer.Instance);
+        public IReadOnlyDictionary<IrExpression, string> Built { get; init; }
+            = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
 
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 

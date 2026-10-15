@@ -873,6 +873,12 @@ public enum ZeroDivisorBehavior
 
     /// <summary>Terminate the program deterministically. The author declared no valid result.</summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_zero refuse value</c> (spec 16.3.1). Only a method
+    /// that may refuse can, and only from a division that stands on its own, which the binder says.
+    /// </summary>
+    Refuse,
 }
 
 /// <summary>
@@ -881,8 +887,10 @@ public enum ZeroDivisorBehavior
 /// to emit a zero check rather than the bare operator.
 /// </summary>
 /// <param name="OnZero">
-/// The declared fallback value. Non-null exactly when <paramref name="ZeroBehavior"/> is
-/// <see cref="ZeroDivisorBehavior.Fallback"/>.
+/// The value the clause wrote: the fallback where <paramref name="ZeroBehavior"/> is
+/// <see cref="ZeroDivisorBehavior.Fallback"/>, and the refusal where it is
+/// <see cref="ZeroDivisorBehavior.Refuse"/>. Null for every other behavior, and evaluated only for a zero
+/// divisor.
 /// </param>
 public sealed record IrIntegerDivision(
     IrBinaryOperator Operator,
@@ -1003,6 +1011,12 @@ public enum UnnamedNumberBehavior
     /// closed enum, which protobuf does not let hold such a number.
     /// </summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_unknown refuse value</c>, as
+    /// <see cref="ZeroDivisorBehavior.Refuse"/> does (spec 16.3.1).
+    /// </summary>
+    Refuse,
 }
 
 /// <summary>Who said what a conversion to an enum makes of a number the enum does not name (spec 12.1).</summary>
@@ -1032,9 +1046,11 @@ public enum UnnamedNumberSource
 /// or what the project's configuration says about it.
 /// </remarks>
 /// <param name="Fallback">
-/// The fallback a clause wrote. Non-null exactly when <paramref name="OnUnnamed"/> is
+/// The value a clause wrote: the fallback where <paramref name="OnUnnamed"/> is
 /// <see cref="UnnamedNumberBehavior.Fallback"/> and <paramref name="Source"/> is
-/// <see cref="UnnamedNumberSource.Clause"/>.
+/// <see cref="UnnamedNumberSource.Clause"/>, and the refusal where it is
+/// <see cref="UnnamedNumberBehavior.Refuse"/>. Null otherwise, and evaluated only for a number the enum does
+/// not name.
 /// </param>
 /// <param name="ConfiguredFallback">
 /// The fallback the configuration names. Non-null exactly when <paramref name="OnUnnamed"/> is
@@ -1060,7 +1076,6 @@ public sealed record IrNumberToEnum(
 public sealed record IrEnumMembership(IrExpression Value, EnumPlType EnumType, SourceSpan Span)
     : IrExpression(ScalarType.BoolType, Span);
 
-/// <summary>What a map lookup gives when its key is missing (spec 14.2).</summary>
 /// <summary>What a call to a method that may refuse makes of a refusal (spec 16.3).</summary>
 public enum RefusalBehavior
 {
@@ -1112,6 +1127,7 @@ public sealed record IrRefusableCall(
     IrExpression? Fallback,
     SourceSpan Span) : IrExpression(Call.Type, Span);
 
+/// <summary>What a map lookup gives when its key is missing (spec 14.2).</summary>
 public enum MissingKeyBehavior
 {
     /// <summary>The fallback the clause wrote, evaluated only when the key is missing.</summary>
@@ -1119,6 +1135,12 @@ public enum MissingKeyBehavior
 
     /// <summary>Terminate the program deterministically, as <c>on_zero fail</c> does.</summary>
     Fail,
+
+    /// <summary>
+    /// End the method with the declared refusal, <c>on_missing refuse value</c>, as
+    /// <see cref="ZeroDivisorBehavior.Refuse"/> does (spec 16.3.1).
+    /// </summary>
+    Refuse,
 
     /// <summary>
     /// No clause was written, which is <c>PC0115</c>. Kept as a lookup of the map's value type rather
@@ -1130,8 +1152,9 @@ public enum MissingKeyBehavior
 
 /// <summary>The value a map holds at a key, <c>prices[sku] on_missing 0</c> (spec 14.2).</summary>
 /// <param name="Fallback">
-/// The value a missing key gives. Non-null exactly when <paramref name="OnMissing"/> is
-/// <see cref="MissingKeyBehavior.Fallback"/>, and evaluated only when the key is missing.
+/// The value the clause wrote: what a missing key gives where <paramref name="OnMissing"/> is
+/// <see cref="MissingKeyBehavior.Fallback"/>, and the refusal where it is
+/// <see cref="MissingKeyBehavior.Refuse"/>. Null otherwise, and evaluated only when the key is missing.
 /// </param>
 /// <remarks>
 /// <para>
