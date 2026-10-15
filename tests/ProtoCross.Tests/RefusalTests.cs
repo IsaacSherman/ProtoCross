@@ -252,15 +252,10 @@ public class RefusalTests
         Assert.All(calls, call => Assert.True(call.Call.Target.CanRefuse));
     }
 
+    /// <summary>Every method may refuse since #16, not only a factory's.</summary>
     [Fact]
-    public void AMethodOfAnExtendBlockCannotRefuse()
-    {
-        var diagnostic = TheOnly(
-            Compile("extend Ticket {\n    fn f() -> int64 refuses Refusal {\n        refuse new Refusal {};\n    }\n}\n"),
-            DiagnosticCodes.RefusalOutsideAFactory);
-
-        Assert.Equal("'f' is a method of an extend block, and only a factory's methods may refuse.", diagnostic.Message);
-    }
+    public void AMethodOfAnExtendBlockMayRefuse()
+        => AssertOk(Compile("extend Ticket {\n    fn f() -> int64 refuses Refusal {\n        refuse new Refusal {};\n    }\n}\n"));
 
     [Fact]
     public void ARefusalOfVoidIsRefused()
@@ -270,7 +265,7 @@ public class RefusalTests
 
     [Theory]
     [InlineData("factory Ticket {\n    fn f() -> Ticket {\n        refuse \"no\";\n    }\n}\n", "'f' declares no refusal, so it cannot refuse.")]
-    [InlineData("extend Ticket {\n    fn f() -> int64 {\n        refuse \"no\";\n    }\n}\n", "'f' is a method of an extend block, and only a factory's methods may refuse.")]
+    [InlineData("extend Ticket {\n    fn f() -> int64 {\n        refuse \"no\";\n    }\n}\n", "'f' declares no refusal, so it cannot refuse.")]
     public void RefuseInAMethodThatDeclaresNoRefusalIsRefused(string body, string message)
         => Assert.Equal(message, TheOnly(Compile(body), DiagnosticCodes.RefuseInAMethodThatCannotRefuse).Message);
 
@@ -369,10 +364,11 @@ public class RefusalTests
             message,
             TheOnly(Compile(Refusing.Replace("factory Ticket {\n", opening, StringComparison.Ordinal)), DiagnosticCodes.RefusalCannotBePassedOn).Message);
 
+    /// <summary>A method of an extend block may refuse since #16, so it is told to declare one, as a factory's method is.</summary>
     [Fact]
-    public void AMethodOfAnExtendBlockCannotPassARefusalOn()
+    public void AMethodOfAnExtendBlockThatDeclaresNoRefusalCannotPassARefusalOn()
         => Assert.Equal(
-            "'f' cannot refuse, so it cannot pass on a refusal from 'create': only a factory's methods may refuse.",
+            "'f' declares no refusal, so it cannot pass on a refusal from 'create'.",
             TheOnly(
                 Compile(Refusing + "\nextend Holder {\n    fn f(o: TicketOptions) -> Ticket {\n        return Ticket.factory.create(o) on_refused refuse;\n    }\n}\n"),
                 DiagnosticCodes.RefusalCannotBePassedOn).Message);
@@ -391,7 +387,7 @@ public class RefusalTests
     public void ARefusalIsNotPassedOnFromInsideAnExpression(string statements)
         => TheOnly(
             Compile(WithCreate($"    fn f(o: TicketOptions) -> Ticket refuses Refusal {{\n        {statements}\n    }}\n")),
-            DiagnosticCodes.RefusalPassedOnInsideAnExpression);
+            DiagnosticCodes.RefusalInsideAnExpression);
 
     [Theory]
     [InlineData("reason() on_refused refuse")]
@@ -409,7 +405,7 @@ public class RefusalTests
                     }
                 }
                 """),
-            DiagnosticCodes.RefusalPassedOnInsideAnExpression);
+            DiagnosticCodes.RefusalInsideAnExpression);
 
     [Theory]
     [InlineData("holder.rename()")]

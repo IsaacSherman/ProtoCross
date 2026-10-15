@@ -85,7 +85,7 @@ public sealed partial class Binder
     {
         var bound = BindStatementItself(statement, scope, context);
         ReportMutatingCallsInsideExpressions(bound);
-        ReportRefusalsPassedOnInsideExpressions(bound);
+        ReportRefusalsInsideExpressions(bound);
         return bound;
     }
 
@@ -466,7 +466,7 @@ public sealed partial class Binder
         {
             return BindRefusedAssignment(
                 statement.Target,
-                statement.OnZero?.Fallback is { } fallback ? [statement.Value, fallback] : [statement.Value],
+                statement.OnZero?.Value is { } written ? [statement.Value, written] : [statement.Value],
                 statement.Span,
                 scope,
                 context);

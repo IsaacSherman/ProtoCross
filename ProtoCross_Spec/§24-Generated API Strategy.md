@@ -109,8 +109,9 @@ nothing a ProtoCross caller can do, since the binder already refuses a call to o
 factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
 qualified from `global::`, as a call to an extension method is.
 
-**A factory's method that may refuse returns `bool`, and gives what it built or refused through `out`
-parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`:
+**A method that may refuse returns `bool`, and gives what it built or refused through `out`
+parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method is a static method of
+its class, and a method of an extend block an extension method, whose parameters come after `this`:
 
 ```csharp
 public static bool Create(
@@ -132,6 +133,15 @@ call that passes a refusal on is tested by an `if` before the rest of its statem
 refusal straight to the calling method's own `refusal`, which the method being called sets as it
 refuses. Each `out var` is given a name of its own in the method, since C# keeps it in scope in the
 whole block around its statement.
+
+A division, a conversion to an enum or a lookup whose clause refuses is tested by an `if` before the
+rest of its statement too, through the support file's helper that gives null where the clause would
+answer, matched into a local of its own: `if (ProtoCrossArithmetic.WrapDivideOrNull(a, b) is not { }
+quotient) { result = default; refusal = value; return false; }`, after which the statement reads
+`quotient`. The local is named `quotient`, `remainder`, `named` or `found`, and numbered as `built` is.
+A `mut fn` that may refuse, called on a wrapper C# holds as its value, changes a copy as any `mut fn`
+call on one does, and the copy is stored back before the refusal is answered, so the change stands
+where the method refused, as it does in C++.
 
 **Fields are reached through the properties protoc declares, spelled as protoc spells them.** protoc's
 C# generator derives one property name per field: the field is read as `Name`, a test fixture
@@ -373,10 +383,12 @@ qualified with the namespace and the struct, `::acme::app::InvoiceFactory::creat
 struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
 take one.
 
-**A factory's method that may refuse returns `bool`, and gives what it built or refused through
-references**, as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):
+**A method that may refuse returns `bool`, and gives what it built or refused through references**,
+as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):
 `static bool create(const ::acme::InvoiceOptions& options, ::acme::Invoice& result,
-::acme::InvoiceRefusal& refusal)`. It returns `true` having set `result`, and `false` having set
+::acme::InvoiceRefusal& refusal)` for a factory's method, and `inline bool rate(const ::acme::Meter& self,
+::std::int64_t& result, ::acme::RateRefusal& refusal)`, declared and defined, for a method of an extend
+block. It returns `true` having set `result`, and `false` having set
 `refusal`, and leaves the other as it was handed in. The two are named as C# names them. A call written
 for its value is a lambda called where it is written, as a message literal is, that declares what the
 method builds and refuses with under names nothing in the call reads, calls it, and gives what it built
@@ -384,6 +396,14 @@ or what the clause says instead. `on_refused fail` calls `protocross_runtime::re
 writes the line the C# runtime writes. A call that passes a refusal on is tested by an `if` before the
 rest of its statement, and is handed the calling method's own `refusal`. A loop over a field of what such
 a call built keeps it in a local first, as it keeps any call's result.
+
+A division, a conversion to an enum or a lookup whose clause refuses is tested before the rest of its
+statement too, in a block of its own. It goes through the runtime's helper that takes a fallback, as a
+lambda that marks it refused and gives a value nothing reads, `[&] { refused = true; return
+::std::int64_t{}; }`, and what it gave is kept in a local, `quotient`, `remainder`, `named` or `found`,
+which the statement reads once `if (refused)` has left the method with the refusal. A `var` it
+initializes is declared above the block and given the value inside it. No helper of the runtime's is
+added for it.
 
 A project's namespace is its name spelled as protoc spells a package: `acme.billing` is
 `acme::billing`, and a component on the keyword list below is escaped, so `acme.new` is

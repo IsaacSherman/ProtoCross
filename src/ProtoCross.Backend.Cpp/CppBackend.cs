@@ -169,7 +169,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         var wroteAny = false;
         foreach (var method in methods.Where(method => method.Signature.HasReceiver))
         {
-            writer.WriteLine(Signature(method) + ";");
+            writer.WriteLine(Signature(method, Outs.Of(method)) + ";");
             wroteAny = true;
         }
 
@@ -313,31 +313,33 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// because it may change it (spec 24.2). Every other method keeps the signature it always had, so
     /// a caller holding a const message can still call it.
     /// </remarks>
-    private static string Signature(IrMethod method)
+    /// <param name="outs">The references the method gives its result and refusal through, or null where it cannot refuse.</param>
+    private static string Signature(IrMethod method, Outs? outs)
     {
         var constness = method.Signature.IsMutating ? string.Empty : "const ";
         var parameters = new List<string> { $"{constness}{QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
         parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
+        parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
         // The method name needs escaping too: ProtoCross names are snake_case and every C++ keyword
         // is lowercase, so 'fn class()' or 'fn operator()' would otherwise emit invalid C++.
-        return $"inline {TypeName(method.ReturnType)} {Escape(method.Name)}({string.Join(", ", parameters)})";
+        return $"inline {ReturnTypeOf(method)} {Escape(method.Name)}({string.Join(", ", parameters)})";
     }
 
     /// <summary>A factory's method as its struct declares it: <c>static</c>, taking only its parameters.</summary>
     private static string FactoryMemberDeclaration(IrMethod method, Placement placement)
-        => $"static {FactoryReturnType(method)} {placement.MemberNameOf(method.Signature)}({ParameterList(method, Outs.Of(method))})";
+        => $"static {ReturnTypeOf(method)} {placement.MemberNameOf(method.Signature)}({ParameterList(method, Outs.Of(method))})";
 
     /// <summary>A factory's method as it is defined, after its struct: <c>inline</c>, and named through the struct.</summary>
     private static string FactoryMemberDefinition(IrMethod method, Outs? outs, Placement placement)
-        => $"inline {FactoryReturnType(method)} {placement.FactoryStructOf(method.Receiver)}::"
+        => $"inline {ReturnTypeOf(method)} {placement.FactoryStructOf(method.Receiver)}::"
             + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method, outs)})";
 
     /// <summary>
-    /// What a factory's method returns: what it builds, or, for one that may refuse, whether it built it rather
-    /// than refusing (spec 24.2).
+    /// What a method returns: what it gives, or, for one that may refuse, whether it gave it rather than
+    /// refusing (spec 24.2).
     /// </summary>
-    private static string FactoryReturnType(IrMethod method)
+    private static string ReturnTypeOf(IrMethod method)
         => method.Signature.CanRefuse ? "bool" : TypeName(method.ReturnType);
 
     /// <summary>
@@ -358,7 +360,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
     {
         var outs = Outs.Of(method);
         using var scope = writer.Block(method.Signature.HasReceiver
-            ? Signature(method)
+            ? Signature(method, outs)
             : FactoryMemberDefinition(method, outs, placement));
 
         EmitStatements(writer, method.Body.Statements, placement with { Outs = outs });

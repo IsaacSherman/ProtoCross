@@ -18,6 +18,11 @@ namespace ProtoCross.Backend.CSharp;
 /// A call that passes a refusal on stands on its own (spec 16.3), so its statement tests it before anything
 /// else, and leaves the method with the same refusal.
 /// </para>
+/// <para>
+/// A division, a conversion to an enum or a lookup whose clause refuses stands on its own too, and is tested the
+/// same way: through the runtime's helper that gives null where it has no value, matched into a local of its own
+/// (<see cref="EmitClauseRefusal"/>).
+/// </para>
 /// </remarks>
 public sealed partial class CSharpBackend
 {
@@ -122,17 +127,44 @@ public sealed partial class CSharpBackend
         }
     }
 
-    /// <summary>A method that may refuse ending with its refusal: <c>refuse</c>.</summary>
-    private static void EmitRefused(SourceWriter writer, IrRefuse refusal, Outs outs, Placement placement)
+    /// <summary>A method that may refuse ending with <paramref name="refusal"/>: <c>refuse</c>, or a clause's.</summary>
+    private static void EmitRefused(SourceWriter writer, IrExpression refusal, Outs outs, Placement placement)
     {
         if (outs.Result is not null)
         {
             writer.WriteLine($"{outs.Result} = default;");
         }
 
-        writer.WriteLine($"{outs.Refusal} = {Expression(refusal.Value, placement)};");
+        writer.WriteLine($"{outs.Refusal} = {Expression(refusal, placement)};");
         writer.WriteLine("return false;");
     }
+
+    /// <summary>
+    /// Tests <paramref name="operation"/>, a division, a conversion to an enum or a lookup whose clause refuses,
+    /// and leaves the method with <paramref name="refusal"/> where it gave no value, before the statement it
+    /// stands in does anything (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// What it gave is held in its local (<see cref="Placement.Built"/>), which the statement then reads. A
+    /// pattern's local is in scope after the <c>if</c>, and definitely assigned there because the <c>if</c>
+    /// leaves the method. The refusal is evaluated only where the operation gave nothing, as the language orders
+    /// it.
+    /// </remarks>
+    private static void EmitClauseRefusal(SourceWriter writer, IrExpression operation, IrExpression refusal, Body body)
+    {
+        var placement = body.Placement;
+        using var refused = writer.Block($"if ({OrNull(operation, placement)} is not {{ }} {placement.Built[operation]})");
+        EmitRefused(writer, refusal, body.Outs!, placement);
+    }
+
+    /// <summary>What <paramref name="operation"/> gives, or null where its clause would answer instead.</summary>
+    private static string OrNull(IrExpression operation, Placement placement) => operation switch
+    {
+        IrIntegerDivision division => Divided(division, "OrNull", placement, ReceiverName),
+        IrNumberToEnum conversion => NamedOrNull(conversion, placement, ReceiverName),
+        IrMapLookup lookup => Found(lookup, placement, ReceiverName),
+        _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Not an operation a clause may refuse from."),
+    };
 
     /// <summary>Leaves a method that may refuse with the refusal already in its parameter.</summary>
     private static void EmitLeaving(SourceWriter writer, Outs outs)

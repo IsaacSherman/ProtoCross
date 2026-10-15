@@ -59,13 +59,22 @@ public sealed partial class Binder
                 DiagnosticCodes.LookupNeedsOnMissing,
                 $"Reading a key of {Spelled(map)} needs 'on_missing', to say what a missing key gives.",
                 index.Span,
-                $"Write 'on_missing' and a '{mapType.ValueType.DisplayName}' after the lookup, or 'on_missing fail' to end "
-                + $"the program where the key is missing: '{Unquoted(map)}[…] on_missing …' (spec 14.2).");
+                TerminationIsForbidden
+                    ? $"{Written(WaysNotToEnd("on_missing", mapType.ValueType, context))}: '{Unquoted(map)}[…] on_missing …' (spec 14.2)."
+                    : $"Write 'on_missing' and a '{mapType.ValueType.DisplayName}' after the lookup, or 'on_missing fail' to end "
+                        + $"the program where the key is missing: '{Unquoted(map)}[…] on_missing …' (spec 14.2).");
             return new IrMapLookup(map, key, MissingKeyBehavior.Unstated, null, mapType.ValueType, index.Span);
+        }
+
+        if (clause.Refusal is { } refused)
+        {
+            return new IrMapLookup(
+                map, key, MissingKeyBehavior.Refuse, BindRefusal(refused, clause.Span, scope, context), mapType.ValueType, index.Span);
         }
 
         if (clause.Fallback is not { } written)
         {
+            ReportIfTerminationIsForbidden("'on_missing fail'", clause.Span, WaysNotToEnd("on_missing", mapType.ValueType, context));
             return new IrMapLookup(map, key, MissingKeyBehavior.Fail, null, mapType.ValueType, index.Span);
         }
 
@@ -149,7 +158,7 @@ public sealed partial class Binder
     /// kept among what was refused.
     /// </summary>
     private IReadOnlyList<IrExpression> BindRefusedClause(OnMissingClause? clause, Scope scope, MethodContext context)
-        => clause?.Fallback is { } fallback ? [BindRefused(fallback, scope, context)] : [];
+        => clause?.Value is { } written ? [BindRefused(written, scope, context)] : [];
 
     /// <summary>
     /// Binds <c>value in something</c> whose right side begins with a name: a key looked for in a map

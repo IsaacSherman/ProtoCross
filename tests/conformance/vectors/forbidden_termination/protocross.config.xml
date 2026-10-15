@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  Termination forbidden, for the vectors in this directory only.
+
+  Config discovery walks up from the source file and stops at the nearest match, so this file
+  governs the vectors under this directory and nothing else. Nothing here may end the program, so
+  every way a method declines is a refusal, and the corpus proves a project that forbids termination
+  builds and runs in both backends.
+-->
+
+<ProtoCross>
+  <Failure>
+    <Termination>Forbidden</Termination>
+  </Failure>
+</ProtoCross>

@@ -43,6 +43,36 @@ public enum UnsetMessageReadPolicy
     RequireGuard,
 }
 
+/// <summary>Whether generated code may end the program it runs in (spec 10.4, 19).</summary>
+/// <remarks>
+/// <para>
+/// A policy that refuses rather than reinterprets. Under <see cref="Forbidden"/>, every construct that would
+/// end the program is a compile error where it is written, so a source that compiles means what it means
+/// under <see cref="Allowed"/>, and a source that does not compile says why. Turning <c>fail</c> into
+/// something else on a host's say-so was considered and lost: one source would then mean two things, which
+/// is what the language exists to prevent.
+/// </para>
+/// <para>
+/// It is the project's to say, because the project is built by the team that owns the process the code
+/// runs in, which is the party termination lands on.
+/// </para>
+/// </remarks>
+public enum TerminationPolicy
+{
+    /// <summary>
+    /// <c>fail</c> ends the program with exit code 70, as every <c>fail</c> clause says. The default, and
+    /// what ProtoCross did before a project could say otherwise.
+    /// </summary>
+    Allowed,
+
+    /// <summary>
+    /// Nothing may end the program: each <c>fail</c> clause, a closed enum's default, a configured
+    /// fallback of <c>fail</c>, and checked overflow are refused. A method that cannot give its result
+    /// refuses instead (spec 16.3.1).
+    /// </summary>
+    Forbidden,
+}
+
 /// <summary>
 /// What a conversion to one enum makes of a number the enum does not name, stated once for every
 /// conversion the project writes:
@@ -124,6 +154,13 @@ public sealed record ProjectConfig(
     /// </remarks>
     public IReadOnlyList<EnumUnknownFallback> EnumFallbacks { get; init; } = [];
 
+    /// <summary>Whether generated code may end the program it runs in (spec 10.4, 19).</summary>
+    /// <remarks>
+    /// Init-only rather than another positional member, so every configuration built before it existed
+    /// still builds, and gets <see cref="TerminationPolicy.Allowed"/>, which is what it always meant.
+    /// </remarks>
+    public TerminationPolicy Termination { get; init; } = TerminationPolicy.Allowed;
+
     /// <summary>Whether two configurations state the same policy, read from the same file.</summary>
     /// <remarks>
     /// Written out rather than left to the record, for one member, exactly as
@@ -139,13 +176,14 @@ public sealed record ProjectConfig(
             && Conversion == other.Conversion
             && DivideByZero == other.DivideByZero
             && UnsetMessageRead == other.UnsetMessageRead
+            && Termination == other.Termination
             && string.Equals(Path, other.Path, StringComparison.Ordinal)
             && ExplicitKeys.SetEquals(other.ExplicitKeys)
             && EnumFallbacks.SequenceEqual(other.EnumFallbacks);
 
     public override int GetHashCode()
         => HashCode.Combine(
-            Overflow, Conversion, DivideByZero, UnsetMessageRead, Path, ExplicitKeys.Count, EnumFallbacks.Count);
+            Overflow, Conversion, DivideByZero, UnsetMessageRead, Termination, Path, ExplicitKeys.Count, EnumFallbacks.Count);
 
     /// <summary>
     /// The policy lines a generated file's header carries, so a reader can tell which policy
@@ -161,7 +199,7 @@ public sealed record ProjectConfig(
     /// wrong default.
     /// </para>
     /// <para>
-    /// Only the settings visible in the emitted code are listed. The other two govern what compiles
+    /// Only the settings visible in the emitted code are listed. The others govern what compiles
     /// rather than what is written out, and a header that repeated them in every file forever would
     /// be noise. No path is included: an absolute path would make otherwise identical output differ
     /// between machines.
@@ -191,11 +229,18 @@ public sealed record ProjectConfig(
     /// Applies a command-line override to one setting, or refuses it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The file wins. A flag that contradicts a setting the project states is refused rather than
     /// silently applied, because the point of tracking policy in the repository is that generated
     /// code means the same thing however it was built. <paramref name="allowOverride"/> exists so
     /// that trying another policy stays one flag away, while leaving a trace in the command that
     /// nobody can mistake for the project's own answer.
+    /// </para>
+    /// <para>
+    /// Checked overflow under <see cref="TerminationPolicy.Forbidden"/> is refused even then, since
+    /// <paramref name="allowOverride"/> answers one setting in place of the file's, and this would leave
+    /// two that cannot both hold. Termination is the file's to allow.
+    /// </para>
     /// </remarks>
     /// <param name="conflict">
     /// Null on success. Otherwise a sentence naming both answers, for the driver to print.
@@ -206,12 +251,18 @@ public sealed record ProjectConfig(
         out ProjectConfig result,
         out string? conflict)
     {
+        var flag = $"--arithmetic-overflow {overflow.ToString().ToLowerInvariant()}";
         if (!allowOverride && ExplicitKeys.Contains("Arithmetic/Overflow") && Overflow != overflow)
         {
             result = this;
-            conflict =
-                $"--arithmetic-overflow {overflow.ToString().ToLowerInvariant()} contradicts "
-                + $"Arithmetic/Overflow = {Overflow} in {Path}";
+            conflict = $"{flag} contradicts Arithmetic/Overflow = {Overflow} in {Path}";
+            return false;
+        }
+
+        if (overflow is OverflowPolicy.Checked && Termination is TerminationPolicy.Forbidden)
+        {
+            result = this;
+            conflict = $"{flag} ends the program on an overflow, which {TerminationKey} = Forbidden in {Path} forbids";
             return false;
         }
 
@@ -261,6 +312,7 @@ public sealed record ProjectConfig(
         var explicitKeys = new HashSet<string>(StringComparer.Ordinal);
         var enumFallbacks = new List<EnumUnknownFallback>();
         var failed = false;
+        SourceSpan? overflowSetting = null;
 
         foreach (var section in file.Root.Elements())
         {
@@ -291,6 +343,7 @@ public sealed record ProjectConfig(
                         if (TryParse<OverflowPolicy>(diagnostics, file, setting, key, text, out var overflow))
                         {
                             config = config with { Overflow = overflow };
+                            overflowSetting = file.Span(setting);
                         }
                         else
                         {
@@ -335,6 +388,18 @@ public sealed record ProjectConfig(
 
                         break;
 
+                    case TerminationKey:
+                        if (TryParse<TerminationPolicy>(diagnostics, file, setting, key, text, out var termination))
+                        {
+                            config = config with { Termination = termination };
+                        }
+                        else
+                        {
+                            failed = true;
+                        }
+
+                        break;
+
                     default:
                         UnknownElement(
                             diagnostics,
@@ -359,11 +424,60 @@ public sealed record ProjectConfig(
             }
         }
 
+        if (config.Termination is TerminationPolicy.Forbidden)
+        {
+            failed |= ReportWhatEndsTheProgram(diagnostics, config.Overflow, overflowSetting, enumFallbacks);
+        }
+
         return failed ? null : config with { ExplicitKeys = explicitKeys, EnumFallbacks = enumFallbacks };
     }
 
     /// <summary>The key of an <see cref="EnumUnknownFallback"/>, of which a file may state several.</summary>
     private const string EnumFallbackKey = "Enums/UnknownFallback";
+
+    /// <summary>The key of <see cref="Termination"/>, as a diagnostic that cites it names it.</summary>
+    public const string TerminationKey = "Failure/Termination";
+
+    /// <summary>
+    /// Reports each setting of a file that forbids termination which would end the program anyway: checked
+    /// overflow, and an enum fallback of <c>fail</c> (<c>PC2015</c>). Returns whether there was one.
+    /// </summary>
+    /// <remarks>
+    /// Reported here rather than at each operation they govern, because the file is what contradicts itself:
+    /// under checked overflow every integer <c>+</c> could end the program, and a report at each would bury
+    /// the one line that needs changing. Reported at the setting that ends the program, since that is the
+    /// one a project forbidding termination has to change, and the help says what it can be instead.
+    /// </remarks>
+    private static bool ReportWhatEndsTheProgram(
+        DiagnosticBag diagnostics,
+        OverflowPolicy overflow,
+        SourceSpan? overflowSetting,
+        IReadOnlyList<EnumUnknownFallback> enumFallbacks)
+    {
+        var found = false;
+        if (overflow is OverflowPolicy.Checked && overflowSetting is { } span)
+        {
+            diagnostics.Report(
+                DiagnosticCodes.SettingsContradictEachOther,
+                $"Arithmetic/Overflow = Checked ends the program on an overflow, which {TerminationKey} = Forbidden forbids.",
+                span,
+                $"Choose {OverflowPolicy.Wrapping} or {OverflowPolicy.Saturating}, or allow termination (spec 10.4).");
+            found = true;
+        }
+
+        foreach (var fallback in enumFallbacks.Where(fallback => fallback.IsFail))
+        {
+            diagnostics.Report(
+                DiagnosticCodes.SettingsContradictEachOther,
+                $"<UnknownFallback Type=\"{fallback.Type}\"> ends the program on a number the enum does not name, which "
+                + $"{TerminationKey} = Forbidden forbids.",
+                fallback.ValueSpan,
+                "Name one of the enum's values instead, or leave it to each conversion's 'on_unknown' (spec 12.1).");
+            found = true;
+        }
+
+        return found;
+    }
 
     /// <summary>
     /// Reads one <c>&lt;UnknownFallback&gt;</c>, as far as the file alone can tell: that it names an
@@ -469,7 +583,7 @@ public sealed record ProjectConfig(
                 && part.All(character => char.IsAsciiLetterOrDigit(character) || character == '_'));
     }
 
-    private static readonly string[] KnownSections = ["Arithmetic", "Presence", "Enums"];
+    private static readonly string[] KnownSections = ["Arithmetic", "Presence", "Enums", "Failure"];
 
     /// <summary>Every setting this file may state, as <c>Section/Setting</c>.</summary>
     /// <remarks>
@@ -489,6 +603,7 @@ public sealed record ProjectConfig(
         "Arithmetic" => ["Overflow", "Conversion", "DivideByZero"],
         "Presence" => ["UnsetMessageRead"],
         "Enums" => ["UnknownFallback"],
+        "Failure" => ["Termination"],
         _ => [],
     };
 

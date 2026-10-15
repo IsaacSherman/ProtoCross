@@ -5,7 +5,7 @@
 |---|---|---|
 | Pipeline and partial results | [Compilation][comp]: `Compilation.Compile`, `CompilationResult.Module` / `EmittableModule` | [CompilationTests][comp-t] |
 | Files and unsaved buffers | [SourceDocument][source]: `SourceIdentity`, `SourceDocument.ReadFrom` | [Buffers][memory-t] |
-| Shared numeric/enum policy | [Compilation][comp]: `ResolveSharedConfig`; [ProjectConfig][config]: `Discover`, `Load` | [Config][config-t] |
+| Shared numeric/enum policy, and termination | [Compilation][comp]: `ResolveSharedConfig`; [ProjectConfig][config]: `Discover`, `Load`, `ReportWhatEndsTheProgram`, `TryOverrideOverflow` | [Config][config-t], [Termination][termination-t] |
 | Imports, roots, nearest schema | [Compilation][comp]: `GetSearchPaths`, `Resolve`; [SchemaCatalog][catalog]: `RootsFor`, `NearestTo`; [ImportResolution][imports] | [Imports][import-t] |
 | protoc selection and descriptor loads | [ProtocLocator][protoc]: `Select`; [DescriptorLoader][loader]: `LoadBundle` | [Process supervision][process-t] |
 | Descriptor reuse and schema declarations | [DescriptorCache][cache]: `GetOrLoad`; [DescriptorBundle][bundle]: `DeclarationOf` | [Descriptor cache][cache-t], [Schema declarations][schema-t] |
@@ -42,6 +42,7 @@
 [comp-t]: ../tests/ProtoCross.Tests/CompilationTests.cs
 [memory-t]: ../tests/ProtoCross.Tests/InMemoryCompilationTests.cs
 [config-t]: ../tests/ProtoCross.Tests/ProjectConfigTests.cs
+[termination-t]: ../tests/ProtoCross.Tests/TerminationTests.cs
 [import-t]: ../tests/ProtoCross.Tests/ImportResolutionTests.cs
 [process-t]: ../tests/ProtoCross.Tests/ProcessSupervisionTests.cs
 [cache-t]: ../tests/ProtoCross.Tests/DescriptorCacheTests.cs

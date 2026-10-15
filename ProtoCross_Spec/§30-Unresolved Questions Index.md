@@ -50,6 +50,10 @@ This section should be maintained as the authoritative list of open decisions.
 - ~~Integer overflow model.~~ Decided: wrapping ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)).
 - ~~Division and modulo by zero.~~ Decided: mandatory `on_zero` clause, with `fail` for the case
   where no substitute value is correct ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). `Result` ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)) is explicitly deferred, not blocked.
+- ~~Whether `on_zero fail` may end the process that hosts generated code (#16).~~ Decided: it may,
+  unless the project forbids it with `Failure/Termination = Forbidden`, which makes every construct
+  that would end the program a compile error ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy), [19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)). A method that must not end it refuses instead,
+  `on_zero refuse value` ([16.3.1](./§16-Methods.md#1631-refusals)).
 - ~~Explicit cast syntax.~~ Decided: `x as int64`, numeric scalars only ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
 - ~~Numeric conversion rules.~~ Decided: integer targets wrap, floating point to integer
   truncates and saturates with NaN mapping to zero ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)).
@@ -94,10 +98,11 @@ This section should be maintained as the authoritative list of open decisions.
   identifier ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
 - ~~Portable override registration model.~~ Decided: there is no overriding, so there is nothing to
   register ([17](./§17-Virtual%20and%20Override%20Semantics.md#17-virtual-and-override-semantics)).
-- ~~Error result model for construction.~~ Decided: a factory's method declares a refusal of the
-  author's type after its return type, ends with `refuse`, and every call answers it with a fallback,
-  `fail`, or `refuse` to pass it on ([16.3.1](./§16-Methods.md#1631-refusals)). Whether any other method may refuse, and whether a
-  value may hold a refusal, remain open ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions), #16).
+- ~~Error result model.~~ Decided: any method declares a refusal of the author's type after its return
+  type, ends with `refuse`, and every call answers it with a fallback, `fail`, or `refuse` to pass it
+  on. A division, a conversion to an enum and a lookup refuse with `on_zero refuse`, `on_unknown refuse`
+  and `on_missing refuse` ([16.3.1](./§16-Methods.md#1631-refusals)). Whether a value may hold a refusal remains open
+  ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
 - ~~External function support.~~ Decided: hard no for current language; methods call only ProtoCross
   methods ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)).
 - `protoc` plugin and Buf integration strategy.

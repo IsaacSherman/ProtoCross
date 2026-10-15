@@ -52,7 +52,7 @@ break_stmt        = "break" ";";
 continue_stmt     = "continue" ";";
 assignment_stmt   = expression "=" expression ";";
 compound_stmt     = expression compound_op expression
-                    [ "on_zero" ( expression | "fail" ) ] ";";
+                    [ "on_zero" ( expression | "fail" | "refuse" expression ) ] ";";
 compound_op       = "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "<<=" | ">>=";
 expression_stmt   = expression ";";                                  (* a call; see below *)
 
@@ -64,10 +64,10 @@ test_expectation  = "expect" ( "return" expression | "refuse" expression | "fail
 test_target       = qualified_name [ "." "factory" ] "." identifier;
 
 conversion        = expression "as" type_ref                       (* an expression *)
-                    [ "on_unknown" ( postfix_expr | "fail" ) ];      (* begins with a name *)
+                    [ "on_unknown" ( postfix_expr | "fail" | "refuse" postfix_expr ) ];
 membership        = expression "in" ( postfix_expr | type_ref );    (* an expression *)
 lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
-                    [ "on_missing" ( unary_expr | "fail" ) ];
+                    [ "on_missing" ( unary_expr | "fail" | "refuse" unary_expr ) ];
 answered_call     = call "on_refused"                              (* a postfix expression *)
                     ( unary_expr | "fail" | "refuse" );
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)

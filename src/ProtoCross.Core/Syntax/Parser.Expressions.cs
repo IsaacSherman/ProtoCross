@@ -266,7 +266,7 @@ public sealed partial class Parser
     /// the division to convert its result.
     /// </remarks>
     /// <param name="fallbackHeight">
-    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// How tall the fallback or the refusal is, or zero where there is none to count: no clause, or
     /// <c>on_zero fail</c>.
     /// </param>
     private OnZeroClause? ParseOnZeroClause(BinaryOperatorKind op, Token operatorToken, out int fallbackHeight)
@@ -294,6 +294,14 @@ public sealed partial class Parser
         {
             var failToken = Advance();
             return new OnZeroClause(null, Spanning(onZeroToken.Span, failToken.Span));
+        }
+
+        // 'on_zero refuse value' says the same, and leaves the answer to whoever called the method.
+        if (Current.Kind == TokenKind.Refuse)
+        {
+            Advance();
+            var refusal = ParseUnaryExpression(out fallbackHeight);
+            return new OnZeroClause(null, Spanning(onZeroToken.Span, refusal.Span)) { Refusal = refusal };
         }
 
         var fallback = ParseUnaryExpression(out fallbackHeight);
@@ -356,7 +364,7 @@ public sealed partial class Parser
     /// </para>
     /// </remarks>
     /// <param name="fallbackHeight">
-    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// How tall the fallback or the refusal is, or zero where there is none to count: no clause, or
     /// <c>on_unknown fail</c>.
     /// </param>
     private OnUnknownClause? ParseOnUnknownClause(out int fallbackHeight)
@@ -374,6 +382,13 @@ public sealed partial class Parser
         {
             var failToken = Advance();
             return new OnUnknownClause(null, Spanning(onUnknownToken.Span, failToken.Span));
+        }
+
+        if (Current.Kind == TokenKind.Refuse)
+        {
+            Advance();
+            var refusal = ParsePostfixExpression(out fallbackHeight);
+            return new OnUnknownClause(null, Spanning(onUnknownToken.Span, refusal.Span)) { Refusal = refusal };
         }
 
         var fallback = ParsePostfixExpression(out fallbackHeight);
@@ -644,7 +659,7 @@ public sealed partial class Parser
     /// say, since only it knows whether the element is read.
     /// </remarks>
     /// <param name="fallbackHeight">
-    /// How tall the fallback is, or zero where there is none to count: no clause, or
+    /// How tall the fallback or the refusal is, or zero where there is none to count: no clause, or
     /// <c>on_missing fail</c>.
     /// </param>
     private OnMissingClause? ParseOnMissingClause(out int fallbackHeight)
@@ -662,6 +677,13 @@ public sealed partial class Parser
         {
             var failToken = Advance();
             return new OnMissingClause(null, Spanning(onMissingToken.Span, failToken.Span));
+        }
+
+        if (Current.Kind == TokenKind.Refuse)
+        {
+            Advance();
+            var refusal = ParseUnaryExpression(out fallbackHeight);
+            return new OnMissingClause(null, Spanning(onMissingToken.Span, refusal.Span)) { Refusal = refusal };
         }
 
         var fallback = ParseUnaryExpression(out fallbackHeight);

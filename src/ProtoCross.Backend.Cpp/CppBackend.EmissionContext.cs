@@ -65,6 +65,17 @@ public sealed partial class CppBackend
         /// </remarks>
         public Outs? Outs { get; init; }
 
+        /// <summary>
+        /// The local each operation whose clause refuses holds what it gave in, in the statement being written
+        /// (<see cref="EmitClauseRefusal"/>).
+        /// </summary>
+        /// <remarks>
+        /// Here for the reason <see cref="Outs"/> is: an expression is written by a function of the node and this
+        /// alone, and the statement that reads the local is written with a copy holding it.
+        /// </remarks>
+        public IReadOnlyDictionary<IrExpression, string> Held { get; init; }
+            = new Dictionary<IrExpression, string>(ReferenceEqualityComparer.Instance);
+
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
         public string QualifiedFunctionOf(IrMethodSignature signature)

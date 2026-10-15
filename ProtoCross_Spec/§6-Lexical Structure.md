@@ -119,8 +119,8 @@ Contextual keywords:
   word takes a name away from every schema that uses it.
 - `mut` is not reserved. It marks a method that may change its receiver ([18](./§18-Mutability.md#18-mutability)) where `fn`
   follows it, and is an identifier everywhere else, for the same reason.
-- `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail` or a name
-  follows it, and is an identifier everywhere else, for the same reason.
+- `on_unknown` is not reserved. It begins a conversion's clause ([12.1](./§12-Enums.md#121-an-enums-number)) where `fail`, `refuse` or a
+  name follows it, and is an identifier everywhere else, for the same reason.
 - `factory` is not reserved. It begins a factory declaration ([16.3](./§16-Methods.md#163-factories)) where a name follows it,
   and is an identifier everywhere else, for the same reason. Nothing else can begin a top-level
   declaration, so the parser reads it there whatever follows, and a declaration whose message is not

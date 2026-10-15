@@ -89,7 +89,7 @@ public sealed partial class Binder
 
         if (onUnnamed.Source is UnnamedNumberSource.Default)
         {
-            ReportUnstatedOnUnknown(cast, target);
+            ReportUnstatedOnUnknown(cast, target, context);
         }
 
         return new IrNumberToEnum(
@@ -133,8 +133,12 @@ public sealed partial class Binder
                     target.IsClosed ? UnnamedNumberBehavior.Fail : UnnamedNumberBehavior.Keep,
                     UnnamedNumberSource.Default);
 
-            case { IsFail: true }:
+            case { IsFail: true } failing:
+                ReportIfTerminationIsForbidden("'on_unknown fail'", failing.Span, WaysNotToEnd("on_unknown", target, context));
                 return new(UnnamedNumberBehavior.Fail, UnnamedNumberSource.Clause);
+
+            case { Refusal: { } written } refusing:
+                return new(UnnamedNumberBehavior.Refuse, UnnamedNumberSource.Clause, BindRefusal(written, refusing.Span, scope, context));
         }
 
         var clause = cast.OnUnknown;
@@ -169,9 +173,20 @@ public sealed partial class Binder
     /// instead, and its help names the clause that does.
     /// </para>
     /// </remarks>
-    private void ReportUnstatedOnUnknown(CastExpression cast, EnumPlType target)
+    private void ReportUnstatedOnUnknown(CastExpression cast, EnumPlType target, MethodContext context)
     {
         var example = ExampleValueOf(cast, target);
+
+        // A closed enum's default is the one termination a project cannot see written, so where termination is
+        // forbidden it is refused here, in place of the warning that says it happens.
+        if (target.IsClosed && TerminationIsForbidden)
+        {
+            ReportIfTerminationIsForbidden(
+                $"A number '{target.DisplayName}' does not name",
+                cast.Span,
+                [$"'on_unknown {example}' to use a value instead", .. WaysNotToEnd("on_unknown", null, context)]);
+            return;
+        }
 
         if (target.IsClosed)
         {
@@ -298,7 +313,7 @@ public sealed partial class Binder
                 "Delete the clause (spec 12.1).");
         }
 
-        return clause.Fallback is { } fallback ? [BindRefused(fallback, scope, context)] : [];
+        return clause.Value is { } written ? [BindRefused(written, scope, context)] : [];
     }
 
     // --- what the project says about an enum's numbers ---

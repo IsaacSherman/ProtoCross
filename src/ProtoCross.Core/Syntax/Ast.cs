@@ -457,13 +457,20 @@ public sealed record BinaryExpression(
     OnZeroClause? OnZero = null) : Expression(Span);
 
 /// <summary>
-/// The <c>on_zero</c> clause of an integer division: either a fallback value, or <c>fail</c>,
-/// which terminates deterministically.
+/// The <c>on_zero</c> clause of an integer division: a fallback value, <c>fail</c>, which terminates
+/// deterministically, or <c>refuse</c> and a value, which ends the method with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnZeroClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    public Expression? Value => Fallback ?? Refusal;
+
+    public bool IsFail => Value is null;
 }
 
 public sealed record UnaryExpression(
@@ -511,13 +518,21 @@ public sealed record EnumMembershipExpression(
     SourceSpan Span) : Expression(Span);
 
 /// <summary>
-/// The <c>on_unknown</c> clause of a conversion to an enum: either a value to use instead of a
-/// number the enum does not name, or <c>fail</c>, which terminates deterministically (spec 12).
+/// The <c>on_unknown</c> clause of a conversion to an enum: a value to use instead of a number the
+/// enum does not name, <c>fail</c>, which terminates deterministically (spec 12), or <c>refuse</c> and a
+/// value, which ends the method with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnUnknownClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    public Expression? Value => Fallback ?? Refusal;
+
+    public bool IsFail => Value is null;
 }
 
 /// <summary>
@@ -558,13 +573,21 @@ public sealed record IndexExpression(
     OnMissingClause? OnMissing = null) : Expression(Span);
 
 /// <summary>
-/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, or
-/// <c>fail</c>, which terminates deterministically (spec 14.2).
+/// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, <c>fail</c>,
+/// which terminates deterministically (spec 14.2), or <c>refuse</c> and a value, which ends the method
+/// with that refusal (spec 16.3.1).
 /// </summary>
-/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c>.</param>
+/// <param name="Fallback">The replacement value, or null when the clause is <c>fail</c> or <c>refuse</c>.</param>
 public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : SyntaxNode(Span)
 {
-    public bool IsFail => Fallback is null;
+    /// <summary>The value written after <c>refuse</c>, or null where the clause is not <c>refuse</c>.</summary>
+    /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
+    public Expression? Refusal { get; init; }
+
+    /// <summary>The value the clause wrote, its fallback or its refusal, or null for <c>fail</c>.</summary>
+    public Expression? Value => Fallback ?? Refusal;
+
+    public bool IsFail => Value is null;
 }
 
 /// <summary>

@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+import "google/protobuf/wrappers.proto";
+
+// refusing_methods.pcross -- methods of extend blocks that refuse, and divisions, conversions to an
+// enum and lookups whose clauses refuse (spec 16.3.1), in a project that forbids ending the program
+// (spec 10.4).
+//
+// A meter counts something over some seconds, at a grade, priced per SKU. Its rate refuses for no
+// seconds, its grade for a number the enum does not name, and its price for a SKU it has no price for.
+enum MeterRefusalReason {
+  METER_REFUSAL_REASON_UNSPECIFIED = 0;
+  METER_REFUSAL_REASON_NO_TIME = 1;
+  METER_REFUSAL_REASON_UNKNOWN_GRADE = 2;
+  METER_REFUSAL_REASON_NO_PRICE = 3;
+  METER_REFUSAL_REASON_TOO_LOW = 4;
+}
+
+message MeterRefusal {
+  MeterRefusalReason reason = 1;
+  string detail = 2;
+}
+
+enum MeterGrade {
+  METER_GRADE_UNSPECIFIED = 0;
+  METER_GRADE_BASIC = 1;
+  METER_GRADE_PREMIUM = 2;
+}
+
+message MeterPrice {
+  int64 cents = 1;
+}
+
+message Meter {
+  int64 count = 1;
+  int64 seconds = 2;
+  int32 grade_number = 3;
+  map<string, int64> prices = 4;
+  string sku = 5;
+  google.protobuf.Int64Value spare = 6;
+  int64 total = 7;
+  map<string, MeterPrice> offers = 8;
+}

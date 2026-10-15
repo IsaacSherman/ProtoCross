@@ -18,9 +18,21 @@ public sealed partial class CSharpBackend
     {
         var placement = body.Placement;
 
+        // An operation whose clause refuses is tested before the statement it stands in does anything.
+        if (IrMutation.StandingExpressionOf(statement) is { } standing && IrRefusals.ClauseRefusalOf(standing) is { } refusal)
+        {
+            EmitClauseRefusal(writer, standing, refusal, body);
+        }
+
         if (ChangeToAHeldWrapper(statement) is { } change)
         {
             EmitChangeThroughACopy(writer, statement, change, body);
+            return;
+        }
+
+        if (RefusableChangeToAHeldWrapper(statement) is { } refusableChange)
+        {
+            EmitRefusableChangeThroughACopy(writer, statement, refusableChange, body);
             return;
         }
 
@@ -61,8 +73,8 @@ public sealed partial class CSharpBackend
                 EmitBuilt(writer, returned.Value, outs, placement);
                 break;
 
-            case IrRefuse refusal:
-                EmitRefused(writer, refusal, body.Outs!, placement);
+            case IrRefuse refused:
+                EmitRefused(writer, refused.Value, body.Outs!, placement);
                 break;
 
             case IrExpressionStatement { Expression: IrRefusableCall refusable }:

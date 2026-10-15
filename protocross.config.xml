@@ -60,4 +60,17 @@
     <UnsetMessageRead>RequireGuard</UnsetMessageRead>
   </Presence>
 
+  <Failure>
+    <!--
+      Allowed | Forbidden
+
+      Whether generated code may end the program it runs in. 'Allowed' lets every 'fail' clause end
+      it with exit code 70. 'Forbidden' makes every construct that would end it a compile error where
+      it is written, for code that runs inside a process its authors do not own; a method that has no
+      value to give refuses instead. It refuses source rather than reinterpreting it, so nothing that
+      compiles under one means something else under the other.
+    -->
+    <Termination>Allowed</Termination>
+  </Failure>
+
 </ProtoCross>

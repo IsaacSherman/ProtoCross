@@ -6,29 +6,30 @@ using ProtoCross.Types;
 
 namespace ProtoCross.Binding;
 
-/// <summary>Refusals: what a factory's method may refuse with, and what a call makes of a refusal (spec 16.3).</summary>
+/// <summary>Refusals: what a method may refuse with, and what a call makes of a refusal (spec 16.3.1).</summary>
 /// <remarks>
 /// <para>
-/// A refusal is how a factory says no. The method declares it, <c>-&gt; Invoice refuses InvoiceRefusal</c>, ends
-/// with one as it would with a result, <c>refuse new InvoiceRefusal { … };</c>, and every call to it says what a
-/// refusal makes of the call, as every integer division says what a zero divisor makes of it. The refusal is
-/// a value of the type the author chose, not a type of the language's, so a team shapes it as it needs.
+/// A refusal is how a method says no without ending the program. The method declares it,
+/// <c>-&gt; Invoice refuses InvoiceRefusal</c>, ends with one as it would with a result,
+/// <c>refuse new InvoiceRefusal { … };</c>, and every call to it says what a refusal makes of the call, as every
+/// integer division says what a zero divisor makes of it. The refusal is a value of the type the author chose,
+/// not a type of the language's, so a team shapes it as it needs.
 /// </para>
 /// <para>
-/// Only a call to a method that may refuse needs the clause. A factory that only builds is called as it was
+/// Only a call to a method that may refuse needs the clause. A method that only returns is called as it was
 /// before refusals existed, which is most of them.
+/// </para>
+/// <para>
+/// A division, a conversion to an enum and a map lookup may refuse where they would otherwise end the program:
+/// <c>on_zero refuse value</c>, <c>on_unknown refuse value</c>, <c>on_missing refuse value</c>. So may a call,
+/// <c>on_refused refuse</c>. Each ends the method, so each stands on its own
+/// (<see cref="ReportRefusalsInsideExpressions"/>).
 /// </para>
 /// </remarks>
 public sealed partial class Binder
 {
     /// <summary>Resolves what <paramref name="method"/> may refuse with, or null where it declares nothing.</summary>
-    /// <remarks>
-    /// A refusal on a method of an extend block is reported and kept, so its body's refusals are bound against
-    /// it and its callers are asked what a refusal makes of their calls. That is what the author wrote, and
-    /// binding as though it were not there would report each of those a second time, about a method that
-    /// has already been told what is wrong with it.
-    /// </remarks>
-    private PlType? DescribeRefusal(MethodDeclaration method, IrMethodKind kind)
+    private PlType? DescribeRefusal(MethodDeclaration method)
     {
         if (method.Refusal is not { } written)
         {
@@ -46,34 +47,30 @@ public sealed partial class Binder
             refusal = ErrorType.Instance;
         }
 
-        if (kind is IrMethodKind.Extend)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.RefusalOutsideAFactory,
-                $"{Capitalized(Refer(method.Name, "method"))} is a method of an extend block, and only a factory's "
-                + "methods may refuse.",
-                written.Span,
-                "A refusal says a message could not be built. Build it in its factory, or return what went wrong "
-                + "as part of the result (spec 16.3).");
-        }
-
         return refusal;
     }
 
-    /// <summary>Binds <c>refuse value;</c>, which ends the method with its refusal (spec 16.3).</summary>
-    /// <remarks>
-    /// A refusal where none may be is still a statement that ends the method, so nothing after it is told it
-    /// cannot be reached and the method is not told it does not return. The value is bound for the names in
-    /// it, against the declared refusal where there is one.
-    /// </remarks>
+    /// <summary>Binds <c>refuse value;</c>, which ends the method with its refusal (spec 16.3.1).</summary>
     private IrStatement BindRefuse(RefuseStatement statement, Scope scope, MethodContext context)
+        => new IrRefuse(BindRefusal(statement.Value, statement.Span, scope, context), statement.Span);
+
+    /// <summary>
+    /// Binds the value a method refuses with, written at <paramref name="span"/>: after <c>refuse</c>, or after
+    /// the <c>refuse</c> of an <c>on_zero</c>, <c>on_unknown</c> or <c>on_missing</c> clause.
+    /// </summary>
+    /// <remarks>
+    /// A refusal where none may be still ends the method, so nothing after it is told it cannot be reached and
+    /// the method is not told it does not return. The value is bound for the names in it, against the declared
+    /// refusal where there is one.
+    /// </remarks>
+    private IrExpression BindRefusal(Expression written, SourceSpan span, Scope scope, MethodContext context)
     {
         var refusal = context.Method?.Refusal;
-        var value = BindExpression(statement.Value, scope, context, refusal);
+        var value = BindExpression(written, scope, context, refusal);
 
         if (refusal is null)
         {
-            ReportRefuseWhereNoneMayBe(statement, value, context.Method);
+            ReportRefuseWhereNoneMayBe(span, value, context.Method);
         }
         else if (refusal is not ErrorType && value.Type is not ErrorType && !TypesMatch(refusal, value.Type))
         {
@@ -81,31 +78,27 @@ public sealed partial class Binder
                 DiagnosticCodes.RefusalTypeMismatch,
                 $"Cannot refuse with a value of type '{value.Type.DisplayName}' from a method that refuses with "
                 + $"'{refusal.DisplayName}'.",
-                statement.Span,
+                span,
                 NumericOrNull(refusal, value.Type)
                     ?? $"A refusal is a '{refusal.DisplayName}', as the method declares (spec 16.3).");
         }
 
-        return new IrRefuse(value, statement.Span);
+        return value;
     }
 
-    /// <summary>Reports a <c>refuse</c> in a method that declares no refusal (<c>PC0136</c>).</summary>
-    private void ReportRefuseWhereNoneMayBe(RefuseStatement statement, IrExpression value, IrMethodSignature? method)
+    /// <summary>Reports a refusal in a method that declares none, or in a test (<c>PC0136</c>).</summary>
+    private void ReportRefuseWhereNoneMayBe(SourceSpan span, IrExpression value, IrMethodSignature? method)
     {
         var (message, help) = method switch
         {
-            { Kind: IrMethodKind.Extend } => (
-                $"'{method.Name}' is a method of an extend block, and only a factory's methods may refuse.",
-                "A refusal says a message could not be built. Build it in its factory, or return what went wrong as "
-                + "part of the result (spec 16.3)."),
             { } declared => (
                 $"'{declared.Name}' declares no refusal, so it cannot refuse.",
                 $"Declare what it refuses with after its return type: '-> {declared.ReturnType.DisplayName} refuses "
                 + $"{(value.Type is ErrorType ? "…" : value.Type.DisplayName)}' (spec 16.3)."),
-            null => ("Only a factory's method can refuse.", "Return a value instead (spec 16.3)."),
+            null => ("A test cannot refuse.", "Give a value instead (spec 25.3)."),
         };
 
-        _diagnostics.Report(DiagnosticCodes.RefuseInAMethodThatCannotRefuse, message, statement.Span, help);
+        _diagnostics.Report(DiagnosticCodes.RefuseInAMethodThatCannotRefuse, message, span, help);
     }
 
     /// <summary>Binds a call written with an <c>on_refused</c> clause, for its value.</summary>
@@ -142,7 +135,7 @@ public sealed partial class Binder
                         ? $"'{plain.Target.Name}' cannot refuse, so this clause cannot run."
                         : "This call cannot refuse, so this clause cannot run.",
                     handled.Clause.Span,
-                    "Delete the clause. Only a call to a factory's method that declares 'refuses' needs one (spec 16.3).");
+                    "Delete the clause. Only a call to a method that declares 'refuses' needs one (spec 16.3).");
             }
 
             return bound;
@@ -156,7 +149,7 @@ public sealed partial class Binder
                 $"'{call.Target.Name}' may refuse with '{refusal.DisplayName}', so a call to it has to say what a "
                 + "refusal makes of it.",
                 call.Span,
-                $"{WaysToAnswer(call, context)} (spec 16.3).");
+                $"{Written(WaysToAnswer(call, context))} (spec 16.3).");
             return new IrRefusableCall(call, RefusalBehavior.Unstated, null, call.Span);
         }
 
@@ -169,6 +162,7 @@ public sealed partial class Binder
 
         if (clause.Fallback is not { } written)
         {
+            ReportIfTerminationIsForbidden("'on_refused fail'", clause.Span, WaysToAnswer(call, context));
             return new IrRefusableCall(call, RefusalBehavior.Fail, null, handled.Span);
         }
 
@@ -176,17 +170,34 @@ public sealed partial class Binder
     }
 
     /// <summary>The ways a call to <paramref name="call"/>'s method may answer a refusal from where it is, as help to write one.</summary>
-    private static string WaysToAnswer(IrMethodCall call, MethodContext context)
+    /// <remarks>
+    /// Where the project forbids ending the program, <c>on_refused fail</c> is not one of them, and a method that
+    /// could pass the refusal on if it declared one is told so: a call that gives nothing has no fallback, and
+    /// passing the refusal on is then the only answer left.
+    /// </remarks>
+    private List<string> WaysToAnswer(IrMethodCall call, MethodContext context)
     {
-        List<string> ways = call.Type is VoidType
-            ? ["'on_refused fail' after the call to end the program where it refuses"]
-            : [$"'on_refused' and a '{call.Type.DisplayName}' after the call", "'on_refused fail' to end the program where it refuses"];
-        if (context.Method?.Refusal is { } own && TypesMatch(own, call.Target.Refusal!))
+        List<string> ways = call.Type is VoidType ? [] : [$"'on_refused' and a '{call.Type.DisplayName}' after the call"];
+        if (!TerminationIsForbidden)
         {
-            ways.Add("'on_refused refuse' to refuse with it in turn");
+            ways.Add(ways.Count == 0
+                ? "'on_refused fail' after the call to end the program where it refuses"
+                : "'on_refused fail' to end the program where it refuses");
         }
 
-        return "Write " + (ways.Count == 1 ? ways[0] : $"{string.Join(", ", ways[..^1])}, or {ways[^1]}");
+        var refusal = call.Target.Refusal!;
+        switch (context.Method)
+        {
+            case { Refusal: { } own } when TypesMatch(own, refusal):
+                ways.Add("'on_refused refuse' to refuse with it in turn");
+                break;
+
+            case { Refusal: null } method when TerminationIsForbidden:
+                ways.Add($"'on_refused refuse', declaring that '{method.Name}' refuses with '{refusal.DisplayName}'");
+                break;
+        }
+
+        return ways;
     }
 
     /// <summary>Binds the fallback of <c>on_refused</c>, which has to be what the call gives when the method does not refuse.</summary>
@@ -199,7 +210,7 @@ public sealed partial class Binder
                 DiagnosticCodes.OnRefusedTypeMismatch,
                 $"'{call.Target.Name}' returns nothing, so there is no value for a refusal to fall back to.",
                 written.Span,
-                $"{WaysToAnswer(call, context)} (spec 16.3).");
+                $"{Written(WaysToAnswer(call, context))} (spec 16.3).");
             return refused;
         }
 
@@ -243,10 +254,6 @@ public sealed partial class Binder
             (null, _) => (
                 "A test has no refusal of its own to pass this one on as.",
                 $"Expect the refusal, 'expect refuse …;', or {instead} (spec 25.3)."),
-            ({ Kind: IrMethodKind.Extend } method, _) => (
-                $"'{method.Name}' cannot refuse, so it cannot pass on a refusal from '{call.Target.Name}': only a "
-                + "factory's methods may refuse.",
-                $"Answer the refusal here: {instead} (spec 16.3)."),
             ({ } method, null) => (
                 $"'{method.Name}' declares no refusal, so it cannot pass on a refusal from '{call.Target.Name}'.",
                 $"Declare it '-> {method.ReturnType.DisplayName} refuses {refusal.DisplayName}', or {instead} (spec 16.3)."),
@@ -260,39 +267,61 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Refuses <c>on_refused refuse</c> on a call inside an expression of <paramref name="statement"/>, which only a
-    /// call that stands on its own may write (<c>PC0142</c>).
+    /// Refuses a refusal from inside an expression of <paramref name="statement"/>: <c>on_refused refuse</c> on a
+    /// call, or a clause's <c>refuse</c> on a division, a conversion or a lookup, which only one that stands on its
+    /// own may write (<c>PC0142</c>).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Passing a refusal on ends the method where the call is. Inside an expression, part of that expression
-    /// would already have been evaluated and the rest would not, and the backends would have to leave in the
-    /// middle of it: C# has no way to, and C++ only by unwinding. Standing on its own, the call is all there is
-    /// to evaluate, and each backend tests what it gave before going on.
+    /// A refusal ends the method where it is written. Inside an expression, part of that expression would
+    /// already have been evaluated and the rest would not, and the backends would have to leave in the middle
+    /// of it: C# has no way to, and C++ only by unwinding. Standing on its own, the operation is all there is to
+    /// evaluate, and each backend tests what it gave before going on.
     /// </para>
     /// <para>
     /// The places it may stand are the ones a mutating call may (spec 18), for the same reason, so it asks the
     /// same question of the statement (<see cref="ExpressionsOf"/>).
     /// </para>
     /// </remarks>
-    private void ReportRefusalsPassedOnInsideExpressions(IrStatement statement)
+    private void ReportRefusalsInsideExpressions(IrStatement statement)
     {
         foreach (var (expression, mayStand) in ExpressionsOf(statement))
         {
-            foreach (var refusable in IrWalk.DescendantsAndSelf(expression).OfType<IrRefusableCall>())
+            foreach (var node in IrWalk.DescendantsAndSelf(expression).OfType<IrExpression>())
             {
-                if (refusable.OnRefused is not RefusalBehavior.Refuse || (mayStand && ReferenceEquals(refusable, expression)))
+                if (RefusalInsideAnExpression(node) is not var (message, standing) || (mayStand && ReferenceEquals(node, expression)))
                 {
                     continue;
                 }
 
                 _diagnostics.Report(
-                    DiagnosticCodes.RefusalPassedOnInsideAnExpression,
-                    $"A refusal from '{refusable.Call.Target.Name}' is passed on only from a call that stands on its own.",
-                    refusable.Span,
-                    "Call it as a statement, a 'var' initializer, a local's new value or a 'return' value, and use what "
-                    + "it gives from there (spec 16.3).");
+                    DiagnosticCodes.RefusalInsideAnExpression,
+                    message,
+                    node.Span,
+                    $"{standing}, and use what it gives from there (spec 16.3).");
             }
         }
+    }
+
+    /// <summary>
+    /// What <c>PC0142</c> says of <paramref name="node"/> where it refuses from where it is written, and where it may
+    /// be written instead, or null where it does not refuse.
+    /// </summary>
+    private static (string Message, string Standing)? RefusalInsideAnExpression(IrExpression node)
+    {
+        const string Standing = "a 'var' initializer, a local's new value or a 'return' value";
+        return node switch
+        {
+            IrRefusableCall { OnRefused: RefusalBehavior.Refuse } refusable => (
+                $"A refusal from '{refusable.Call.Target.Name}' is passed on only from a call that stands on its own.",
+                $"Call it as a statement, {Standing}"),
+            IrIntegerDivision when IrRefusals.ClauseRefusalOf(node) is not null => (
+                "'on_zero refuse' refuses only from a division that stands on its own.", $"Divide as {Standing}"),
+            IrNumberToEnum when IrRefusals.ClauseRefusalOf(node) is not null => (
+                "'on_unknown refuse' refuses only from a conversion that stands on its own.", $"Convert as {Standing}"),
+            IrMapLookup when IrRefusals.ClauseRefusalOf(node) is not null => (
+                "'on_missing refuse' refuses only from a lookup that stands on its own.", $"Look it up as {Standing}"),
+            _ => null,
+        };
     }
 }

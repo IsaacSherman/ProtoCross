@@ -129,10 +129,14 @@ each with a form that takes a list of sources.
    signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
    implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
    block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
-   can be followed to it (`Binder.Factories.cs`). A factory's method that may refuse carries the type
-   it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is an `IrRefuse`, and every
-   call to such a method, from anywhere, is held by an `IrRefusableCall` saying what a refusal makes of
-   it, so a backend never meets one bare (`Binder.Refusals.cs`). Declarations inside a resolvable receiver are kept as far as possible:
+   can be followed to it (`Binder.Factories.cs`). A method that may refuse, of a factory or an extend
+   block, carries the type it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is
+   an `IrRefuse`, and every call to such a method, from anywhere, is held by an `IrRefusableCall` saying
+   what a refusal makes of it, so a backend never meets one bare (`Binder.Refusals.cs`). A division, a
+   conversion to an enum or a lookup whose clause refuses carries a `Refuse` behavior, and
+   `IrRefusals.ClauseRefusalOf` and `IrMutation.StandingExpressionOf` answer, once for the binder and
+   both backends, which clause refuses and where it may stand. Where the project forbids termination,
+   each construct that would end the program is reported as it is bound (`Binder.Termination.cs`). Declarations inside a resolvable receiver are kept as far as possible:
    every local, parameter, loop binding and method carries a
    [`DeclarationSite`](../src/ProtoCross.Core/Symbols/DeclarationSite.cs), so a reference can reach the
    declaration it means and say which symbol that is. It also records the other direction as it
@@ -301,7 +305,9 @@ question to ask before mapping a span to an editor range.
 ### Configuration
 
 `protocross.config.xml` (spec 10.4) states the language-dependent policies: overflow, conversion,
-divide-by-zero, unset-message reads. Discovery walks up from the source directory, the way
+divide-by-zero, unset-message reads, enum fallbacks, and whether generated code may end the program
+(`Failure/Termination`, which the binder enforces and no backend sees). A file whose settings
+contradict each other is refused as it is read. Discovery walks up from the source directory, the way
 `.editorconfig` does. A command-line flag that contradicts an explicit setting is **refused** unless
 `--override-config` is passed — generated code has to mean the same thing however it was built.
 
@@ -716,8 +722,10 @@ gives what it built or refused through two parameters, `out` in C# and reference
 conditional over the call with what it built in an `out var`, each named once per method, before the
 method is written, and handed to every expression on the method's copy of `Placement`. In C++ it is a
 lambda called where it is written, as a literal is. A call that passes a refusal on stands on its own,
-so each backend tests it in an `if` before the rest of its statement. `on_refused fail` goes through a
-helper in each support file. A test of such a method checks how it ended, then compares the result or
+so each backend tests it in an `if` before the rest of its statement. So does a division, a conversion
+or a lookup whose clause refuses: C# matches the support file's helper that gives null into a local,
+and C++ hands the helper that takes a fallback a lambda that marks it refused, each through the same
+helper a fallback goes through. `on_refused fail` goes through a helper in each support file. A test of such a method checks how it ended, then compares the result or
 the refusal as any result is compared.
 
 A backend is handed one source's part of the module, and a call in it may name a method another
@@ -749,7 +757,8 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `CompiledCorpusTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
+`TerminationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,
 `TreeWalkTests`, `IrContractTests`, `ImportResolutionTests`, `ProjectConfigTests`, `ProjectFileTests`,

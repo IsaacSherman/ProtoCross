@@ -44,6 +44,25 @@ public static class IrMutation
     }
 
     /// <summary>
+    /// The expression <paramref name="statement"/> holds that stands on its own: the whole of a statement, a
+    /// <c>var</c>'s initializer, a local's new value or a <c>return</c>'s value. Null for any other statement.
+    /// </summary>
+    /// <remarks>
+    /// These are where a call to a <c>mut fn</c> may be written (spec 18), and where a refusal may end a method
+    /// from (spec 16.3.1), for one reason: nothing else in the statement is evaluated before the expression
+    /// is, so a backend can write what it needs ahead of the statement and the statement after it. One home,
+    /// because the binder says what may stand here and both backends write what does.
+    /// </remarks>
+    public static IrExpression? StandingExpressionOf(IrStatement statement) => statement switch
+    {
+        IrExpressionStatement expression => expression.Expression,
+        IrVariableDeclaration declaration => declaration.Initializer,
+        IrAssignment assignment => assignment.Value,
+        IrReturn { Value: { } returned } => returned,
+        _ => null,
+    };
+
+    /// <summary>
     /// What a chain of field accesses and map elements begins at, or <paramref name="place"/> itself
     /// when it is not one.
     /// </summary>

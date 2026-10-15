@@ -12,7 +12,7 @@
 | Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`; [Formatting]: `EmitLiteral`, `FormatFloatingPoint`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
 | Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
-| Methods that may refuse, and calls to them | [Refusals]: `EmitRefusableCall`, `EmitStandingRefusableCall`, `EmitPassedOn`, `EmitBuilt`, `EmitRefused`; [Context]: `Outs`, `BuiltNamesIn`, `Placement.Built`; a refusing method returns `bool` with `out` parameters, and each call's `out var` is named once per method. | [refusal emission]; [conformance] |
+| Methods that may refuse, and calls to them | [Refusals]: `EmitRefusableCall`, `EmitStandingRefusableCall`, `EmitPassedOn`, `EmitBuilt`, `EmitRefused`, `EmitClauseRefusal`, `OrNull`; [Context]: `Outs`, `BuiltNamesIn`, `HeldStemOf`, `Placement.Built`; [Wrappers]: `EmitRefusableChangeThroughACopy`; a refusing method returns `bool` with `out` parameters, each call's `out var` and each refusing clause's local is named once per method, and a clause that refuses is matched against its `…OrNull` helper before its statement. | [refusal emission]; [clause refusal emission]; [conformance] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MapEntries`. | [map emission] |
 | Wrapper fields (`Int64Value` and the rest) | [Wrappers]: `WrappedScalar`, `IsHeldAsItsValue`, `HeldValue`, `MessageOf`, `FieldValue`, `HeldPlace`, `StoresThroughAReach`, `EmitStoreThroughAReach`, `EmitChangeThroughACopy`; [Statements]: `Traversed` binds each element of a repeated wrapper as a place, through `ProtoCrossWrappers` in [Runtime]. protoc's C# holds a wrapper field as its value, and the language as a message. | [wrapper emission]; [wrapper review]; [conformance] |
 | Runtime support | [Runtime]: `CSharpRuntime.Source`, `Stem`, `EmitDivision`, `EmitMaps`, `EmitEnums`, `EmitWrappers`, `EmitRefusals`, `EmitFloatToInteger`, `EmitFail`; IR behavior selects helpers, and a fallback follows a helper that gives null after `??`, so it is evaluated only where needed. | [Backend tests]; [conformance] |
@@ -48,6 +48,7 @@
 [append emission]: ../tests/ProtoCross.Tests/BackendTests.Append.cs
 [map emission]: ../tests/ProtoCross.Tests/BackendTests.Maps.cs
 [refusal emission]: ../tests/ProtoCross.Tests/RefusalTests.cs
+[clause refusal emission]: ../tests/ProtoCross.Tests/ClauseRefusalTests.cs
 [wrapper emission]: ../tests/ProtoCross.Tests/BackendTests.Wrappers.cs
 [wrapper review]: ../tests/ProtoCross.Tests/WrapperReviewRegressionTests.cs
 [namespaces]: ../tests/ProtoCross.Tests/NameMappingTests.CSharpNamespaces.cs

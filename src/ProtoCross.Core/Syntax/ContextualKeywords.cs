@@ -63,12 +63,12 @@ public static class ContextualKeywords
 
     /// <summary>
     /// Whether <paramref name="token"/> is an <c>on_unknown</c> that begins a conversion's clause: one
-    /// with <c>fail</c> or a name straight after it.
+    /// with <c>fail</c>, <c>refuse</c> or a name straight after it.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// A name is never followed by <c>fail</c> anywhere else, and by another name only where
-    /// <c>new</c> begins a literal. The clause follows a conversion's type, and nothing else can, so a
+    /// A name is never followed by <c>fail</c> or <c>refuse</c> anywhere else, and by another name only
+    /// where <c>new</c> begins a literal. The clause follows a conversion's type, and nothing else can, so a
     /// field named <c>on_unknown</c> keeps its name everywhere a field can be read.
     /// </para>
     /// <para>
@@ -82,7 +82,7 @@ public static class ContextualKeywords
     /// </remarks>
     public static bool BeginsAnOnUnknownClause(Token token, Token next)
         => token is { Kind: TokenKind.Identifier, Text: OnUnknown }
-            && next.Kind is TokenKind.Identifier or TokenKind.Fail;
+            && next.Kind is TokenKind.Identifier or TokenKind.Fail or TokenKind.Refuse;
 
     /// <summary>
     /// Whether <paramref name="token"/> is a <c>factory</c> that begins a declaration: one with a name

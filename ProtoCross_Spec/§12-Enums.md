@@ -106,6 +106,9 @@ Normative Requirements:
   - `on_unknown fail` terminates the program exactly as `on_zero fail` does
     ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)), with a diagnostic on standard error naming the enum and the number, and exit
     code 70.
+  - `on_unknown refuse <value>` ends the method with that refusal, as `on_zero refuse` does: only in a
+    method that declares a refusal, with a value of its type, and from a conversion that stands on its
+    own ([16.3.1](./§16-Methods.md#1631-refusals)). The value is evaluated only for a number the enum does not name.
   - The clause binds to the one conversion it follows. Its fallback is a postfix expression, so an
     `as` after it converts the whole conversion: `n as Level on_unknown Level.LOW as int32` is a
     number again.
@@ -119,14 +122,15 @@ Normative Requirements:
   - A **closed** enum ends the program, as `on_unknown fail` would, and the conversion is `PC0102`, a
     warning that nothing says so. Protobuf will not hold such a number in a closed enum's field, and
     C++ asserts as much in a debug build, so a conversion that made one would invent a value the
-    schema rules out.
+    schema rules out. In a project that forbids ending the program, the conversion is `PC0144`
+    instead, an error, since it is the one termination nobody wrote ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
   - Either one's help writes the clause out with one of the enum's values, and names `<Enums>` as
     the place to say it once for the project.
 - A proto2 enum is closed and a proto3 enum is open. An editions enum is closed where its
   `enum_type` feature says `CLOSED`, stated on the enum or else on its file. protoc accepts the
   feature nowhere between the two, and every edition so far defaults to open.
-- `on_unknown` is not a keyword. It begins a clause only where `fail` or a name follows it, and is
-  an identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). Every value of an enum is written starting with a name, so
+- `on_unknown` is not a keyword. It begins a clause only where `fail`, `refuse` or a name follows it,
+  and is an identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). Every value of an enum is written starting with a name, so
   no fallback is lost to the rule.
 - A fixture writes a number no value names through the same conversion, `status: 9 as OrderStatus`,
   and an expectation compares with one the same way, so a test reaches the case with no syntax of
@@ -140,6 +144,7 @@ Backend obligations:
 | `n as Level`, kept | `(Level)n` | `static_cast<Level>(n)` |
 | `on_unknown <value>` | `(ProtoCrossEnums.NamedOrNull((Level)n) ?? value)` | `protocross_runtime::named_or(static_cast<Level>(n), &Level_IsValid, [&] { return value; })` |
 | `on_unknown fail` | `ProtoCrossEnums.NamedOrFail((Level)n, "pkg.Level")` | `protocross_runtime::named_or_fail(static_cast<Level>(n), &Level_IsValid, "pkg.Level")` |
+| `on_unknown refuse <value>` | Before the statement: `if (ProtoCrossEnums.NamedOrNull((Level)n) is not { } named) { …; refusal = value; return false; }`, then `named` | Before the statement: `named_or(static_cast<Level>(n), &Level_IsValid, [&] { refused = true; return Level{}; })` into `named`, then `if (refused) { refusal = value; return false; }` ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)) |
 
 - Whether a number is named is asked of what protoc generated: `Enum.IsDefined` over the C# enum, and
   the `_IsValid` protoc declares beside the C++ one. Both hold exactly the values the schema

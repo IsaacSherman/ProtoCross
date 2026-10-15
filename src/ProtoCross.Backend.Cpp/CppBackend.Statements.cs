@@ -17,6 +17,15 @@ public sealed partial class CppBackend
 
     private static void EmitStatement(SourceWriter writer, IrStatement statement, Placement placement)
     {
+        // An operation whose clause refuses is tested before the statement it stands in does anything.
+        if (IrMutation.StandingExpressionOf(statement) is { } standing
+            && IrRefusals.ClauseRefusalOf(standing) is { } refusal
+            && !placement.Held.ContainsKey(standing))
+        {
+            EmitClauseRefusal(writer, statement, standing, refusal, placement);
+            return;
+        }
+
         switch (statement)
         {
             case IrBlock block:
@@ -63,8 +72,8 @@ public sealed partial class CppBackend
                 writer.WriteLine("return true;");
                 break;
 
-            case IrRefuse refusal:
-                writer.WriteLine($"{placement.Outs!.Refusal} = {Expression(refusal.Value, placement)};");
+            case IrRefuse refused:
+                writer.WriteLine($"{placement.Outs!.Refusal} = {Expression(refused.Value, placement)};");
                 writer.WriteLine("return false;");
                 break;
 

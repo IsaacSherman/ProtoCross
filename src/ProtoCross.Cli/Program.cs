@@ -247,7 +247,13 @@ static ProjectConfig? ApplyPolicyFlags(ProjectConfig config, CommandLineOptions 
         Console.Error.WriteLine($"error: {conflict}");
         Console.Error.WriteLine(
             "       The config file wins, so that a build means the same thing however it was run.");
-        Console.Error.WriteLine("       Pass --override-config to use the flag anyway.");
+
+        // Passed already, it was refused for contradicting another setting, which the flag cannot answer.
+        if (!options.OverrideConfig)
+        {
+            Console.Error.WriteLine("       Pass --override-config to use the flag anyway.");
+        }
+
         return null;
     }
 
