@@ -8,7 +8,7 @@
 | Shared numeric/enum policy, and termination | [Compilation][comp]: `ResolveSharedConfig`; [ProjectConfig][config]: `Discover`, `Load`, `ReportWhatEndsTheProgram`, `ReportContradictions`, `TryOverrideOverflow` | [Config][config-t], [Termination][termination-t] |
 | Imports, roots, nearest schema | [Compilation][comp]: `GetSearchPaths`, `Resolve`; [SchemaCatalog][catalog]: `RootsFor`, `NearestTo`; [ImportResolution][imports] | [Imports][import-t] |
 | protoc selection and descriptor loads | [ProtocLocator][protoc]: `Select`, `DescribeNotFound`; [DescriptorLoader][loader]: `LoadBundle` | [Process supervision][process-t] |
-| Build tools for generated code, and why one is missing | [ToolLocator][tools]: `FindDotnet`, `FindCMake`, `FindCppCompiler`, `FindProtobufCpp`; [ToolLookup][lookup]; [ProcessRunner][runner]: `Run` | [Toolchain][tools-t] |
+| Build tools for generated code, and why one is missing | [ToolLocator][tools]: `FindDotnet`, `FindCMake`, `FindCppCompiler`, `FindProtobufCpp`; [ToolLookup][lookup]; [ProcessRunner][runner]: `Run`, `CreateDotnet`; [TestProjectRunner][project-runner]: `RunDotnetTest`, `RunCMake` | [Toolchain][tools-t] |
 | What generated tests reported, and the verdict on it | [TrxLog][trx]: `ReadLatest`; [TestReports][reports]: `FromTrx`, `FromDriverOutput`; [TestVerdict][verdict]: `Judge` | [Verdict][verdict-t] |
 | Descriptor reuse and schema declarations | [DescriptorCache][cache]: `GetOrLoad`; [DescriptorBundle][bundle]: `DeclarationOf` | [Descriptor cache][cache-t], [Schema declarations][schema-t] |
 | Several sources as one program | [Compilation][comp]: list-of-sources overloads of `Compile`; [SourceTree][tree]: `SourceTree` | [Multiple sources][multi-t] |
@@ -17,7 +17,8 @@
 | Project discovery and cached expansion | [ProjectDiscovery][discovery]: `Find`; [ProjectCatalog][projects]: `FilesOf` | [Discovery][discovery-t] |
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
-| CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
+| CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `Build`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
+| `protocross test`: tools first, then the build, then each backend's run and the verdict | [TestCommand][test]: `Run`, `FindTesters`, `Print` | [CLI test][test-t] |
 | Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [BuildCommand][build]: `ScaffoldSettingsFor`; [CommandLineOptions][options]: `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
 | Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [BuildCommand][build]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
 | Attribute and publish editor diagnostics | [CompilationDiagnostics][routing]: `Build`; [DiagnosticRouter][router]: `PublishAsync`, `ClearAsync` | [Diagnostic routing][routing-t] |
@@ -32,6 +33,7 @@
 [tools]: ../src/ProtoCross.Toolchain/ToolLocator.cs
 [lookup]: ../src/ProtoCross.Toolchain/ToolLookup.cs
 [runner]: ../src/ProtoCross.Toolchain/ProcessRunner.cs
+[project-runner]: ../src/ProtoCross.Toolchain/TestProjectRunner.cs
 [trx]: ../src/ProtoCross.Toolchain/TrxLog.cs
 [reports]: ../src/ProtoCross.Toolchain/TestReports.cs
 [verdict]: ../src/ProtoCross.Toolchain/TestVerdict.cs
@@ -47,6 +49,7 @@
 [cli]: ../src/ProtoCross.Cli/CommandLine.cs
 [options]: ../src/ProtoCross.Cli/CommandLineOptions.cs
 [build]: ../src/ProtoCross.Cli/BuildCommand.cs
+[test]: ../src/ProtoCross.Cli/TestCommand.cs
 [scaffold]: ../src/ProtoCross.Core/Backend/ScaffoldSettings.cs
 [diagnostics]: ../src/ProtoCross.Core/Diagnostics/Diagnostic.cs
 [routing]: ../src/ProtoCross.LanguageServer/Hosting/CompilationDiagnostics.cs
@@ -68,6 +71,7 @@
 [refusal-t]: ../tests/ProtoCross.Tests/ProjectBuildRefusalTests.cs
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
 [verbs-t]: ../tests/ProtoCross.Tests/CliTests.Verbs.cs
+[test-t]: ../tests/ProtoCross.Tests/CliTests.Test.cs
 [tools-t]: ../tests/ProtoCross.Tests/ToolchainTests.cs
 [verdict-t]: ../tests/ProtoCross.Tests/TestVerdictTests.cs
 [scaffold-t]: ../tests/ProtoCross.Tests/ScaffoldSettingsTests.cs

@@ -54,6 +54,23 @@ public static class ProcessRunner
         startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
     }
 
+    /// <summary>
+    /// A start of <paramref name="dotnet"/> in <paramref name="workingDirectory"/>, fit to build or test
+    /// a project from inside another dotnet process.
+    /// </summary>
+    public static ProcessStartInfo CreateDotnet(string dotnet, string workingDirectory)
+    {
+        var startInfo = Create(dotnet, workingDirectory);
+        ScrubMsBuildEnvironment(startInfo);
+
+        // Belt and braces. ProtoCross's fail path exits cleanly rather than crashing, so nothing
+        // here should reach the crash reporter, but a genuinely faulting child would otherwise stall
+        // the run while a dump is collected.
+        startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
+
+        return startInfo;
+    }
+
     public static ProcessResult Run(ProcessStartInfo startInfo, TimeSpan? timeout = null)
     {
         var limit = timeout ?? DefaultTimeout;

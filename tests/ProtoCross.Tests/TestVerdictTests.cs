@@ -132,6 +132,21 @@ public class TestVerdictTests
         Assert.All(results, result => Assert.Equal(TestOutcome.Missing, result.Outcome));
     }
 
+    /// <summary>
+    /// ctest's verbose output is the drivers' own lines with the test's number in front of each, and the
+    /// number goes before a driver's lines are read whole.
+    /// </summary>
+    [Fact]
+    public void CTestsVerboseOutputIsReadAsTheDriversOwn()
+    {
+        var ctest = new ProcessResult(0, $"1: Test command: invoice_tests.exe\n1: [ok] {Total}\n1: [FAIL] {Tax} (expected 3, actual 4)\n");
+        var run = new CMakeTestRun(new ProcessResult(0, string.Empty), new ProcessResult(0, string.Empty), ctest);
+
+        var results = TestReports.FromDriverOutput(Declared, run.DriverOutput);
+
+        Assert.Equal([TestOutcome.Passed, TestOutcome.Failed], results.Select(result => result.Outcome));
+    }
+
     // ------- reading a TRX log
 
     [Fact]

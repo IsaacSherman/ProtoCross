@@ -62,6 +62,35 @@ public class ToolchainTests
         Assert.Contains("runtime binaries", description, StringComparison.Ordinal);
     }
 
+    // ------- running a test project
+
+    /// <summary>
+    /// A run that writes no log, because its project did not build, is not read as the run before it:
+    /// a log an earlier run left is gone first, so the run reports that nothing ran.
+    /// </summary>
+    [Fact]
+    public void ARunThatWritesNoLogIsNotReadAsTheRunBefore()
+    {
+        var dotnet = TestToolchain.RequireDotnet();
+        var project = TestPaths.CreateTempDirectory();
+        var results = Directory.CreateDirectory(Path.Combine(project, "TestResults")).FullName;
+        var earlier = Path.Combine(results, "protocross.trx");
+        File.WriteAllText(
+            earlier,
+            """
+            <TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+              <Results><UnitTestResult testName="billing.Invoice.total: passed last time" outcome="Passed" /></Results>
+            </TestRun>
+            """);
+
+        // An empty directory: dotnet test finds no project there, so it builds and logs nothing.
+        var run = TestProjectRunner.RunDotnetTest(dotnet, project, results);
+
+        Assert.NotEqual(0, run.Process.ExitCode);
+        Assert.Empty(run.Executed);
+        Assert.False(File.Exists(earlier), "the earlier run's log is deleted before this one runs");
+    }
+
     // ------- where a project's install is found
 
     /// <summary>

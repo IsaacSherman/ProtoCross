@@ -18,6 +18,9 @@ namespace ProtoCross.Cli;
 /// </remarks>
 internal static class BuildCommand
 {
+    /// <summary>What a build compiled, and the path of every file it wrote.</summary>
+    internal sealed record Built(CompilationResult Result, IReadOnlyList<string> Written);
+
     public static int Run(string[] args)
     {
         var options = CommandLineOptions.Parse(args);
@@ -28,6 +31,32 @@ internal static class BuildCommand
             return 2;
         }
 
+        if (Build(options, out var exitCode) is not { } built)
+        {
+            return exitCode;
+        }
+
+        foreach (var path in built.Written)
+        {
+            Console.WriteLine(Path.GetRelativePath(Directory.GetCurrentDirectory(), path));
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Compiles what <paramref name="options"/> names and writes what each backend generates from it,
+    /// printing every diagnostic on the way: what was built, or null with the exit code that says why
+    /// nothing was.
+    /// </summary>
+    /// <remarks>
+    /// Shared with <c>protocross test</c>, which builds exactly what a build of the same command line
+    /// would and then runs it, so that what it tests is what a build ships.
+    /// </remarks>
+    internal static Built? Build(CommandLineOptions options, out int exitCode)
+    {
+        exitCode = 2;
+
         var missing = options.SourcePaths.Where(path => !File.Exists(path)).ToList();
         foreach (var path in missing)
         {
@@ -36,13 +65,13 @@ internal static class BuildCommand
 
         if (missing.Count > 0)
         {
-            return 2;
+            return null;
         }
 
         if (options.Scaffold && options.TestOutputDirectory is null)
         {
             Console.Error.WriteLine("error: --scaffold needs --test-out, because it writes the build file beside the generated tests");
-            return 2;
+            return null;
         }
 
         var setupDiagnostics = new DiagnosticBag();
@@ -55,8 +84,10 @@ internal static class BuildCommand
         if (compilation is null)
         {
             Console.Error.WriteLine(options.ProjectPath is null ? "configuration failed" : "project failed");
-            return 2;
+            return null;
         }
+
+        exitCode = 1;
 
         var result = compilation.Compile();
         PrintDiagnostics(result.Diagnostics);
@@ -66,7 +97,7 @@ internal static class BuildCommand
         if (result.EmittableModule is null)
         {
             Console.Error.WriteLine($"compilation failed: {result.Diagnostics.Count(d => d.Severity == DiagnosticSeverity.Error)} error(s)");
-            return 1;
+            return null;
         }
 
         var backendDiagnostics = new DiagnosticBag();
@@ -76,15 +107,11 @@ internal static class BuildCommand
         if (backendDiagnostics.HasErrors)
         {
             Console.Error.WriteLine("code generation failed");
-            return 1;
+            return null;
         }
 
-        foreach (var path in written)
-        {
-            Console.WriteLine(Path.GetRelativePath(Directory.GetCurrentDirectory(), path));
-        }
-
-        return 0;
+        exitCode = 0;
+        return new Built(result, written);
     }
 
     /// <summary>What each backend this run asks for generates, and the directory each part goes in.</summary>
