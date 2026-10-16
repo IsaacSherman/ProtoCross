@@ -1,4 +1,5 @@
 using System.Diagnostics.CodeAnalysis;
+using ProtoCross.Projects;
 using ProtoCross.Toolchain;
 
 namespace ProtoCross.Cli;
@@ -21,15 +22,11 @@ namespace ProtoCross.Cli;
 /// </remarks>
 internal static class TestCommand
 {
-    /// <summary>How long one step of a backend's run may take before it is taken to have hung.</summary>
-    /// <remarks>
-    /// Long, because a first run restores packages and builds a test project from cold. The limit is for
-    /// a run that has stopped, not one that is slow.
-    /// </remarks>
-    private static readonly TimeSpan StepLimit = TimeSpan.FromMinutes(30);
-
-    /// <summary>Builds and runs one backend's test project, and reads what it and its tool reported.</summary>
-    private delegate BackendRun Tester(IReadOnlyList<string> declared, string testDirectory);
+    /// <summary>
+    /// Builds and runs one backend's test project, stopping any step that takes longer than
+    /// <paramref name="stepTimeout"/>, and reads what it and its tool reported.
+    /// </summary>
+    private delegate BackendRun Tester(IReadOnlyList<string> declared, string testDirectory, TimeSpan stepTimeout);
 
     /// <summary>A backend this run tests: what tests it, or why it cannot be tested here.</summary>
     private sealed record BackendTester(string Backend, IReadOnlyList<string> Missing, Tester? Run);
@@ -75,9 +72,10 @@ internal static class TestCommand
             return 1;
         }
 
+        var stepTimeout = (built.Project?.TestRun ?? TestRunSettings.Default).StepTimeout;
         var verdict = TestVerdict.Judge(
             declared,
-            [.. testers.Select(tester => tester.Run!(declared, Path.Combine(options.TestOutputDirectory!, tester.Backend)))]);
+            [.. testers.Select(tester => tester.Run!(declared, Path.Combine(options.TestOutputDirectory!, tester.Backend), stepTimeout))]);
 
         Print(verdict);
         return verdict.Passed ? 0 : 1;
@@ -119,10 +117,10 @@ internal static class TestCommand
     private static string SearchFrom(CommandLineOptions options)
         => Path.GetDirectoryName(Path.GetFullPath(options.ProjectPath ?? options.SourcePaths[0]))!;
 
-    private static Tester CSharpTester(string dotnet) => (declared, directory) =>
+    private static Tester CSharpTester(string dotnet) => (declared, directory, stepTimeout) =>
     {
         Console.WriteLine($"csharp: dotnet test in {Shown(directory)}");
-        var run = TestProjectRunner.RunDotnetTest(dotnet, directory, Path.Combine(directory, "TestResults"), StepLimit);
+        var run = TestProjectRunner.RunDotnetTest(dotnet, directory, Path.Combine(directory, "TestResults"), stepTimeout);
         var reports = TestReports.FromTrx(declared, run.Executed);
 
         if (run.Executed.Count == 0 || IsUnexplained(run.Failure, reports))
@@ -131,14 +129,14 @@ internal static class TestCommand
             Console.Error.WriteLine(run.Process.Output);
         }
 
-        WarnOfUndeclaredTests("csharp", directory, declared, run.Executed.Select(test => test.Name));
+        NoteUndeclaredTests("csharp", directory, declared, run.Executed.Select(test => test.Name));
         return new BackendRun("csharp", reports, run.Failure);
     };
 
-    private static Tester CppTester(string cmake, ProtobufCppInstall protobuf) => (declared, directory) =>
+    private static Tester CppTester(string cmake, ProtobufCppInstall protobuf) => (declared, directory, stepTimeout) =>
     {
         Console.WriteLine($"cpp: cmake and ctest in {Shown(directory)}");
-        var run = TestProjectRunner.RunCMake(cmake, protobuf, directory, StepLimit);
+        var run = TestProjectRunner.RunCMake(cmake, protobuf, directory, stepTimeout);
         var reports = TestReports.FromDriverOutput(declared, run.DriverOutput);
 
         if (IsUnexplained(run.Failure, reports))
@@ -161,21 +159,29 @@ internal static class TestCommand
     private static bool IsUnexplained([NotNullWhen(true)] string? failure, IReadOnlyList<TestReport> reports)
         => failure is not null && !reports.Any(report => report.Outcome is TestOutcome.Failed);
 
-    /// <summary>Warns of each test a backend ran that no source in this build declares.</summary>
+    /// <summary>Notes, as information, each test a backend ran that no source in this build declares.</summary>
     /// <remarks>
-    /// Warned of rather than judged, because such a test is no test of this program, so it is not among
-    /// the declared tests the verdict judges. A tool that fails on its account still fails the run, as a
+    /// <para>
+    /// Noted rather than judged, because such a test is no test of this program, so it is not among the
+    /// declared tests the verdict judges. A tool that fails on its account still fails the run, as a
     /// failed tool does whatever failed it. It is most likely in a generated test file an earlier build
     /// left in the test directory: the compiler writes into a directory and never removes from it, and
     /// the test project builds everything there.
+    /// </para>
+    /// <para>
+    /// Information rather than a warning, and on standard output rather than standard error, because
+    /// either of those can fail a build that runs this one: one that treats warnings as errors, or a
+    /// pipeline that fails a step for writing to standard error. A file left behind is no fault in the
+    /// program, so it must not be one that can fail a build.
+    /// </para>
     /// </remarks>
-    private static void WarnOfUndeclaredTests(string backend, string directory, IReadOnlyList<string> declared, IEnumerable<string> ran)
+    private static void NoteUndeclaredTests(string backend, string directory, IReadOnlyList<string> declared, IEnumerable<string> ran)
     {
         var known = declared.ToHashSet(StringComparer.Ordinal);
         foreach (var name in ran.Where(name => !known.Contains(name)).Distinct(StringComparer.Ordinal))
         {
-            Console.Error.WriteLine(
-                $"warning: {backend} ran '{name}', which no source in this build declares; "
+            Console.WriteLine(
+                $"info: {backend} ran '{name}', which no source in this build declares; "
                     + $"a test file an earlier build left in {Shown(directory)} may hold it");
         }
     }

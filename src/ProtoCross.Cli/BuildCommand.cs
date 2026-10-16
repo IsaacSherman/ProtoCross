@@ -18,8 +18,8 @@ namespace ProtoCross.Cli;
 /// </remarks>
 internal static class BuildCommand
 {
-    /// <summary>What a build compiled, and the path of every file it wrote.</summary>
-    internal sealed record Built(CompilationResult Result, IReadOnlyList<string> Written);
+    /// <summary>What a build compiled, the path of every file it wrote, and the project it built, if any.</summary>
+    internal sealed record Built(CompilationResult Result, IReadOnlyList<string> Written, ProtoCrossProject? Project);
 
     public static int Run(string[] args)
     {
@@ -131,7 +131,7 @@ internal static class BuildCommand
         }
 
         exitCode = 0;
-        return new Built(result, written);
+        return new Built(result, written, project);
     }
 
     /// <summary>What each backend this run asks for generates, and the directory each part goes in.</summary>

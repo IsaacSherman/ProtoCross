@@ -362,7 +362,8 @@ file is read with, so a position in either is placed the same way.
 directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
 an element whose patterns match nothing is a warning (`PC2010`). Its `<Scaffold>` names the test
 projects `--scaffold` writes (spec 25.3.2), through the same `ScaffoldSetting`s the command line's
-flags state, so a value one accepts the other does too.
+flags state, so a value one accepts the other does too. Its `<TestRun>` says how long each step of
+`protocross test` may take (spec 25.3.3).
 [`ProjectFiles`](../src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
 role, and [`ProjectPolicy`](../src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
 file the compilation runs under, warning about a member whose own search finds another (`PC2011`).

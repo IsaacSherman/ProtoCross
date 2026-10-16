@@ -577,6 +577,9 @@ It passes only when every declared test passed in every backend tested.
   stopped.
 - **A tool that reports a failure fails the run,** even after every test passed: `dotnet test`
   failing in a step after its tests, say.
+- **Each step may take 30 minutes** before it is stopped as hung, which fails the run: `dotnet test`,
+  or one of cmake's configure, build and `ctest`. A project sets another limit with
+  `<TestRun StepTimeout="45m" />`, in seconds, minutes or hours (`90s`, `45m`, `2h`), up to `24h`.
 - **A missing tool ends the run before anything is written,** with exit code 2 and what to install.
   `-t csharp` or `-t cpp` tests one backend on purpose.
 - **It writes into the usual directories.** The tests go to `--test-out`, which defaults to

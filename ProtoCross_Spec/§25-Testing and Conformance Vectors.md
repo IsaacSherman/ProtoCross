@@ -408,12 +408,23 @@ Normative Requirements:
   when every declared test passed: `dotnet test` failing in a target that runs after the tests, or
   `ctest` failing a driver that ended badly after its passes. The tests' reports show only the
   passes, so they cannot be the whole verdict.
+- **Each step may take 30 minutes** before it is taken to have hung and is stopped: `dotnet test`,
+  and cmake's configure, its build and `ctest`, each. A stopped step did not run to the end, so its
+  tool failed, and the run fails and says how long the step was given.
+  - A project gives its steps another limit with `<TestRun StepTimeout="45m" />`: a whole number,
+    with no leading zero, followed by `s`, `m` or `h` for seconds, minutes or hours. It is above zero
+    and no more than `24h`, and whitespace around it is not part of it. A run of sources named on
+    the command line takes the default.
+  - Any other attribute or element in `<TestRun>` is `PC2008`. A second `<TestRun>`, text, or a value
+    `StepTimeout` does not accept is `PC2009`, at what it got wrong, and the project is refused whole
+    in every build ([5.4](./§5-Source%20Organization.md#54-projects)).
 - **A build that declares no tests has nothing to test, and fails.** A run that checked nothing would
   otherwise exit 0 as if it had passed.
-- **A test a backend ran that no source declares is warned of.** It is not one of the declared
-  tests, so it is not judged as one. A tool that fails on its account still fails the run, as any
-  failed tool does. It is most likely in a test file an earlier build left in `--test-out`, which
-  the compiler writes into and never removes from.
+- **A test a backend ran that no source declares is noted as information,** on standard output,
+  and never as a warning. It is not one of the declared tests, so it is not judged as one. A tool
+  that fails on its account still fails the run, as any failed tool does. It is most likely in a
+  test file an earlier build left in `--test-out`, which the compiler writes into and never removes
+  from.
 - **Exit codes:**
   - 0 when every declared test passed in every backend tested;
   - 1 for a compile error, as `build` returns, or for a test that failed or did not run;
@@ -421,9 +432,22 @@ Normative Requirements:
 - **Output:** a line for each backend counting its passed, failed and missing tests, then how its
   tool failed, if it did, and each declared test it did not pass, with why.
 
+Rationale:
+
+- **30 minutes**, because a first run restores packages and builds each test project from cold. The
+  limit is for a step that has stopped, not one that is slow. A project may need longer, or want a
+  hang found sooner, so it can say so. A day is the most, because a step still running after one has
+  stopped.
+- **A time is written with its unit,** because `45` is minutes to one reader and seconds to the next.
+- **Information, not a warning,** for a test no source declares, and on standard output, because a
+  warning can fail a build that treats warnings as errors, and some pipelines fail a step for
+  writing to standard error. A file an earlier build left behind is no fault in the program.
+
 Implementation Note:
 
 - The rule is `TestVerdict.Judge`, in `ProtoCross.Toolchain`, and the conformance suite judges the
   corpus by it, so a run the suite would fail cannot pass on a user's machine. `ToolLocator` finds the
   tools, `TestProjectRunner` builds and runs each project, and `TestReports` reads what it reported.
   The suite uses all three as well.
+- A project's `<TestRun>` is `ProtoCrossProject.TestRun`, a `TestRunSettings`, which holds the
+  default limit and reads `StepTimeout`, so the default and what a project may write have one home.

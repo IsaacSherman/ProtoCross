@@ -18,7 +18,7 @@
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
 | CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `CanBuild`, `Build`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
-| `protocross test`: tools first, then the build, then each backend's run and the verdict | [TestCommand][test]: `Run`, `FindTesters`, `Print` | [CLI test][test-t] |
+| `protocross test`: tools first, then the build, then each backend's run and the verdict; its step limit, `<TestRun>` | [TestCommand][test]: `Run`, `FindTesters`, `Print`; [TestRunSettings][test-run]: `TryParseStepTimeout`; [ProtoCrossProject][project]: `ReadTestRun` | [CLI test][test-t], [Project files][test-run-project-t] |
 | Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [BuildCommand][build]: `ScaffoldSettingsFor`; [CommandLineOptions][options]: `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
 | Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [BuildCommand][build]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
 | Attribute and publish editor diagnostics | [CompilationDiagnostics][routing]: `Build`; [DiagnosticRouter][router]: `PublishAsync`, `ClearAsync` | [Diagnostic routing][routing-t] |
@@ -50,6 +50,7 @@
 [options]: ../src/ProtoCross.Cli/CommandLineOptions.cs
 [build]: ../src/ProtoCross.Cli/BuildCommand.cs
 [test]: ../src/ProtoCross.Cli/TestCommand.cs
+[test-run]: ../src/ProtoCross.Projects/TestRunSettings.cs
 [scaffold]: ../src/ProtoCross.Core/Backend/ScaffoldSettings.cs
 [diagnostics]: ../src/ProtoCross.Core/Diagnostics/Diagnostic.cs
 [routing]: ../src/ProtoCross.LanguageServer/Hosting/CompilationDiagnostics.cs
@@ -72,6 +73,7 @@
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
 [verbs-t]: ../tests/ProtoCross.Tests/CliTests.Verbs.cs
 [test-t]: ../tests/ProtoCross.Tests/CliTests.Test.cs
+[test-run-project-t]: ../tests/ProtoCross.Tests/ProjectFileTests.TestRun.cs
 [tools-t]: ../tests/ProtoCross.Tests/ToolchainTests.cs
 [verdict-t]: ../tests/ProtoCross.Tests/TestVerdictTests.cs
 [scaffold-t]: ../tests/ProtoCross.Tests/ScaffoldSettingsTests.cs

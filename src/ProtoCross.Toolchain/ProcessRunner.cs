@@ -115,7 +115,7 @@ public static class ProcessRunner
 
             return new ProcessResult(
                 ProcessResult.NotRun,
-                $"'{startInfo.FileName}' timed out after {limit.TotalMinutes:0.#} minute(s).");
+                $"'{startInfo.FileName}' timed out after {Describe(limit)}.");
         }
 
         var output = string.Join(
@@ -125,6 +125,13 @@ public static class ProcessRunner
 
         return new ProcessResult(process.ExitCode, output);
     }
+
+    /// <summary>A time limit as a reader would put it: in minutes, or in seconds where it is not a whole number of them.</summary>
+    /// <remarks>A project can set a limit in seconds (spec 25.3.3), which in minutes would read as none.</remarks>
+    private static string Describe(TimeSpan limit)
+        => limit.Ticks % TimeSpan.TicksPerMinute == 0
+            ? $"{limit.TotalMinutes:0} minute(s)"
+            : $"{limit.TotalSeconds:0} second(s)";
 
     /// <summary>
     /// Writes and runs a batch script. MSVC is reached this way because <c>VsDevCmd.bat</c> sets up

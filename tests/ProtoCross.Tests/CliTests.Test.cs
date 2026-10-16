@@ -18,6 +18,23 @@ public partial class CliTests
     /// <summary>What the test in <see cref="Discounts"/> is reported as, after its package.</summary>
     private const string DiscountsTest = "InvoiceItem.net: one comes off what the other source adds up";
 
+    /// <summary>A source with a test of its own, which <see cref="Pricing"/> and <see cref="Discounts"/> do not need.</summary>
+    private const string Doubling = $$"""
+        {{Import}}
+
+        extend InvoiceItem {
+            fn doubled_price() -> int64 { return unit_price_cents * 2; }
+        }
+
+        test InvoiceItem.doubled_price "twice the unit price" {
+            receiver {
+                unit_price_cents: 5,
+            }
+
+            expect return 10;
+        }
+        """;
+
     // ------- test
 
     /// <summary>
@@ -70,6 +87,52 @@ public partial class CliTests
 
         Assert.True(run.ExitCode == 1, run.Output);
         Assert.Contains("nothing to test", run.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A project's <c>&lt;TestRun StepTimeout&gt;</c> limits each step of the run: here to a second, which
+    /// stops <c>dotnet test</c> before it has built anything. A step that is stopped fails the run, and the
+    /// run says how long it was given.
+    /// </summary>
+    [Fact]
+    public void AProjectsStepTimeoutStopsAStepThatRunsLonger()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(
+            directory,
+            ("billing.pcproj", Project("<Sources Include=\"*.pcross\" />\n<TestRun StepTimeout=\"1s\" />")),
+            ("pricing.pcross", Pricing),
+            ("discounts.pcross", Discounts));
+
+        var run = Run(directory, "test", "billing.pcproj", "-o", "out", "-t", "csharp");
+
+        Assert.True(run.ExitCode == 1, run.Output);
+        Assert.Contains("timed out after 1 second(s)", run.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A test file an earlier build left in the test directory still runs, because the C# project builds
+    /// everything there. No source in this build declares its test, so the run notes it as information,
+    /// never as a warning, which could fail a build that treats warnings as errors, and passes.
+    /// </summary>
+    [Fact]
+    public void ATestNoSourceDeclaresIsNotedAsInformation()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(directory, ("pricing.pcross", Pricing), ("discounts.pcross", Discounts), ("doubling.pcross", Doubling));
+        var earlier = Run(
+            directory,
+            "pricing.pcross", "discounts.pcross", "doubling.pcross", "-o", "out", "--test-out", Path.Combine("out", "tests"), "-t", "csharp");
+        Assert.True(earlier.ExitCode == 0, earlier.Output);
+
+        var run = Run(directory, "test", "pricing.pcross", "discounts.pcross", "-o", "out", "-t", "csharp");
+
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("csharp: 1 passed", run.Output, StringComparison.Ordinal);
+        Assert.Matches(
+            @"(?m)^info: csharp ran '[^']*InvoiceItem\.doubled_price: twice the unit price', which no source in this build declares",
+            run.Output);
+        Assert.DoesNotContain("warning:", run.Output, StringComparison.Ordinal);
     }
 
     /// <summary>
