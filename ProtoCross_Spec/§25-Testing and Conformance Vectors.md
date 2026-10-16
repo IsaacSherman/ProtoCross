@@ -391,7 +391,8 @@ Normative Requirements:
   which defaults to `<out>/tests`. `--scaffold` is implied. Each backend's test project builds beside
   its tests: C#'s with `dotnet test`, and C++'s with `cmake` into `<test-out>/cpp/build` and then
   `ctest`. A second run builds on the first, and a failure can be inspected and rebuilt by hand.
-- **Every tool is found before anything is built.**
+- **Every tool is found before anything is built,** and after the command line's sources are checked,
+  so that a source that is not there is the usage error it is for `build`.
   - C# needs `dotnet`.
   - C++ needs `cmake`, a C++ compiler and a protobuf C++ install. The install is looked for in a
     `vcpkg_installed` at or above the project's directory or the first source's, under
@@ -403,17 +404,22 @@ Normative Requirements:
   missing in each backend, looked up by its `IrTest.Identity`. A test a backend never reported is
   missing, which is not a pass. So the run fails when a test project did not build or a driver
   stopped, and when two backends both left out the same test.
+- **Each backend is judged by its tools as well.** A tool that exits with an error fails the run even
+  when every declared test passed: `dotnet test` failing in a target that runs after the tests, or
+  `ctest` failing a driver that ended badly after its passes. The tests' reports show only the
+  passes, so they cannot be the whole verdict.
 - **A build that declares no tests has nothing to test, and fails.** A run that checked nothing would
   otherwise exit 0 as if it had passed.
-- **A test a backend ran that no source declares is warned of, and does not count.** It is most
-  likely in a test file an earlier build left in `--test-out`, which the compiler writes into and
-  never removes from.
+- **A test a backend ran that no source declares is warned of.** It is not one of the declared
+  tests, so it is not judged as one. A tool that fails on its account still fails the run, as any
+  failed tool does. It is most likely in a test file an earlier build left in `--test-out`, which
+  the compiler writes into and never removes from.
 - **Exit codes:**
   - 0 when every declared test passed in every backend tested;
   - 1 for a compile error, as `build` returns, or for a test that failed or did not run;
   - 2 for a usage or configuration error, or a missing tool.
-- **Output:** a line for each backend counting its passed, failed and missing tests, then each
-  declared test it did not pass, with why.
+- **Output:** a line for each backend counting its passed, failed and missing tests, then how its
+  tool failed, if it did, and each declared test it did not pass, with why.
 
 Implementation Note:
 

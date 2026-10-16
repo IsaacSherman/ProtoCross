@@ -575,6 +575,8 @@ It passes only when every declared test passed in every backend tested.
 - **Each backend is held up against the tests the sources declare,** not only against the other.
   So a backend that ran fewer fails the run, whether its test project did not build or its driver
   stopped.
+- **A tool that reports a failure fails the run,** even after every test passed: `dotnet test`
+  failing in a step after its tests, say.
 - **A missing tool ends the run before anything is written,** with exit code 2 and what to install.
   `-t csharp` or `-t cpp` tests one backend on purpose.
 - **It writes into the usual directories.** The tests go to `--test-out`, which defaults to

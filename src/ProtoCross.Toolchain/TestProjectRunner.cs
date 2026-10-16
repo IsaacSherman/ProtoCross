@@ -3,15 +3,31 @@ using System.Text.RegularExpressions;
 namespace ProtoCross.Toolchain;
 
 /// <summary>What <c>dotnet test</c> did with a C# test project, and the tests its TRX log says ran.</summary>
-public sealed record DotnetTestRun(ProcessResult Process, IReadOnlyList<ExecutedTest> Executed);
+public sealed record DotnetTestRun(ProcessResult Process, IReadOnlyList<ExecutedTest> Executed)
+{
+    /// <summary>How <c>dotnet test</c> itself failed, whatever its tests did: null when it exited 0.</summary>
+    /// <remarks>
+    /// Its own result, kept beside its tests', because the two can disagree: a target that runs after the
+    /// tests can fail the command once every test has passed, and the log shows only the passes.
+    /// </remarks>
+    public string? Failure => Process.FailureOf("dotnet test");
+}
 
 /// <summary>What configuring, building and running a CMake test project did, step by step.</summary>
 /// <param name="Build">Null when configuring failed, so nothing was built.</param>
 /// <param name="Test">Null when configuring or building failed, so nothing ran.</param>
 public sealed partial record CMakeTestRun(ProcessResult Configure, ProcessResult? Build, ProcessResult? Test)
 {
-    /// <summary>The step that failed and stopped the run, or null when ctest ran.</summary>
-    public ProcessResult? Stopped => Configure.ExitCode != 0 ? Configure : Build is { ExitCode: not 0 } ? Build : null;
+    /// <summary>The first step to exit with an error, or null when configure, build and ctest all succeeded.</summary>
+    public ProcessResult? FailedStep => Steps.Select(step => step.Result).FirstOrDefault(result => result is { ExitCode: not 0 });
+
+    /// <summary>How the run failed, whatever its tests did: the first step to exit with an error, or null.</summary>
+    /// <remarks>
+    /// ctest's own result counts as much as the configure and build steps', because it can disagree with
+    /// the drivers' lines: a driver that ends badly after printing every pass, or a step ctest runs after
+    /// the tests, fails ctest once every test has passed.
+    /// </remarks>
+    public string? Failure => Steps.Select(step => step.Result?.FailureOf(step.Tool)).FirstOrDefault(failure => failure is not null);
 
     /// <summary>What the test drivers printed, without the test number ctest writes before each line.</summary>
     /// <remarks>
@@ -19,6 +35,10 @@ public sealed partial record CMakeTestRun(ProcessResult Configure, ProcessResult
     /// lines are read whole (<see cref="TestReports.FromDriverOutput"/>), so the number has to go first.
     /// </remarks>
     public string DriverOutput => Test is null ? string.Empty : CTestLinePrefix().Replace(Test.Output, string.Empty);
+
+    /// <summary>Each step, named, in the order it runs; a step that did not run has no result.</summary>
+    private IEnumerable<(string Tool, ProcessResult? Result)> Steps =>
+        [("cmake's configure step", Configure), ("cmake's build", Build), ("ctest", Test)];
 
     [GeneratedRegex(@"^\d+: ", RegexOptions.Multiline)]
     private static partial Regex CTestLinePrefix();

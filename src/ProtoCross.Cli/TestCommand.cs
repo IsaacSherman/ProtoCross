@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using ProtoCross.Toolchain;
 
 namespace ProtoCross.Cli;
@@ -27,8 +28,8 @@ internal static class TestCommand
     /// </remarks>
     private static readonly TimeSpan StepLimit = TimeSpan.FromMinutes(30);
 
-    /// <summary>Builds and runs one backend's test project, and reads what it reported for each declared test.</summary>
-    private delegate IReadOnlyList<TestReport> Tester(IReadOnlyList<string> declared, string testDirectory);
+    /// <summary>Builds and runs one backend's test project, and reads what it and its tool reported.</summary>
+    private delegate BackendRun Tester(IReadOnlyList<string> declared, string testDirectory);
 
     /// <summary>A backend this run tests: what tests it, or why it cannot be tested here.</summary>
     private sealed record BackendTester(string Backend, IReadOnlyList<string> Missing, Tester? Run);
@@ -39,6 +40,11 @@ internal static class TestCommand
         if (options is null)
         {
             CommandLineOptions.PrintTestUsage();
+            return 2;
+        }
+
+        if (!BuildCommand.CanBuild(options))
+        {
             return 2;
         }
 
@@ -71,7 +77,7 @@ internal static class TestCommand
 
         var verdict = TestVerdict.Judge(
             declared,
-            [.. testers.Select(tester => (tester.Backend, tester.Run!(declared, Path.Combine(options.TestOutputDirectory!, tester.Backend))))]);
+            [.. testers.Select(tester => tester.Run!(declared, Path.Combine(options.TestOutputDirectory!, tester.Backend)))]);
 
         Print(verdict);
         return verdict.Passed ? 0 : 1;
@@ -117,37 +123,51 @@ internal static class TestCommand
     {
         Console.WriteLine($"csharp: dotnet test in {Shown(directory)}");
         var run = TestProjectRunner.RunDotnetTest(dotnet, directory, Path.Combine(directory, "TestResults"), StepLimit);
+        var reports = TestReports.FromTrx(declared, run.Executed);
 
-        if (run.Executed.Count == 0)
+        if (run.Executed.Count == 0 || IsUnexplained(run.Failure, reports))
         {
-            Console.Error.WriteLine($"csharp: dotnet test reported no tests (exit code {run.Process.ExitCode}):");
+            Console.Error.WriteLine($"csharp: {run.Failure ?? "dotnet test reported no tests"}:");
             Console.Error.WriteLine(run.Process.Output);
         }
 
         WarnOfUndeclaredTests("csharp", directory, declared, run.Executed.Select(test => test.Name));
-        return TestReports.FromTrx(declared, run.Executed);
+        return new BackendRun("csharp", reports, run.Failure);
     };
 
     private static Tester CppTester(string cmake, ProtobufCppInstall protobuf) => (declared, directory) =>
     {
         Console.WriteLine($"cpp: cmake and ctest in {Shown(directory)}");
         var run = TestProjectRunner.RunCMake(cmake, protobuf, directory, StepLimit);
+        var reports = TestReports.FromDriverOutput(declared, run.DriverOutput);
 
-        if (run.Stopped is { } stopped)
+        if (IsUnexplained(run.Failure, reports))
         {
-            Console.Error.WriteLine($"cpp: the test project did not build (exit code {stopped.ExitCode}):");
-            Console.Error.WriteLine(stopped.Output);
+            Console.Error.WriteLine($"cpp: {run.Failure}:");
+            Console.Error.WriteLine(run.FailedStep!.Output);
         }
 
-        return TestReports.FromDriverOutput(declared, run.DriverOutput);
+        return new BackendRun("cpp", reports, run.Failure);
     };
+
+    /// <summary>
+    /// Whether <paramref name="failure"/> is a tool's failure that no failed test accounts for, so that
+    /// the tool's own output is all there is to say why.
+    /// </summary>
+    /// <remarks>
+    /// A failed test explains its tool's failure, and its report says why. A tool that failed with every
+    /// test passed or missing (a project that did not build, a step after the tests) has only its output.
+    /// </remarks>
+    private static bool IsUnexplained([NotNullWhen(true)] string? failure, IReadOnlyList<TestReport> reports)
+        => failure is not null && !reports.Any(report => report.Outcome is TestOutcome.Failed);
 
     /// <summary>Warns of each test a backend ran that no source in this build declares.</summary>
     /// <remarks>
-    /// Warned of rather than failed, because such a test is no test of this program, so its outcome
-    /// cannot decide the verdict. It is most likely in a generated test file an earlier build left in
-    /// the test directory: the compiler writes into a directory and never removes from it, and the test
-    /// project builds everything there.
+    /// Warned of rather than judged, because such a test is no test of this program, so it is not among
+    /// the declared tests the verdict judges. A tool that fails on its account still fails the run, as a
+    /// failed tool does whatever failed it. It is most likely in a generated test file an earlier build
+    /// left in the test directory: the compiler writes into a directory and never removes from it, and
+    /// the test project builds everything there.
     /// </remarks>
     private static void WarnOfUndeclaredTests(string backend, string directory, IReadOnlyList<string> declared, IEnumerable<string> ran)
     {
@@ -160,12 +180,20 @@ internal static class TestCommand
         }
     }
 
-    /// <summary>Prints a line for each backend, then each declared test it did not pass and why.</summary>
+    /// <summary>
+    /// Prints a line for each backend, then how its tool failed, if it did, and each declared test it did
+    /// not pass, and why.
+    /// </summary>
     private static void Print(TestVerdict verdict)
     {
         foreach (var backend in verdict.Backends)
         {
             Console.WriteLine($"{backend.Backend}: {Counts(backend)}");
+
+            if (backend.ToolFailure is { } failure)
+            {
+                Console.WriteLine($"  {failure}");
+            }
 
             // A run that reported nothing is one failure, said once, rather than every test it held.
             if (backend.Count(TestOutcome.Missing) == backend.Results.Count)
@@ -191,8 +219,8 @@ internal static class TestCommand
         }
         else
         {
-            var notPassed = verdict.Backends.Sum(backend => backend.NotPassed.Count);
-            Console.Error.WriteLine($"test failed: {notPassed} declared test result(s) did not pass");
+            Console.Error.WriteLine(
+                $"test failed in {string.Join(" and ", verdict.Backends.Where(backend => !backend.Passed).Select(backend => backend.Backend))}");
         }
     }
 

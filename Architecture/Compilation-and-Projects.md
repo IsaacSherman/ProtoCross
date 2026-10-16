@@ -17,7 +17,7 @@
 | Project discovery and cached expansion | [ProjectDiscovery][discovery]: `Find`; [ProjectCatalog][projects]: `FilesOf` | [Discovery][discovery-t] |
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
-| CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `Build`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
+| CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `CanBuild`, `Build`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
 | `protocross test`: tools first, then the build, then each backend's run and the verdict | [TestCommand][test]: `Run`, `FindTesters`, `Print` | [CLI test][test-t] |
 | Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [BuildCommand][build]: `ScaffoldSettingsFor`; [CommandLineOptions][options]: `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
 | Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [BuildCommand][build]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |

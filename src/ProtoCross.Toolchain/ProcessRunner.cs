@@ -6,6 +6,17 @@ public sealed record ProcessResult(int ExitCode, string Output)
 {
     /// <summary>Exit code used when the process could not be started or had to be killed.</summary>
     public const int NotRun = -1;
+
+    /// <summary>
+    /// How <paramref name="tool"/> failed, or null when it exited 0: the code it exited with, or that it
+    /// never ran to the end. Why it did not is in <see cref="Output"/>.
+    /// </summary>
+    public string? FailureOf(string tool) => ExitCode switch
+    {
+        0 => null,
+        NotRun => $"{tool} did not run to the end",
+        var code => $"{tool} exited with code {code}",
+    };
 }
 
 /// <summary>

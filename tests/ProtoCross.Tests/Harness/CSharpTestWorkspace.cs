@@ -11,7 +11,11 @@ namespace ProtoCross.Tests.Harness;
 internal sealed record CSharpTestRun(
     ProcessResult Process,
     IReadOnlyList<ExecutedTest> Executed,
-    int? PassedCount);
+    int? PassedCount)
+{
+    /// <summary>How <c>dotnet test</c> itself failed, whatever its tests did; null when it succeeded.</summary>
+    public string? Failure { get; init; }
+}
 
 /// <summary>
 /// A throwaway C# project that compiles ProtoCross's generated behavior and generated tests together
@@ -141,7 +145,7 @@ internal sealed class CSharpTestWorkspace
     public CSharpTestRun RunTests(string dotnet)
     {
         var run = TestProjectRunner.RunDotnetTest(dotnet, Directory, ResultsDirectory);
-        return new CSharpTestRun(run.Process, run.Executed, ReadPassedCount(run.Process.Output));
+        return new CSharpTestRun(run.Process, run.Executed, ReadPassedCount(run.Process.Output)) { Failure = run.Failure };
     }
 
     private ProcessResult RunDotnet(string dotnet, params string[] arguments)

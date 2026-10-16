@@ -31,6 +31,11 @@ internal static class BuildCommand
             return 2;
         }
 
+        if (!CanBuild(options))
+        {
+            return 2;
+        }
+
         if (Build(options, out var exitCode) is not { } built)
         {
             return exitCode;
@@ -45,18 +50,17 @@ internal static class BuildCommand
     }
 
     /// <summary>
-    /// Compiles what <paramref name="options"/> names and writes what each backend generates from it,
-    /// printing every diagnostic on the way: what was built, or null with the exit code that says why
-    /// nothing was.
+    /// Whether what <paramref name="options"/> asks for can be attempted: every source it names is there,
+    /// and <c>--scaffold</c> has somewhere to write. Says what is wrong when it cannot; a command line it
+    /// refuses ends with exit code 2.
     /// </summary>
     /// <remarks>
-    /// Shared with <c>protocross test</c>, which builds exactly what a build of the same command line
-    /// would and then runs it, so that what it tests is what a build ships.
+    /// Apart from <see cref="Build"/>, because <c>protocross test</c> asks it before looking for any tool.
+    /// A source that is not there is then the usage error it is for a build, whatever the machine has
+    /// installed, rather than a path tool discovery trips over.
     /// </remarks>
-    internal static Built? Build(CommandLineOptions options, out int exitCode)
+    internal static bool CanBuild(CommandLineOptions options)
     {
-        exitCode = 2;
-
         var missing = options.SourcePaths.Where(path => !File.Exists(path)).ToList();
         foreach (var path in missing)
         {
@@ -65,14 +69,30 @@ internal static class BuildCommand
 
         if (missing.Count > 0)
         {
-            return null;
+            return false;
         }
 
         if (options.Scaffold && options.TestOutputDirectory is null)
         {
             Console.Error.WriteLine("error: --scaffold needs --test-out, because it writes the build file beside the generated tests");
-            return null;
+            return false;
         }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Compiles what <paramref name="options"/> names, once <see cref="CanBuild"/> has accepted them, and
+    /// writes what each backend generates from it, printing every diagnostic on the way: what was built,
+    /// or null with the exit code that says why nothing was.
+    /// </summary>
+    /// <remarks>
+    /// Shared with <c>protocross test</c>, which builds exactly what a build of the same command line
+    /// would and then runs it, so that what it tests is what a build ships.
+    /// </remarks>
+    internal static Built? Build(CommandLineOptions options, out int exitCode)
+    {
+        exitCode = 2;
 
         var setupDiagnostics = new DiagnosticBag();
         var project = options.ProjectPath is { } projectPath ? ProtoCrossProject.Load(projectPath, setupDiagnostics) : null;
