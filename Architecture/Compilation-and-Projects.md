@@ -9,6 +9,7 @@
 | Imports, roots, nearest schema | [Compilation][comp]: `GetSearchPaths`, `Resolve`; [SchemaCatalog][catalog]: `RootsFor`, `NearestTo`; [ImportResolution][imports] | [Imports][import-t] |
 | protoc selection and descriptor loads | [ProtocLocator][protoc]: `Select`, `DescribeNotFound`; [DescriptorLoader][loader]: `LoadBundle` | [Process supervision][process-t] |
 | Build tools for generated code, and why one is missing | [ToolLocator][tools]: `FindDotnet`, `FindCMake`, `FindCppCompiler`, `FindProtobufCpp`; [ToolLookup][lookup]; [ProcessRunner][runner]: `Run` | [Toolchain][tools-t] |
+| What generated tests reported, and the verdict on it | [TrxLog][trx]: `ReadLatest`; [TestReports][reports]: `FromTrx`, `FromDriverOutput`; [TestVerdict][verdict]: `Judge` | [Verdict][verdict-t] |
 | Descriptor reuse and schema declarations | [DescriptorCache][cache]: `GetOrLoad`; [DescriptorBundle][bundle]: `DeclarationOf` | [Descriptor cache][cache-t], [Schema declarations][schema-t] |
 | Several sources as one program | [Compilation][comp]: list-of-sources overloads of `Compile`; [SourceTree][tree]: `SourceTree` | [Multiple sources][multi-t] |
 | Production/test schema boundary | [ProductionSchemaClosure][closure]: `Of`, `ReportSchemasTheProductionBuildLoadsDifferently`; [Compilation][comp]: `CompilationOptions.SkipTests` | [Production schemas][closure-t], [Source roles][roles-t] |
@@ -31,6 +32,9 @@
 [tools]: ../src/ProtoCross.Toolchain/ToolLocator.cs
 [lookup]: ../src/ProtoCross.Toolchain/ToolLookup.cs
 [runner]: ../src/ProtoCross.Toolchain/ProcessRunner.cs
+[trx]: ../src/ProtoCross.Toolchain/TrxLog.cs
+[reports]: ../src/ProtoCross.Toolchain/TestReports.cs
+[verdict]: ../src/ProtoCross.Toolchain/TestVerdict.cs
 [cache]: ../src/ProtoCross.Core/Binding/DescriptorCache.cs
 [bundle]: ../src/ProtoCross.Core/Binding/DescriptorBundle.cs
 [tree]: ../src/ProtoCross.Core/SourceTree.cs
@@ -62,6 +66,7 @@
 [refusal-t]: ../tests/ProtoCross.Tests/ProjectBuildRefusalTests.cs
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
 [tools-t]: ../tests/ProtoCross.Tests/ToolchainTests.cs
+[verdict-t]: ../tests/ProtoCross.Tests/TestVerdictTests.cs
 [scaffold-t]: ../tests/ProtoCross.Tests/ScaffoldSettingsTests.cs
 [scaffold-project-t]: ../tests/ProtoCross.Tests/ProjectFileTests.Scaffold.cs
 [scaffold-cli-t]: ../tests/ProtoCross.Tests/CliTests.Scaffold.cs
