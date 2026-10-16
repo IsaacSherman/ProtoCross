@@ -645,9 +645,9 @@ If `vcpkg` is not on `PATH`, run it by full path instead, for example:
 C:\vcpkg\vcpkg.exe install --triplet x64-windows
 ```
 
-When using vcpkg manifest mode from the repository root, the test looks under
-`vcpkg_installed/<triplet>/include`. It also checks `VCPKG_ROOT`, `VCPKG_INSTALLED_DIR`, common
-system install paths, and the explicit override:
+When using vcpkg manifest mode, the tests look under `vcpkg_installed/<triplet>/include` in the
+repository root and in each directory above it, nearest first. They also check `VCPKG_INSTALLED_DIR`,
+`VCPKG_ROOT`, each `CMAKE_PREFIX_PATH` prefix, common system install paths, and the explicit override:
 
 ```powershell
 $env:PROTOCROSS_PROTOBUF_CPP_INCLUDE = "C:\path\to\protobuf\include"

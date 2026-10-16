@@ -27,12 +27,8 @@ public class RefusalSchemaReviewRegressionTests
     [InlineData("Shade")]
     public void ARefusalTypeFromAnIndependentSchemaBuildsAndRunsInCpp(string refusalType)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = Compile(refusalType, out var schemas);
         var backend = new CppBackend();

@@ -1,6 +1,7 @@
 using ProtoCross.Diagnostics;
 using ProtoCross.Syntax;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -32,8 +33,8 @@ public class MapEntryNestingSprintReviewTests
                 """;
         var source = Path.Combine(directory, "deep_entries.pcross");
         File.WriteAllText(source, "import proto \"map_fields.proto\";\n" + body);
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
+        var dotnet = TestToolchain.LocateDotnet();
+        var protoc = TestToolchain.LocateProtoc();
         Assert.NotNull(dotnet);
         Assert.NotNull(protoc);
         var start = ProcessRunner.Create(dotnet!, directory);

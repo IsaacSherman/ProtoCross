@@ -4,6 +4,7 @@ using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Conformance;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -30,11 +31,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCSharpProjectBuildsAndPassesItsTests()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
 
         var layout = ScaffoldLayout.Emit(new CSharpBackend(), "scaffold-csharp");
 
@@ -93,24 +90,11 @@ public partial class ScaffoldExecutionTests
     /// </summary>
     private static (string CMake, ProtobufCppInstall Protobuf) RequireCMakeToolchain()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
+        var cmake = TestToolchain.RequireCMake();
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
+        var protobuf = TestToolchain.RequireProtobufCpp();
 
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        TestToolchain.RequireCppCompiler();
 
         return (cmake, protobuf);
     }

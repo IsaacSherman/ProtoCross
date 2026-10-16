@@ -57,8 +57,8 @@ public class FactoryNamespaceReviewTests
         var (directory, result) = Compile(renamedNamespace, escapedNamespace);
         Assert.Null(result.SchemaFailure);
         Assert.NotNull(result.Module);
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
+        var dotnet = TestToolchain.LocateDotnet();
+        var protoc = TestToolchain.LocateProtoc();
         Assert.NotNull(dotnet);
         Assert.NotNull(protoc);
 

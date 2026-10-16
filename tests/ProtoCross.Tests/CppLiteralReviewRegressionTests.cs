@@ -47,12 +47,8 @@ public class CppLiteralReviewRegressionTests
     [InlineData(true)]
     public void ALiteralFromAnIndependentSchemaBuildsAndRunsInCpp(bool inFixture)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(inFixture);
         var workspace = CppTestWorkspace.Create("foreign-literal-review");
@@ -74,12 +70,8 @@ public class CppLiteralReviewRegressionTests
     [InlineData("expectation")]
     public void ACallOnATestLiteralFindsAMethodDeclaredInAnotherSource(string position)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var schemas = TestPaths.CreateTempDirectory();
         File.WriteAllText(Path.Combine(schemas, "anchor.proto"),

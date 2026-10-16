@@ -44,11 +44,7 @@ public class ProjectNamespaceReviewRegressionTests
     [InlineData(true)]
     public void AMethodNamedAfterTheProjectContainerBuildsAndRunsInCSharp(bool asProject)
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
         var workspace = CSharpTestWorkspace.Create("project-container-name");
         workspace.Write(Generate(new CSharpBackend(), asProject));
         workspace.WriteProjectFiles();
@@ -66,12 +62,8 @@ public class ProjectNamespaceReviewRegressionTests
     [InlineData(true)]
     public void AMethodNamedAfterTheProjectContainerBuildsAndRunsInCpp(bool asProject)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
         var workspace = CppTestWorkspace.Create("project-container-name");
         workspace.Write(Generate(new CppBackend(), asProject));
         workspace.Write([new GeneratedFile("anchor.cc", "#include <google/protobuf/timestamp.pb.h>\n")]);

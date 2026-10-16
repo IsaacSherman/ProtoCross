@@ -4,6 +4,7 @@ using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Conformance;
 
@@ -85,18 +86,16 @@ public sealed class ConformanceFixture
     {
         const string Backend = "csharp";
 
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
+        var dotnet = ToolLocator.FindDotnet();
+        if (!dotnet.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend, "No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
+            return ConformanceRun.Skipped(Backend, dotnet.Missing);
         }
 
-        var protoc = Toolchain.LocateProtoc();
-        if (protoc is null)
+        var protoc = ToolLocator.FindProtoc();
+        if (!protoc.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend, "No protoc executable found. Restore Grpc.Tools or install protoc.");
+            return ConformanceRun.Skipped(Backend, protoc.Missing);
         }
 
         var backend = new CSharpBackend();
@@ -113,7 +112,7 @@ public sealed class ConformanceFixture
         workspace.Write(FilesOf(vectors));
 
         var generated = workspace.GenerateProtobuf(
-            protoc, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
+            protoc.Tool, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
 
         if (generated.ExitCode != 0)
         {
@@ -123,7 +122,7 @@ public sealed class ConformanceFixture
 
         workspace.WriteProjectFiles();
 
-        var run = workspace.RunTests(dotnet);
+        var run = workspace.RunTests(dotnet.Tool);
         var byName = run.Executed.ToDictionary(test => test.Name, StringComparer.Ordinal);
 
         var results = modules
@@ -143,22 +142,20 @@ public sealed class ConformanceFixture
     {
         const string Backend = "cpp";
 
-        var compiler = Toolchain.LocateCppCompiler();
-        if (compiler is null)
+        var compilerLookup = ToolLocator.FindCppCompiler();
+        if (!compilerLookup.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend,
-                "No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
+            return ConformanceRun.Skipped(Backend, compilerLookup.Missing);
         }
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
+        var protobufLookup = TestToolchain.FindProtobufCpp();
+        if (!protobufLookup.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend,
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
+            return ConformanceRun.Skipped(Backend, protobufLookup.Missing);
         }
+
+        var compiler = compilerLookup.Tool;
+        var protobuf = protobufLookup.Tool;
 
         if (!protobuf.CanLink)
         {

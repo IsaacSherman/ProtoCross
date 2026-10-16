@@ -58,6 +58,20 @@ public static class ProtocLocator
         => new(Resolve(protocPath), ProtocSource.Stated);
 
     /// <summary>
+    /// What to tell a user when <see cref="Select()"/> finds nothing: the three ways to provide a
+    /// protoc, and the places that were searched.
+    /// </summary>
+    /// <remarks>
+    /// One text for every caller that needs protoc: the descriptor loader, and whatever builds or runs
+    /// generated code. Each wrote its own once, and they said different things about the same search.
+    /// </remarks>
+    public static string DescribeNotFound()
+        => "Could not find a 'protoc' executable. Install protoc and put it on PATH, set "
+            + $"{OverrideEnvironmentVariable} to its full path, or restore the "
+            + "Grpc.Tools NuGet package. "
+            + $"Searched PATH and these package roots: {string.Join(", ", GetNuGetPackageRoots())}";
+
+    /// <summary>
     /// The concrete executable a caller-supplied protoc path will actually run, as a full path where
     /// one can be established.
     /// </summary>

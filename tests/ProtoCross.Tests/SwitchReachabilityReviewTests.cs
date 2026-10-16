@@ -49,12 +49,8 @@ public class SwitchReachabilityReviewTests
     [InlineData("while 1 == 1 { return 1; }", 1L)]
     public void ConstantConditionArmBuildsAndRunsInCSharp(string statements, long expected)
     {
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
-        if (dotnet is null || protoc is null)
-        {
-            Assert.Skip("Running generated C# needs dotnet and protoc.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
+        var protoc = TestToolchain.RequireProtoc();
 
         var (schemas, files) = Generate(statements, expected, new CSharpBackend());
         var workspace = CSharpTestWorkspace.Create("switch-flow-review");
@@ -73,12 +69,8 @@ public class SwitchReachabilityReviewTests
     [InlineData("while 1 == 1 { return 1; }", 1L)]
     public void ConstantConditionArmBuildsAndRunsInCpp(string statements, long expected)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(statements, expected, new CppBackend());
         var workspace = CppTestWorkspace.Create("switch-flow-review");

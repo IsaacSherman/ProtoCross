@@ -29,13 +29,16 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
 | [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
 | [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
+| [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, and running them. |
 | [tests/ProtoCross.Tests](../tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
 dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` references Core and a
 globbing package and nothing else, so that listing directories to find sources happens beside Core
-rather than in it. The CLI references it too.
+rather than in it. The CLI references it too. `ProtoCross.Toolchain` references Core, for the protoc
+the two share, and nothing else: probing what a machine has installed is the CLI's business and the
+tests', never the compiler's.
 
 Outside the solution, [editors/vscode](../editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.

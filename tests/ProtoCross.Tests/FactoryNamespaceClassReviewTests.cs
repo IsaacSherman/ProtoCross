@@ -45,8 +45,8 @@ public class FactoryNamespaceClassReviewTests
 
         if (backend == "csharp")
         {
-            var dotnet = Toolchain.LocateDotnet();
-            var protoc = Toolchain.LocateProtoc();
+            var dotnet = TestToolchain.LocateDotnet();
+            var protoc = TestToolchain.LocateProtoc();
             Assert.NotNull(dotnet);
             Assert.NotNull(protoc);
             var workspace = CSharpTestWorkspace.Create("factory-namespace-class-review");
@@ -74,15 +74,11 @@ public class FactoryNamespaceClassReviewTests
         }
         else
         {
-            var compiler = Toolchain.LocateCppCompiler();
-            var protobuf = Toolchain.LocateProtobufCpp();
-            if (compiler is null || protobuf?.ProtocPath is null)
-            {
-                Assert.Skip("Compiling generated C++ needs a C++ compiler and a protobuf C++ install with its protoc.");
-            }
+            var compiler = TestToolchain.RequireCppCompiler();
+            var protobuf = TestToolchain.RequireProtobufCppWithProtoc();
 
             var workspace = CppTestWorkspace.Create("factory-namespace-class-review");
-            var generated = workspace.GenerateProtobuf(protobuf.ProtocPath, directory, "ticket.proto", "subnamespace.proto");
+            var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, directory, "ticket.proto", "subnamespace.proto");
             Assert.True(generated.ExitCode == 0, generated.Output);
             var unit = Path.Combine(workspace.Directory, "schemas.cc");
             File.WriteAllText(unit, "#include \"ticket.pb.h\"\n#include \"subnamespace.pb.h\"\n");

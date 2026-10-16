@@ -1,23 +1,24 @@
 using System.Diagnostics;
 
-namespace ProtoCross.Tests.Harness;
+namespace ProtoCross.Toolchain;
 
-internal sealed record ProcessResult(int ExitCode, string Output)
+public sealed record ProcessResult(int ExitCode, string Output)
 {
     /// <summary>Exit code used when the process could not be started or had to be killed.</summary>
     public const int NotRun = -1;
 }
 
 /// <summary>
-/// Runs the external tools the backend suites depend on: protoc, dotnet, and a C++ compiler.
+/// Runs the external tools generated code is built and run with: protoc, dotnet, cmake, and a C++
+/// compiler.
 /// </summary>
 /// <remarks>
-/// Shared rather than duplicated per suite because two details here are easy to get wrong and were
-/// previously written twice: both output pipes must be drained concurrently or a chatty child
-/// deadlocks once either fills, and a nested build must not inherit the outer test run's MSBuild
-/// variables.
+/// One runner for everything that starts them, because two details here are easy to get wrong and were
+/// once written twice: both output pipes must be drained concurrently or a chatty child deadlocks once
+/// either fills, and a nested build must not inherit the MSBuild variables of the dotnet process that
+/// started this one.
 /// </remarks>
-internal static class ProcessRunner
+public static class ProcessRunner
 {
     /// <summary>How long a nested tool invocation may run before it is treated as hung.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
@@ -40,8 +41,9 @@ internal static class ProcessRunner
     }
 
     /// <summary>
-    /// Removes the MSBuild and test-platform variables the outer test run exports. A nested
-    /// <c>dotnet build</c> or <c>dotnet test</c> that inherits them resolves the wrong SDK.
+    /// Removes the MSBuild and test-platform variables an outer <c>dotnet</c> exports, a test run's or
+    /// <c>dotnet run</c>'s. A nested <c>dotnet build</c> or <c>dotnet test</c> that inherits them
+    /// resolves the wrong SDK.
     /// </summary>
     public static void ScrubMsBuildEnvironment(ProcessStartInfo startInfo)
     {

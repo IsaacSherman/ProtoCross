@@ -55,7 +55,7 @@ public partial class NameMappingTests
         }
 
         string[] names = [.. schemas.Select(schema => schema.Name)];
-        var generated = Toolchain.RunProtoc(protoc, outputFlag, directory, directory, names);
+        var generated = TestToolchain.RunProtoc(protoc, outputFlag, directory, directory, names);
         Assert.True(generated.ExitCode == 0, $"protoc --{outputFlag} failed.{Environment.NewLine}{generated.Output}");
 
         var descriptors = new DescriptorLoader(protoc).LoadBundle(names, [directory]).Descriptors;

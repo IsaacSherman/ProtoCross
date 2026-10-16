@@ -51,12 +51,8 @@ public class MutationStringReviewRegressionTests
     [Fact]
     public void CppCopiesAStringBeforeItsOneofAssignmentDestroysTheSource()
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(new CppBackend());
         var workspace = CppTestWorkspace.Create("mutation-string-review");
@@ -73,12 +69,8 @@ public class MutationStringReviewRegressionTests
     [Fact]
     public void CSharpPreservesAStringWhenItsOneofAssignmentReplacesTheSource()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
-        if (dotnet is null || protoc is null)
-        {
-            Assert.Skip("Running generated C# needs dotnet and protoc.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
+        var protoc = TestToolchain.RequireProtoc();
 
         var (schemas, files) = Generate(new CSharpBackend());
         var workspace = CSharpTestWorkspace.Create("mutation-string-review-csharp");

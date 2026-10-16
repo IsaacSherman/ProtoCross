@@ -51,8 +51,8 @@ public class NestedNumericNamesReviewTests
     public void AnExistingCSharpConsumerOfANestedNumericNameStillBuilds(bool factory)
     {
         var (result, schemas) = Compile();
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
+        var dotnet = TestToolchain.LocateDotnet();
+        var protoc = TestToolchain.LocateProtoc();
         Assert.NotNull(dotnet);
         Assert.NotNull(protoc);
         var workspace = CSharpTestWorkspace.Create("nested-numeric-names-review");
@@ -85,12 +85,8 @@ public class NestedNumericNamesReviewTests
     public void AnExistingCppConsumerOfANestedNumericFactoryStillBuilds()
     {
         var (result, schemas) = Compile();
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a compiler and a linkable protobuf install.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var workspace = CppTestWorkspace.Create("nested-numeric-names-review");
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "nested_numeric.proto");
