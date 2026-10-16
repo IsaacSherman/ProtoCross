@@ -251,6 +251,10 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 
 That writes `generated/csharp/` and `generated/cpp/`. Pass `-t csharp` or `-t cpp` for one target.
 
+That is the `build` command, which a command line runs when it names no other: `protocross build
+examples/simpleScript.pcross …` is the same build. A command is read only from the first argument,
+so a source named `build` is written as a path, `./build`.
+
 Several sources are compiled together by naming each of them:
 
 ```bash

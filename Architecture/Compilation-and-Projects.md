@@ -17,9 +17,9 @@
 | Project discovery and cached expansion | [ProjectDiscovery][discovery]: `Find`; [ProjectCatalog][projects]: `FilesOf` | [Discovery][discovery-t] |
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
-| CLI arguments, source/project builds | [Program][cli]: `CommandLineOptions.Parse`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t] |
-| Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [Program][cli]: `ScaffoldSettingsFor`, `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
-| Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [Program][cli]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
+| CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
+| Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [BuildCommand][build]: `ScaffoldSettingsFor`; [CommandLineOptions][options]: `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
+| Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [BuildCommand][build]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
 | Attribute and publish editor diagnostics | [CompilationDiagnostics][routing]: `Build`; [DiagnosticRouter][router]: `PublishAsync`, `ClearAsync` | [Diagnostic routing][routing-t] |
 
 [comp]: ../src/ProtoCross.Core/Compilation.cs
@@ -44,7 +44,9 @@
 [projects]: ../src/ProtoCross.Projects/ProjectCatalog.cs
 [members]: ../src/ProtoCross.Projects/ProjectSources.cs
 [policy]: ../src/ProtoCross.Projects/ProjectPolicy.cs
-[cli]: ../src/ProtoCross.Cli/Program.cs
+[cli]: ../src/ProtoCross.Cli/CommandLine.cs
+[options]: ../src/ProtoCross.Cli/CommandLineOptions.cs
+[build]: ../src/ProtoCross.Cli/BuildCommand.cs
 [scaffold]: ../src/ProtoCross.Core/Backend/ScaffoldSettings.cs
 [diagnostics]: ../src/ProtoCross.Core/Diagnostics/Diagnostic.cs
 [routing]: ../src/ProtoCross.LanguageServer/Hosting/CompilationDiagnostics.cs
@@ -65,6 +67,7 @@
 [members-t]: ../tests/ProtoCross.Tests/ProjectSourcesTests.cs
 [refusal-t]: ../tests/ProtoCross.Tests/ProjectBuildRefusalTests.cs
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
+[verbs-t]: ../tests/ProtoCross.Tests/CliTests.Verbs.cs
 [tools-t]: ../tests/ProtoCross.Tests/ToolchainTests.cs
 [verdict-t]: ../tests/ProtoCross.Tests/TestVerdictTests.cs
 [scaffold-t]: ../tests/ProtoCross.Tests/ScaffoldSettingsTests.cs
