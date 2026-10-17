@@ -29,7 +29,16 @@ internal sealed record CommandLineOptions(
     /// <summary>The scaffold settings this run's flags state, each over the project's (spec 25.3.2).</summary>
     public ScaffoldSettings ScaffoldSettings { get; init; } = ScaffoldSettings.Default;
 
-    public static CommandLineOptions? Parse(string[] args)
+    public static CommandLineOptions? Parse(string[] args) => Parse(args, forTest: false);
+
+    /// <summary>
+    /// What <c>protocross test</c>'s arguments say: <c>build</c>'s, with the tests and their projects
+    /// always built, and the tests written to <c>&lt;out&gt;/tests</c> when <c>--test-out</c> names
+    /// nowhere else.
+    /// </summary>
+    public static CommandLineOptions? ParseForTest(string[] args) => Parse(args, forTest: true);
+
+    private static CommandLineOptions? Parse(string[] args, bool forTest)
     {
         var sourcePaths = new List<string>();
         var includePaths = new List<string>();
@@ -199,6 +208,13 @@ internal sealed record CommandLineOptions(
             return null;
         }
 
+        if (forTest)
+        {
+            // A test run builds and runs the tests' projects, so it writes them whether asked to or not.
+            scaffold = true;
+            testOutputDirectory ??= Path.Combine(outputDirectory, "tests");
+        }
+
         if (!AreScaffoldFlagsUsed(scaffoldSettings, scaffold, targets))
         {
             return null;
@@ -342,6 +358,41 @@ internal sealed record CommandLineOptions(
         Console.Error.WriteLine("generated. With --test-out, the tests are built too, and nothing is written");
         Console.Error.WriteLine("unless all of it compiles.");
         Console.Error.WriteLine();
+        PrintOptions();
+    }
+
+    public static void PrintTestUsage()
+    {
+        Console.Error.WriteLine("protocross test - build and run the generated tests in every backend, and judge them");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("usage: protocross test <source.pcross>... [options]");
+        Console.Error.WriteLine("       protocross test <project.pcproj> [options]");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("Compiles as build does, with the tests and --scaffold, then builds and runs each");
+        Console.Error.WriteLine("backend's test project: dotnet test for csharp, cmake and ctest for cpp. It passes");
+        Console.Error.WriteLine("when every declared test passed in every backend tested. A test a backend never ran");
+        Console.Error.WriteLine("fails it, and -t is how to test fewer backends.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("It writes files: what build writes to --out, the tests to --test-out (default:");
+        Console.Error.WriteLine("<out>/tests), and each test project's build beside them. A second run builds on the");
+        Console.Error.WriteLine("first, and a failure is there to inspect afterwards. The first run restores NuGet");
+        Console.Error.WriteLine("packages, which needs the network.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("csharp needs dotnet. cpp needs cmake, a C++ compiler and a protobuf C++ install,");
+        Console.Error.WriteLine("found in a vcpkg_installed at or above the project or first source, under VCPKG_ROOT");
+        Console.Error.WriteLine("or CMAKE_PREFIX_PATH, or at PROTOCROSS_PROTOBUF_CPP_INCLUDE.");
+        Console.Error.WriteLine();
+        Console.Error.WriteLine("exit codes:");
+        Console.Error.WriteLine("  0                        Every declared test passed in every backend tested.");
+        Console.Error.WriteLine("  1                        A compile error, or a test that failed or did not run.");
+        Console.Error.WriteLine("  2                        A usage or configuration error, or a missing tool.");
+        Console.Error.WriteLine();
+        PrintOptions();
+    }
+
+    /// <summary>The options every verb takes, as <c>--help</c> lists them.</summary>
+    private static void PrintOptions()
+    {
         Console.Error.WriteLine("options:");
         Console.Error.WriteLine("  -I, --proto_path <dir>   Directory searched for imported .proto files.");
         Console.Error.WriteLine("                           May be repeated. Each source's directory is always searched.");

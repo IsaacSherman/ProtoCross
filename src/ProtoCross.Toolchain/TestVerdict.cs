@@ -1,13 +1,21 @@
 namespace ProtoCross.Toolchain;
 
+/// <summary>What one backend's run reported: a report for each test it ran, and how its tool failed, if it did.</summary>
+/// <param name="ToolFailure">
+/// How the tool that ran the tests failed, apart from any test: one that exited with an error, after its
+/// tests or before running any. Null when it succeeded.
+/// </param>
+public sealed record BackendRun(string Backend, IReadOnlyList<TestReport> Reports, string? ToolFailure = null);
+
 /// <summary>How one backend did: a result for each declared test, in the order they were declared.</summary>
-public sealed record BackendVerdict(string Backend, IReadOnlyList<TestReport> Results)
+/// <param name="ToolFailure">How the tool that ran the tests failed, apart from any test; null when it succeeded.</param>
+public sealed record BackendVerdict(string Backend, IReadOnlyList<TestReport> Results, string? ToolFailure = null)
 {
     /// <summary>Every declared test this backend did not pass: those that failed and those it never ran.</summary>
     public IReadOnlyList<TestReport> NotPassed => [.. Results.Where(result => result.Outcome != TestOutcome.Passed)];
 
-    /// <summary>Whether this backend passed every declared test.</summary>
-    public bool Passed => NotPassed.Count == 0;
+    /// <summary>Whether this backend passed every declared test, and the tool that ran them succeeded.</summary>
+    public bool Passed => NotPassed.Count == 0 && ToolFailure is null;
 
     /// <summary>How many declared tests came out as <paramref name="outcome"/>.</summary>
     public int Count(TestOutcome outcome) => Results.Count(result => result.Outcome == outcome);
@@ -23,6 +31,11 @@ public sealed record BackendVerdict(string Backend, IReadOnlyList<TestReport> Re
 /// on its own is not the same claim as both passing the program's tests: two backends that each left out
 /// the same test agree with each other, and pass nothing. So a backend's verdict is a result for every
 /// declared test, and one it reported nothing about is missing, which is not a pass.
+/// </para>
+/// <para>
+/// The tool that ran a backend's tests is judged as well. Its tests passing is not the same claim as the
+/// run succeeding: a step after the tests can fail the command once every test has passed, and the
+/// reports alone would show only the passes.
 /// </para>
 /// <para>
 /// The one rule the conformance suite and <c>protocross test</c> both judge by, so that a run the suite
@@ -42,23 +55,22 @@ public sealed record TestVerdict(IReadOnlyList<string> Declared, IReadOnlyList<B
 
     /// <summary>
     /// Judges what each backend reported against the tests <paramref name="declared"/>: for each, the
-    /// result the backend gave it, or missing where it gave none.
+    /// result the backend gave it, or missing where it gave none, beside how the backend's tool failed.
     /// </summary>
     /// <remarks>
     /// The results are matched to the declared tests here, whatever a reader handed over, so that the
     /// rule does not rest on each reader having already done it.
     /// </remarks>
-    public static TestVerdict Judge(
-        IReadOnlyList<string> declared,
-        IEnumerable<(string Backend, IReadOnlyList<TestReport> Results)> reported)
+    public static TestVerdict Judge(IReadOnlyList<string> declared, IEnumerable<BackendRun> runs)
     {
         ArgumentNullException.ThrowIfNull(declared);
-        ArgumentNullException.ThrowIfNull(reported);
+        ArgumentNullException.ThrowIfNull(runs);
 
         return new TestVerdict(
             declared,
-            [.. reported.Select(report => new BackendVerdict(
-                report.Backend,
-                TestReports.ForEachDeclared(declared, report.Results, "the backend reported nothing about this test")))]);
+            [.. runs.Select(run => new BackendVerdict(
+                run.Backend,
+                TestReports.ForEachDeclared(declared, run.Reports, "the backend reported nothing about this test"),
+                run.ToolFailure))]);
     }
 }

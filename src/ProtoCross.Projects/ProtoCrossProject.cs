@@ -76,6 +76,12 @@ public sealed record ProtoCrossProject
     /// </remarks>
     public ScaffoldSettings Scaffold { get; init; } = ScaffoldSettings.Default;
 
+    /// <summary>
+    /// What the project's <c>&lt;TestRun&gt;</c> chose about how <c>protocross test</c> runs its tests
+    /// (spec 25.3.3), or the defaults where it has none.
+    /// </summary>
+    public TestRunSettings TestRun { get; init; } = TestRunSettings.Default;
+
     /// <summary>Whether two projects say the same things, read from the same file.</summary>
     /// <remarks>Written out for the reason <see cref="ProjectItem.Equals(ProjectItem?)"/> is.</remarks>
     public bool Equals(ProtoCrossProject? other)
@@ -86,7 +92,8 @@ public sealed record ProtoCrossProject
             && Sources.SequenceEqual(other.Sources)
             && Tests.SequenceEqual(other.Tests)
             && ProtoPaths.SequenceEqual(other.ProtoPaths)
-            && Scaffold == other.Scaffold;
+            && Scaffold == other.Scaffold
+            && TestRun == other.TestRun;
 
     public override int GetHashCode()
         => HashCode.Combine(Path, Config, Sources.Count, Tests.Count, ProtoPaths.Count);
@@ -129,12 +136,17 @@ public sealed record ProtoCrossProject
     /// <summary>One read of one project file, gathering what it states and whether any of it failed.</summary>
     private sealed class ProjectReader(XmlInput file, string path, DiagnosticBag diagnostics)
     {
-        private static readonly string[] KnownElements = ["Sources", "Tests", "ProtoPath", "Config", "Scaffold"];
+        private static readonly string[] KnownElements = ["Sources", "Tests", "ProtoPath", "Config", "Scaffold", "TestRun"];
 
         private static readonly string[] ItemAttributes = ["Include", "Exclude"];
 
         private const string ScaffoldExample =
             "Each target's settings are attributes of its element, as in <CSharp ProjectName=\"BillingTests\" />.";
+
+        private const string StepTimeoutAttribute = "StepTimeout";
+
+        private const string TestRunExample =
+            "A test run's settings are attributes of <TestRun>, as in <TestRun StepTimeout=\"45m\" />.";
 
         private readonly string _directory = System.IO.Path.GetDirectoryName(path)!;
         private readonly List<ProjectItem> _sources = [];
@@ -142,6 +154,7 @@ public sealed record ProtoCrossProject
         private readonly List<NamedPath> _protoPaths = [];
         private NamedPath? _config;
         private ScaffoldSettings? _scaffold;
+        private TestRunSettings? _testRun;
         private bool _failed;
 
         public ProtoCrossProject? Read()
@@ -169,6 +182,9 @@ public sealed record ProtoCrossProject
                     case "Scaffold":
                         ReadScaffold(element);
                         break;
+                    case "TestRun":
+                        ReadTestRun(element);
+                        break;
                     default:
                         RefuseUnknownElement(element);
                         break;
@@ -186,6 +202,7 @@ public sealed record ProtoCrossProject
                     Tests = _tests,
                     ProtoPaths = _protoPaths,
                     Scaffold = _scaffold ?? ScaffoldSettings.Default,
+                    TestRun = _testRun ?? TestRunSettings.Default,
                 };
         }
 
@@ -426,6 +443,52 @@ public sealed record ProtoCrossProject
             }
 
             return setting.With(settings, value);
+        }
+
+        /// <summary>
+        /// <c>&lt;TestRun&gt;</c>: how <c>protocross test</c> runs the project's tests, stated by its
+        /// attributes (spec 25.3.3).
+        /// </summary>
+        private void ReadTestRun(XElement element)
+        {
+            if (_testRun is not null)
+            {
+                Invalid(
+                    element,
+                    "<TestRun> is stated more than once.",
+                    "A project's tests are run one way, so a project says once how.");
+                return;
+            }
+
+            RefuseAttributes(element, StepTimeoutAttribute);
+            RefuseChildren(element);
+            if (TextOf(element) is { Length: > 0 })
+            {
+                Invalid(element, "<TestRun> states its settings with attributes, not with text.", TestRunExample);
+            }
+
+            _testRun = ReadStepTimeout(element);
+        }
+
+        /// <summary>
+        /// The settings <paramref name="element"/>'s <c>StepTimeout</c> states, or the defaults where it
+        /// states none that can be one.
+        /// </summary>
+        private TestRunSettings ReadStepTimeout(XElement element)
+        {
+            if (element.Attribute(StepTimeoutAttribute) is not { } attribute)
+            {
+                return TestRunSettings.Default;
+            }
+
+            var value = attribute.Value.Trim();
+            if (!TestRunSettings.TryParseStepTimeout(value, out var timeout))
+            {
+                Invalid(attribute, $"'{value}' is not a time a step may take.", TestRunSettings.StepTimeoutHelp);
+                return TestRunSettings.Default;
+            }
+
+            return TestRunSettings.Default with { StepTimeout = timeout };
         }
 
         /// <summary>The path an element's text gives, resolved against the project's directory.</summary>

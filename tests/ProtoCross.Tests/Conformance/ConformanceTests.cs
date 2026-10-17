@@ -212,7 +212,8 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         SkipIfUnavailable(run);
 
         var verdict = _fixture.Verdict.For(run.Backend);
-        Assert.True(verdict.Passed, run.Describe($"{verdict.NotPassed.Count} vector(s) did not pass", verdict.NotPassed));
+        string?[] problems = [verdict.NotPassed.Count > 0 ? $"{verdict.NotPassed.Count} vector(s) did not pass" : null, verdict.ToolFailure];
+        Assert.True(verdict.Passed, run.Describe(string.Join("; ", problems.OfType<string>()), verdict.NotPassed));
     }
 
     private static void SkipIfUnavailable(ConformanceRun run)
