@@ -8,7 +8,8 @@
     A library of its own rather than part of Core, because finding dotnet, cmake, a C++ compiler and a
     protobuf C++ install means probing what is installed on the machine, and Core goes looking for
     nothing beyond the protoc it reads schemas with. The test suite references this, and so will the
-    command line's test verb (#23), so both find the same tools and say the same thing when one is missing.
+    command line's test verb (#23), so both find the same tools, say the same thing when one is missing,
+    and judge what the generated tests reported by the same rule.
   -->
   <ItemGroup>
     <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
