@@ -79,17 +79,9 @@ public partial class CSharpCompileSmokeTests
     /// <summary>The protoc these tests need, and the dotnet host, or a skip naming the one missing.</summary>
     private static string RequireToolchain(out string dotnet)
     {
-        dotnet = Toolchain.LocateDotnet() ?? string.Empty;
-        if (string.IsNullOrEmpty(dotnet))
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        dotnet = TestToolchain.RequireDotnet();
 
-        var protoc = Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc.");
-        }
+        var protoc = TestToolchain.RequireProtoc();
 
         return protoc;
     }

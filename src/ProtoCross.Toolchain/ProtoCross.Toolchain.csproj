@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>ProtoCross.Toolchain</RootNamespace>
+  </PropertyGroup>
+
+  <!--
+    A library of its own rather than part of Core, because finding dotnet, cmake, a C++ compiler and a
+    protobuf C++ install means probing what is installed on the machine, and Core goes looking for
+    nothing beyond the protoc it reads schemas with. The test suite references this, and so will the
+    command line's test verb (#23), so both find the same tools and say the same thing when one is missing.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />
+  </ItemGroup>
+
+</Project>

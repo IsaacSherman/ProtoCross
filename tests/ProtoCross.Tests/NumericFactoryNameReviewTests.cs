@@ -35,8 +35,8 @@ public class NumericFactoryNameReviewTests
 
         if (target == "csharp")
         {
-            var dotnet = Toolchain.LocateDotnet();
-            var protoc = Toolchain.LocateProtoc();
+            var dotnet = TestToolchain.LocateDotnet();
+            var protoc = TestToolchain.LocateProtoc();
             Assert.NotNull(dotnet);
             Assert.NotNull(protoc);
             var workspace = CSharpTestWorkspace.Create("numeric-factory-name-review");
@@ -52,12 +52,8 @@ public class NumericFactoryNameReviewTests
         }
         else
         {
-            var compiler = Toolchain.LocateCppCompiler();
-            var protobuf = Toolchain.LocateProtobufCpp();
-            if (compiler is null || protobuf is null || !protobuf.CanLink)
-            {
-                Assert.Skip("Running generated C++ needs a compiler and a linkable protobuf install.");
-            }
+            var compiler = TestToolchain.RequireCppCompiler();
+            var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
             var workspace = CppTestWorkspace.Create("numeric-factory-name-review");
             var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "numeric_factory.proto");

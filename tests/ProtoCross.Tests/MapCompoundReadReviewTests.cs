@@ -47,12 +47,8 @@ public class MapCompoundReadReviewTests
     [InlineData("on_missing fail", "expect fail;")]
     public void ACompoundThroughAMissingKeyHonorsItsClauseInCSharp(string clause, string expectation)
     {
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
-        if (dotnet is null || protoc is null)
-        {
-            Assert.Skip("Running generated C# needs dotnet and protoc.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
+        var protoc = TestToolchain.RequireProtoc();
 
         var (schemas, files) = Generate(clause, expectation, new CSharpBackend());
         var workspace = CSharpTestWorkspace.Create("map-compound-review");
@@ -72,12 +68,8 @@ public class MapCompoundReadReviewTests
     [InlineData("on_missing fail", "expect fail;")]
     public void ACompoundThroughAMissingKeyHonorsItsClauseInCpp(string clause, string expectation)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(clause, expectation, new CppBackend());
         var workspace = CppTestWorkspace.Create("map-compound-review");

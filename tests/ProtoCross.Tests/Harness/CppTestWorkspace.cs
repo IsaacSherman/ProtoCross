@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using ProtoCross.Backend;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Harness;
 
@@ -49,7 +50,7 @@ internal sealed class CppTestWorkspace
     }
 
     public ProcessResult GenerateProtobuf(string protoc, string protoPath, params string[] protoFiles)
-        => Toolchain.RunProtoc(protoc, "cpp_out", protoPath, Directory, protoFiles);
+        => TestToolchain.RunProtoc(protoc, "cpp_out", protoPath, Directory, protoFiles);
 
     /// <summary>Parses a source file without producing an object, to check the emitted C++ is valid.</summary>
     public ProcessResult RunSyntaxOnly(CppCompiler compiler, string sourcePath, string protobufInclude)

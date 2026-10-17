@@ -96,12 +96,8 @@ public class MutationReviewRegressionTests
     [InlineData("oneof")]
     public void CppEvaluatesTheValueBeforeSettingTheMessageFieldBeingAssigned(string scenario)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = AssignmentCase(scenario);
         var workspace = CppTestWorkspace.Create("mutation-assignment-review");
@@ -121,12 +117,8 @@ public class MutationReviewRegressionTests
     [InlineData("oneof")]
     public void CSharpEvaluatesTheValueBeforeSettingTheMessageFieldBeingAssigned(string scenario)
     {
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
-        if (dotnet is null || protoc is null)
-        {
-            Assert.Skip("Running generated C# needs dotnet and protoc.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
+        var protoc = TestToolchain.RequireProtoc();
 
         var result = AssignmentCase(scenario);
         var workspace = CSharpTestWorkspace.Create("mutation-assignment-review-csharp");

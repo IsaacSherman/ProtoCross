@@ -184,12 +184,7 @@ public sealed class DescriptorLoader
 
         if (!selection.IsFound)
         {
-            var searched = string.Join(", ", ProtocLocator.GetNuGetPackageRoots());
-            throw new DescriptorLoadException(
-                "Could not find a 'protoc' executable. Install protoc and put it on PATH, set "
-                + $"{ProtocLocator.OverrideEnvironmentVariable} to its full path, or restore the "
-                + "Grpc.Tools NuGet package. "
-                + $"Searched PATH and these package roots: {searched}");
+            throw new DescriptorLoadException(ProtocLocator.DescribeNotFound());
         }
 
         return new DescriptorLoader(selection, options);

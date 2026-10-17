@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using ProtoCross.Backend;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Harness;
 
@@ -80,7 +81,7 @@ internal sealed class CSharpTestWorkspace
     }
 
     public ProcessResult GenerateProtobuf(string protoc, string protoPath, params string[] protoFiles)
-        => Toolchain.RunProtoc(protoc, "csharp_out", protoPath, Directory, protoFiles);
+        => TestToolchain.RunProtoc(protoc, "csharp_out", protoPath, Directory, protoFiles);
 
     public void WriteProjectFiles()
     {

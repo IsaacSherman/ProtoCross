@@ -2,6 +2,7 @@ using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -20,11 +21,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheCSharpProjectBuildsAndPassesUnderTheOldestFrameworkASettingAccepts()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
 
         if (!HasRuntime(dotnet, ScaffoldSetting.OldestDotNet))
         {

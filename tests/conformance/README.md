@@ -206,8 +206,9 @@ The harness is written so a third backend is a small addition, not a third copy:
 2. Report each test by `IrTest.Identity`, so the agreement check can see it. The C# backend uses it
    as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> ...`.
 3. Add a workspace type under `tests/ProtoCross.Tests/Harness/` that writes the generated files,
-   runs protoc for that language, builds, and executes. `ProcessRunner` and `Toolchain` already
-   handle process plumbing and tool discovery.
+   runs protoc for that language, builds, and executes. `ProcessRunner` and `ToolLocator`, in
+   `src/ProtoCross.Toolchain`, already handle process plumbing and tool discovery, and
+   `TestToolchain` skips a test with the lookup's own reason when a tool is missing.
 4. Add a `ConformanceRun` for it in `ConformanceFixture` and a fact in `ConformanceTests`.
 
 ## Not covered yet
