@@ -29,7 +29,7 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
 | [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
 | [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
-| [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, and running them. |
+| [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, running them, and judging what the generated tests reported. |
 | [tests/ProtoCross.Tests](../tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core

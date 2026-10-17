@@ -1,5 +1,6 @@
 using ProtoCross.Backend;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests.Conformance;
@@ -183,8 +184,9 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
 
     /// <summary>
     /// The cross-language check. Each backend passing on its own is not enough: a backend that
-    /// silently ran a smaller set of vectors would also pass, and comparing the two observed sets
-    /// against the declared one is what rules that out.
+    /// silently ran a smaller set of vectors would also pass, and two that each left out the same
+    /// vector would agree. Each backend's run is held up against the declared tests instead, so a
+    /// vector either backend never reported is missing from it, whatever the other did.
     /// </summary>
     [Fact]
     public void BothBackendsRunTheSameVectors()
@@ -192,27 +194,25 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         SkipIfUnavailable(_fixture.CSharp);
         SkipIfUnavailable(_fixture.Cpp);
 
-        var declared = _fixture.DeclaredIdentities.ToHashSet(StringComparer.Ordinal);
-        var csharp = _fixture.CSharp.Identities.ToHashSet(StringComparer.Ordinal);
-        var cpp = _fixture.Cpp.Identities.ToHashSet(StringComparer.Ordinal);
+        // Two vectors under one identity would be one result to the verdict, and one could stand in
+        // for the other.
+        Assert.Equal(_fixture.DeclaredIdentities.Distinct(StringComparer.Ordinal).Count(), _fixture.DeclaredIdentities.Count);
 
-        Assert.Equal(declared.Count, _fixture.DeclaredIdentities.Count);
-        AssertSameSet("declared", declared, "csharp", csharp);
-        AssertSameSet("declared", declared, "cpp", cpp);
-        AssertSameSet("csharp", csharp, "cpp", cpp);
+        foreach (var backend in _fixture.Verdict.Backends)
+        {
+            var missing = backend.Results.Where(result => result.Outcome is TestOutcome.Missing).Select(result => result.Identity).ToList();
+            Assert.True(
+                missing.Count == 0,
+                $"{backend.Backend} never reported {missing.Count} declared test(s): {string.Join(", ", missing)}");
+        }
     }
 
     private void AssertBackendAgrees(ConformanceRun run)
     {
         SkipIfUnavailable(run);
 
-        Assert.True(
-            run.Results.Count == _fixture.DeclaredIdentities.Count,
-            run.Describe(
-                $"reported {run.Results.Count} result(s) for {_fixture.DeclaredIdentities.Count} "
-                + "declared test(s)"));
-
-        Assert.True(run.NotPassed.Count == 0, run.Describe($"{run.NotPassed.Count} vector(s) did not pass"));
+        var verdict = _fixture.Verdict.For(run.Backend);
+        Assert.True(verdict.Passed, run.Describe($"{verdict.NotPassed.Count} vector(s) did not pass", verdict.NotPassed));
     }
 
     private static void SkipIfUnavailable(ConformanceRun run)
@@ -221,25 +221,5 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         {
             Assert.Skip($"Conformance vectors skipped for the {run.Backend} backend. {run.SkipReason}");
         }
-    }
-
-    private static void AssertSameSet(
-        string leftName,
-        IReadOnlySet<string> left,
-        string rightName,
-        IReadOnlySet<string> right)
-    {
-        var missing = left.Except(right, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-        var extra = right.Except(left, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
-
-        Assert.True(
-            missing.Count == 0 && extra.Count == 0,
-            $"{leftName} and {rightName} ran different tests."
-            + (missing.Count > 0
-                ? $"{Environment.NewLine}  only in {leftName}: {string.Join(", ", missing)}"
-                : string.Empty)
-            + (extra.Count > 0
-                ? $"{Environment.NewLine}  only in {rightName}: {string.Join(", ", extra)}"
-                : string.Empty));
     }
 }

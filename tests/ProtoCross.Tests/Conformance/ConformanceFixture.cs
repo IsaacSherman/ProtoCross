@@ -22,6 +22,12 @@ public sealed class ConformanceFixture
     internal ConformanceRun Cpp { get; }
 
     /// <summary>
+    /// How the backends that ran did against the corpus's declared tests, judged by the rule
+    /// <c>protocross test</c> judges by. A backend that could not run is not in it.
+    /// </summary>
+    internal TestVerdict Verdict { get; }
+
+    /// <summary>
     /// One compiled vector.
     /// </summary>
     /// <remarks>
@@ -75,11 +81,16 @@ public sealed class ConformanceFixture
             var reason = "the corpus did not compile: " + string.Join(" | ", failures);
             CSharp = ConformanceRun.Skipped("csharp", reason);
             Cpp = ConformanceRun.Skipped("cpp", reason);
-            return;
+        }
+        else
+        {
+            CSharp = RunCSharp(modules);
+            Cpp = RunCpp(modules);
         }
 
-        CSharp = RunCSharp(modules);
-        Cpp = RunCpp(modules);
+        Verdict = TestVerdict.Judge(
+            DeclaredIdentities,
+            [.. new[] { CSharp, Cpp }.Where(run => run.SkipReason is null).Select(run => (run.Backend, run.Results))]);
     }
 
     private static ConformanceRun RunCSharp(IReadOnlyList<CompiledVector> modules)
@@ -123,17 +134,9 @@ public sealed class ConformanceFixture
         workspace.WriteProjectFiles();
 
         var run = workspace.RunTests(dotnet.Tool);
-        var byName = run.Executed.ToDictionary(test => test.Name, StringComparer.Ordinal);
-
-        var results = modules
-            .SelectMany(entry => entry.Tests)
-            .Select(test => byName.TryGetValue(test.Identity, out var executed)
-                ? new ConformanceResult(
-                    test.Identity,
-                    executed.Passed ? ConformanceOutcome.Passed : ConformanceOutcome.Failed,
-                    executed.Detail)
-                : new ConformanceResult(test.Identity, ConformanceOutcome.Missing, "not present in the test log"))
-            .ToList();
+        var results = TestReports.FromTrx(
+            ConformanceVectors.DeclaredIdentities(modules.SelectMany(entry => entry.Tests)),
+            run.Executed);
 
         return new ConformanceRun(Backend, null, results, workspace.Directory, run.Process.Output);
     }
@@ -192,7 +195,7 @@ public sealed class ConformanceFixture
             .Zip(workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources))
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
 
-        var results = new List<ConformanceResult>();
+        var results = new List<TestReport>();
         var output = new List<string>();
 
         foreach (var vector in vectors)
@@ -207,41 +210,13 @@ public sealed class ConformanceFixture
                 reported.Add(program.Output);
             }
 
-            results.AddRange(ReadDriverResults(vector.Compiled.Tests, string.Join('\n', reported)));
+            results.AddRange(TestReports.FromDriverOutput(
+                ConformanceVectors.DeclaredIdentities(vector.Compiled.Tests),
+                string.Join('\n', reported)));
         }
 
         return new ConformanceRun(
             Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output));
-    }
-
-    /// <summary>
-    /// Reads what a vector's drivers reported. Each declared test is looked up by its own identity
-    /// rather than by parsing identities out of the drivers' lines, so a test name containing bracket
-    /// or parenthesis characters cannot confuse the match.
-    /// </summary>
-    private static IEnumerable<ConformanceResult> ReadDriverResults(
-        IReadOnlyList<IrTest> tests,
-        string output)
-    {
-        var lines = output.Split('\n').Select(line => line.Trim()).ToList();
-        var reported = lines.ToHashSet(StringComparer.Ordinal);
-
-        foreach (var test in tests)
-        {
-            if (reported.Contains("[ok] " + test.Identity))
-            {
-                yield return new ConformanceResult(test.Identity, ConformanceOutcome.Passed, string.Empty);
-                continue;
-            }
-
-            var failure = lines.FirstOrDefault(
-                line => line.StartsWith("[FAIL] " + test.Identity, StringComparison.Ordinal));
-
-            yield return failure is not null
-                ? new ConformanceResult(test.Identity, ConformanceOutcome.Failed, failure)
-                : new ConformanceResult(
-                    test.Identity, ConformanceOutcome.Missing, "the driver never reported this test");
-        }
     }
 
     /// <summary>Generates every vector a source at a time, as a command-line build of it would.</summary>

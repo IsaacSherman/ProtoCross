@@ -141,12 +141,14 @@ already meet, and they would multiply what the sweeps cost.
 | `ConformanceVectorTests` | Every vector compiles, declares at least one test, and declares no method another vector does, and no two sources generate files of one name. Needs only protoc, so it always runs |
 | `ConformanceTests.CSharpRunsEveryConformanceVector` | The vectors build into one C# project and every test passes |
 | `ConformanceTests.CppRunsEveryConformanceVector` | Each source that declares tests builds into a C++ executable, and every test passes |
-| `ConformanceTests.BothBackendsRunTheSameVectors` | The set of tests C# ran, the set C++ ran, and the set declared in the corpus are the same set |
+| `ConformanceTests.BothBackendsRunTheSameVectors` | Neither backend left out a test the corpus declares: each is held up against the declared tests, not only against the other |
 
 The last one is the one that matters. Each backend passing on its own is not enough: a driver that
-ran zero tests also exits 0. Both backends report each test by the same backend-independent
-identity — `IrTest.Identity`, which the C# backend uses as the xUnit display name and the C++ driver
-prints — so the sets can be compared directly.
+ran zero tests also exits 0, and two backends that each left out the same test agree. Both backends
+report each test by the same backend-independent identity — `IrTest.Identity`, which the C# backend
+uses as the xUnit display name and the C++ driver prints — so each declared test can be looked up in
+each backend's run. `TestReports` reads the runs and `TestVerdict` judges them, both in
+`src/ProtoCross.Toolchain`, by the rule `protocross test` judges a user's tests by.
 
 When a backend cannot run, its tests skip with a message naming the missing tool rather than
 failing. A fully equipped machine should report no skips.
@@ -204,12 +206,14 @@ The harness is written so a third backend is a small addition, not a third copy:
 
 1. Implement `ITestBackend`, as `CSharpBackend` and `CppBackend` do.
 2. Report each test by `IrTest.Identity`, so the agreement check can see it. The C# backend uses it
-   as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> ...`.
+   as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> (why)`.
+   Give `TestReports` a reader for the new backend's output.
 3. Add a workspace type under `tests/ProtoCross.Tests/Harness/` that writes the generated files,
    runs protoc for that language, builds, and executes. `ProcessRunner` and `ToolLocator`, in
    `src/ProtoCross.Toolchain`, already handle process plumbing and tool discovery, and
    `TestToolchain` skips a test with the lookup's own reason when a tool is missing.
-4. Add a `ConformanceRun` for it in `ConformanceFixture` and a fact in `ConformanceTests`.
+4. Add a `ConformanceRun` for it in `ConformanceFixture`, include it in the fixture's verdict, and add
+   a fact in `ConformanceTests`.
 
 ## Not covered yet
 
