@@ -13,6 +13,14 @@ namespace ProtoCross.Tests.Harness;
 internal sealed record CppProgramResult(string DriverSource, int ExitCode, string Output)
 {
     public bool Succeeded => ExitCode == 0;
+
+    /// <summary>How the driver failed, whatever its lines said: null when it built, ran and exited 0.</summary>
+    public string? Failure => ExitCode switch
+    {
+        0 => null,
+        ProcessResult.NotRun => $"the driver {DriverSource} did not build",
+        var code => $"the driver {DriverSource} exited with code {code}",
+    };
 }
 
 /// <summary>

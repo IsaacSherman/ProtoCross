@@ -56,6 +56,16 @@ public partial class CliTests
     /// on its search path.
     /// </summary>
     private static ProcessResult Run(string workingDirectory, params string[] arguments)
+        => RunWith(workingDirectory, new Dictionary<string, string?>(), arguments);
+
+    /// <summary>
+    /// <see cref="Run"/>, with each variable in <paramref name="environment"/> set for the command line,
+    /// or removed where its value is null.
+    /// </summary>
+    private static ProcessResult RunWith(
+        string workingDirectory,
+        IReadOnlyDictionary<string, string?> environment,
+        params string[] arguments)
     {
         var dotnet = TestToolchain.RequireDotnet();
 
@@ -71,6 +81,19 @@ public partial class CliTests
         // The protoc this process compiles with, so that what the command line writes can be held
         // up against what the library generates here.
         startInfo.Environment["PROTOCROSS_PROTOC"] = protoc;
+
+        foreach (var (name, value) in environment)
+        {
+            if (value is null)
+            {
+                startInfo.Environment.Remove(name);
+            }
+            else
+            {
+                startInfo.Environment[name] = value;
+            }
+        }
+
         return ProcessRunner.Run(startInfo);
     }
 

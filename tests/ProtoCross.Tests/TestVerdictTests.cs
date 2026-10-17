@@ -20,7 +20,7 @@ public class TestVerdictTests
     private static TestReport Fail(string identity, string why) => new(identity, TestOutcome.Failed, why);
 
     private static TestVerdict Judge(params (string Backend, TestReport[] Results)[] reported)
-        => TestVerdict.Judge(Declared, [.. reported.Select(report => (report.Backend, (IReadOnlyList<TestReport>)report.Results))]);
+        => TestVerdict.Judge(Declared, [.. reported.Select(report => new BackendRun(report.Backend, report.Results))]);
 
     // ------- the verdict
 
@@ -92,6 +92,22 @@ public class TestVerdictTests
         Assert.Equal(TestOutcome.Failed, Assert.Single(verdict.For("csharp").NotPassed).Outcome);
     }
 
+    /// <summary>
+    /// A backend whose tool failed has not passed, even with every declared test passing: a step after
+    /// the tests can fail the command once they all have, and the reports show only the passes.
+    /// </summary>
+    [Fact]
+    public void ABackendWhoseToolFailedFailsThoughEveryTestPassed()
+    {
+        var verdict = TestVerdict.Judge(
+            Declared,
+            [new BackendRun("csharp", [Pass(Total), Pass(Tax)], "dotnet test exited with code 1")]);
+
+        Assert.False(verdict.Passed, "dotnet test failed, so the run did, whatever its tests reported");
+        Assert.Empty(verdict.For("csharp").NotPassed);
+        Assert.Equal("dotnet test exited with code 1", verdict.For("csharp").ToolFailure);
+    }
+
     // ------- reading a C++ driver
 
     /// <summary>
@@ -130,6 +146,38 @@ public class TestVerdictTests
         var results = TestReports.FromDriverOutput(Declared, string.Empty);
 
         Assert.All(results, result => Assert.Equal(TestOutcome.Missing, result.Outcome));
+    }
+
+    /// <summary>
+    /// ctest's verbose output is the drivers' own lines with the test's number in front of each, and the
+    /// number goes before a driver's lines are read whole.
+    /// </summary>
+    [Fact]
+    public void CTestsVerboseOutputIsReadAsTheDriversOwn()
+    {
+        var ctest = new ProcessResult(0, $"1: Test command: invoice_tests.exe\n1: [ok] {Total}\n1: [FAIL] {Tax} (expected 3, actual 4)\n");
+        var run = new CMakeTestRun(new ProcessResult(0, string.Empty), new ProcessResult(0, string.Empty), ctest);
+
+        var results = TestReports.FromDriverOutput(Declared, run.DriverOutput);
+
+        Assert.Equal([TestOutcome.Passed, TestOutcome.Failed], results.Select(result => result.Outcome));
+    }
+
+    /// <summary>
+    /// A CMake run's failure is its first step to fail, ctest's included: a driver that ends badly after
+    /// printing every pass fails ctest, not the lines it printed.
+    /// </summary>
+    [Fact]
+    public void ACMakeRunFailsWithItsFirstStepToFail()
+    {
+        var passed = new ProcessResult(0, string.Empty);
+        var ctest = new ProcessResult(8, $"1: [ok] {Total}\n1: [ok] {Tax}\n");
+
+        var run = new CMakeTestRun(passed, passed, ctest);
+
+        Assert.Equal("ctest exited with code 8", run.Failure);
+        Assert.Same(ctest, run.FailedStep);
+        Assert.Null(new CMakeTestRun(passed, passed, passed).Failure);
     }
 
     // ------- reading a TRX log

@@ -83,8 +83,9 @@ Normative Requirements:
 - Test declarations are never emitted into production behavior output. The compiler generates
   target-language test source files into a user-selected test output directory, and only when test
   generation is explicitly requested.
-- The compiler should not execute tests by default. Execution belongs to the target language's
-  normal test runner or build system.
+- The compiler does not execute tests unless asked to: a build only generates them. `protocross
+  test` asks, and runs them through each target language's own test runner and build system
+  ([25.3.3](#2533-running-the-tests)).
 
 Syntax:
 
@@ -368,3 +369,85 @@ Implementation Note:
   accepts. The project reader and the command line both ask it, so the two cannot come to accept
   different values. `ScaffoldSettings` holds what was stated, and `ScaffoldOptions.Settings` hands it
   to a backend.
+
+### 25.3.3 Running the Tests
+
+**Decided: `protocross test` builds what `protocross build` would, with the tests and the projects
+that run them, then builds and runs each backend's test project and judges what it reported. It
+passes only when every declared test passed in every backend tested.**
+
+```text
+protocross test billing.pcproj
+protocross test pricing.pcross discounts.pcross -I protos -t csharp
+```
+
+Normative Requirements:
+
+- **The command line has verbs.** `build` and `test` are named as the first argument, and a command
+  line naming neither is a `build`, so every command line written before there were verbs means what
+  it did. A verb is read only as the first argument, so a source named for one is written as a path:
+  `./test`.
+- **It writes where a build writes.** The program goes to `--out`, and the tests to `--test-out`,
+  which defaults to `<out>/tests`. `--scaffold` is implied. Each backend's test project builds beside
+  its tests: C#'s with `dotnet test`, and C++'s with `cmake` into `<test-out>/cpp/build` and then
+  `ctest`. A second run builds on the first, and a failure can be inspected and rebuilt by hand.
+- **Every tool is found before anything is built,** and after the command line's sources are checked,
+  so that a source that is not there is the usage error it is for `build`.
+  - C# needs `dotnet`.
+  - C++ needs `cmake`, a C++ compiler and a protobuf C++ install. The install is looked for in a
+    `vcpkg_installed` at or above the project's directory or the first source's, under
+    `VCPKG_ROOT` or `CMAKE_PREFIX_PATH`, or at `PROTOCROSS_PROTOBUF_CPP_INCLUDE`.
+  - A missing tool ends the run with exit code 2 and writes nothing. The error says what is missing
+    and how to provide it.
+  - A missing tool does not skip its backend: `-t` is how a run tests fewer.
+- **Each backend is judged against the declared tests.** Each declared test is passed, failed or
+  missing in each backend, looked up by its `IrTest.Identity`. A test a backend never reported is
+  missing, which is not a pass. So the run fails when a test project did not build or a driver
+  stopped, and when two backends both left out the same test.
+- **Each backend is judged by its tools as well.** A tool that exits with an error fails the run even
+  when every declared test passed: `dotnet test` failing in a target that runs after the tests, or
+  `ctest` failing a driver that ended badly after its passes. The tests' reports show only the
+  passes, so they cannot be the whole verdict.
+- **Each step may take 30 minutes** before it is taken to have hung and is stopped: `dotnet test`,
+  and cmake's configure, its build and `ctest`, each. A stopped step did not run to the end, so its
+  tool failed, and the run fails and says how long the step was given.
+  - A project gives its steps another limit with `<TestRun StepTimeout="45m" />`: a whole number,
+    with no leading zero, followed by `s`, `m` or `h` for seconds, minutes or hours. It is above zero
+    and no more than `24h`, and whitespace around it is not part of it. A run of sources named on
+    the command line takes the default.
+  - Any other attribute or element in `<TestRun>` is `PC2008`. A second `<TestRun>`, text, or a value
+    `StepTimeout` does not accept is `PC2009`, at what it got wrong, and the project is refused whole
+    in every build ([5.4](./§5-Source%20Organization.md#54-projects)).
+- **A build that declares no tests has nothing to test, and fails.** A run that checked nothing would
+  otherwise exit 0 as if it had passed.
+- **A test a backend ran that no source declares is noted as information,** on standard output,
+  and never as a warning. It is not one of the declared tests, so it is not judged as one. A tool
+  that fails on its account still fails the run, as any failed tool does. It is most likely in a
+  test file an earlier build left in `--test-out`, which the compiler writes into and never removes
+  from.
+- **Exit codes:**
+  - 0 when every declared test passed in every backend tested;
+  - 1 for a compile error, as `build` returns, or for a test that failed or did not run;
+  - 2 for a usage or configuration error, or a missing tool.
+- **Output:** a line for each backend counting its passed, failed and missing tests, then how its
+  tool failed, if it did, and each declared test it did not pass, with why.
+
+Rationale:
+
+- **30 minutes**, because a first run restores packages and builds each test project from cold. The
+  limit is for a step that has stopped, not one that is slow. A project may need longer, or want a
+  hang found sooner, so it can say so. A day is the most, because a step still running after one has
+  stopped.
+- **A time is written with its unit,** because `45` is minutes to one reader and seconds to the next.
+- **Information, not a warning,** for a test no source declares, and on standard output, because a
+  warning can fail a build that treats warnings as errors, and some pipelines fail a step for
+  writing to standard error. A file an earlier build left behind is no fault in the program.
+
+Implementation Note:
+
+- The rule is `TestVerdict.Judge`, in `ProtoCross.Toolchain`, and the conformance suite judges the
+  corpus by it, so a run the suite would fail cannot pass on a user's machine. `ToolLocator` finds the
+  tools, `TestProjectRunner` builds and runs each project, and `TestReports` reads what it reported.
+  The suite uses all three as well.
+- A project's `<TestRun>` is `ProtoCrossProject.TestRun`, a `TestRunSettings`, which holds the
+  default limit and reads `StepTimeout`, so the default and what a project may write have one home.

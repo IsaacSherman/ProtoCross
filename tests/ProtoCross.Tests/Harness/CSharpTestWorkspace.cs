@@ -11,7 +11,11 @@ namespace ProtoCross.Tests.Harness;
 internal sealed record CSharpTestRun(
     ProcessResult Process,
     IReadOnlyList<ExecutedTest> Executed,
-    int? PassedCount);
+    int? PassedCount)
+{
+    /// <summary>How <c>dotnet test</c> itself failed, whatever its tests did; null when it succeeded.</summary>
+    public string? Failure { get; init; }
+}
 
 /// <summary>
 /// A throwaway C# project that compiles ProtoCross's generated behavior and generated tests together
@@ -140,35 +144,18 @@ internal sealed class CSharpTestWorkspace
 
     public CSharpTestRun RunTests(string dotnet)
     {
-        var result = RunDotnet(
-            dotnet,
-            "test",
-            "--nologo",
-            "-v",
-            "quiet",
-            "--results-directory",
-            ResultsDirectory,
-            "--logger",
-            "trx;LogFileName=protocross.trx");
-
-        return new CSharpTestRun(result, TrxLog.ReadLatest(ResultsDirectory), ReadPassedCount(result.Output));
+        var run = TestProjectRunner.RunDotnetTest(dotnet, Directory, ResultsDirectory);
+        return new CSharpTestRun(run.Process, run.Executed, ReadPassedCount(run.Process.Output)) { Failure = run.Failure };
     }
 
     private ProcessResult RunDotnet(string dotnet, params string[] arguments)
     {
-        var startInfo = ProcessRunner.Create(dotnet, Directory);
+        var startInfo = ProcessRunner.CreateDotnet(dotnet, Directory);
 
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
-
-        ProcessRunner.ScrubMsBuildEnvironment(startInfo);
-
-        // Belt and braces. ProtoCross's fail path exits cleanly rather than crashing, so nothing
-        // here should reach the crash reporter, but a genuinely faulting child would otherwise stall
-        // the run while a dump is collected.
-        startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
 
         return ProcessRunner.Run(startInfo);
     }

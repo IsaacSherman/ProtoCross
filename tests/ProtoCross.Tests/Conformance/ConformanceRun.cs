@@ -23,6 +23,9 @@ internal sealed record ConformanceRun(
     string Workspace,
     string Output)
 {
+    /// <summary>How the tool that ran the tests failed, apart from any test; null when it succeeded.</summary>
+    public string? ToolFailure { get; init; }
+
     public static ConformanceRun Skipped(string backend, string reason)
         => new(backend, reason, [], string.Empty, string.Empty);
 

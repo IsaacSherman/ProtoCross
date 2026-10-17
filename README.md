@@ -554,6 +554,41 @@ protocross: 12 test(s), 0 failed
 Passing `--run <name>` runs a single test instead; that is how the driver observes a test that
 expects the process to terminate, described next.
 
+### Running the Tests in Every Backend
+
+`test` does all of that for every backend, then runs what it built and says whether each declared
+test passed in each:
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- test examples/simpleScript.pcross -I examples/protos -o generated
+```
+
+```text
+csharp: dotnet test in generated\tests\csharp
+cpp: cmake and ctest in generated\tests\cpp
+csharp: 12 passed
+cpp: 12 passed
+every declared test passed in csharp and cpp
+```
+
+It passes only when every declared test passed in every backend tested.
+- **Each backend is held up against the tests the sources declare,** not only against the other.
+  So a backend that ran fewer fails the run, whether its test project did not build or its driver
+  stopped.
+- **A tool that reports a failure fails the run,** even after every test passed: `dotnet test`
+  failing in a step after its tests, say.
+- **Each step may take 30 minutes** before it is stopped as hung, which fails the run: `dotnet test`,
+  or one of cmake's configure, build and `ctest`. A project sets another limit with
+  `<TestRun StepTimeout="45m" />`, in seconds, minutes or hours (`90s`, `45m`, `2h`), up to `24h`.
+- **A missing tool ends the run before anything is written,** with exit code 2 and what to install.
+  `-t csharp` or `-t cpp` tests one backend on purpose.
+- **It writes into the usual directories.** The tests go to `--test-out`, which defaults to
+  `<out>/tests`, and each project builds beside them, so a second run builds on the first.
+- **Exit codes:**
+  - 0 when every test passed;
+  - 1 for a compile error, or a test that failed or did not run;
+  - 2 for a usage or configuration error, or a missing tool.
+
 ### Naming the Test Projects
 
 A test project dropped into an existing repository may need another name, an older .NET, or CMake
