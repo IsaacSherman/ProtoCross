@@ -26,7 +26,11 @@ internal static class CommandLine
     private static readonly Verb Build = new("build", "Compile, and write the generated code (the default).", BuildCommand.Run);
 
     /// <summary>Every verb, in the order <c>--help</c> lists them.</summary>
-    public static IReadOnlyList<Verb> All { get; } = [Build];
+    public static IReadOnlyList<Verb> All { get; } =
+    [
+        Build,
+        new("test", "Build and run the generated tests in every backend, and judge them.", TestCommand.Run),
+    ];
 
     public static int Run(string[] args)
         => args is [var first, .. var rest] && All.FirstOrDefault(verb => verb.Name == first) is { } named

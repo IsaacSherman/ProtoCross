@@ -90,7 +90,7 @@ public sealed class ConformanceFixture
 
         Verdict = TestVerdict.Judge(
             DeclaredIdentities,
-            [.. new[] { CSharp, Cpp }.Where(run => run.SkipReason is null).Select(run => (run.Backend, run.Results))]);
+            [.. new[] { CSharp, Cpp }.Where(run => run.SkipReason is null).Select(run => new BackendRun(run.Backend, run.Results, run.ToolFailure))]);
     }
 
     private static ConformanceRun RunCSharp(IReadOnlyList<CompiledVector> modules)
@@ -138,7 +138,7 @@ public sealed class ConformanceFixture
             ConformanceVectors.DeclaredIdentities(modules.SelectMany(entry => entry.Tests)),
             run.Executed);
 
-        return new ConformanceRun(Backend, null, results, workspace.Directory, run.Process.Output);
+        return new ConformanceRun(Backend, null, results, workspace.Directory, run.Process.Output) { ToolFailure = run.Failure };
     }
 
     private static ConformanceRun RunCpp(IReadOnlyList<CompiledVector> modules)
@@ -216,7 +216,10 @@ public sealed class ConformanceFixture
         }
 
         return new ConformanceRun(
-            Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output));
+            Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output))
+        {
+            ToolFailure = programs.Values.Select(program => program.Failure).FirstOrDefault(failure => failure is not null),
+        };
     }
 
     /// <summary>Generates every vector a source at a time, as a command-line build of it would.</summary>

@@ -6,6 +6,17 @@ public sealed record ProcessResult(int ExitCode, string Output)
 {
     /// <summary>Exit code used when the process could not be started or had to be killed.</summary>
     public const int NotRun = -1;
+
+    /// <summary>
+    /// How <paramref name="tool"/> failed, or null when it exited 0: the code it exited with, or that it
+    /// never ran to the end. Why it did not is in <see cref="Output"/>.
+    /// </summary>
+    public string? FailureOf(string tool) => ExitCode switch
+    {
+        0 => null,
+        NotRun => $"{tool} did not run to the end",
+        var code => $"{tool} exited with code {code}",
+    };
 }
 
 /// <summary>
@@ -54,6 +65,23 @@ public static class ProcessRunner
         startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
     }
 
+    /// <summary>
+    /// A start of <paramref name="dotnet"/> in <paramref name="workingDirectory"/>, fit to build or test
+    /// a project from inside another dotnet process.
+    /// </summary>
+    public static ProcessStartInfo CreateDotnet(string dotnet, string workingDirectory)
+    {
+        var startInfo = Create(dotnet, workingDirectory);
+        ScrubMsBuildEnvironment(startInfo);
+
+        // Belt and braces. ProtoCross's fail path exits cleanly rather than crashing, so nothing
+        // here should reach the crash reporter, but a genuinely faulting child would otherwise stall
+        // the run while a dump is collected.
+        startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
+
+        return startInfo;
+    }
+
     public static ProcessResult Run(ProcessStartInfo startInfo, TimeSpan? timeout = null)
     {
         var limit = timeout ?? DefaultTimeout;
@@ -87,7 +115,7 @@ public static class ProcessRunner
 
             return new ProcessResult(
                 ProcessResult.NotRun,
-                $"'{startInfo.FileName}' timed out after {limit.TotalMinutes:0.#} minute(s).");
+                $"'{startInfo.FileName}' timed out after {Describe(limit)}.");
         }
 
         var output = string.Join(
@@ -97,6 +125,13 @@ public static class ProcessRunner
 
         return new ProcessResult(process.ExitCode, output);
     }
+
+    /// <summary>A time limit as a reader would put it: in minutes, or in seconds where it is not a whole number of them.</summary>
+    /// <remarks>A project can set a limit in seconds (spec 25.3.3), which in minutes would read as none.</remarks>
+    private static string Describe(TimeSpan limit)
+        => limit.Ticks % TimeSpan.TicksPerMinute == 0
+            ? $"{limit.TotalMinutes:0} minute(s)"
+            : $"{limit.TotalSeconds:0} second(s)";
 
     /// <summary>
     /// Writes and runs a batch script. MSVC is reached this way because <c>VsDevCmd.bat</c> sets up
