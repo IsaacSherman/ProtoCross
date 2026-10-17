@@ -43,6 +43,13 @@ resolved inside a merge of the sprint branch into an issue branch, and each merg
 seeing it. Then run the suite, because a conflict resolved correctly line by line can still combine
 into something that does not build.
 
+**The exception is a conflict Auto-fix reports: merging the base is fine there.** Auto-fix asks for
+the base to be merged in, never rebased or force-pushed, and a rebase would stall until the owner
+allowed the force-push. Merge the base's current tip, not a local copy of it. What a merge buries is
+still the danger, so the merge commit's message says how each conflicted file was resolved. Then run
+the suite, or show that the merged tree is one the suite already passed (`git diff --quiet <tested>
+HEAD`).
+
 **The sprint branch accepts only tested, up-to-date pull requests.** A ruleset on `sprints/**`
 requires a pull request, the CI checks, and a branch that is current with the sprint tip, and it
 refuses force pushes. So pull requests land one at a time: merging one makes the others stale, and

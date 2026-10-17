@@ -64,8 +64,9 @@ refuses a `package.json` that says it.
 Bump it with `npm version <next> --no-git-tag-version` in `editors/vscode`, which changes both
 `package.json` and `package-lock.json`, and commit it with the pull request it belongs to. Because
 pull requests land one at a time, two branches will bump to the same number; the second to land
-rebases and takes the next one, which is a one-line conflict and exactly the conflict that should be
-looked at.
+rebases, or merges the base where Auto-fix reports the conflict
+([Committing.md](../Agent_Instructions/Committing.md)), and takes the next one. That is a one-line
+conflict, and exactly the conflict that should be looked at.
 
 ### The comments are part of the issue
 
