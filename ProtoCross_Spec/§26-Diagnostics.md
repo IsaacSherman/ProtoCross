@@ -52,8 +52,7 @@ values rather than as the text of the file it read them from.
 
 Open Questions:
 
-- Should diagnostic codes be part of the compatibility contract?
-- Warnings exist today, so which warnings are compatibility-stable and which remain advisory?
+- [Diagnostic compatibility](./§30-Unresolved%20Questions%20Index.md#30261-diagnostic-compatibility)
 
 ### 26.1 Diagnostics in an Editor
 

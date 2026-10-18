@@ -14,8 +14,7 @@ Normative Requirements:
 
 Open Questions:
 
-- Should string indexing be supported at all?
-- Should normalization be specified?
-- Should string equality be specified in terms of Unicode scalar values, UTF-16 code units, or a
-  protobuf-runtime guarantee?
-- Should string comparison beyond equality be supported?
+- [String indexing](./§30-Unresolved%20Questions%20Index.md#30111-string-indexing)
+- [String normalization](./§30-Unresolved%20Questions%20Index.md#30112-string-normalization)
+- [String equality](./§30-Unresolved%20Questions%20Index.md#30113-string-equality)
+- [Ordered string comparison](./§30-Unresolved%20Questions%20Index.md#30114-ordered-string-comparison)

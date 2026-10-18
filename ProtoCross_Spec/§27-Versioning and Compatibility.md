@@ -10,10 +10,9 @@ Possible future syntax:
 language "1.0";
 ```
 
-Open Questions:
+Open Question:
 
-- Is the version declaration required?
-- Can a compilation unit mix language versions?
+- [Language version](./§30-Unresolved%20Questions%20Index.md#30271-language-version)
 
 ### 27.2 Compatibility Policy
 
@@ -31,6 +30,7 @@ Candidate policy:
 - Minor versions may add backward-compatible syntax or features.
 - Major versions may change semantics.
 
-Open Question:
+Open Questions:
 
-- Is ProtoCross intended to preserve generated API compatibility across compiler versions?
+- [The compatibility policy](./§30-Unresolved%20Questions%20Index.md#30272-the-compatibility-policy)
+- [Generated API compatibility](./§30-Unresolved%20Questions%20Index.md#30273-generated-api-compatibility)

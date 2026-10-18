@@ -1,9 +1,9 @@
 # ProtoCross Specification
 
 Status: Living draft, synchronized with current implementation
-Spec version: TBD  
+Spec version: TBD ([30.27.1](./§30-Unresolved%20Questions%20Index.md#30271-language-version))  
 Last updated: 2026-08-30
-Target protobuf versions: TBD  
+Target protobuf versions: TBD ([30.21.6](./§30-Unresolved%20Questions%20Index.md#30216-target-protobuf-versions))  
 Target language backends: C# and C++ implemented; Python is planned but not present
 
 ## Contents

@@ -85,9 +85,8 @@ Implementation Note:
 
 Open Questions:
 
-- Should the compiler run as a `protoc` plugin?  `Eventually. I don't think it's necessary right away, but should happen before v1. ~IS`
-- Should it also support Buf plugin workflows?
-- Should descriptor-set input be accepted directly, and how would it report per-import diagnostics?
+- [Running as a `protoc` plugin, and Buf](./§30-Unresolved%20Questions%20Index.md#30212-running-as-a-protoc-plugin-and-buf)
+- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input)
 
 ### 21.2 Generated Code Integration
 
@@ -122,7 +121,7 @@ The current implementation defines:
 
 Open Question:
 
-- Python and any future backend must define its generated API shape before it can be conforming.
+- [Python's generated API](./§30-Unresolved%20Questions%20Index.md#30214-pythons-generated-api)
 
 ### 21.3 Protobuf Editions and Syntax Versions
 
@@ -148,8 +147,7 @@ Implementation Note:
 
 Open Question:
 
-- Whether a future edition could change a rule this specification states, and how the compiler would
-  notice. Nothing here reads edition-specific features other than through `HasPresence`.
+- [Future editions](./§30-Unresolved%20Questions%20Index.md#30215-future-editions)
 
 ### 21.4 Enum Fields After Parsing
 

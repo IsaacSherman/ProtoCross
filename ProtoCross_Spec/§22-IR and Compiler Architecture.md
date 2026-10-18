@@ -246,6 +246,5 @@ Normative Requirements:
 
 Open Questions:
 
-- Should the IR be serialized as JSON, protobuf, or an internal compiler structure?
-- Should backends consume a stable IR format?
-- Should third-party backends be supported in version 1?
+- [A stable IR format](./§30-Unresolved%20Questions%20Index.md#30221-a-stable-ir-format)
+- [Third-party backends](./§30-Unresolved%20Questions%20Index.md#30222-third-party-backends)

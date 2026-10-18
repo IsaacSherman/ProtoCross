@@ -29,21 +29,7 @@ than reinterpreting it, so one source never means two things.
 
 Open Questions:
 
-- Does ProtoCross define a built-in `Result` type? `I think we should- it doesn't have to be used, but it should be there for ease of use. ~IS`
-  Note: a refusal ([16.3.1](./§16-Methods.md#1631-refusals)) is that `Result` at the one place it is needed, a method's boundary, with
-  the author's type for the error and no generics, and every method may declare one. A `Result` a value
-  can hold remains open.
-- Are arithmetic errors expressible in the type system? `Yes, it should be a fairly expansive enum. ~IS`
-  Note: overflow is no longer one of them. Since 10.1 defines overflow as wrapping, it is a defined
-  result rather than a failure, and nothing about it needs to reach the type system.
-  Note: no built-in enum of them exists. A method that must not end the program for a zero divisor
-  refuses with its own type, `on_zero refuse value` ([16.3.1](./§16-Methods.md#1631-refusals)). `on_zero fail` does not become a refusal
-  by itself, since only the author can say what the refusal is.
-- Can methods be declared as total, meaning they cannot fail at runtime? `I lean toward no, but this might be a nice optimization at some point. ~IS`
-  Note: a project may declare all of its methods so, `Failure/Termination = Forbidden` ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)). A
-  `fails` marker on each method that may end the program was considered and lost: it makes the
-  capability visible but lets no host opt out, and the project setting does both.
-- How do target backends map error results idiomatically while preserving semantics?  `Error handling is heavily on the user to define; we'll provide the Result type with primitive error enums for primitive "exceptions" such as dividing by zero. More advanced stuff?  Users can (and should!) tailor that to their specific needs. ~IS`
-  Note: a refusal is mapped to each target's try pattern, a method that returns whether it built its
-  result and gives the result or the refusal through a parameter ([24.1](./§24-Generated%20API%20Strategy.md#241-c), [24.2](./§24-Generated%20API%20Strategy.md#242-c)). The refusal's
-  type is the author's, as this asks.
+- [A `Result` a value can hold](./§30-Unresolved%20Questions%20Index.md#30192-a-result-a-value-can-hold)
+- [Arithmetic errors in the type system](./§30-Unresolved%20Questions%20Index.md#30193-arithmetic-errors-in-the-type-system)
+- [Total methods](./§30-Unresolved%20Questions%20Index.md#30194-total-methods)
+- [Error results in each target](./§30-Unresolved%20Questions%20Index.md#30195-error-results-in-each-target)

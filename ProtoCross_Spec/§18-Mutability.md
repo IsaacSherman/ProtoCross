@@ -75,7 +75,8 @@ Normative Requirements:
   - A call to a `mut fn` stands on its own: it is a statement, a `var`'s initializer, a local's new
     value, or the value a `return` returns. Anywhere else -- an operand, an argument, a condition, a
     field's new value -- it is `PC0095`. Nothing else is evaluated beside it, so the operand order that
-    [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order) leaves open cannot be seen through a change.
+    [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order) leaves open
+    ([30.9.6](./§30-Unresolved%20Questions%20Index.md#3096-operand-order)) cannot be seen through a change.
   - An argument cannot share a message with the receiver the call changes: be it, be part of it, or
     hold it (`PC0097`). Its parameter is read-only, and one that was part of the receiver would change
     under the method that was promised it could not. Messages, repeated values, strings and bytes are

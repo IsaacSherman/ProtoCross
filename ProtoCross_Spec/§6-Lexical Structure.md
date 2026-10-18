@@ -58,8 +58,7 @@ neither one names anything. Nothing that merely resembles them is reserved: `__i
 
 Open Question:
 
-- Should source names be restricted to ASCII before language stabilization to avoid backend-specific
-  identifier edge cases?
+- [ASCII-only identifiers](./§30-Unresolved%20Questions%20Index.md#3062-ascii-only-identifiers)
 
 ### 6.4 Keywords
 
@@ -152,7 +151,7 @@ of reading as every C-family reader expects.
 
 Open Question:
 
-- `enum` and `message` are reserved by the lexer but do not yet have source syntax.
+- [`enum` and `message` without syntax](./§30-Unresolved%20Questions%20Index.md#3063-enum-and-message-without-syntax)
 
 ### 6.5 Source Classification
 

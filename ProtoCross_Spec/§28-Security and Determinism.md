@@ -25,6 +25,5 @@ Normative Requirements:
 
 Open Questions:
 
-- Should resource limits be specified for generated methods?
-- Should recursion be allowed?
-- Should the compiler reject potentially unbounded recursion?
+- [Runtime limits](./§30-Unresolved%20Questions%20Index.md#30282-runtime-limits)
+- [Recursion](./§30-Unresolved%20Questions%20Index.md#30283-recursion)

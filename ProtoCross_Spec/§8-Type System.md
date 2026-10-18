@@ -19,8 +19,8 @@ Normative Requirements:
 
 Open Questions:
 
-- Should type aliases be allowed if they resolve only to protobuf scalar, enum, or message types?
-- Should helper/result types ever be allowed, or must error handling also be represented using protobuf-defined messages?
+- [Type aliases](./§30-Unresolved%20Questions%20Index.md#3086-type-aliases)
+- [Helper and result types](./§30-Unresolved%20Questions%20Index.md#3087-helper-and-result-types)
 
 ### 8.2 Protobuf Scalar Mapping
 
@@ -48,11 +48,12 @@ Normative Requirements:
   bytes-specific operators.
 - Floating-point behavior is covered by the numeric rules in 10.
 - There are no 8- or 16-bit integer types. **Post-1.0.** Protobuf has no scalar of either width, so
-  no field could hold one, and a value of one could exist only as a local between two conversions.
+  no field could hold one, and a value of one could exist only as a local between two conversions
+  ([30.8.3](./§30-Unresolved%20Questions%20Index.md#3083-8-bit-and-16-bit-integer-types)).
 
 Open Question:
 
-- Should version 1 add bytes literals or bytes-specific operations?
+- [`bytes` literals and operations](./§30-Unresolved%20Questions%20Index.md#3088-bytes-literals-and-operations)
 
 ### 8.3 Non-Protobuf Types
 
@@ -68,7 +69,8 @@ Implementation Note:
 
 Open Questions:
 
-- Should the standard library eventually provide recommended protobuf message shapes for common non-scalar concepts such as money, fixed-scale decimal, dates, durations, or UUIDs?
+- [Standard message shapes](./§30-Unresolved%20Questions%20Index.md#3089-standard-message-shapes)
+- [Decimal](./§30-Unresolved%20Questions%20Index.md#3084-decimal)
 
 ### 8.4 Nullability and Presence
 
@@ -112,5 +114,4 @@ Normative Requirements:
 
 Open Question:
 
-- `oneof` has presence per case as well as per field, and nothing here addresses the case
-  discriminator. No syntax, no IR node, no diagnostic.
+- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases)

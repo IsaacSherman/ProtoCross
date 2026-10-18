@@ -21,9 +21,9 @@ Not implemented:
 - Top-level function calls.
 - Indexing anything but a map. A repeated field has none.
 - Bytes literals.
-- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Each can be written today with a
-  comparison, and how an intrinsic is named and found belongs with the open question of top-level
-  functions ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar)).
+- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0** ([30.9.5](./§30-Unresolved%20Questions%20Index.md#3095-math-intrinsics)).
+  Each can be written today with a comparison, and how an intrinsic is named and found belongs with
+  the open question of top-level functions ([30.7.2](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)).
 
 ### 9.2 Operators
 
@@ -177,7 +177,8 @@ Current defined subset:
 - A store to a map's element, and a change one of a map's methods makes, are ordered as an
   assignment to a field is: the map is reached, setting any unset message on the way, then the key and
   the value are evaluated, and the change is made last ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The key and the value are evaluated in
-  the order this section leaves open for an operator's operands, and so are a map entry's in a literal.
+  the order this section leaves open for an operator's operands
+  ([30.9.6](./§30-Unresolved%20Questions%20Index.md#3096-operand-order)), and so are a map entry's in a literal.
 - A lookup evaluates its map and its key, and its `on_missing` fallback only when the key is missing.
 - An integer division evaluates both its operands, and its `on_zero` fallback only when the divisor
   is zero ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). A conversion to an enum evaluates its number, and its `on_unknown` fallback only
@@ -196,6 +197,4 @@ Current defined subset:
 
 Open Question:
 
-- Should all non-short-circuit binary operators evaluate the left operand before the right operand?
-  This only becomes observable when an operand can terminate through `on_zero fail`. A change cannot
-  make it observable, because a mutating call is never an operand.
+- [Operand order](./§30-Unresolved%20Questions%20Index.md#3096-operand-order)

@@ -80,8 +80,8 @@ Normative Requirements:
 
 Open Questions:
 
-- Should descriptor-set input exist in addition to direct `.proto` imports?
-- Should ProtoCross ever be embedded directly in `.proto` files?
+- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input)
+- [ProtoCross embedded in `.proto` files](./§30-Unresolved%20Questions%20Index.md#3055-protocross-embedded-in-proto-files)
 
 ### 5.3 Compilation Unit
 

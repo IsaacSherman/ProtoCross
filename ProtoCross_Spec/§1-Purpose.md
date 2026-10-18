@@ -12,6 +12,7 @@ This specification distinguishes between:
 
 - Normative language semantics: behavior every conforming compiler and backend must preserve.
 - Implementation details: compiler, IR, runtime, and backend strategies that may vary.
-- Open design questions: unresolved issues requiring explicit decisions before stabilization.
+- Open design questions: unresolved issues requiring explicit decisions before stabilization, each
+  asked once, in [30](./§30-Unresolved%20Questions%20Index.md#30-unresolved-questions-index).
 
 Unless a section is marked "Implementation Note" or "Open Question", its contents are intended to become normative.

@@ -14,4 +14,4 @@ Normative Requirements:
 
 Open Questions:
 
-- Should deterministic pure helper functions be explicitly marked? `Seems unnecessary. ~IS`
+- [Marking pure functions](./§30-Unresolved%20Questions%20Index.md#30202-marking-pure-functions)
