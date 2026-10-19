@@ -219,6 +219,7 @@ public sealed class ConformanceFixture
             Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output))
         {
             ToolFailure = programs.Values.Select(program => program.Failure).FirstOrDefault(failure => failure is not null),
+            DriverOutputs = programs.ToDictionary(entry => entry.Key, entry => entry.Value.Output, StringComparer.Ordinal),
         };
     }
 

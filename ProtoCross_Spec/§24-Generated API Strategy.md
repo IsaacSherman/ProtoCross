@@ -529,6 +529,31 @@ value.
 - A literal that sets nothing is `T()`.
 - A test's receiver fixture is written by the same writer, into the local `receiver`.
 
+**Operands that may each end the program are evaluated into locals first, in order.** C++ fixes no
+order for a call's arguments, nor for the operands of most operators, and the runtime's helpers take
+their operands as arguments: integer `a + b` is `protocross_runtime::wrap_add_i64(a, b)`, whose
+arguments MSVC evaluates right to left. Where two operands of one call, operator, division, lookup or
+change may each end the program or never finish, they are copied into locals in the order written by
+a lambda called where the expression is written, as a message literal is
+([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)):
+
+```cpp
+[&] {
+  auto operand = ::acme::subtotal_cents(self);
+  auto operand1 = ::acme::discount_cents(self);
+  return ::protocross_runtime::wrap_sub_i64(operand, operand1);
+}()
+```
+
+- Only those operands are held. Every other expression is written as it stands, since its order
+  cannot be seen.
+- A local is a copy, so a field read off a temporary, such as what a lookup gives, is not left
+  referring into a temporary that has gone.
+- `and` and `or` are never held, since they already evaluate left first, and their right operand only
+  where it decides the answer.
+- A store whose key and value may each end the program binds the map and holds the key in a local
+  first, in a block of its own, since C++17 evaluates the right side of `=` before its left.
+
 **A map is protoc's `Map`, read through `protocross_runtime.h` and written through `mutable_x()`**
 ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). `operator[]` puts a default at a missing key, which the language means only where an element
 is written to or through, so no read uses it. A lookup with a fallback is

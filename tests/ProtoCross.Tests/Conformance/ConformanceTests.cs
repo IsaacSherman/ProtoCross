@@ -207,6 +207,40 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         }
     }
 
+    /// <summary>
+    /// C++ ends the program at the operand written first, in each case of the operand_order vector (spec 9.3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each case there has two operands that end the program, each a lookup of an empty map of its own, which the
+    /// failure names. That the test passes shows nothing about the order: either operand ends the program with the
+    /// failure code. What the driver passed on from the child says which one did.
+    /// </para>
+    /// <para>
+    /// C# is not asked. It evaluates operands left to right whatever it is given, and its runner keeps a child's
+    /// output to itself.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("call")]
+    [InlineData("sum")]
+    [InlineData("less")]
+    [InlineData("quotient")]
+    [InlineData("lookup")]
+    [InlineData("equal")]
+    [InlineData("store")]
+    [InlineData("add")]
+    [InlineData("entry")]
+    public void CppEndsTheProgramAtTheOperandWrittenFirst(string scenario)
+    {
+        SkipIfUnavailable(_fixture.Cpp);
+
+        var output = _fixture.Cpp.DriverOutputs["operand_order.tests.cc"];
+
+        Assert.Contains($"OrderProbe.{scenario}_first has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"OrderProbe.{scenario}_second has no such key", output, StringComparison.Ordinal);
+    }
+
     private void AssertBackendAgrees(ConformanceRun run)
     {
         SkipIfUnavailable(run);

@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// operand_order.pcross -- every operand evaluated left to right (spec 9.3).
+//
+// Each case reads two maps of its own, and a fixture leaves them all empty, so both of its operands end the
+// program. A lookup that ends it names the map it read, so the name a case's run prints says which operand went
+// first. The maps of messages hold the map a case reads through a lookup.
+message OrderHolder {
+  map<int32, int32> inner = 1;
+}
+
+message OrderProbe {
+  map<int32, int32> call_first = 1;
+  map<int32, int32> call_second = 2;
+  map<int32, int32> sum_first = 3;
+  map<int32, int32> sum_second = 4;
+  map<int32, int32> less_first = 5;
+  map<int32, int32> less_second = 6;
+  map<int32, int32> quotient_first = 7;
+  map<int32, int32> quotient_second = 8;
+  map<int32, OrderHolder> lookup_first = 9;
+  map<int32, int32> lookup_second = 10;
+  map<int32, OrderHolder> equal_first = 11;
+  map<int32, OrderHolder> equal_second = 12;
+  map<int32, int32> store_first = 13;
+  map<int32, int32> store_second = 14;
+  map<int32, int32> add_first = 15;
+  map<int32, int32> add_second = 16;
+  map<int32, int32> entry_first = 17;
+  map<int32, int32> entry_second = 18;
+  map<int32, int32> stored = 19;
+}

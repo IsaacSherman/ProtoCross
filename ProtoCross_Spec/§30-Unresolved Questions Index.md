@@ -180,15 +180,10 @@ Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is
 comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)). How an intrinsic
 is named and found belongs with top-level functions ([30.7.2](#3072-top-level-functions)).
 
-#### 30.9.6 Operand order
+#### 30.9.6 ~~Operand order~~
 
-Evaluation order details for non-short-circuit binary operators. Should all non-short-circuit
-binary operators evaluate the left operand before the right operand? This only becomes observable
-when an operand can terminate through `on_zero fail`. A change cannot make it observable, because a
-mutating call is never an operand.
-
-Asked in [9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order), and
-[18](./§18-Mutability.md#18-mutability) refers to it.
+Decided: every operand is evaluated left to right, in every backend
+([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
 
 ### 30.10 Numeric Semantics
 

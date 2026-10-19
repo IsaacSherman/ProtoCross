@@ -197,7 +197,10 @@ internal sealed class CppTestWorkspace
             lines.Add($"link.exe @{ProcessRunner.QuoteForCmd(linkResponse)}");
             lines.Add($"if errorlevel 1 echo {Marker(i)} LINK-FAILED");
             lines.Add($"if errorlevel 1 goto {next}");
-            lines.Add(ProcessRunner.QuoteForCmd(executable));
+            // Its standard error, and what each expect-fail child it runs prints there, joins its standard output, so
+            // the marker after it divides both. Left apart, every driver's would arrive after the whole script's
+            // output, under no driver's marker, and a failure would not say which driver's test it came from.
+            lines.Add(ProcessRunner.QuoteForCmd(executable) + " 2>&1");
             lines.Add($"echo {Marker(i)} EXIT=%errorlevel%");
             lines.Add($":{next}");
         }

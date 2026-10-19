@@ -151,9 +151,15 @@ Normative Requirement:
 - The evaluation order of expressions must be explicitly defined.
 - Backends must preserve the specified evaluation order.
 
-Current defined subset:
+The order:
 
-- Method call arguments evaluate left to right.
+- **Every operand is evaluated left to right**: an operator's left operand before its right, a call's
+  receiver before its arguments and each argument before the next, and every other construct's
+  operands in the order they are written, where nothing below says otherwise. The order can be seen
+  only where two operands may each end the program or never finish, because evaluating an operand
+  changes nothing: a call to a `mut fn` is never an operand ([18](./§18-Mutability.md#18-mutability)), and no method performs
+  I/O ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)). There it decides which failure the program reports, or whether it reports
+  one at all, and it is the same in every backend.
 - A message literal's values evaluate in the order their fields are written, left to right, as a
   call's arguments do, and a list's elements in order. The order of the schema's field numbers plays
   no part ([13.2](./§13-Messages.md#132-message-construction)).
@@ -175,12 +181,11 @@ Current defined subset:
   local or a field cannot fail, and nothing on the right can change either, so no program can
   observe that order.
 - A store to a map's element, and a change one of a map's methods makes, are ordered as an
-  assignment to a field is: the map is reached, setting any unset message on the way, then the key and
-  the value are evaluated, and the change is made last ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The key and the value are evaluated in
-  the order this section leaves open for an operator's operands
-  ([30.9.6](./§30-Unresolved%20Questions%20Index.md#3096-operand-order)), and so are a map entry's in a literal.
-- A lookup evaluates its map and its key, and its `on_missing` fallback only when the key is missing.
-- An integer division evaluates both its operands, and its `on_zero` fallback only when the divisor
+  assignment to a field is: the map is reached, setting any unset message on the way, then the key,
+  then the value, and the change is made last ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). A map entry in a literal evaluates its key
+  before its value too.
+- A lookup evaluates its map, then its key, and its `on_missing` fallback only when the key is missing.
+- An integer division evaluates its dividend, then its divisor, and its `on_zero` fallback only when the divisor
   is zero ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). A conversion to an enum evaluates its number, and its `on_unknown` fallback only
   when the enum does not name it ([12.1](./§12-Enums.md#121-an-enums-number)).
 - A compound assignment written through an element of a map evaluates its read, clause and all,
@@ -195,6 +200,9 @@ Current defined subset:
   ([18](./§18-Mutability.md#18-mutability)). So no operand can observe a change made by another, whichever order they are
   evaluated in.
 
-Open Question:
+Implementation Note:
 
-- [Operand order](./§30-Unresolved%20Questions%20Index.md#3096-operand-order)
+- C++ fixes no order of its own for a call's arguments, nor for the operands of most operators, and
+  MSVC evaluates a call's arguments right to left. So where two operands may each end the program or
+  never finish, the C++ backend evaluates them into locals first, in the order written, and writes
+  every other expression as it stands ([24.2](./§24-Generated%20API%20Strategy.md#242-c)).
