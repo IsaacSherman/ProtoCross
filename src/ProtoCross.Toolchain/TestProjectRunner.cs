@@ -99,10 +99,6 @@ public static class TestProjectRunner
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The install's prefix is the include directory's parent, because <c>find_package</c> looks for the
-    /// config package under <c>&lt;prefix&gt;/share</c>, beside <c>&lt;prefix&gt;/include</c>.
-    /// </para>
-    /// <para>
     /// ctest runs verbose, which a person would not choose, because every driver's own lines are what
     /// say which tests ran: ctest reports one entry per driver, and a driver that ran nothing exits 0.
     /// </para>
@@ -117,9 +113,7 @@ public static class TestProjectRunner
         // the project's rather than the caller's.
         projectDirectory = Path.GetFullPath(projectDirectory);
         var buildDirectory = Path.Combine(projectDirectory, "build");
-        var prefix = Directory.GetParent(protobuf.IncludeDirectory)?.FullName ?? protobuf.IncludeDirectory;
-
-        var configure = Run(cmake, projectDirectory, timeout, "-S", projectDirectory, "-B", buildDirectory, "-DCMAKE_PREFIX_PATH=" + prefix);
+        var configure = Run(cmake, projectDirectory, timeout, "-S", projectDirectory, "-B", buildDirectory, "-DCMAKE_PREFIX_PATH=" + protobuf.Prefix);
         if (configure.ExitCode != 0)
         {
             return new CMakeTestRun(configure, null, null);

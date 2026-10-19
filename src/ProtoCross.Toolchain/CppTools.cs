@@ -23,6 +23,30 @@ public sealed record ProtobufCppInstall(
     /// <summary>Whether this install has everything needed to link and run, not just to parse.</summary>
     public bool CanLink => ProtocPath is not null && LibraryDirectory is not null && BinaryDirectory is not null;
 
+    /// <summary>The prefix the install is under: the include directory's parent.</summary>
+    /// <remarks>
+    /// What a CMake build is given as <c>CMAKE_PREFIX_PATH</c>, because <c>find_package</c> looks for the config
+    /// package beside <c>&lt;prefix&gt;/include</c>, under <c>&lt;prefix&gt;/share</c> or <c>&lt;prefix&gt;/lib</c>.
+    /// </remarks>
+    public string Prefix => Directory.GetParent(IncludeDirectory)?.FullName ?? IncludeDirectory;
+
+    /// <summary>
+    /// The directory of the CMake package that <c>find_package(Protobuf CONFIG)</c> reads under
+    /// <see cref="Prefix"/>, or null when the install has none.
+    /// </summary>
+    /// <remarks>
+    /// A generated CMake project finds protobuf's libraries, its Abseil and <c>utf8_range</c> dependencies and
+    /// protoc only through this package, so an install without one cannot build it, whatever headers it has.
+    /// </remarks>
+    public string? FindCMakePackage() => CMakeConfigPackage.Find(Prefix, "Protobuf");
+
+    /// <summary>Why an install with no CMake package cannot build a generated CMake project, and what would.</summary>
+    public string DescribeMissingCMakePackage()
+        => $"The protobuf C++ headers at '{IncludeDirectory}' have no CMake package beside them: no "
+            + $"ProtobufConfig.cmake or protobuf-config.cmake under '{Prefix}', which the generated CMake project "
+            + "finds protobuf's libraries, their dependencies and protoc through. A vcpkg install provides one; set "
+            + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory of one to use it.";
+
     /// <summary>
     /// What is missing when <see cref="CanLink"/> is false, named so that whoever reads it learns which
     /// piece of a real install was not found rather than the requirement restated in general.

@@ -169,6 +169,31 @@ public static class ToolLocator
                 + "vcpkg, or set PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory of an install.");
     }
 
+    /// <summary>
+    /// Finds a protobuf C++ install, as <see cref="FindProtobufCpp"/> does, that a generated CMake project can
+    /// build against: one with the CMake package <c>find_package(Protobuf CONFIG)</c> reads.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Headers alone are enough for <see cref="FindProtobufCpp"/>, which also serves the suite's parse-only
+    /// checks, and are not enough to build. Found that way, an install of headers alone let
+    /// <c>protocross test</c> write its output and then fail in cmake's configure, where spec 25.3.3 says a
+    /// missing tool is exit 2 and writes nothing.
+    /// </para>
+    /// <para>
+    /// The package rather than <see cref="ProtobufCppInstall.CanLink"/>, whose libraries are vcpkg's Windows file
+    /// names: the package is what the project actually reads, on every platform, and it names the libraries
+    /// and protoc itself.
+    /// </para>
+    /// </remarks>
+    public static ToolLookup<ProtobufCppInstall> FindBuildableProtobufCpp(string searchFrom, string? configuredInclude = null)
+    {
+        var lookup = FindProtobufCpp(searchFrom, configuredInclude);
+        return lookup.Found && lookup.Tool.FindCMakePackage() is null
+            ? ToolLookup<ProtobufCppInstall>.None(lookup.Tool.DescribeMissingCMakePackage())
+            : lookup;
+    }
+
     private static ProtobufCppInstall CreateProtobufCppInstall(string includeDirectory)
     {
         var tripletDirectory = Directory.GetParent(includeDirectory);

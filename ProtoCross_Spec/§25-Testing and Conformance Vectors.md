@@ -405,6 +405,10 @@ Normative Requirements:
   - C++ needs `cmake`, a C++ compiler and a protobuf C++ install. The install is looked for in a
     `vcpkg_installed` at or above the project's directory or the first source's, under
     `VCPKG_ROOT` or `CMAKE_PREFIX_PATH`, or at `PROTOCROSS_PROTOBUF_CPP_INCLUDE`.
+  - An install is one only with the CMake package the generated project reads through
+    `find_package(Protobuf CONFIG)`, under its prefix where CMake looks for one. Headers alone are not
+    an install, since the project finds protobuf's libraries, their dependencies and protoc only
+    through that package.
   - A missing tool ends the run with exit code 2 and writes nothing. The error says what is missing
     and how to provide it.
   - A missing tool does not skip its backend: `-t` is how a run tests fewer.

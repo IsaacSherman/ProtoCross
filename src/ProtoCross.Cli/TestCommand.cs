@@ -100,7 +100,7 @@ internal static class TestCommand
             // one cannot build the project, and saying so here beats cmake's configure error.
             var cmake = ToolLocator.FindCMake();
             var compiler = ToolLocator.FindCppCompiler();
-            var protobuf = ToolLocator.FindProtobufCpp(SearchFrom(options));
+            var protobuf = ToolLocator.FindBuildableProtobufCpp(SearchFrom(options));
             IReadOnlyList<string> missing = [.. new[] { cmake.Missing, compiler.Missing, protobuf.Missing }.OfType<string>()];
             testers.Add(missing.Count == 0
                 ? new BackendTester("cpp", [], CppTester(cmake.Tool!, protobuf.Tool!))
