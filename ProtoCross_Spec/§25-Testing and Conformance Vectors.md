@@ -52,6 +52,10 @@ Normative Requirements:
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
   declares the expected return value, the expected refusal, or expected terminal failure.
+- **A test's name does not end in whitespace.** One that does is `PC0146`, at the name. Each backend
+  reports a test by its identity, which holds the name ([25.3.3](#2533-running-the-tests)), and C#'s
+  test runner does not keep whitespace at the end of one, so `"rounds up "` could not be told apart
+  from `"rounds up"`. Whitespace inside a name, or before it, is kept by every backend.
 - **A test of a factory's method names it through the factory, `test Invoice.factory.create`, and
   supplies no receiver**, because the method is called on nothing ([16.3](./§16-Methods.md#163-factories)). A `receiver` block
   there is `PC0132`. A test may not target a helper, which is `PC0129`: a test reaches only what a
