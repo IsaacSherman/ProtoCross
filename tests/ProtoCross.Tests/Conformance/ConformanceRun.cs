@@ -26,6 +26,13 @@ internal sealed record ConformanceRun(
     /// <summary>How the tool that ran the tests failed, apart from any test; null when it succeeded.</summary>
     public string? ToolFailure { get; init; }
 
+    /// <summary>What each program a backend built printed, by the file it was built from; empty where there are none.</summary>
+    /// <remarks>
+    /// C++ builds a driver for each source that declares tests, and the driver passes on what each test's child
+    /// printed. That is where a failure says which operation ended the program, which no verdict looks at.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> DriverOutputs { get; init; } = new Dictionary<string, string>();
+
     public static ConformanceRun Skipped(string backend, string reason)
         => new(backend, reason, [], string.Empty, string.Empty);
 

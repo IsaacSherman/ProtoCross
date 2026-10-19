@@ -85,9 +85,8 @@ Implementation Note:
 
 Open Questions:
 
-- Should the compiler run as a `protoc` plugin?  `Eventually. I don't think it's necessary right away, but should happen before v1. ~IS`
-- Should it also support Buf plugin workflows?
-- Should descriptor-set input be accepted directly, and how would it report per-import diagnostics?
+- [Running as a `protoc` plugin, and Buf](./§30-Unresolved%20Questions%20Index.md#30212-running-as-a-protoc-plugin-and-buf), post-1.0
+- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input), post-1.0
 
 ### 21.2 Generated Code Integration
 
@@ -122,12 +121,12 @@ The current implementation defines:
 
 Open Question:
 
-- Python and any future backend must define its generated API shape before it can be conforming.
+- [Python's generated API](./§30-Unresolved%20Questions%20Index.md#30214-pythons-generated-api), post-1.0
 
 ### 21.3 Protobuf Editions and Syntax Versions
 
-**Decided: proto2, proto3, and editions are all supported, and the compiler does not branch on the
-version.**
+**Decided: proto2, proto3, and editions up to 2023 are all supported, and the compiler does not branch
+on the version.**
 
 The version mattered because presence rules differ by it. Once presence is a first-class question
 ([8.4](./§8-Type%20System.md#84-nullability-and-presence)), the compiler asks the descriptor rather than the syntax version, and
@@ -146,10 +145,15 @@ Implementation Note:
   version out of the compiler follows the runtime's own advice rather than merely avoiding a
   warning.
 
-Open Question:
+**Decided: a new edition is supported once the protobuf runtime ProtoCross is built on reads it, and
+its features have been checked against this specification.** Until then a schema written in it is
+refused as it loads, `PC0003`, with a message naming the editions ProtoCross reads.
 
-- Whether a future edition could change a rule this specification states, and how the compiler would
-  notice. Nothing here reads edition-specific features other than through `HasPresence`.
+- Nothing here reads an edition's features other than through `HasPresence`, so a new edition could
+  change a rule this specification states without the compiler noticing. Refusing it until it has been
+  checked is how it is noticed.
+- protoc may compile an edition the runtime cannot read. protoc 31.1 refuses edition 2024 itself, and
+  protoc 35.1 compiles it and leaves the refusal to the compiler, which is why the compiler asks.
 
 ### 21.4 Enum Fields After Parsing
 

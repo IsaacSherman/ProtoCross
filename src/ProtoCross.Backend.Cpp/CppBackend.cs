@@ -438,17 +438,23 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// </param>
     private static string EmitCall(IrMethodCall call, Placement placement, params string[] outs)
     {
-        var arguments = call.Receiver switch
+        IReadOnlyList<IrExpression> operands = call.Receiver is { } receiver ? [receiver, .. call.Arguments] : call.Arguments;
+        var written = call.Receiver switch
         {
             null => [],
-            { } receiver when call.Target.IsMutating => [MutableMessage(receiver, placement)],
-            { } receiver => new List<string> { Expression(receiver, placement) },
+            { } mutated when call.Target.IsMutating => [MutableMessage(mutated, placement)],
+            { } read => new List<string> { Expression(read, placement) },
         };
 
-        arguments.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
-        arguments.AddRange(outs);
+        written.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
 
-        return $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments)})";
+        return InOrder(
+            call,
+            operands,
+            written,
+            arguments => $"{placement.QualifiedFunctionOf(call.Target)}({string.Join(", ", arguments.Concat(outs))})",
+            placement,
+            outs);
     }
 
 }

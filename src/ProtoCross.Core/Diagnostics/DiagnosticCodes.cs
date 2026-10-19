@@ -772,6 +772,10 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor TerminationForbidden =
         new("PC0144", DiagnosticSeverity.Error, "termination forbidden");
 
+    /// <summary>A name holding a letter or digit outside ASCII (spec 6.3).</summary>
+    public static readonly DiagnosticDescriptor NonAsciiIdentifier =
+        new("PC0145", DiagnosticSeverity.Error, "identifier is not ASCII");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

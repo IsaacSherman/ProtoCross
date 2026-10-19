@@ -87,7 +87,7 @@ public sealed partial class CppBackend
         {
             if (initializer.Value is IrMapEntries)
             {
-                EmitMapEntries(writer, access, initializer, placement);
+                EmitMapEntries(writer, access, initializer, names, placement);
                 continue;
             }
 

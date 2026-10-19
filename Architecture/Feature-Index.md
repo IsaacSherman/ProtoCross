@@ -21,6 +21,7 @@ to each group's actual home; central files hold dispatch and shared state rather
 | Refusals: `refuses`, `refuse`, `on_refused`, `on_zero refuse`, `expect refuse` | [Language](Language.md) | `Binder` in `Binder.Refusals.cs`, `IrRefusableCall`, `IrMethodSignature.Refusal`, `IrRefusals` |
 | Forbidding termination: `Failure/Termination` | [Language](Language.md) | `ProjectConfig.Termination`, `Binder` in `Binder.Termination.cs` |
 | Node shapes, behavior annotations, copies, flow | [IR](IR.md) | `IrExpression`, `IrCopy.Of`, `IrFlow.NeverFallsThrough`, `IrMutation` |
+| Operand order: which operands can show it, and how C++ keeps it (spec 9.3) | [C++ backend](Cpp-Backend.md) | `IrEvaluationOrder.IsObservable`, `CppBackend` in `CppBackend.Ordering.cs` |
 | Tree walks, references, scopes, source positions | [IR](IR.md) | `SyntaxWalk.ChildrenOf`, `IrWalk.ChildrenOf`, `SemanticModel` |
 | C# output, runtime helpers, generated test projects | [C# backend](CSharp-Backend.md) | `CSharpBackend`, `CSharpRuntime`, `CSharpTestProject` |
 | C++ output, schema includes, ownership, generated tests | [C++ backend](Cpp-Backend.md) | `CppBackend`, `CppRuntime`, `CppTestProject` |

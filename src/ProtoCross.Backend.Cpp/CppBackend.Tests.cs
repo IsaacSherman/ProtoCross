@@ -539,11 +539,15 @@ public sealed partial class CppBackend
     /// <param name="outs">What a call to a method that may refuse passes for the references it gives its result and refusal through.</param>
     private static string CppInvocation(IrTest test, Placement placement, params string[] outs)
     {
-        var arguments = test.Target.HasReceiver ? [TestReceiverName] : new List<string>();
-        arguments.AddRange(test.Arguments.Select(a => Expression(a.Value, placement)));
-        arguments.AddRange(outs);
+        IReadOnlyList<string> receiver = test.Target.HasReceiver ? [TestReceiverName] : [];
 
-        return $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", arguments)})";
+        return InOrder(
+            test,
+            [.. test.Arguments.Select(argument => argument.Value)],
+            [.. test.Arguments.Select(argument => Expression(argument.Value, placement))],
+            arguments => $"{placement.QualifiedFunctionOf(test.Target)}({string.Join(", ", receiver.Concat(arguments).Concat(outs))})",
+            placement,
+            [TestReceiverName, .. outs]);
     }
 
     private static string UniqueTestFunctionName(IrTest test, HashSet<string> usedNames)

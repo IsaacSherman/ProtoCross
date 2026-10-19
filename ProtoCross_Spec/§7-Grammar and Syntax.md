@@ -163,5 +163,5 @@ Normative Requirement:
 
 Open Questions:
 
-- Should top-level helper functions be allowed in a later version?
-- Should this section be replaced with exact EBNF generated from or checked against the parser?
+- [Top-level functions](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions), post-1.0
+- [An exact grammar](./§30-Unresolved%20Questions%20Index.md#3073-an-exact-grammar), post-1.0

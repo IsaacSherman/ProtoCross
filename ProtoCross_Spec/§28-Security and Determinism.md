@@ -21,10 +21,13 @@ Normative Requirements:
     inside it, and goes on to parse what follows. A check that needs what was skipped cannot see
     it: a method whose every `return` was in skipped branches is also told that not every path
     returns.
-- Runtime loops and recursive method calls are not currently resource-limited.
+- **Recursion is allowed, and never refused**, even where it may never end, as no loop is
+  ([15.2](./§15-Control%20Flow.md#152-loops)). A method that recurses without end runs out of stack, which ends the
+  program the way its host ends one: it is not the terminal failure `fail` is, and does not exit with
+  code 70 ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). Forbidding recursion after 1.0 would break programs, and recursion is
+  the natural way to walk a tree of messages.
+- Runtime loops and recursive method calls are not resource-limited.
 
-Open Questions:
+Open Question:
 
-- Should resource limits be specified for generated methods?
-- Should recursion be allowed?
-- Should the compiler reject potentially unbounded recursion?
+- [Runtime limits](./§30-Unresolved%20Questions%20Index.md#30282-runtime-limits), post-1.0

@@ -45,7 +45,8 @@ The IR preserves:
 - **What was in scope at each point of a method body**: one entry per name that entered a scope, with
   the range it can be written over and the offset it starts resolving from. Recorded where each name
   is declared, because whether a name won is decided there and nowhere else.
-- Exact numeric operation kinds.
+- Exact numeric operation kinds: the operator itself, and for a conversion the family it belongs to,
+  which decides how each target spells it.
 - **How each operation behaves, stamped where it was bound.** Arithmetic, integer division and
   explicit conversion each carry the behavior the project's policy
   ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) selected, so a backend emits what
@@ -60,9 +61,9 @@ The IR preserves:
   declaring name is in together with its offset, and for anything the schema declares it is the
   protobuf fully qualified name. So two locals of one name in sibling blocks are two symbols, one
   field reached bare and through a receiver is one, and the same text recompiled yields the same
-  identities. Every source in one compilation carries a distinct identity of its own -- a path, or
-  the name its caller gave an unsaved buffer -- because a declaration site is only unique within a
-  source.
+  identities. Every source in one compilation carries a distinct identity of its own, its
+  `SourceIdentity` -- a path, or the name its caller gave an unsaved buffer -- because a declaration
+  site is only unique within a source.
 - **Which source each method and each test is declared in.** A module binds every source of a
   compilation together, because a call or a test may reach from one source into another, and it is
   divided back into its sources to emit each to a file of its own. A method says which source it is
@@ -86,7 +87,9 @@ The IR preserves:
   caret on a test's header that it stood in the receiver fixture that test was missing.
 - Presence checks. `IrFieldPresence` carries the field descriptor rather than a lowered boolean,
   because the two targets spell the test in unrelated ways.
-- Field access semantics.
+- Field access: a read of a field of the receiver, or of a message reached through links, holding the
+  field descriptor, which a presence guard must have established where the field is a message
+  ([13.1](./§13-Messages.md#131-field-access)).
 - **A message literal, and a test's fixture, as one node.** A literal holds the fields written, in the
   order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
   value is a list node holding its elements. A fixture is the same node, built for the message its
@@ -105,6 +108,9 @@ The IR preserves:
   literal on a method that returns a message is a node of its own, holding the literal. Which fields
   it compares, in what order, and whether each must be set first are asked of the IR, so both
   backends read one answer ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
+- **What a test expects**: a value, that the program ends (`expect fail`), a refusal, which holds what it
+  expects the refusal to be, or the fields an expected literal sets. A test holds its target, its
+  receiver fixture and its named arguments, each in the order written.
 - **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
   ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
   where it matters: what the receiver is passed as, and whether an argument is passed as a copy.
@@ -132,7 +138,10 @@ The IR preserves:
   stamped by the binder, the default included, so a backend never asks whether an enum is closed
   ([12.1](./§12-Enums.md#121-an-enums-number)). A test of whether a value has a name carries the enum it asks about
   ([12.2](./§12-Enums.md#122-whether-a-value-has-a-name)).
-- Evaluation order.
+- **Evaluation order, as written.** Every node holds its operands in the order they are written, which
+  is the order they are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). The IR answers which operands may end the program or
+  never finish, the only ones whose order can be seen (`IrEvaluationOrder`), so a backend whose target
+  fixes no order of its own knows where to keep it.
 - **A map's reads and writes, each as a node of its own.** A lookup holds the map, the key and what a
   missing key gives: a fallback, which it holds too, or `fail`. Whether a map holds a key, `count()`,
   `is_empty()` and two maps compared are nodes of their own or an operator on two maps. An element as a
@@ -158,7 +167,8 @@ The IR preserves:
   `break`, is asked of the IR rather than recorded beside it. It is the question the missing-return
   check asks, so the two cannot disagree.
 - Error placeholder nodes and types so one failed bind does not necessarily suppress later useful
-  diagnostics.
+  diagnostics: a member access whose name is not written yet, a call of something that cannot be
+  called, and a call used for a value its method does not give, each keeping what was written.
 - What was written in a construct the binder refused, bound and kept by the node standing where it
   was written. That covers the value of a field a literal or an entry refused, an element where a
   map's entry goes, an `on_unknown` fallback on a conversion whose target is not an enum, and the
@@ -167,6 +177,28 @@ The IR preserves:
   for. A conversion's fallback is kept even where its target did not resolve, since the type meant
   may well have been an enum. So it is there to ask about while it is being typed, and every rule that applies to anything bound applies to it: a mutating call there is still one
   inside an expression ([18](./§18-Mutability.md#18-mutability)).
+
+**Every node, and what it keeps.** Each IR type is named here beside the part of the list above that
+describes it, and a test fails when one is not, so this contract cannot fall behind the code
+unnoticed, as it did before #107 caught it up.
+
+| IR types | What they keep |
+|---|---|
+| `IrModule`, `IrMethod`, `IrMethodSignature`, `IrParameter`, `IrLocal`, `IrFactory` | Declarations: each method's signature, with the block that declared it, whether it may change its receiver, and what it refuses with; parameters and locals by declaration site; and each factory block by the message it builds |
+| `IrTest`, `IrTestArgument` | A test: its target, its source, its receiver fixture and its named arguments |
+| `IrTestReturnExpectation`, `IrTestFailExpectation`, `IrTestRefusalExpectation`, `IrTestFieldsExpectation` | What a test expects |
+| `IrBlock`, `IrVariableDeclaration`, `IrExpressionStatement`, `IrReturn`, `IrIf`, `IrWhile`, `IrForEach`, `IrBreak`, `IrContinue` | Statements and control flow, as written |
+| `IrSwitch`, `IrSwitchArm` | A switch, as written |
+| `IrAssignment`, `IrFieldAssignment`, `IrAppend`, `IrElementAssignment`, `IrMapUpdate` | What changes |
+| `IrRefuse`, `IrRefusableCall` | A refusal |
+| `IrThis`, `IrLocalReference`, `IrParameterReference`, `IrMethodCall` | References and calls, each to the identity it resolved to |
+| `IrFieldAccess`, `IrFieldPresence` | Field access, and presence checks |
+| `IrBinary`, `IrUnary`, `IrConversion`, `IrIntegerDivision` | Exact numeric operation kinds, how each operation behaves, and what a zero divisor does |
+| `IrEnumValue`, `IrEnumToNumber`, `IrNumberToEnum`, `IrEnumMembership` | Descriptor identities for enum values, and an enum's number |
+| `IrLiteral` | A literal's value in one stated representation |
+| `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node |
+| `IrMapLookup`, `IrMapContains`, `IrMapQuery`, `IrMapElement`, `IrMapEntries`, `IrMapEntry` | A map's reads and writes |
+| `IrMissingMemberAccess`, `IrUncallableInvocation`, `IrValuelessCall` | Error placeholder nodes, and what was written in part |
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
 all of it, which is what a backend or a host may write code against instead of checking. Each is
@@ -244,8 +276,17 @@ Normative Requirements:
   declaration with no site, or no documentation, or both. A caller that wants to navigate asks about
   the site and a caller that wants to explain asks about the documentation.
 
-Open Questions:
+**Decided: the IR is public in-process types, with no compatibility promise in 1.0 and no serialized
+format.** The backends and the editor in this repository consume it in process, and nothing outside it
+can load a backend in 1.0, so a promise would restrict every 1.x change for nobody's benefit. The IR
+has to stay free to change, for the Python backend above all. What has to stay consistent is the output
+([27.2](./§27-Versioning%20and%20Compatibility.md#272-compatibility-policy)).
 
-- Should the IR be serialized as JSON, protobuf, or an internal compiler structure?
-- Should backends consume a stable IR format?
-- Should third-party backends be supported in version 1?
+**Decided: third-party backends are not supported in version 1.**
+
+- Ideally a new backend joins this project, though nothing can make one.
+- There is no plan yet for a standard IR that compiles into any language one chooses. The IR is close
+  to being one, and nothing fundamental stands in the way of it later, if there is demand to take the
+  project that way.
+- A promise about the IR comes with that support, not before it.
+

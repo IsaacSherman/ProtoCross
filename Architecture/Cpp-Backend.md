@@ -13,7 +13,8 @@
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `EmitConstruction`, `EmitFields`; [Context]: `NamesFor`, `NameAllocator`; immediate lambdas or construction in place use shared name allocation. | [literal emission] |
 | Mutation, copies and append | [Emitter]: `Signature`; [Statements]: `EmitFieldAssignment`, `EmitAppend`, `EmitFieldWrite`, `StoredValue`, `MutableMessage`; [mutation]: `IrMutation.ChangesElementsOf`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
 | Methods that may refuse, and calls to them | [Refusals]: `EmitRefusableCall`, `EmitPassedOn`, `EmitPassedOnInto`, `EmitClauseRefusal`; [Context]: `Outs`, `Placement.Outs`, `Placement.Held`, `NamesFor`; a refusing method returns `bool` with reference parameters, a call written for its value is a lambda as a literal is, and a clause that refuses hands its fallback helper a lambda that marks it refused (`DividedOr`, `NamedOr`, `ValueOr`). | [refusal emission]; [clause refusal emission]; [conformance] |
-| Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MutableElement`. | [map emission] |
+| Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `MapsCompared`, `EmitElementAssignment`, `EmitKeyBeforeValue`, `EmitMapUpdate`, `MutableElement`. | [map emission] |
+| Operands left to right | [Ordering]: `InOrder` holds, in the order written, the operands of a call, operator, division, lookup, change or test that may each end the program, as `IrEvaluationOrder.IsObservable` says, in locals of a lambda; `&&` and `\|\|` are never held. [Maps]: `EmitKeyBeforeValue`, `EmitMapEntries` hold a store's key before its value. | [operand order emission]; [conformance] |
 | Runtime support | [Runtime]: `CppRuntime.Source`, `Stem`, `EmitFloatToIntegerHelper`, `EmitEnumHelpers`, `EmitMapHelpers`, `EmitRefusalHelper`, `EmitFailHelper`. | [Backend tests]; [conformance] |
 | Schema includes and type names | [Schemas]: `SchemasNamedBeyond`, `SchemasNamedBy`, `ProtoHeadersOf`; [Names]: `NameConventions.GetCppProtoHeader`, `GetCppTypeName`, `GetCppFieldName`, `GetCppValueName`; [Context]: `TypeName`, `QualifiedTypeName`, `QualifiedEnumName`, `Escape`. | [schema includes]; [type names]; [field names] |
 | Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitCppRefusingCall`, `EmitCppComparison`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`, naming the project and prefixing every target as `ScaffoldOptions.Settings` says (`Prefixed`). | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
@@ -29,6 +30,7 @@
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs
 [Literals]: ../src/ProtoCross.Backend.Cpp/CppBackend.MessageLiterals.cs
 [Maps]: ../src/ProtoCross.Backend.Cpp/CppBackend.Maps.cs
+[Ordering]: ../src/ProtoCross.Backend.Cpp/CppBackend.Ordering.cs
 [Refusals]: ../src/ProtoCross.Backend.Cpp/CppBackend.Refusals.cs
 [Runtime]: ../src/ProtoCross.Backend.Cpp/CppRuntime.cs
 [Schemas]: ../src/ProtoCross.Backend.Cpp/CppBackend.Schemas.cs
@@ -45,6 +47,7 @@
 [mutation emission]: ../tests/ProtoCross.Tests/BackendTests.Mutation.cs
 [append emission]: ../tests/ProtoCross.Tests/BackendTests.Append.cs
 [map emission]: ../tests/ProtoCross.Tests/BackendTests.Maps.cs
+[operand order emission]: ../tests/ProtoCross.Tests/BackendTests.OperandOrder.cs
 [refusal emission]: ../tests/ProtoCross.Tests/RefusalTests.cs
 [clause refusal emission]: ../tests/ProtoCross.Tests/ClauseRefusalTests.cs
 [schema includes]: ../tests/ProtoCross.Tests/BackendTests.CppSchemaIncludes.cs
