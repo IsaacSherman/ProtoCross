@@ -51,7 +51,6 @@ public sealed class Lexer
         ["default"] = TokenKind.Default,
         ["double"] = TokenKind.Double,
         ["else"] = TokenKind.Else,
-        ["enum"] = TokenKind.Enum,
         ["extend"] = TokenKind.Extend,
         ["expect"] = TokenKind.Expect,
         ["fail"] = TokenKind.Fail,
@@ -65,7 +64,6 @@ public sealed class Lexer
         ["in"] = TokenKind.In,
         ["int32"] = TokenKind.Int32,
         ["int64"] = TokenKind.Int64,
-        ["message"] = TokenKind.Message,
         ["not"] = TokenKind.Not,
         ["on_missing"] = TokenKind.OnMissing,
         ["on_refused"] = TokenKind.OnRefused,
@@ -285,6 +283,12 @@ public sealed class Lexer
         _lineStart = _position;
     }
 
+    /// <remarks>
+    /// Any letter or digit is read into the word, ASCII or not, and a name that holds one outside ASCII is
+    /// reported and lexed as the name it is. Stopping at the first such character would leave the rest of the
+    /// word as a second token, and every use of the name as a parse error about something else, where the one
+    /// thing wrong is a character the author can see.
+    /// </remarks>
     private Token LexIdentifierOrKeyword(int start, int line, int column)
     {
         while (_position < _text.Length && (char.IsLetterOrDigit(Current) || Current == '_'))
@@ -295,8 +299,39 @@ public sealed class Lexer
         var text = _text[start.._position];
         var span = SourceSpan.SingleLine(_file, start, line, column, text.Length);
 
+        ReportIfNotAscii(text, span);
+
         var (kind, value) = Classify(text);
         return new Token(kind, text, span, value);
+    }
+
+    /// <summary>Reports a name that holds a character outside ASCII (<c>PC0145</c>, spec 6.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// A name is ASCII because the targets do not agree about any other letter. C# takes a letter by its Unicode
+    /// category, as .NET does, and C++ by a rule of its own that also depends on the compiler and on the encoding it
+    /// reads the generated file in, so a name one target accepts the other may refuse. protobuf's own names are
+    /// ASCII already, so this narrows only what a source declares for itself: a method, a parameter or a local.
+    /// </para>
+    /// <para>
+    /// Once per name as it is written, on the whole name, naming the first character outside ASCII and its code
+    /// point, which is what a reader needs where the character looks like an ASCII one.
+    /// </para>
+    /// </remarks>
+    private void ReportIfNotAscii(string text, SourceSpan span)
+    {
+        var index = text.AsSpan().IndexOfAnyExceptInRange((char)0, (char)0x7F);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var character = text[index];
+        _diagnostics.Report(
+            DiagnosticCodes.NonAsciiIdentifier,
+            $"'{text}' holds '{character}' (U+{(int)character:X4}), and a name is made of ASCII letters, digits and '_'.",
+            span,
+            "Spell the name with the letters a to z and A to Z, the digits 0 to 9, and '_' (spec 6.3).");
     }
 
     /// <summary>What a word lexes as: a literal spelled like a name, a keyword, or an identifier.</summary>

@@ -54,18 +54,15 @@ literal is part of it, and a literal with no expected type is `int64` or else `u
 ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). Whether there is a `bytes` literal
 remains open ([30.8.8](#3088-bytes-literals-and-operations)).
 
-#### 30.6.2 ASCII-only identifiers
+#### 30.6.2 ~~ASCII-only identifiers~~
 
-Should source names be restricted to ASCII before language stabilization to avoid backend-specific
-identifier edge cases?
+Decided: an identifier is ASCII, and a name holding any other letter or digit is `PC0145`
+([6.3](./§6-Lexical%20Structure.md#63-identifiers)).
 
-Asked in [6.3](./§6-Lexical%20Structure.md#63-identifiers).
+#### 30.6.3 ~~`enum` and `message` without syntax~~
 
-#### 30.6.3 `enum` and `message` without syntax
-
-`enum` and `message` are reserved by the lexer but do not yet have source syntax.
-
-Asked in [6.4](./§6-Lexical%20Structure.md#64-keywords).
+Decided: neither is reserved, and a later syntax that uses one makes it contextual
+([6.4](./§6-Lexical%20Structure.md#64-keywords)).
 
 ### 30.7 Grammar and Syntax
 

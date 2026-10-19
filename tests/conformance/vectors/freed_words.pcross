@@ -1,0 +1,49 @@
+// Conformance vectors for 'enum' and 'message' as names (spec 6.4).
+//
+// Neither is a reserved word, so a schema's fields called so are read like any other field, and a source may
+// name a parameter or a local after either. Each target escapes the names it reserves itself: C# a parameter
+// named 'enum', and C++ the field and the parameter.
+
+import proto "freed_words.proto";
+
+extend FreedStatus {
+    fn text() -> string {
+        return message;
+    }
+
+    fn kind() -> int32 {
+        return enum;
+    }
+
+    fn described() -> bool {
+        return message != "" and enum > 0;
+    }
+}
+
+extend FreedCounter {
+    fn added(enum: int32) -> int32 {
+        var message = count + enum;
+        return message;
+    }
+}
+
+test FreedStatus.text "a field named message is read" {
+    receiver { message: "not found" }
+    expect return "not found";
+}
+
+test FreedStatus.kind "a field named enum is read" {
+    receiver { enum: 5 }
+    expect return 5;
+}
+
+test FreedStatus.described "both are read in one expression" {
+    receiver { message: "not found", enum: 5 }
+    expect return true;
+}
+
+test FreedCounter.added "a parameter named enum and a local named message" {
+    receiver { count: 2 }
+    arg enum = 3;
+    expect return 5;
+}

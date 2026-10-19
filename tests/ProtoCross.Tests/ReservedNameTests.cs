@@ -25,6 +25,8 @@ public class ReservedNameTests
     [InlineData("__INF", false)]
     [InlineData("__NAN", false)]
     [InlineData("__inf", true)]
+    [InlineData("message", true)]
+    [InlineData("enum", true)]
     public void ANameCanBeWrittenOnlyWhereEveryPartLexesAsAName(string name, bool writable)
         => Assert.Equal(writable, Lexer.CanBeWritten(name));
 

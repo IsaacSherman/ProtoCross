@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// freed_words.pcross -- 'enum' and 'message', which are names rather than reserved words (spec 6.4).
+//
+// A status message's text is a field called 'message' in schemas everywhere, google.rpc.Status's among
+// them. 'enum' is a C++ keyword, so protoc's C++ escapes the accessor of a field named so.
+message FreedStatus {
+  string message = 1;
+  int32 enum = 2;
+}
+
+message FreedCounter {
+  int32 count = 1;
+}
