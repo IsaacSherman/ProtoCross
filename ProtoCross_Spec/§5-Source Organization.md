@@ -80,8 +80,8 @@ Normative Requirements:
 
 Open Questions:
 
-- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input)
-- [ProtoCross embedded in `.proto` files](./§30-Unresolved%20Questions%20Index.md#3055-protocross-embedded-in-proto-files)
+- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input), post-1.0
+- [ProtoCross embedded in `.proto` files](./§30-Unresolved%20Questions%20Index.md#3055-protocross-embedded-in-proto-files), post-1.0
 
 ### 5.3 Compilation Unit
 

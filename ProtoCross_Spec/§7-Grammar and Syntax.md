@@ -163,5 +163,5 @@ Normative Requirement:
 
 Open Questions:
 
-- [Top-level functions](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)
-- [An exact grammar](./§30-Unresolved%20Questions%20Index.md#3073-an-exact-grammar)
+- [Top-level functions](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions), post-1.0
+- [An exact grammar](./§30-Unresolved%20Questions%20Index.md#3073-an-exact-grammar), post-1.0

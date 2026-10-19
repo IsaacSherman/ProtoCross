@@ -16,11 +16,13 @@ Normative Requirements:
 - `void` is a method return marker only; it is not a protobuf value type and cannot be used for fields, variables, or parameters.
 - Repeated fields have a compiler type, `repeated <element>`, so they can be iterated, but there is
   no source syntax for declaring a repeated local or parameter.
+- There are no helper or result types. A method that cannot give its result refuses with a type it
+  declares ([16.3.1](./§16-Methods.md#1631-refusals)), and the language has no type of its own to report an error with
+  ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
 
-Open Questions:
+Open Question:
 
-- [Type aliases](./§30-Unresolved%20Questions%20Index.md#3086-type-aliases)
-- [Helper and result types](./§30-Unresolved%20Questions%20Index.md#3087-helper-and-result-types)
+- [Type aliases](./§30-Unresolved%20Questions%20Index.md#3086-type-aliases), post-1.0
 
 ### 8.2 Protobuf Scalar Mapping
 
@@ -53,7 +55,7 @@ Normative Requirements:
 
 Open Question:
 
-- [`bytes` literals and operations](./§30-Unresolved%20Questions%20Index.md#3088-bytes-literals-and-operations)
+- [`bytes` literals and operations](./§30-Unresolved%20Questions%20Index.md#3088-bytes-literals-and-operations), post-1.0
 
 ### 8.3 Non-Protobuf Types
 
@@ -69,8 +71,8 @@ Implementation Note:
 
 Open Questions:
 
-- [Standard message shapes](./§30-Unresolved%20Questions%20Index.md#3089-standard-message-shapes)
-- [Decimal](./§30-Unresolved%20Questions%20Index.md#3084-decimal)
+- [Standard message shapes](./§30-Unresolved%20Questions%20Index.md#3089-standard-message-shapes), post-1.0
+- [Decimal](./§30-Unresolved%20Questions%20Index.md#3084-decimal), post-1.0
 
 ### 8.4 Nullability and Presence
 
@@ -114,4 +116,4 @@ Normative Requirements:
 
 Open Question:
 
-- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases)
+- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases), post-1.0

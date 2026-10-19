@@ -96,7 +96,7 @@ Backend obligations:
 
 Open Question:
 
-- [Policy narrower than a project](./§30-Unresolved%20Questions%20Index.md#30108-policy-narrower-than-a-project)
+- [Policy narrower than a project](./§30-Unresolved%20Questions%20Index.md#30108-policy-narrower-than-a-project), post-1.0
 
 ### 10.2 Division
 
@@ -191,14 +191,14 @@ never be taken; no runtime check is emitted in that case.
 
 Open Questions:
 
-- [A divisor known to be zero](./§30-Unresolved%20Questions%20Index.md#30109-a-divisor-known-to-be-zero)
+- [A divisor known to be zero](./§30-Unresolved%20Questions%20Index.md#30109-a-divisor-known-to-be-zero), post-1.0
 - ~~`on_zero fail` gives generated library code the ability to terminate the host process, and a
   server embedding ProtoCross behavior has no way to opt out.~~ Decided: termination stays, and a
   project may forbid it. `Failure/Termination = Forbidden` makes every construct that would end the
   program a compile error where it is written ([10.4](#104-compile-time-policy)), and every method may refuse instead, leaving the
   answer to its caller, with `on_zero refuse` for a zero divisor ([16.3.1](./§16-Methods.md#1631-refusals)). `fail` does not become a
   refusal by itself; a refusal's type is the author's.
-- [Division in a Python backend](./§30-Unresolved%20Questions%20Index.md#301010-division-in-a-python-backend)
+- [Division in a Python backend](./§30-Unresolved%20Questions%20Index.md#301010-division-in-a-python-backend), post-1.0
 
 ### 10.3 Numeric Conversions
 
@@ -314,7 +314,7 @@ an addition rather than a discovery.
 
 Open Question:
 
-- [A checked conversion](./§30-Unresolved%20Questions%20Index.md#301011-a-checked-conversion)
+- [A checked conversion](./§30-Unresolved%20Questions%20Index.md#301011-a-checked-conversion), post-1.0
 
 ### 10.4 Compile-Time Policy
 
@@ -440,10 +440,12 @@ language-dependent preference, including the settled ones, so the whole contract
 place. `docs/reference-semantics.md` is the companion table: what each value means in each backend,
 and which of them are C#'s own behavior rather than something ProtoCross invented.
 
-Open Questions:
+Whether a language version is declared in this file or in each source is a question for the version
+that first needs a declaration ([27.1](./§27-Versioning%20and%20Compatibility.md#271-language-versioning)).
 
-- [Language version](./§30-Unresolved%20Questions%20Index.md#30271-language-version), and whether it belongs in this file
-- [A backend's own settings](./§30-Unresolved%20Questions%20Index.md#301012-a-backends-own-settings)
+Open Question:
+
+- [A backend's own settings](./§30-Unresolved%20Questions%20Index.md#301012-a-backends-own-settings), post-1.0
 
 ### 10.4.1 Host Configuration
 

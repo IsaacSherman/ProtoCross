@@ -1,9 +1,9 @@
 # ProtoCross Specification
 
 Status: Living draft, synchronized with current implementation
-Spec version: TBD ([30.27.1](./§30-Unresolved%20Questions%20Index.md#30271-language-version))  
+Spec version: TBD  
 Last updated: 2026-08-30
-Target protobuf versions: TBD ([30.21.6](./§30-Unresolved%20Questions%20Index.md#30216-target-protobuf-versions))  
+Target protobuf versions: tested with protoc 31.1 and Google.Protobuf 3.31.1 for C#, and protobuf C++ 6.33.4 from vcpkg; proto2, proto3 and editions up to 2023 ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions))  
 Target language backends: C# and C++ implemented; Python is planned but not present
 
 ## Contents

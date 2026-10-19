@@ -76,7 +76,7 @@ value today, `RequireGuard`.
 
 Open Questions:
 
-- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases)
+- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases), post-1.0
 - ~~Map fields, which are not supported at all.~~ Decided: nothing a guard shows is about a map's
   element, since an element is reached only through a key, which no guard names. A message read
   through a lookup has no name and is guarded as a call's result is: bind it to a local
@@ -198,7 +198,7 @@ nothing, whereas taking a meaning back would break code.
 
 Open Questions:
 
-- [Message equality](./§30-Unresolved%20Questions%20Index.md#30133-message-equality)
+- [Message equality](./§30-Unresolved%20Questions%20Index.md#30133-message-equality), post-1.0
 - ~~Should the binder reject equality on message and repeated values until this is settled?~~
   Decided: yes, as above.
 

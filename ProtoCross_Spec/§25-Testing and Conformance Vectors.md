@@ -202,6 +202,13 @@ Implemented backend behavior:
 - C++ generates standalone test executables and can scaffold a CMake project.
 - Python has no implementation.
 
+**Decided: a fixture is part of the generated test.** It is a message literal, which a backend writes as
+code inside the test, so there is no fixture file to copy beside it.
+
+**Decided: generated tests are build artifacts.** Generation is deterministic, so a copy checked in
+changes only when its source or the compiler does. A release may still change their text, because only
+generated names and signatures are promised ([27.2](./§27-Versioning%20and%20Compatibility.md#272-compatibility-policy)).
+
 Open Questions:
 
 - ~~Should test declarations live in production `.pcross` files, separate `.pcrosstest` files,
@@ -213,13 +220,11 @@ Open Questions:
 - ~~Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
   three?~~ Decided: a message literal, as a fixture is, compared by the fields it sets
   ([25.3](#253-author-written-protocross-unit-tests)).
-- [Embedding or copying fixtures](./§30-Unresolved%20Questions%20Index.md#30254-embedding-or-copying-fixtures)
 - ~~Should target test framework selection be a backend option such as
   `--test-opt framework=xunit|standalone|gtest`?~~ Decided for 1.0: no. A C# test is an xUnit test
   and a C++ test is a standalone driver, and a setting names and targets the project that builds
   them rather than choosing the framework they are written for ([25.3.2](#2532-test-projects)).
-- [Checking in generated tests](./§30-Unresolved%20Questions%20Index.md#30255-checking-in-generated-tests)
-- [The `protoc` plugin's flag names](./§30-Unresolved%20Questions%20Index.md#30212-running-as-a-protoc-plugin-and-buf)
+- [The `protoc` plugin's flag names](./§30-Unresolved%20Questions%20Index.md#30212-running-as-a-protoc-plugin-and-buf), post-1.0
 
 Decided: `expect fail` runs out of process. A terminal failure cannot be observed from inside the
 process it ends, so a backend generates such a test as a driver that relaunches itself for that one

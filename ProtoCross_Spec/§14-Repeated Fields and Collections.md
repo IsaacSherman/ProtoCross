@@ -80,13 +80,15 @@ Normative Requirement:
   element, since they may be. A loop over a parameter's field has nothing to protect: nothing may
   change a parameter, and nothing the method may change is part of one.
 
+**Decided: no collection helpers, and no indexing without a bounds check.** There is no filtering,
+mapping, sorting or aggregation: basics only. A repeated value has no indexing ([14.2](#142-maps)), and if
+indexing is ever added, an index out of range is answered explicitly, as a missing key is.
+
 Open Questions:
 
-- [Collection helpers](./§30-Unresolved%20Questions%20Index.md#30143-collection-helpers)
 - ~~Should repeated field mutation ever be allowed?~~ Decided: an element may change through the name
   a `for` binds, and a field, or a local holding a repeated value, may be appended to with
   `place.append(value);`. Nothing may be cleared or removed ([18](./§18-Mutability.md#18-mutability)).
-- [Bounds-checked indexing](./§30-Unresolved%20Questions%20Index.md#30144-bounds-checked-indexing)
 
 ### 14.2 Maps
 
@@ -210,5 +212,5 @@ Open Questions:
 
 - ~~Is map iteration order specified or explicitly unspecified?~~ Decided: no map is iterated (above).
 - ~~What map operations are portable?~~ Decided: the ones above.
-- [A map built from repeated entries](./§30-Unresolved%20Questions%20Index.md#30145-a-map-built-from-repeated-entries)
+- [A map built from repeated entries](./§30-Unresolved%20Questions%20Index.md#30145-a-map-built-from-repeated-entries), post-1.0
 - [Message equality](./§30-Unresolved%20Questions%20Index.md#30133-message-equality), which a map of messages has when a message does

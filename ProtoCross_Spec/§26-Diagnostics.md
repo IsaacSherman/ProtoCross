@@ -50,9 +50,17 @@ position at all: it names the scope the setting was written at — `<user settin
 `<workspace settings>`, `<folder settings>`, `<environment>` — because a client sends settings as
 values rather than as the text of the file it read them from.
 
-Open Questions:
+**Decided: a diagnostic's code and severity are part of the compatibility contract; its words are not.**
 
-- [Diagnostic compatibility](./§30-Unresolved%20Questions%20Index.md#30261-diagnostic-compatibility)
+- Within a major version, a code keeps its meaning and its severity, and a code is never reused, not
+  even once it is retired. A quick fix or a suppression keys on the code, so a code that changed meaning
+  would apply it to the wrong thing.
+- A message, its help and its span may improve in any release.
+- A minor release may add a diagnostic. A new error is only for a program that was already wrong: one
+  whose generated code would not compile, or would behave differently in two backends.
+- Every warning is as stable as every error. A new warning may come in a minor release, and none
+  becomes an error before the next major version, since a warning can already fail a build that treats
+  warnings as errors.
 
 ### 26.1 Diagnostics in an Editor
 

@@ -23,7 +23,7 @@ Not implemented:
 - Bytes literals.
 - Math intrinsics such as `abs`, `min` and `max`. **Post-1.0** ([30.9.5](./§30-Unresolved%20Questions%20Index.md#3095-math-intrinsics)).
   Each can be written today with a comparison, and how an intrinsic is named and found belongs with
-  the open question of top-level functions ([30.7.2](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)).
+  top-level functions, which are post-1.0 too ([30.7.2](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)).
 
 ### 9.2 Operators
 

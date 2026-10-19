@@ -231,5 +231,5 @@ Normative Requirements:
 A refusal is the way a method declines without ending the program, so a project that forbids ending
 it ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) writes one wherever it would otherwise have written `fail`. `fail` does not turn into a
 refusal by itself: a refusal's type is the author's, and only the author can say what value means
-"no time" or "no price". Whether a value may hold a refusal remains open
-([30.19.2](./§30-Unresolved%20Questions%20Index.md#30192-a-result-a-value-can-hold)).
+"no time" or "no price". No value holds a refusal
+([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).

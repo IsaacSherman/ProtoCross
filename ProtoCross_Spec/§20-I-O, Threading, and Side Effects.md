@@ -12,6 +12,5 @@ Normative Requirements:
   has none ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), so nothing it generates writes to standard error or ends the process.
 - ProtoCross methods may call only ProtoCross methods resolved by the compiler.
 
-Open Questions:
-
-- [Marking pure functions](./§30-Unresolved%20Questions%20Index.md#30202-marking-pure-functions)
+**Decided: a pure method is not marked.** Every method is pure except a `mut fn`, which is marked
+already ([18](./§18-Mutability.md#18-mutability)), so a marker would say of each other method what all of them are.
