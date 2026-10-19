@@ -15,6 +15,8 @@ Read these as needed, rather than on every prompt:
   in its entirety. Keep the lookup and topic guides synchronized when updating the architecture.
 - **Issue work:** Read the [language 1.0 workflow](docs/language-1-workflow.md) for the per-issue
   process. The current language epic (#108) builds on the [editor-support workflow](docs/epic-47-workflow.md).
+- **Finishing a sprint:** Read the [end-of-sprint procedures](docs/end-of-sprint-procedures.md)
+  before taking a sprint branch to `main`.
 - **Testing:** Follow [Testing.md](Agent_Instructions/Testing.md).
 - **Spec maintenance:** Follow [SpecMaintenance.md](Agent_Instructions/SpecMaintenance.md).
 - **Commits and pull requests:** Follow [Committing.md](Agent_Instructions/Committing.md).
