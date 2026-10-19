@@ -126,7 +126,8 @@ Implemented:
   number with no name, as an `on_zero` fallback is only for a zero divisor.
   `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
   and 12.2.
-- Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
+- Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions up to
+  2023. A schema in a newer edition is refused as it loads; the spec has the rule in section 21.3.
 - Maps, read and changed by key and never iterated. Every read says what a missing key gives,
   `prices[sku] on_missing 0` or `on_missing fail`, and the fallback is evaluated only when the key is
   missing. `sku in prices`, `count()` and `is_empty()` ask about a map; `prices[sku] = 5;`,
@@ -179,11 +180,14 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `Result` types, a value that holds a refusal, `==` between two messages (a test compares an expected literal by
-the fields it sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
-tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
-does not implement, such as iterating a map, rather than emitting something whose semantics differ
-from the spec.
+Not implemented: `==` between two messages (a test compares an expected literal by the fields it
+sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members
+are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
+unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
+than emitting something whose semantics differ from the spec.
+
+Not planned: `Result` types, or any other value that holds a refusal. A method that cannot give its
+result refuses, and each call says what a refusal makes of it. The spec has the rule in section 19.
 
 ### Building
 
