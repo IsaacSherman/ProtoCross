@@ -110,7 +110,9 @@ The IR preserves:
   backends read one answer ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - **What a test expects**: a value, that the program ends (`expect fail`), a refusal, which holds what it
   expects the refusal to be, or the fields an expected literal sets. A test holds its target, its
-  receiver fixture and its named arguments, each in the order written.
+  receiver fixture, whose fields are in the order written, and its named arguments, in the order the
+  target declares its parameters rather than the order the test writes them. That is the order both
+  backends evaluate them in.
 - **Which methods may change their receiver.** A method's signature says whether it is a `mut fn`
   ([18](./§18-Mutability.md#18-mutability)), because a call reaches the signature rather than the method, and the call is
   where it matters: what the receiver is passed as, and whether an argument is passed as a copy.

@@ -465,7 +465,8 @@ Decided: no marker. Every method is pure except a `mut fn`, which is marked alre
 
 #### 30.21.1 ~~Which protobuf syntax versions are supported~~
 
-Decided: proto2, proto3, and editions, with no version check in the compiler
+Decided: proto2, proto3, and editions up to 2023. The compiler does not branch on the version, and a
+schema in a newer edition is refused as it loads, `PC0003`, with a message naming the editions it reads
 ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)).
 
 #### 30.21.2 Running as a `protoc` plugin, and Buf
