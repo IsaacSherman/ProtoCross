@@ -125,6 +125,22 @@ public class TestVerdictTests
     }
 
     /// <summary>
+    /// A test with an empty name has an identity that ends in a space, and its line is matched with the
+    /// space kept, whatever line ending the driver wrote.
+    /// </summary>
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    public void ADriverLineKeepsTheSpaceAnEmptyNameEndsIn(string lineEnding)
+    {
+        const string Unnamed = "billing.Invoice.total: ";
+
+        var results = TestReports.FromDriverOutput([Unnamed], $"[ok] {Unnamed}{lineEnding}protocross: 1 test(s), 0 failed{lineEnding}");
+
+        Assert.Equal(TestOutcome.Passed, Assert.Single(results).Outcome);
+    }
+
+    /// <summary>
     /// A failure line is matched up to the parenthesis the driver writes after the identity, so a test
     /// missing from the run does not take for its own the failure of a test whose identity begins with
     /// its own.

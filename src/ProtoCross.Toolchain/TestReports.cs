@@ -59,7 +59,9 @@ public static class TestReports
     /// </remarks>
     public static IReadOnlyList<TestReport> FromDriverOutput(IReadOnlyList<string> declared, string output)
     {
-        var lines = output.Split('\n').Select(line => line.Trim()).ToList();
+        // Only the carriage return comes off a line's end: a test with an empty name has an identity that
+        // ends in a space, and a line trimmed of it would match no declared test.
+        var lines = output.Split('\n').Select(line => line.TrimStart().TrimEnd('\r')).ToList();
         var reported = lines.ToHashSet(StringComparer.Ordinal);
 
         return [.. declared.Select(identity => DriverResultOf(identity, lines, reported))];
