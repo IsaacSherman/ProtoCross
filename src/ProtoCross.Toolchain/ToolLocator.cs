@@ -196,18 +196,17 @@ public static class ToolLocator
 
     private static ProtobufCppInstall CreateProtobufCppInstall(string includeDirectory)
     {
-        var tripletDirectory = Directory.GetParent(includeDirectory);
-        if (tripletDirectory is null)
+        if (ProtobufCppInstall.PrefixOf(includeDirectory) is not { } tripletDirectory)
         {
             return new ProtobufCppInstall(includeDirectory, null, null, null);
         }
 
-        var lib = Path.Combine(tripletDirectory.FullName, "lib");
-        var bin = Path.Combine(tripletDirectory.FullName, "bin");
+        var lib = Path.Combine(tripletDirectory, "lib");
+        var bin = Path.Combine(tripletDirectory, "bin");
 
         return new ProtobufCppInstall(
             includeDirectory,
-            LocateProtocBesideVcpkgInclude(includeDirectory),
+            LocateProtocInVcpkgTriplet(tripletDirectory),
             File.Exists(Path.Combine(lib, "libprotobuf.lib")) ? lib : null,
             File.Exists(Path.Combine(bin, "libprotobuf.dll")) ? bin : null);
     }
@@ -215,15 +214,9 @@ public static class ToolLocator
     private static bool ContainsProtobufCppHeaders(string includeDirectory)
         => File.Exists(Path.Combine(includeDirectory, "google", "protobuf", "message.h"));
 
-    private static string? LocateProtocBesideVcpkgInclude(string includeDirectory)
+    private static string? LocateProtocInVcpkgTriplet(string tripletDirectory)
     {
-        var tripletDirectory = Directory.GetParent(includeDirectory);
-        if (tripletDirectory is null)
-        {
-            return null;
-        }
-
-        var protoc = Path.Combine(tripletDirectory.FullName, "tools", "protobuf", ProtocExecutableName);
+        var protoc = Path.Combine(tripletDirectory, "tools", "protobuf", ProtocExecutableName);
         return File.Exists(protoc) ? protoc : null;
     }
 

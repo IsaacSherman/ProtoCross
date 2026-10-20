@@ -28,7 +28,20 @@ public sealed record ProtobufCppInstall(
     /// What a CMake build is given as <c>CMAKE_PREFIX_PATH</c>, because <c>find_package</c> looks for the config
     /// package beside <c>&lt;prefix&gt;/include</c>, under <c>&lt;prefix&gt;/share</c> or <c>&lt;prefix&gt;/lib</c>.
     /// </remarks>
-    public string Prefix => Directory.GetParent(IncludeDirectory)?.FullName ?? IncludeDirectory;
+    public string Prefix => PrefixOf(IncludeDirectory) ?? IncludeDirectory;
+
+    /// <summary>
+    /// The prefix <paramref name="includeDirectory"/> is under, its parent, whether or not the path ends in a
+    /// separator; null for a root, which has none.
+    /// </summary>
+    /// <remarks>
+    /// The separator comes off first because <see cref="Directory.GetParent"/> takes <c>x/include/</c> for a
+    /// path inside <c>x/include</c> and answers <c>x/include</c> itself. An override written with a final
+    /// separator then named an install whose package, libraries and protoc were all looked for in the wrong
+    /// place, and a whole install was refused as headers alone.
+    /// </remarks>
+    public static string? PrefixOf(string includeDirectory)
+        => Directory.GetParent(Path.TrimEndingDirectorySeparator(includeDirectory))?.FullName;
 
     /// <summary>
     /// The directory of the CMake package that <c>find_package(Protobuf CONFIG)</c> reads under
