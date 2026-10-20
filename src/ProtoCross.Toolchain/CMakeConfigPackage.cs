@@ -7,9 +7,11 @@ namespace ProtoCross.Toolchain;
 /// <remarks>
 /// <para>
 /// The layouts are CMake's own, from the <c>find_package</c> documentation's search procedure, all of them on
-/// every platform: the prefix itself, <c>cmake</c> below it, a directory named for the package, and
-/// <c>share</c> or any <c>lib*</c> directory, or <c>lib/&lt;arch&gt;</c>, holding <c>cmake/&lt;name&gt;*</c> or
-/// <c>&lt;name&gt;*</c>. A directory's name is matched without regard to case, as CMake matches it. vcpkg
+/// every platform: the prefix itself, <c>cmake</c> below it, a directory named for the package, with
+/// <c>cmake</c> or <c>cmake/&lt;name&gt;*</c> below that, and <c>share</c> or any <c>lib*</c> directory, or
+/// <c>lib/&lt;arch&gt;</c>, holding <c>cmake/&lt;name&gt;*</c> or <c>&lt;name&gt;*</c>, whether in the prefix or in
+/// a directory in it named for the package. A directory's name is matched without regard to case, as CMake
+/// matches it. vcpkg
 /// installs under <c>share/protobuf</c>, and a system package under <c>lib/cmake/protobuf</c> or
 /// <c>lib/x86_64-linux-gnu/cmake/protobuf</c>.
 /// </para>
@@ -53,10 +55,34 @@ public static class CMakeConfigPackage
             foreach (var directory in WithCMakeBelow(named))
             {
                 yield return directory;
+                foreach (var nested in NamedFor(directory, name))
+                {
+                    yield return nested;
+                }
             }
         }
 
-        foreach (var library in LibraryDirectories(prefix))
+        foreach (var directory in InLibraryDirectories(prefix, name))
+        {
+            yield return directory;
+        }
+
+        foreach (var named in NamedFor(prefix, name))
+        {
+            foreach (var directory in InLibraryDirectories(named, name))
+            {
+                yield return directory;
+            }
+        }
+    }
+
+    /// <summary>
+    /// The package's directories under <c>share</c>, <c>lib*</c> or <c>lib/&lt;arch&gt;</c> below
+    /// <paramref name="root"/>, which is the prefix or a directory in it named for the package.
+    /// </summary>
+    private static IEnumerable<string> InLibraryDirectories(string root, string name)
+    {
+        foreach (var library in LibraryDirectories(root))
         {
             foreach (var named in NamedFor(Path.Combine(library, "cmake"), name))
             {

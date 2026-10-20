@@ -17,6 +17,10 @@ public class CMakeConfigPackageTests
     [InlineData("lib64/cmake/Protobuf", "protobuf-config.cmake")]
     [InlineData("share/protobuf-4.31/cmake", "protobuf-config.cmake")]
     [InlineData("protobuf/cmake", "protobuf-config.cmake")]
+    [InlineData("Protobuf-6.33/cmake/protobuf", "ProtobufConfig.cmake")]
+    [InlineData("Protobuf-6.33/lib/cmake/protobuf", "ProtobufConfig.cmake")]
+    [InlineData("Protobuf-6.33/lib/protobuf/cmake", "ProtobufConfig.cmake")]
+    [InlineData("protobuf/share/protobuf", "protobuf-config.cmake")]
     [InlineData("cmake", "ProtobufConfig.cmake")]
     [InlineData("", "protobuf-config.cmake")]
     public void APackageIsFoundWhereFindPackageLooks(string directory, string file)
