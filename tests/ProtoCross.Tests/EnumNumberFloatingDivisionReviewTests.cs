@@ -54,7 +54,7 @@ public class EnumNumberFloatingDivisionReviewTests
     [InlineData("0 as Level as int32 as double")]
     public void ConstantEnumDivisionBuildsAndRunsInCpp(string zero)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(zero, new CppBackend());
@@ -62,7 +62,7 @@ public class EnumNumberFloatingDivisionReviewTests
         workspace.Write(files);
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "enum_float.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["enum_float.tests.cc"], ["enum_float.pb.cc"]));
         Assert.True(run.Succeeded, run.Output);
         Assert.Contains("[ok] ", run.Output, StringComparison.Ordinal);

@@ -151,13 +151,18 @@ public sealed class ConformanceFixture
             return ConformanceRun.Skipped(Backend, compilerLookup.Missing);
         }
 
+        var cmakeLookup = ToolLocator.FindCMake();
+        if (!cmakeLookup.Found)
+        {
+            return ConformanceRun.Skipped(Backend, cmakeLookup.Missing);
+        }
+
         var protobufLookup = TestToolchain.FindProtobufCpp();
         if (!protobufLookup.Found)
         {
             return ConformanceRun.Skipped(Backend, protobufLookup.Missing);
         }
 
-        var compiler = compilerLookup.Tool;
         var protobuf = protobufLookup.Tool;
 
         if (!protobuf.CanLink)
@@ -192,7 +197,7 @@ public sealed class ConformanceFixture
 
         var drivers = vectors.SelectMany(vector => vector.Tests).Select(driver => driver.RelativePath).ToList();
         var programs = drivers
-            .Zip(workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources))
+            .Zip(workspace.BuildAndRun(protobuf, drivers, ConformanceVectors.CppSchemaSources))
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
 
         var results = new List<TestReport>();

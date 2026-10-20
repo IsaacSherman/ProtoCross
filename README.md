@@ -228,7 +228,7 @@ In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- a
 rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
 
 Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
-full suite, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
+full suite on Windows, Linux and macOS, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
 sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. Pushing to a
 feature branch triggers no build, and a pull request left in draft is not tested until it is marked
 ready for review. So the cost of ordinary work
@@ -674,9 +674,11 @@ They need:
 
 - a C++20 compiler: `clang++`, `g++`, or Visual Studio C++ Build Tools
 - protobuf C++ runtime headers containing `google/protobuf/message.h`
-- protobuf C++ libraries, for the link-and-run test
+- for the tests that link and run, CMake and a protobuf install with its CMake package
+  (`protobuf-config.cmake`) and the `protoc` built with it
 
-The repo includes a vcpkg manifest for the native dependency:
+The repo includes a vcpkg manifest for the native dependency. On macOS, `brew install protobuf` is
+enough too. Ubuntu's `libprotobuf-dev` is not, because it ships no CMake package; use vcpkg there.
 
 ```powershell
 vcpkg install
@@ -697,9 +699,9 @@ $env:PROTOCROSS_PROTOBUF_CPP_INCLUDE = "C:\path\to\protobuf\include"
 ```
 
 Point that at the `include` directory of a complete install rather than at a bare copy of the
-headers. The libraries, runtime binaries, and matching `protoc` are located beside it, and the tests
-that build and execute generated C++ need all four. Given headers alone, those tests skip and say
-which pieces were missing.
+headers. The CMake package and matching `protoc` are located beside it, and the tests that build and
+execute generated C++ need both. Given headers alone, those tests skip and say which pieces were
+missing.
 
 To run only the C++ smoke tests:
 
@@ -713,11 +715,12 @@ To run the full suite, including the C++ smoke test when its native prerequisite
 dotnet test tests\ProtoCross.Tests\ProtoCross.Tests.csproj
 ```
 
-On Windows, the test can find Visual Studio C++ Build Tools even when `cl.exe` is not already on
-`PATH`; it runs MSVC through `VsDevCmd.bat`. The link-and-run test currently targets MSVC with
-vcpkg's `x64-windows` protobuf package, using vcpkg's matching `protoc.exe`, headers, import
-library, and DLLs. If the C++ compiler or protobuf C++ install is not available, the relevant test
-is skipped with a message. A fully active local run skips only the gated checks described under
+On Windows, the syntax test can find Visual Studio C++ Build Tools even when `cl.exe` is not already
+on `PATH`; it runs MSVC through `VsDevCmd.bat`. The tests that link and run build through CMake and
+`find_package(Protobuf CONFIG)`, as `protocross test` does, so they work wherever CMake finds a
+compiler and the install: MSVC, gcc or clang, against vcpkg, Homebrew, or protobuf's own CMake install.
+If the C++ compiler or protobuf C++ install is not available, the relevant test is skipped with a
+message. A fully active local run skips only the gated checks described under
 [Building](#building) that were not switched on.
 
 ### Architecture

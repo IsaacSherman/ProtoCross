@@ -105,7 +105,7 @@ public class NestedNumericNamesReviewTests
                 return nested_numeric_review::Outer_1TicketFactory::create().number() == 7 ? 0 : 1;
             }
             """);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf, ["consumer.cc"], ["nested_numeric.pb.cc"]));
+        var run = Assert.Single(workspace.BuildAndRun(protobuf, ["consumer.cc"], ["nested_numeric.pb.cc"]));
         Assert.True(run.Succeeded, run.Output);
     }
 }

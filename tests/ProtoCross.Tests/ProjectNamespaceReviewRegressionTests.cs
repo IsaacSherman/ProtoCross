@@ -62,13 +62,13 @@ public class ProjectNamespaceReviewRegressionTests
     [InlineData(true)]
     public void AMethodNamedAfterTheProjectContainerBuildsAndRunsInCpp(bool asProject)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
         var workspace = CppTestWorkspace.Create("project-container-name");
         workspace.Write(Generate(new CppBackend(), asProject));
         workspace.Write([new GeneratedFile("anchor.cc", "#include <google/protobuf/timestamp.pb.h>\n")]);
 
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf, ["names.tests.cc"], ["anchor.cc"]));
+        var run = Assert.Single(workspace.BuildAndRun(protobuf, ["names.tests.cc"], ["anchor.cc"]));
 
         Assert.True(run.Succeeded,
             "The same method and caller must build and run in C++." + Environment.NewLine + run.Output);

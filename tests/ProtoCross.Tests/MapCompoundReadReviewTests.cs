@@ -68,7 +68,7 @@ public class MapCompoundReadReviewTests
     [InlineData("on_missing fail", "expect fail;")]
     public void ACompoundThroughAMissingKeyHonorsItsClauseInCpp(string clause, string expectation)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(clause, expectation, new CppBackend());
@@ -76,7 +76,7 @@ public class MapCompoundReadReviewTests
         workspace.Write(files);
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "map_compound.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["map_compound.tests.cc"], ["map_compound.pb.cc"]));
         Assert.True(run.Succeeded, run.Output);
         Assert.Contains("[ok] ", run.Output, StringComparison.Ordinal);

@@ -29,13 +29,15 @@ internal static class TestToolchain
 
     public static CppCompiler RequireCppCompiler() => Require(ToolLocator.FindCppCompiler());
 
-    public static CppCompiler RequireMsvc() => Require(ToolLocator.FindMsvc());
-
     public static ProtobufCppInstall RequireProtobufCpp() => Require(FindProtobufCpp());
 
-    /// <summary>A protobuf C++ install that can link and run what it compiles, as well as parse it.</summary>
+    /// <summary>
+    /// A protobuf C++ install that can link and run what it compiles, as well as parse it, and the cmake
+    /// <see cref="CppTestWorkspace.BuildAndRun"/> links it with.
+    /// </summary>
     public static ProtobufCppInstall RequireLinkableProtobufCpp()
     {
+        RequireCMake();
         var protobuf = RequireProtobufCpp();
         if (!protobuf.CanLink)
         {

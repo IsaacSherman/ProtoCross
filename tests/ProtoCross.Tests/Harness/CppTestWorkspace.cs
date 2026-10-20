@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Text.RegularExpressions;
 using ProtoCross.Backend;
 using ProtoCross.Toolchain;
 
@@ -28,12 +26,14 @@ internal sealed record CppProgramResult(string DriverSource, int ExitCode, strin
 /// together with protoc's C++ output, then runs the driver.
 /// </summary>
 /// <remarks>
-/// Several drivers share one protobuf schema, so the generated <c>.pb.cc</c> is compiled once and
-/// its object file is linked into every driver. That compile is by far the most expensive step, and
-/// repeating it per driver would dominate the suite's runtime.
+/// Several drivers share one protobuf schema, so the generated <c>.pb.cc</c> is compiled once into a
+/// library every driver links. That compile is by far the most expensive step, and repeating it per
+/// driver would dominate the suite's runtime.
 /// </remarks>
 internal sealed class CppTestWorkspace
 {
+    private const string SharedTarget = "protocross_shared";
+
     private static readonly TimeSpan BuildTimeout = TimeSpan.FromMinutes(15);
 
     private CppTestWorkspace(string directory) => Directory = directory;
@@ -116,242 +116,165 @@ internal sealed class CppTestWorkspace
     }
 
     /// <summary>
-    /// Compiles the shared protobuf sources once, then builds and runs one executable per driver.
+    /// Builds the shared sources once and one executable per driver with CMake, against protobuf's CMake
+    /// package, then runs each driver that built.
     /// </summary>
     /// <param name="driverSources">Generated <c>.tests.cc</c> file names, relative to the workspace.</param>
-    /// <param name="protobufSources">protoc's <c>.pb.cc</c> file names, relative to the workspace.</param>
+    /// <param name="sharedSources">
+    /// Sources every driver links, relative to the workspace: protoc's <c>.pb.cc</c> files, usually.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// CMake, as <c>protocross test</c> builds the project <c>--scaffold</c> writes, rather than a compile line
+    /// of the harness's own. The link is the hard part: protobuf 22 and later split Abseil and
+    /// <c>utf8_range</c> out of <c>libprotobuf</c>, and which libraries a program needs varies with the
+    /// version, the platform, and whether the install is static or shared. The harness once linked vcpkg's
+    /// Windows libraries by name through MSVC and <c>-lprotobuf</c> alone everywhere else, and the second
+    /// never ran, because no POSIX install was ever found linkable (#18). <c>protobuf::libprotobuf</c>
+    /// carries its own dependencies on every platform, so one build serves them all, and an install the
+    /// suite can link is exactly one <c>protocross test</c> can build.
+    /// </para>
+    /// <para>
+    /// The shared sources are one static library, built before any driver, because protoc's output is by
+    /// far the most expensive thing here and nothing links without it. The drivers are then built in one
+    /// step and run here rather than by ctest, so that each keeps its own output and exit code. Only a
+    /// driver that step left unbuilt is built again on its own, so a compile error is reported against the
+    /// driver that has it rather than against every driver a stopped build never reached.
+    /// </para>
+    /// </remarks>
     public IReadOnlyList<CppProgramResult> BuildAndRun(
-        CppCompiler compiler,
         ProtobufCppInstall protobuf,
         IReadOnlyList<string> driverSources,
-        IReadOnlyList<string> protobufSources)
-        => compiler.Kind == CppCompilerKind.Msvc
-            ? BuildAndRunMsvc(compiler, protobuf, driverSources, protobufSources)
-            : BuildAndRunPosix(compiler, protobuf, driverSources, protobufSources);
-
-    private IReadOnlyList<CppProgramResult> BuildAndRunMsvc(
-        CppCompiler compiler,
-        ProtobufCppInstall protobuf,
-        IReadOnlyList<string> driverSources,
-        IReadOnlyList<string> protobufSources)
+        IReadOnlyList<string> sharedSources)
     {
-        if (protobuf.LibraryDirectory is null || protobuf.BinaryDirectory is null)
+        var cmakeLookup = ToolLocator.FindCMake();
+        if (!cmakeLookup.Found)
         {
-            throw new InvalidOperationException("Linking with MSVC needs a protobuf lib and bin directory.");
+            return NotBuilt(driverSources, cmakeLookup.Missing);
         }
 
-        var sharedResponse = Path.Combine(Directory, "msvc-shared.rsp");
-        File.WriteAllLines(
-            sharedResponse,
-            CompileArguments().Concat(protobufSources.Select(s => Rsp(Path.Combine(Directory, s)))));
+        var cmake = cmakeLookup.Tool;
+        File.WriteAllText(Path.Combine(Directory, "CMakeLists.txt"), BuildProject(driverSources, sharedSources));
 
-        var lines = new List<string> { "@echo off" };
-        if (compiler.VisualStudioDevCommand is not null)
+        var configured = RunCMake(
+            cmake, "-S", Directory, "-B", BuildDirectory, "-DCMAKE_PREFIX_PATH=" + protobuf.Prefix, "-DCMAKE_BUILD_TYPE=Debug");
+        if (configured.ExitCode != 0)
         {
-            lines.Add($"call \"{compiler.VisualStudioDevCommand}\" -arch=x64 -host_arch=x64");
-            lines.Add("if errorlevel 1 exit /b %errorlevel%");
+            return NotBuilt(driverSources, configured.Output);
         }
 
-        lines.Add($"cl.exe @{ProcessRunner.QuoteForCmd(sharedResponse)}");
-        lines.Add("if errorlevel 1 exit /b %errorlevel%");
-        lines.Add($"set \"PATH={protobuf.BinaryDirectory};%PATH%\"");
-
-        var sharedObjects = protobufSources
-            .Select(source => Path.Combine(Directory, Path.GetFileNameWithoutExtension(source) + ".obj"))
-            .ToList();
-
-        for (var i = 0; i < driverSources.Count; i++)
+        if (sharedSources.Count > 0 && BuildTarget(cmake, SharedTarget) is { ExitCode: not 0 } shared)
         {
-            var driver = driverSources[i];
-            var stem = Path.GetFileNameWithoutExtension(driver);
-            var driverObject = Path.Combine(Directory, stem + ".obj");
-            var executable = Path.Combine(Directory, stem + ".exe");
-
-            var compileResponse = Path.Combine(Directory, $"msvc-compile-{i}.rsp");
-            File.WriteAllLines(
-                compileResponse,
-                CompileArguments().Append(Rsp(Path.Combine(Directory, driver))));
-
-            var linkResponse = Path.Combine(Directory, $"msvc-link-{i}.rsp");
-            File.WriteAllLines(
-                linkResponse,
-                [
-                    "/nologo",
-                    $"/out:{Rsp(executable)}",
-                    Rsp(driverObject),
-                    .. sharedObjects.Select(Rsp),
-                    $"/LIBPATH:{Rsp(protobuf.LibraryDirectory)}",
-                    "libprotobuf.lib",
-                    "abseil_dll.lib",
-                    "utf8_validity.lib",
-                    "utf8_range.lib",
-                ]);
-
-            var next = $"DRIVER{i + 1}";
-
-            // No parenthesised blocks: cmd expands %errorlevel% when it reads a block, not when it
-            // runs each line, so a marker inside one would report a stale value.
-            lines.Add($"cl.exe @{ProcessRunner.QuoteForCmd(compileResponse)}");
-            lines.Add($"if errorlevel 1 echo {Marker(i)} COMPILE-FAILED");
-            lines.Add($"if errorlevel 1 goto {next}");
-            lines.Add($"link.exe @{ProcessRunner.QuoteForCmd(linkResponse)}");
-            lines.Add($"if errorlevel 1 echo {Marker(i)} LINK-FAILED");
-            lines.Add($"if errorlevel 1 goto {next}");
-            // Its standard error, and what each expect-fail child it runs prints there, joins its standard output, so
-            // the marker after it divides both. Left apart, every driver's would arrive after the whole script's
-            // output, under no driver's marker, and a failure would not say which driver's test it came from.
-            lines.Add(ProcessRunner.QuoteForCmd(executable) + " 2>&1");
-            lines.Add($"echo {Marker(i)} EXIT=%errorlevel%");
-            lines.Add($":{next}");
+            return NotBuilt(driverSources, shared.Output);
         }
 
-        lines.Add("exit /b 0");
-
-        var result = ProcessRunner.RunCmdScript(
-            Path.Combine(Directory, "msvc-build-run.cmd"), lines, Directory, BuildTimeout);
-
-        return SplitByMarkers(driverSources, result);
-
-        IEnumerable<string> CompileArguments() =>
-        [
-            "/nologo", "/std:c++20", "/Zc:__cplusplus", "/EHsc", "/c",
-            $"/I{Rsp(Directory)}",
-            $"/I{Rsp(protobuf.IncludeDirectory)}",
-            $"/Fo{Rsp(Directory + Path.DirectorySeparatorChar)}",
-        ];
-
-        static string Rsp(string argument) => ProcessRunner.QuoteRspArgument(argument);
+        var built = RunCMake(cmake, "--build", BuildDirectory, "--config", "Debug", "--parallel");
+        return driverSources.Select((driver, index) => Run(cmake, driver, index, built)).ToList();
     }
 
-    private IReadOnlyList<CppProgramResult> BuildAndRunPosix(
-        CppCompiler compiler,
-        ProtobufCppInstall protobuf,
-        IReadOnlyList<string> driverSources,
-        IReadOnlyList<string> protobufSources)
+    private string BuildDirectory => Path.Combine(Directory, "build");
+
+    private static string DriverTarget(int index) => $"protocross_driver_{index}";
+
+    /// <summary>Where a driver's executable is put, for single- and multi-configuration generators alike.</summary>
+    private string ExecutableOf(int index)
+        => Path.Combine(BuildDirectory, "bin", "Debug", DriverTarget(index) + (OperatingSystem.IsWindows() ? ".exe" : string.Empty));
+
+    /// <summary>Runs one driver, building it on its own first where the build of every driver did not.</summary>
+    private CppProgramResult Run(string cmake, string driver, int index, ProcessResult built)
     {
-        var results = new List<CppProgramResult>();
-        var sharedObjects = new List<string>();
-
-        foreach (var source in protobufSources)
+        if (built.ExitCode != 0 && !File.Exists(ExecutableOf(index))
+            && BuildTarget(cmake, DriverTarget(index)) is { ExitCode: not 0 } alone)
         {
-            var objectPath = Path.Combine(Directory, Path.GetFileNameWithoutExtension(source) + ".o");
-            var compile = ProcessRunner.Create(compiler.FileName, Directory);
-            compile.ArgumentList.Add("-std=c++20");
-            compile.ArgumentList.Add("-c");
-            compile.ArgumentList.Add($"-I{Directory}");
-            compile.ArgumentList.Add($"-I{protobuf.IncludeDirectory}");
-            compile.ArgumentList.Add(Path.Combine(Directory, source));
-            compile.ArgumentList.Add("-o");
-            compile.ArgumentList.Add(objectPath);
-
-            var compiled = ProcessRunner.Run(compile, BuildTimeout);
-            if (compiled.ExitCode != 0)
-            {
-                // Nothing can link without the schema, so report the failure against every driver.
-                return driverSources
-                    .Select(driver => new CppProgramResult(driver, ProcessResult.NotRun, compiled.Output))
-                    .ToList();
-            }
-
-            sharedObjects.Add(objectPath);
+            return new CppProgramResult(driver, ProcessResult.NotRun, alone.Output);
         }
 
-        foreach (var driver in driverSources)
+        if (!File.Exists(ExecutableOf(index)))
         {
-            var stem = Path.GetFileNameWithoutExtension(driver);
-            var executable = Path.Combine(Directory, stem);
-
-            var link = ProcessRunner.Create(compiler.FileName, Directory);
-            link.ArgumentList.Add("-std=c++20");
-            link.ArgumentList.Add($"-I{Directory}");
-            link.ArgumentList.Add($"-I{protobuf.IncludeDirectory}");
-            link.ArgumentList.Add(Path.Combine(Directory, driver));
-
-            foreach (var objectPath in sharedObjects)
-            {
-                link.ArgumentList.Add(objectPath);
-            }
-
-            if (protobuf.LibraryDirectory is not null)
-            {
-                link.ArgumentList.Add($"-L{protobuf.LibraryDirectory}");
-            }
-
-            link.ArgumentList.Add("-lprotobuf");
-            link.ArgumentList.Add("-o");
-            link.ArgumentList.Add(executable);
-
-            var linked = ProcessRunner.Run(link, BuildTimeout);
-            if (linked.ExitCode != 0)
-            {
-                results.Add(new CppProgramResult(driver, ProcessResult.NotRun, linked.Output));
-                continue;
-            }
-
-            var run = ProcessRunner.Create(executable, Directory);
-            if (protobuf.LibraryDirectory is not null)
-            {
-                run.Environment["LD_LIBRARY_PATH"] = protobuf.LibraryDirectory;
-                run.Environment["DYLD_LIBRARY_PATH"] = protobuf.LibraryDirectory;
-            }
-
-            var ran = ProcessRunner.Run(run, BuildTimeout);
-            results.Add(new CppProgramResult(driver, ran.ExitCode, ran.Output));
+            return new CppProgramResult(driver, ProcessResult.NotRun, built.Output);
         }
 
-        return results;
+        var ran = ProcessRunner.Run(ProcessRunner.Create(ExecutableOf(index), Directory), BuildTimeout);
+        return new CppProgramResult(driver, ran.ExitCode, ran.Output);
     }
 
-    private static string Marker(int index) => $"###PROTOCROSS-DRIVER-{index}";
+    private ProcessResult BuildTarget(string cmake, string target)
+        => RunCMake(cmake, "--build", BuildDirectory, "--config", "Debug", "--parallel", "--target", target);
+
+    private ProcessResult RunCMake(string cmake, params string[] arguments)
+    {
+        var startInfo = ProcessRunner.Create(cmake, Directory);
+        foreach (var argument in arguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+
+        // Visual Studio's generator builds with MSBuild, which the test host's own MSBuild variables mislead.
+        ProcessRunner.ScrubMsBuildEnvironment(startInfo);
+
+        // A parallel MSBuild leaves its worker nodes running for reuse, and they hold this build's output
+        // pipe open, so reading the output would wait for them to time out rather than for the build.
+        startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
+        return ProcessRunner.Run(startInfo, BuildTimeout);
+    }
 
     /// <summary>
-    /// Attributes the batch script's combined output back to each driver. Everything printed since
-    /// the previous marker belongs to the driver the current marker names.
+    /// The CMake project for one workspace: the shared sources as a library linking
+    /// <c>protobuf::libprotobuf</c>, and an executable per driver linking that.
     /// </summary>
-    private static IReadOnlyList<CppProgramResult> SplitByMarkers(
-        IReadOnlyList<string> driverSources,
-        ProcessResult script)
+    /// <remarks>
+    /// <para>
+    /// The settings that matter are the ones <c>CppTestProject</c> writes for the same reasons: C++20,
+    /// <c>/Zc:__cplusplus</c> so MSVC reports it, <c>find_package(Protobuf CONFIG)</c> so the dependencies come
+    /// with the library, and the runtime DLLs copied beside each executable, which matters only on Windows.
+    /// </para>
+    /// <para>
+    /// <c>/MP</c> because MSBuild compiles a project's files one at a time without it, and the shared library
+    /// holds every schema's <c>.pb.cc</c>; a Makefile build parallelizes by file already. Executables go to
+    /// one directory named for the configuration under either kind of generator, because a generator
+    /// expression in it stops a multi-configuration generator adding its own.
+    /// </para>
+    /// </remarks>
+    private static string BuildProject(IReadOnlyList<string> driverSources, IReadOnlyList<string> sharedSources)
     {
-        var results = new List<CppProgramResult>();
-        var pending = new List<string>();
-        var byIndex = new Dictionary<int, CppProgramResult>();
-
-        foreach (var line in script.Output.Split('\n').Select(line => line.TrimEnd('\r')))
+        var lines = new List<string>
         {
-            var match = Regex.Match(line, @"^###PROTOCROSS-DRIVER-(\d+)\s+(.*)$");
-            if (!match.Success)
-            {
-                pending.Add(line);
-                continue;
-            }
+            "cmake_minimum_required(VERSION 3.21)",
+            "project(protocross_harness CXX)",
+            "set(CMAKE_CXX_STANDARD 20)",
+            "set(CMAKE_CXX_STANDARD_REQUIRED ON)",
+            "if(MSVC)",
+            "    add_compile_options(/Zc:__cplusplus /MP)",
+            "endif()",
+            "find_package(Protobuf CONFIG REQUIRED)",
+            "set(CMAKE_RUNTIME_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/bin/$<CONFIG>\")",
+        };
 
-            var index = int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture);
-            var status = match.Groups[2].Value.Trim();
-            var exitCode = status.StartsWith("EXIT=", StringComparison.Ordinal)
-                && int.TryParse(status[5..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
-                    ? parsed
-                    : ProcessResult.NotRun;
-
-            if (index < driverSources.Count)
-            {
-                byIndex[index] = new CppProgramResult(
-                    driverSources[index],
-                    exitCode,
-                    string.Join(Environment.NewLine, pending).Trim());
-            }
-
-            pending.Clear();
+        var linked = "protobuf::libprotobuf";
+        if (sharedSources.Count > 0)
+        {
+            lines.Add($"add_library({SharedTarget} STATIC {string.Join(' ', sharedSources.Select(Quote))})");
+            lines.Add($"target_include_directories({SharedTarget} PUBLIC \"${{CMAKE_CURRENT_SOURCE_DIR}}\")");
+            lines.Add($"target_link_libraries({SharedTarget} PUBLIC protobuf::libprotobuf)");
+            linked = SharedTarget;
         }
 
-        for (var i = 0; i < driverSources.Count; i++)
+        for (var index = 0; index < driverSources.Count; index++)
         {
-            results.Add(byIndex.TryGetValue(i, out var found)
-                ? found
-                // No marker at all means the script died before reaching this driver, so the whole
-                // script output is the best evidence available.
-                : new CppProgramResult(driverSources[i], ProcessResult.NotRun, script.Output));
+            var target = DriverTarget(index);
+            lines.Add($"add_executable({target} {Quote(driverSources[index])})");
+            lines.Add($"target_include_directories({target} PRIVATE \"${{CMAKE_CURRENT_SOURCE_DIR}}\")");
+            lines.Add($"target_link_libraries({target} PRIVATE {linked})");
+            lines.Add($"add_custom_command(TARGET {target} POST_BUILD");
+            lines.Add($"    COMMAND \"${{CMAKE_COMMAND}}\" -E copy -t \"$<TARGET_FILE_DIR:{target}>\" \"$<TARGET_RUNTIME_DLLS:{target}>\"");
+            lines.Add("    COMMAND_EXPAND_LISTS)");
         }
 
-        return results;
+        return string.Join('\n', lines) + "\n";
+
+        static string Quote(string path) => "\"" + path.Replace('\\', '/') + "\"";
     }
+
+    private static List<CppProgramResult> NotBuilt(IReadOnlyList<string> driverSources, string output)
+        => [.. driverSources.Select(driver => new CppProgramResult(driver, ProcessResult.NotRun, output))];
 }
