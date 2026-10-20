@@ -1,23 +1,35 @@
 using System.Diagnostics;
 
-namespace ProtoCross.Tests.Harness;
+namespace ProtoCross.Toolchain;
 
-internal sealed record ProcessResult(int ExitCode, string Output)
+public sealed record ProcessResult(int ExitCode, string Output)
 {
     /// <summary>Exit code used when the process could not be started or had to be killed.</summary>
     public const int NotRun = -1;
+
+    /// <summary>
+    /// How <paramref name="tool"/> failed, or null when it exited 0: the code it exited with, or that it
+    /// never ran to the end. Why it did not is in <see cref="Output"/>.
+    /// </summary>
+    public string? FailureOf(string tool) => ExitCode switch
+    {
+        0 => null,
+        NotRun => $"{tool} did not run to the end",
+        var code => $"{tool} exited with code {code}",
+    };
 }
 
 /// <summary>
-/// Runs the external tools the backend suites depend on: protoc, dotnet, and a C++ compiler.
+/// Runs the external tools generated code is built and run with: protoc, dotnet, cmake, and a C++
+/// compiler.
 /// </summary>
 /// <remarks>
-/// Shared rather than duplicated per suite because two details here are easy to get wrong and were
-/// previously written twice: both output pipes must be drained concurrently or a chatty child
-/// deadlocks once either fills, and a nested build must not inherit the outer test run's MSBuild
-/// variables.
+/// One runner for everything that starts them, because two details here are easy to get wrong and were
+/// once written twice: both output pipes must be drained concurrently or a chatty child deadlocks once
+/// either fills, and a nested build must not inherit the MSBuild variables of the dotnet process that
+/// started this one.
 /// </remarks>
-internal static class ProcessRunner
+public static class ProcessRunner
 {
     /// <summary>How long a nested tool invocation may run before it is treated as hung.</summary>
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
@@ -40,8 +52,9 @@ internal static class ProcessRunner
     }
 
     /// <summary>
-    /// Removes the MSBuild and test-platform variables the outer test run exports. A nested
-    /// <c>dotnet build</c> or <c>dotnet test</c> that inherits them resolves the wrong SDK.
+    /// Removes the MSBuild and test-platform variables an outer <c>dotnet</c> exports, a test run's or
+    /// <c>dotnet run</c>'s. A nested <c>dotnet build</c> or <c>dotnet test</c> that inherits them
+    /// resolves the wrong SDK.
     /// </summary>
     public static void ScrubMsBuildEnvironment(ProcessStartInfo startInfo)
     {
@@ -50,6 +63,23 @@ internal static class ProcessRunner
         startInfo.Environment.Remove("MSBUILD_EXE_PATH");
         startInfo.Environment.Remove("VSTEST_HOST_DEBUG");
         startInfo.Environment["DOTNET_CLI_UI_LANGUAGE"] = "en";
+    }
+
+    /// <summary>
+    /// A start of <paramref name="dotnet"/> in <paramref name="workingDirectory"/>, fit to build or test
+    /// a project from inside another dotnet process.
+    /// </summary>
+    public static ProcessStartInfo CreateDotnet(string dotnet, string workingDirectory)
+    {
+        var startInfo = Create(dotnet, workingDirectory);
+        ScrubMsBuildEnvironment(startInfo);
+
+        // Belt and braces. ProtoCross's fail path exits cleanly rather than crashing, so nothing
+        // here should reach the crash reporter, but a genuinely faulting child would otherwise stall
+        // the run while a dump is collected.
+        startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
+
+        return startInfo;
     }
 
     public static ProcessResult Run(ProcessStartInfo startInfo, TimeSpan? timeout = null)
@@ -85,7 +115,7 @@ internal static class ProcessRunner
 
             return new ProcessResult(
                 ProcessResult.NotRun,
-                $"'{startInfo.FileName}' timed out after {limit.TotalMinutes:0.#} minute(s).");
+                $"'{startInfo.FileName}' timed out after {Describe(limit)}.");
         }
 
         var output = string.Join(
@@ -95,6 +125,13 @@ internal static class ProcessRunner
 
         return new ProcessResult(process.ExitCode, output);
     }
+
+    /// <summary>A time limit as a reader would put it: in minutes, or in seconds where it is not a whole number of them.</summary>
+    /// <remarks>A project can set a limit in seconds (spec 25.3.3), which in minutes would read as none.</remarks>
+    private static string Describe(TimeSpan limit)
+        => limit.Ticks % TimeSpan.TicksPerMinute == 0
+            ? $"{limit.TotalMinutes:0} minute(s)"
+            : $"{limit.TotalSeconds:0} second(s)";
 
     /// <summary>
     /// Writes and runs a batch script. MSVC is reached this way because <c>VsDevCmd.bat</c> sets up

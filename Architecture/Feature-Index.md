@@ -21,11 +21,15 @@ to each group's actual home; central files hold dispatch and shared state rather
 | Refusals: `refuses`, `refuse`, `on_refused`, `on_zero refuse`, `expect refuse` | [Language](Language.md) | `Binder` in `Binder.Refusals.cs`, `IrRefusableCall`, `IrMethodSignature.Refusal`, `IrRefusals` |
 | Forbidding termination: `Failure/Termination` | [Language](Language.md) | `ProjectConfig.Termination`, `Binder` in `Binder.Termination.cs` |
 | Node shapes, behavior annotations, copies, flow | [IR](IR.md) | `IrExpression`, `IrCopy.Of`, `IrFlow.NeverFallsThrough`, `IrMutation` |
+| Operand order: which operands can show it, and how C++ keeps it (spec 9.3) | [C++ backend](Cpp-Backend.md) | `IrEvaluationOrder.IsObservable`, `CppBackend` in `CppBackend.Ordering.cs` |
 | Tree walks, references, scopes, source positions | [IR](IR.md) | `SyntaxWalk.ChildrenOf`, `IrWalk.ChildrenOf`, `SemanticModel` |
 | C# output, runtime helpers, generated test projects | [C# backend](CSharp-Backend.md) | `CSharpBackend`, `CSharpRuntime`, `CSharpTestProject` |
 | C++ output, schema includes, ownership, generated tests | [C++ backend](Cpp-Backend.md) | `CppBackend`, `CppRuntime`, `CppTestProject` |
 | Sources, configuration, imports, protobuf descriptors | [Compilation and projects](Compilation-and-Projects.md) | `Compilation.Compile`, `ProjectConfig`, `DescriptorLoader`, `SchemaCatalog` |
-| Project discovery/membership, build roles, CLI | [Compilation and projects](Compilation-and-Projects.md) | `ProjectDiscovery.Find`, `ProjectSources.ExpandForBuild`, `Program` |
+| Project discovery/membership, build roles, CLI | [Compilation and projects](Compilation-and-Projects.md) | `ProjectDiscovery.Find`, `ProjectSources.ExpandForBuild`, `CommandLine.Run`, `BuildCommand.Run`, `TestCommand.Run` |
+| Finding dotnet, cmake, a C++ compiler and protobuf C++; why one is missing | [Compilation and projects](Compilation-and-Projects.md) | `ToolLocator`, `ToolLookup`, `ProcessRunner` |
+| Building, running and judging generated tests: `protocross test`, and its step limit, `<TestRun>` | [Compilation and projects](Compilation-and-Projects.md) | `TestCommand.Run`, `TestProjectRunner`, `TrxLog`, `TestReports`, `TestVerdict.Judge`, `TestRunSettings` |
+| Test project names and framework: `<Scaffold>` and its flags | [Compilation and projects](Compilation-and-Projects.md) | `ScaffoldSetting`, `ScaffoldSettings`, `ProtoCrossProject.Scaffold`, `CSharpTestProject`, `CppTestProject` |
 | Completion, hover, navigation, semantic tokens | [Editor](Editor.md) | `CompletionProvider.Symbols`, `HoverProvider`, `DefinitionProvider`, `ClassificationProvider` |
 | Editor compilation, configuration, watching, trust, extension | [Editor](Editor.md) | `DocumentSemantics`, `CompileScheduler`, `WorkspaceConfiguration`, `WatchedFiles` |
 

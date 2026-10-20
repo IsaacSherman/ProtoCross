@@ -3,6 +3,7 @@ using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -38,19 +39,9 @@ public partial class CppSyntaxSmokeTests
             Assert.Skip("The link-and-run C++ smoke test currently targets MSVC with vcpkg protobuf.");
         }
 
-        var compiler = Toolchain.LocateMsvc();
-        if (compiler is null)
-        {
-            Assert.Skip("No Visual Studio C++ Build Tools installation found.");
-        }
+        var compiler = TestToolchain.RequireMsvc();
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ headers found. Install protobuf with vcpkg or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to their include directory.");
-        }
+        var protobuf = TestToolchain.RequireProtobufCpp();
 
         if (!protobuf.CanLink)
         {
@@ -75,30 +66,14 @@ public partial class CppSyntaxSmokeTests
     /// </summary>
     private static string RequireSyntaxToolchain(out CppCompiler compiler, out ProtobufCppInstall protobuf)
     {
-        var locatedCompiler = Toolchain.LocateCppCompiler();
-        if (locatedCompiler is null)
-        {
-            Assert.Skip(
-                "No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools "
-                + "to run C++ smoke tests.");
-        }
+        var locatedCompiler = TestToolchain.RequireCppCompiler();
 
-        var locatedProtobuf = Toolchain.LocateProtobufCpp();
-        if (locatedProtobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ headers found. Install protobuf headers or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to their include directory.");
-        }
+        var locatedProtobuf = TestToolchain.RequireProtobufCpp();
 
         compiler = locatedCompiler;
         protobuf = locatedProtobuf;
 
-        var protoc = protobuf.ProtocPath ?? Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc to run C++ smoke tests.");
-        }
+        var protoc = protobuf.ProtocPath ?? TestToolchain.RequireProtoc();
 
         return protoc;
     }

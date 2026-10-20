@@ -59,11 +59,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCSharpProjectBuildsAndRunsTestsThatCallATestSource()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
 
         var layout = ScaffoldLayout.Emit(new CSharpBackend(), "scaffold-csharp-helper", TestBuildWithAHelper());
 

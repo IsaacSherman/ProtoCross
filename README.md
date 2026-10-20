@@ -126,7 +126,8 @@ Implemented:
   number with no name, as an `on_zero` fallback is only for a zero divisor.
   `status in OrderStatus` asks whether a value has a name. The spec has the rules in sections 12.1
   and 12.2.
-- Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions
+- Field presence, `has field`, over proto2, proto3 with and without `optional`, and editions up to
+  2023. A schema in a newer edition is refused as it loads; the spec has the rule in section 21.3.
 - Maps, read and changed by key and never iterated. Every read says what a missing key gives,
   `prices[sku] on_missing 0` or `on_missing fail`, and the fallback is evaluated only when the key is
   missing. `sku in prices`, `count()` and `is_empty()` ask about a map; `prices[sku] = 5;`,
@@ -179,11 +180,14 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `Result` types, a value that holds a refusal, `==` between two messages (a test compares an expected literal by
-the fields it sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members are ordinary fields otherwise: each can be read,
-tested with `has` and assigned, and assigning one unsets the others. The compiler refuses what it
-does not implement, such as iterating a map, rather than emitting something whose semantics differ
-from the spec.
+Not implemented: `==` between two messages (a test compares an expected literal by the fields it
+sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members
+are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
+unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
+than emitting something whose semantics differ from the spec.
+
+Not planned: `Result` types, or any other value that holds a refusal. A method that cannot give its
+result refuses, and each call says what a refusal makes of it. The spec has the rule in section 19.
 
 ### Building
 
@@ -250,6 +254,10 @@ dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examp
 ```
 
 That writes `generated/csharp/` and `generated/cpp/`. Pass `-t csharp` or `-t cpp` for one target.
+
+That is the `build` command, which a command line runs when it names no other: `protocross build
+examples/simpleScript.pcross …` is the same build. A command is read only from the first argument,
+so a source named `build` is written as a path, `./build`.
 
 Several sources are compiled together by naming each of them:
 
@@ -388,7 +396,7 @@ Output layout:
 | `generated/tests/csharp/simpleScript.tests.g.cs` | C# xUnit tests generated from ProtoCross `test` declarations |
 | `generated/tests/csharp/ProtoCrossTestSupport.g.cs` | C# support for `expect fail` tests. Emitted only when the source has one |
 | `generated/tests/cpp/simpleScript.tests.cc` | C++ standalone test executable source generated from ProtoCross `test` declarations |
-| `generated/tests/csharp/ProtoCrossTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold` |
+| `generated/tests/csharp/ProtoCrossTests.csproj` | Project that builds and runs the C# tests. Emitted only with `--scaffold`, and named otherwise where a setting says (see [Naming the test projects](#naming-the-test-projects)) |
 | `generated/tests/cpp/CMakeLists.txt` | CMake project that builds and runs the C++ tests. Emitted only with `--scaffold` |
 
 The compiler options used in those commands are:
@@ -399,6 +407,10 @@ The compiler options used in those commands are:
 | `-o`, `--out <dir>` | Root directory for generated behavior artifacts. Each backend writes below `<dir>/<target>/`. |
 | `--test-out <dir>` | Build the tests too, into this root directory. Each test backend writes below `<dir>/<target>/`. Without it, tests are neither checked nor generated. |
 | `--scaffold` | Also write the build file that builds and runs the generated tests. Requires `--test-out`. |
+| `--csharp-target-framework <tfm>` | With `--scaffold`: the C# test project's framework, `net8.0` or later. Defaults to `net10.0`. |
+| `--csharp-project-name <name>` | With `--scaffold`: the C# test project's name, and so its `.csproj`'s. Defaults to `ProtoCrossTests`. |
+| `--cpp-project-name <name>` | With `--scaffold`: the CMake project's name. Defaults to `protocross_tests`. |
+| `--cpp-target-prefix <prefix>` | With `--scaffold`: what begins each CMake target, followed by `_`. Defaults to none. |
 | `-t`, `--target <list>` | Comma-separated backend list: `csharp`, `cpp`. Defaults to all current backends. |
 | `--config <file>` | Use this `protocross.config.xml` instead of searching for one. Not with a project, which settles its own. |
 | `--no-config` | Ignore any config file and use the built-in defaults. Not with a project. |
@@ -546,6 +558,67 @@ protocross: 12 test(s), 0 failed
 Passing `--run <name>` runs a single test instead; that is how the driver observes a test that
 expects the process to terminate, described next.
 
+### Running the Tests in Every Backend
+
+`test` does all of that for every backend, then runs what it built and says whether each declared
+test passed in each:
+
+```bash
+dotnet run --project src/ProtoCross.Cli -- test examples/simpleScript.pcross -I examples/protos -o generated
+```
+
+```text
+csharp: dotnet test in generated\tests\csharp
+cpp: cmake and ctest in generated\tests\cpp
+csharp: 12 passed
+cpp: 12 passed
+every declared test passed in csharp and cpp
+```
+
+It passes only when every declared test passed in every backend tested.
+- **Each backend is held up against the tests the sources declare,** not only against the other.
+  So a backend that ran fewer fails the run, whether its test project did not build or its driver
+  stopped.
+- **A tool that reports a failure fails the run,** even after every test passed: `dotnet test`
+  failing in a step after its tests, say.
+- **Each step may take 30 minutes** before it is stopped as hung, which fails the run: `dotnet test`,
+  or one of cmake's configure, build and `ctest`. A project sets another limit with
+  `<TestRun StepTimeout="45m" />`, in seconds, minutes or hours (`90s`, `45m`, `2h`), up to `24h`.
+- **A missing tool ends the run before anything is written,** with exit code 2 and what to install.
+  `-t csharp` or `-t cpp` tests one backend on purpose.
+- **It writes into the usual directories.** The tests go to `--test-out`, which defaults to
+  `<out>/tests`, and each project builds beside them, so a second run builds on the first.
+- **Exit codes:**
+  - 0 when every test passed;
+  - 1 for a compile error, or a test that failed or did not run;
+  - 2 for a usage or configuration error, or a missing tool.
+
+### Naming the Test Projects
+
+A test project dropped into an existing repository may need another name, an older .NET, or CMake
+targets that cannot collide with the repository's own. A project states that once, in `<Scaffold>`:
+
+```xml
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Scaffold>
+    <CSharp TargetFramework="net8.0" ProjectName="Acme.Billing.Tests" />
+    <Cpp ProjectName="billing_tests" TargetPrefix="billing" />
+  </Scaffold>
+</ProtoCrossProject>
+```
+
+That writes `Acme.Billing.Tests.csproj` targeting `net8.0`, and a CMake project `billing_tests` whose
+targets all begin `billing_`. Every setting is optional, and one left out keeps its default. The
+same four settings are flags for one build: `--csharp-target-framework`, `--csharp-project-name`,
+`--cpp-project-name` and `--cpp-target-prefix`. A flag stands over the project for the setting it
+states, and needs `--scaffold` and its target in `-t`.
+
+A value is refused, not rewritten: a framework older than `net8.0`, which the pinned test SDK does not
+support, or a name that is not letters, digits and underscores (and, for the C# project, periods
+between them). The package versions and the test frameworks are fixed: Google.Protobuf has to match
+the protoc that Grpc.Tools runs, and the C# tests are xUnit tests (spec 25.3.2).
+
 ### Tests That Expect Failure
 
 `on_zero fail` says no substitute value is correct, so the program stops. A test can assert that:
@@ -615,9 +688,9 @@ If `vcpkg` is not on `PATH`, run it by full path instead, for example:
 C:\vcpkg\vcpkg.exe install --triplet x64-windows
 ```
 
-When using vcpkg manifest mode from the repository root, the test looks under
-`vcpkg_installed/<triplet>/include`. It also checks `VCPKG_ROOT`, `VCPKG_INSTALLED_DIR`, common
-system install paths, and the explicit override:
+When using vcpkg manifest mode, the tests look under `vcpkg_installed/<triplet>/include` in the
+repository root and in each directory above it, nearest first. They also check `VCPKG_INSTALLED_DIR`,
+`VCPKG_ROOT`, each `CMAKE_PREFIX_PATH` prefix, common system install paths, and the explicit override:
 
 ```powershell
 $env:PROTOCROSS_PROTOBUF_CPP_INCLUDE = "C:\path\to\protobuf\include"

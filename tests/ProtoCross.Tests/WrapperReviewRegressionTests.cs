@@ -38,8 +38,8 @@ public class WrapperReviewRegressionTests
     [Trait("ReviewRegression", "WrapperFields")]
     public void CSharpWrapperLoopsAndStoresPreserveTheMessageSemantics(string vector, int testCount)
     {
-        var dotnet = Toolchain.LocateDotnet();
-        var protoc = Toolchain.LocateProtoc();
+        var dotnet = TestToolchain.LocateDotnet();
+        var protoc = TestToolchain.LocateProtoc();
         Assert.NotNull(dotnet);
         Assert.NotNull(protoc);
         var result = Compile(vector, testCount);
@@ -62,12 +62,8 @@ public class WrapperReviewRegressionTests
     [Trait("ReviewRegression", "WrapperFields")]
     public void CppWrapperLoopsAndStoresPreserveTheMessageSemantics(string vector, int testCount)
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (compiler is null || protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Running generated C++ needs a C++ compiler and protobuf headers and libraries.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = Compile(vector, testCount);
         var workspace = CppTestWorkspace.Create("wrapper-review-cpp");

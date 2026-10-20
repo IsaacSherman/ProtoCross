@@ -18,8 +18,10 @@ in, as it always has been.
 **Decided: a message's factory is a class of its own, named after the message, in the namespace its
 behavior goes in** ([16.3](./§16-Methods.md#163-factories)). The class of `Invoice`'s factory is `InvoiceFactory`. Its name is the
 message's name and the names of the messages enclosing it, each PascalCased as a C# method name is
-([24.1](#241-c)) and joined by underscores, then `Factory`: `Outer.invoice_line` is
-`Outer_InvoiceLineFactory`. One name in every backend, because it is the name a consumer types, and a
+([24.1](#241-c)) and joined by underscores, then `Factory`. The underscore kept in front of a
+leading digit goes only at the start, because a nested name already follows one:
+`Outer.invoice_line` is `Outer_InvoiceLineFactory`, `_1Ticket` is `_1TicketFactory`, and
+`Outer._1Ticket` is `Outer_1TicketFactory`. One name in every backend, because it is the name a consumer types, and a
 nested message's factory never takes a top-level one's. It goes where the project's behavior goes, so
 a consumer writes `using Acme.App;` and `InvoiceFactory.Create(options)` in C#, or
 `acme::app::InvoiceFactory::create(options)` in C++. Compiled without a project, it is declared beside
@@ -95,7 +97,8 @@ source's part lists its methods by the message they extend. One class rather tha
 because the namespace is the project's rather than a schema's, and two messages of one name from
 two packages would otherwise need two classes of one name in it. Method names are PascalCased to
 match the C# protobuf generator, so `line_total_cents` becomes `LineTotalCents` and reads the same
-as a hand-written member. A method whose name would then be the name of the class it is declared in,
+as a hand-written member. An underscore in front of a digit at the start is kept, as protoc keeps
+one, because a name cannot begin with a digit: `_2nd_try` is `_2ndTry`. A method whose name would then be the name of the class it is declared in,
 which C# does not allow, has an underscore appended wherever it is declared or called, as protoc
 appends one to a property named after its message: `proto_cross_extensions` is
 `ProtoCrossExtensions_` in a project, and `timestamp_proto_cross_extensions` on `Timestamp` is
@@ -525,6 +528,31 @@ value.
   its literal reads.
 - A literal that sets nothing is `T()`.
 - A test's receiver fixture is written by the same writer, into the local `receiver`.
+
+**Operands that may each end the program are evaluated into locals first, in order.** C++ fixes no
+order for a call's arguments, nor for the operands of most operators, and the runtime's helpers take
+their operands as arguments: integer `a + b` is `protocross_runtime::wrap_add_i64(a, b)`, whose
+arguments MSVC evaluates right to left. Where two operands of one call, operator, division, lookup or
+change may each end the program or never finish, they are copied into locals in the order written by
+a lambda called where the expression is written, as a message literal is
+([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)):
+
+```cpp
+[&] {
+  auto operand = ::acme::subtotal_cents(self);
+  auto operand1 = ::acme::discount_cents(self);
+  return ::protocross_runtime::wrap_sub_i64(operand, operand1);
+}()
+```
+
+- Only those operands are held. Every other expression is written as it stands, since its order
+  cannot be seen.
+- A local is a copy, so a field read off a temporary, such as what a lookup gives, is not left
+  referring into a temporary that has gone.
+- `and` and `or` are never held, since they already evaluate left first, and their right operand only
+  where it decides the answer.
+- A store whose key and value may each end the program binds the map and holds the key in a local
+  first, in a block of its own, since C++17 evaluates the right side of `=` before its left.
 
 **A map is protoc's `Map`, read through `protocross_runtime.h` and written through `mutable_x()`**
 ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). `operator[]` puts a default at a missing key, which the language means only where an element

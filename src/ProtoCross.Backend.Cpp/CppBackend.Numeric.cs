@@ -8,14 +8,27 @@ public sealed partial class CppBackend
 {
     private static string EmitBinary(IrBinary binary, Placement placement)
     {
+        var left = Expression(binary.Left, placement);
+        var right = Expression(binary.Right, placement);
+
+        // && and || evaluate their left operand first, and their right only where it decides the answer, which is
+        // the order the language gives them. Holding the right one in a local first would evaluate it regardless.
+        if (binary.Operator is IrBinaryOperator.LogicalAnd or IrBinaryOperator.LogicalOr)
+        {
+            return Applied(binary, left, right);
+        }
+
+        return InOrder(binary, [binary.Left, binary.Right], [left, right], operands => Applied(binary, operands[0], operands[1]), placement);
+    }
+
+    /// <summary><paramref name="binary"/>'s operator applied to its operands, written as <paramref name="left"/> and <paramref name="right"/>.</summary>
+    private static string Applied(IrBinary binary, string left, string right)
+    {
         // The binder gives two maps no operator but == and !=.
         if (binary.Left.Type is MapType)
         {
-            return EmitMapEquality(binary, placement);
+            return MapsCompared(binary, left, right);
         }
-
-        var left = Expression(binary.Left, placement);
-        var right = Expression(binary.Right, placement);
 
         if (binary.OverflowingType is { } scalar)
         {
@@ -183,13 +196,26 @@ public sealed partial class CppBackend
     /// helper, or <c>_or_fail</c>.
     /// </summary>
     private static string Divided(IrIntegerDivision division, string form, Placement placement)
-        => $"{RuntimeNamespace}::{DivisionStem(division)}{form}_{DivisionSuffix(division)}("
-            + $"{Expression(division.Left, placement)}, {Expression(division.Right, placement)})";
+        => InDivisionOrder(
+            division,
+            operands => $"{RuntimeNamespace}::{DivisionStem(division)}{form}_{DivisionSuffix(division)}({operands[0]}, {operands[1]})",
+            placement);
 
     /// <summary><paramref name="division"/>, calling <paramref name="onZero"/>, a lambda, for a zero divisor.</summary>
     private static string DividedOr(IrIntegerDivision division, string onZero, Placement placement)
-        => $"{RuntimeNamespace}::{DivisionStem(division)}_or_{DivisionSuffix(division)}("
-            + $"{Expression(division.Left, placement)}, {Expression(division.Right, placement)}, {onZero})";
+        => InDivisionOrder(
+            division,
+            operands => $"{RuntimeNamespace}::{DivisionStem(division)}_or_{DivisionSuffix(division)}({operands[0]}, {operands[1]}, {onZero})",
+            placement);
+
+    /// <summary>What <paramref name="build"/> makes of the dividend and the divisor, the dividend evaluated first where that can be seen.</summary>
+    private static string InDivisionOrder(IrIntegerDivision division, Func<IReadOnlyList<string>, string> build, Placement placement)
+        => InOrder(
+            division,
+            [division.Left, division.Right],
+            [Expression(division.Left, placement), Expression(division.Right, placement)],
+            build,
+            placement);
 
     /// <summary>The runtime's name for the division under its overflow behavior, before any form: <c>wrap_div</c>.</summary>
     private static string DivisionStem(IrIntegerDivision division)

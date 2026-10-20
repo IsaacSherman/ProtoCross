@@ -52,6 +52,10 @@ Normative Requirements:
 - Unit tests are declarative fixtures and expectations, not arbitrary executable ProtoCross code.
 - A test names a receiver method, supplies a protobuf receiver value and method arguments, and
   declares the expected return value, the expected refusal, or expected terminal failure.
+- **A test's name does not end in whitespace.** One that does is `PC0146`, at the name. Each backend
+  reports a test by its identity, which holds the name ([25.3.3](#2533-running-the-tests)), and C#'s
+  test runner does not keep whitespace at the end of one, so `"rounds up "` could not be told apart
+  from `"rounds up"`. Whitespace inside a name, or before it, is kept by every backend.
 - **A test of a factory's method names it through the factory, `test Invoice.factory.create`, and
   supplies no receiver**, because the method is called on nothing ([16.3](./§16-Methods.md#163-factories)). A `receiver` block
   there is `PC0132`. A test may not target a helper, which is `PC0129`: a test reaches only what a
@@ -83,8 +87,9 @@ Normative Requirements:
 - Test declarations are never emitted into production behavior output. The compiler generates
   target-language test source files into a user-selected test output directory, and only when test
   generation is explicitly requested.
-- The compiler should not execute tests by default. Execution belongs to the target language's
-  normal test runner or build system.
+- The compiler does not execute tests unless asked to: a build only generates them. `protocross
+  test` asks, and runs them through each target language's own test runner and build system
+  ([25.3.3](#2533-running-the-tests)).
 
 Syntax:
 
@@ -192,13 +197,21 @@ protoc \
 ```
 
 `--scaffold` writes a target-specific test project beside generated tests and requires
-`--test-out`. Each test backend writes under `<test-out>/<target>/`.
+`--test-out`. Each test backend writes under `<test-out>/<target>/`. What each project is named and
+targets is [25.3.2](#2532-test-projects)'s.
 
 Implemented backend behavior:
 
 - C# generates ordinary test source and can scaffold a `.csproj`.
 - C++ generates standalone test executables and can scaffold a CMake project.
 - Python has no implementation.
+
+**Decided: a fixture is part of the generated test.** It is a message literal, which a backend writes as
+code inside the test, so there is no fixture file to copy beside it.
+
+**Decided: generated tests are build artifacts.** Generation is deterministic, so a copy checked in
+changes only when its source or the compiler does. A release may still change their text, because only
+generated names and signatures are promised ([27.2](./§27-Versioning%20and%20Compatibility.md#272-compatibility-policy)).
 
 Open Questions:
 
@@ -211,12 +224,11 @@ Open Questions:
 - ~~Should expected protobuf message values use text format, JSON mapping, binary fixtures, or all
   three?~~ Decided: a message literal, as a fixture is, compared by the fields it sets
   ([25.3](#253-author-written-protocross-unit-tests)).
-- Should the compiler embed fixtures in generated source, copy fixture files beside the generated
-  tests, or support both?
-- Should target test framework selection be a backend option such as
-  `--test-opt framework=xunit|standalone|gtest`?
-- Should generated tests be stable enough to check in, or treated as build artifacts only?
-- What should the eventual `protoc` plugin flag names be?
+- ~~Should target test framework selection be a backend option such as
+  `--test-opt framework=xunit|standalone|gtest`?~~ Decided for 1.0: no. A C# test is an xUnit test
+  and a C++ test is a standalone driver, and a setting names and targets the project that builds
+  them rather than choosing the framework they are written for ([25.3.2](#2532-test-projects)).
+- [The `protoc` plugin's flag names](./§30-Unresolved%20Questions%20Index.md#30212-running-as-a-protoc-plugin-and-buf), post-1.0
 
 Decided: `expect fail` runs out of process. A terminal failure cannot be observed from inside the
 process it ends, so a backend generates such a test as a driver that relaunches itself for that one
@@ -295,3 +307,159 @@ Implementation Note:
   when `--test-out` asks for the tests.
 - An editor does not take a project yet, so every source it compiles is a production source, and it
   binds every source's tests.
+
+### 25.3.2 Test Projects
+
+**Decided: what the test projects `--scaffold` writes are named and target is four settings, stated
+by a project's `<Scaffold>` for every build of it and by a flag for one build, the flag standing over
+the project. Nothing else about a test project is a setting.**
+
+```xml
+<ProtoCrossProject>
+  <Sources Include="src/**/*.pcross" />
+  <Scaffold>
+    <CSharp TargetFramework="net8.0" ProjectName="Acme.Billing.Tests" />
+    <Cpp ProjectName="billing_tests" TargetPrefix="billing" />
+  </Scaffold>
+</ProtoCrossProject>
+```
+
+| Setting | Flag | Default | Accepts |
+|---|---|---|---|
+| `<CSharp TargetFramework>` | `--csharp-target-framework` | `net10.0` | `net` and a major and minor version, `net8.0` or later, with no platform |
+| `<CSharp ProjectName>` | `--csharp-project-name` | `ProtoCrossTests` | identifiers separated by periods, each an ASCII letter followed by ASCII letters, digits and underscores |
+| `<Cpp ProjectName>` | `--cpp-project-name` | `protocross_tests` | an ASCII letter followed by ASCII letters, digits and underscores |
+| `<Cpp TargetPrefix>` | `--cpp-target-prefix` | none | the same |
+
+Normative Requirements:
+
+- The C# project's name is its `.csproj`'s file name, and so the assembly its tests build into. The
+  CMake project's name is what its `project()` declares.
+- A target prefix begins every target the CMake project declares, followed by an underscore:
+  `billing_protocross_protos` and `billing_invoice_tests` rather than `protocross_protos` and
+  `invoice_tests`. Every target takes it, so that test projects built in one CMake build can be told
+  apart by it alone.
+- A setting no project or flag states is its default, which is what the project was before settings
+  existed, byte for byte.
+- `<Scaffold>` holds a `<CSharp>` and a `<Cpp>`, each at most once and each optional, whose attributes
+  are that target's settings, each optional. Any other element or attribute in it is `PC2008`. A
+  second `<Scaffold>`, a second `<CSharp>` or `<Cpp>`, text, or a value its setting does not accept is
+  `PC2009`, at what it got wrong, and the project is refused whole
+  ([5.4](./§5-Source%20Organization.md#54-projects)). Whitespace around a value is not part of it.
+- A value is refused, never rewritten into one its setting accepts. A name with its spaces made
+  underscores is a name nobody wrote, and the test project would answer to it.
+- A flag replaces the one setting it states, and the project's other settings stand. Unlike a policy
+  flag ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), it needs no
+  `--override-config`: policy decides what the generated code means, and a test project's name and
+  framework decide only what builds the tests.
+- The command line refuses a flag with no `--scaffold`, a flag for a target the build does not write,
+  and a value its setting does not accept, before it compiles anything. A build that took a flag and
+  wrote nothing it shapes would look as if it had used it. A project's settings for a target the
+  build leaves out are not refused, because a project states every target's whatever one build asks
+  for.
+
+Rationale:
+
+- **`net8.0` is the oldest framework** because the pinned `Microsoft.NET.Test.Sdk` refuses to build
+  for anything older, and xunit.v3 supports nothing older either. The generated behavior and tests
+  need no newer language than .NET 8's. Raising a pinned package can raise it.
+- **The package versions are not settings.** Google.Protobuf has to match the protoc that Grpc.Tools
+  runs, so a project that pinned one and not the other would build code its protobuf runtime cannot
+  read.
+- **The test framework is not a setting.** Each test backend writes source for one: xUnit for C#, a
+  standalone driver for C++. Another would take a second emitter, not a setting.
+- **In the project rather than `protocross.config.xml`**, because a test project's name changes
+  nothing a method means. The configuration file is for policy.
+
+Implementation Note:
+
+- `ScaffoldSetting` describes each setting once: its element, its attribute, its flag and what it
+  accepts. The project reader and the command line both ask it, so the two cannot come to accept
+  different values. `ScaffoldSettings` holds what was stated, and `ScaffoldOptions.Settings` hands it
+  to a backend.
+
+### 25.3.3 Running the Tests
+
+**Decided: `protocross test` builds what `protocross build` would, with the tests and the projects
+that run them, then builds and runs each backend's test project and judges what it reported. It
+passes only when every declared test passed in every backend tested.**
+
+```text
+protocross test billing.pcproj
+protocross test pricing.pcross discounts.pcross -I protos -t csharp
+```
+
+Normative Requirements:
+
+- **The command line has verbs.** `build` and `test` are named as the first argument, and a command
+  line naming neither is a `build`, so every command line written before there were verbs means what
+  it did. A verb is read only as the first argument, so a source named for one is written as a path:
+  `./test`.
+- **It writes where a build writes.** The program goes to `--out`, and the tests to `--test-out`,
+  which defaults to `<out>/tests`. `--scaffold` is implied. Each backend's test project builds beside
+  its tests: C#'s with `dotnet test`, and C++'s with `cmake` into `<test-out>/cpp/build` and then
+  `ctest`. A second run builds on the first, and a failure can be inspected and rebuilt by hand.
+- **Every tool is found before anything is built,** and after the command line's sources are checked,
+  so that a source that is not there is the usage error it is for `build`.
+  - C# needs `dotnet`.
+  - C++ needs `cmake`, a C++ compiler and a protobuf C++ install. The install is looked for in a
+    `vcpkg_installed` at or above the project's directory or the first source's, under
+    `VCPKG_ROOT` or `CMAKE_PREFIX_PATH`, or at `PROTOCROSS_PROTOBUF_CPP_INCLUDE`.
+  - An install is one only with the CMake package the generated project reads through
+    `find_package(Protobuf CONFIG)`, under its prefix where CMake looks for one. Headers alone are not
+    an install, since the project finds protobuf's libraries, their dependencies and protoc only
+    through that package.
+  - A missing tool ends the run with exit code 2 and writes nothing. The error says what is missing
+    and how to provide it.
+  - A missing tool does not skip its backend: `-t` is how a run tests fewer.
+- **Each backend is judged against the declared tests.** Each declared test is passed, failed or
+  missing in each backend, looked up by its `IrTest.Identity`. A test a backend never reported is
+  missing, which is not a pass. So the run fails when a test project did not build or a driver
+  stopped, and when two backends both left out the same test.
+- **Each backend is judged by its tools as well.** A tool that exits with an error fails the run even
+  when every declared test passed: `dotnet test` failing in a target that runs after the tests, or
+  `ctest` failing a driver that ended badly after its passes. The tests' reports show only the
+  passes, so they cannot be the whole verdict.
+- **Each step may take 30 minutes** before it is taken to have hung and is stopped: `dotnet test`,
+  and cmake's configure, its build and `ctest`, each. A stopped step did not run to the end, so its
+  tool failed, and the run fails and says how long the step was given.
+  - A project gives its steps another limit with `<TestRun StepTimeout="45m" />`: a whole number,
+    with no leading zero, followed by `s`, `m` or `h` for seconds, minutes or hours. It is above zero
+    and no more than `24h`, and whitespace around it is not part of it. A run of sources named on
+    the command line takes the default.
+  - Any other attribute or element in `<TestRun>` is `PC2008`. A second `<TestRun>`, text, or a value
+    `StepTimeout` does not accept is `PC2009`, at what it got wrong, and the project is refused whole
+    in every build ([5.4](./§5-Source%20Organization.md#54-projects)).
+- **A build that declares no tests has nothing to test, and fails.** A run that checked nothing would
+  otherwise exit 0 as if it had passed.
+- **A test a backend ran that no source declares is noted as information,** on standard output,
+  and never as a warning. It is not one of the declared tests, so it is not judged as one. A tool
+  that fails on its account still fails the run, as any failed tool does. It is most likely in a
+  test file an earlier build left in `--test-out`, which the compiler writes into and never removes
+  from.
+- **Exit codes:**
+  - 0 when every declared test passed in every backend tested;
+  - 1 for a compile error, as `build` returns, or for a test that failed or did not run;
+  - 2 for a usage or configuration error, or a missing tool.
+- **Output:** a line for each backend counting its passed, failed and missing tests, then how its
+  tool failed, if it did, and each declared test it did not pass, with why.
+
+Rationale:
+
+- **30 minutes**, because a first run restores packages and builds each test project from cold. The
+  limit is for a step that has stopped, not one that is slow. A project may need longer, or want a
+  hang found sooner, so it can say so. A day is the most, because a step still running after one has
+  stopped.
+- **A time is written with its unit,** because `45` is minutes to one reader and seconds to the next.
+- **Information, not a warning,** for a test no source declares, and on standard output, because a
+  warning can fail a build that treats warnings as errors, and some pipelines fail a step for
+  writing to standard error. A file an earlier build left behind is no fault in the program.
+
+Implementation Note:
+
+- The rule is `TestVerdict.Judge`, in `ProtoCross.Toolchain`, and the conformance suite judges the
+  corpus by it, so a run the suite would fail cannot pass on a user's machine. `ToolLocator` finds the
+  tools, `TestProjectRunner` builds and runs each project, and `TestReports` reads what it reported.
+  The suite uses all three as well.
+- A project's `<TestRun>` is `ProtoCrossProject.TestRun`, a `TestRunSettings`, which holds the
+  default limit and reads `StepTimeout`, so the default and what a project may write have one home.

@@ -18,7 +18,7 @@ namespace ProtoCross.Tests;
 /// the emitted projects for real. Everything here exists to name a specific failure quickly when
 /// that end-to-end test breaks.
 /// </remarks>
-public class ScaffoldTests
+public partial class ScaffoldTests
 {
     private static ScaffoldOptions Options() => new(
         BehaviorDirectory: "../../csharp",

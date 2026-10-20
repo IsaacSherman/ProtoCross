@@ -4,6 +4,7 @@ using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Conformance;
 
@@ -19,6 +20,12 @@ public sealed class ConformanceFixture
     internal ConformanceRun CSharp { get; }
 
     internal ConformanceRun Cpp { get; }
+
+    /// <summary>
+    /// How the backends that ran did against the corpus's declared tests, judged by the rule
+    /// <c>protocross test</c> judges by. A backend that could not run is not in it.
+    /// </summary>
+    internal TestVerdict Verdict { get; }
 
     /// <summary>
     /// One compiled vector.
@@ -74,29 +81,32 @@ public sealed class ConformanceFixture
             var reason = "the corpus did not compile: " + string.Join(" | ", failures);
             CSharp = ConformanceRun.Skipped("csharp", reason);
             Cpp = ConformanceRun.Skipped("cpp", reason);
-            return;
+        }
+        else
+        {
+            CSharp = RunCSharp(modules);
+            Cpp = RunCpp(modules);
         }
 
-        CSharp = RunCSharp(modules);
-        Cpp = RunCpp(modules);
+        Verdict = TestVerdict.Judge(
+            DeclaredIdentities,
+            [.. new[] { CSharp, Cpp }.Where(run => run.SkipReason is null).Select(run => new BackendRun(run.Backend, run.Results, run.ToolFailure))]);
     }
 
     private static ConformanceRun RunCSharp(IReadOnlyList<CompiledVector> modules)
     {
         const string Backend = "csharp";
 
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
+        var dotnet = ToolLocator.FindDotnet();
+        if (!dotnet.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend, "No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
+            return ConformanceRun.Skipped(Backend, dotnet.Missing);
         }
 
-        var protoc = Toolchain.LocateProtoc();
-        if (protoc is null)
+        var protoc = ToolLocator.FindProtoc();
+        if (!protoc.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend, "No protoc executable found. Restore Grpc.Tools or install protoc.");
+            return ConformanceRun.Skipped(Backend, protoc.Missing);
         }
 
         var backend = new CSharpBackend();
@@ -113,7 +123,7 @@ public sealed class ConformanceFixture
         workspace.Write(FilesOf(vectors));
 
         var generated = workspace.GenerateProtobuf(
-            protoc, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
+            protoc.Tool, ConformanceVectors.ProtoDirectory, [.. ConformanceVectors.SchemaFileNames]);
 
         if (generated.ExitCode != 0)
         {
@@ -123,42 +133,32 @@ public sealed class ConformanceFixture
 
         workspace.WriteProjectFiles();
 
-        var run = workspace.RunTests(dotnet);
-        var byName = run.Executed.ToDictionary(test => test.Name, StringComparer.Ordinal);
+        var run = workspace.RunTests(dotnet.Tool);
+        var results = TestReports.FromTrx(
+            ConformanceVectors.DeclaredIdentities(modules.SelectMany(entry => entry.Tests)),
+            run.Executed);
 
-        var results = modules
-            .SelectMany(entry => entry.Tests)
-            .Select(test => byName.TryGetValue(test.Identity, out var executed)
-                ? new ConformanceResult(
-                    test.Identity,
-                    executed.Passed ? ConformanceOutcome.Passed : ConformanceOutcome.Failed,
-                    executed.Detail)
-                : new ConformanceResult(test.Identity, ConformanceOutcome.Missing, "not present in the test log"))
-            .ToList();
-
-        return new ConformanceRun(Backend, null, results, workspace.Directory, run.Process.Output);
+        return new ConformanceRun(Backend, null, results, workspace.Directory, run.Process.Output) { ToolFailure = run.Failure };
     }
 
     private static ConformanceRun RunCpp(IReadOnlyList<CompiledVector> modules)
     {
         const string Backend = "cpp";
 
-        var compiler = Toolchain.LocateCppCompiler();
-        if (compiler is null)
+        var compilerLookup = ToolLocator.FindCppCompiler();
+        if (!compilerLookup.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend,
-                "No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
+            return ConformanceRun.Skipped(Backend, compilerLookup.Missing);
         }
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
+        var protobufLookup = TestToolchain.FindProtobufCpp();
+        if (!protobufLookup.Found)
         {
-            return ConformanceRun.Skipped(
-                Backend,
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
+            return ConformanceRun.Skipped(Backend, protobufLookup.Missing);
         }
+
+        var compiler = compilerLookup.Tool;
+        var protobuf = protobufLookup.Tool;
 
         if (!protobuf.CanLink)
         {
@@ -195,7 +195,7 @@ public sealed class ConformanceFixture
             .Zip(workspace.BuildAndRun(compiler, protobuf, drivers, ConformanceVectors.CppSchemaSources))
             .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
 
-        var results = new List<ConformanceResult>();
+        var results = new List<TestReport>();
         var output = new List<string>();
 
         foreach (var vector in vectors)
@@ -210,41 +210,17 @@ public sealed class ConformanceFixture
                 reported.Add(program.Output);
             }
 
-            results.AddRange(ReadDriverResults(vector.Compiled.Tests, string.Join('\n', reported)));
+            results.AddRange(TestReports.FromDriverOutput(
+                ConformanceVectors.DeclaredIdentities(vector.Compiled.Tests),
+                string.Join('\n', reported)));
         }
 
         return new ConformanceRun(
-            Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output));
-    }
-
-    /// <summary>
-    /// Reads what a vector's drivers reported. Each declared test is looked up by its own identity
-    /// rather than by parsing identities out of the drivers' lines, so a test name containing bracket
-    /// or parenthesis characters cannot confuse the match.
-    /// </summary>
-    private static IEnumerable<ConformanceResult> ReadDriverResults(
-        IReadOnlyList<IrTest> tests,
-        string output)
-    {
-        var lines = output.Split('\n').Select(line => line.Trim()).ToList();
-        var reported = lines.ToHashSet(StringComparer.Ordinal);
-
-        foreach (var test in tests)
+            Backend, null, results, workspace.Directory, string.Join(Environment.NewLine, output))
         {
-            if (reported.Contains("[ok] " + test.Identity))
-            {
-                yield return new ConformanceResult(test.Identity, ConformanceOutcome.Passed, string.Empty);
-                continue;
-            }
-
-            var failure = lines.FirstOrDefault(
-                line => line.StartsWith("[FAIL] " + test.Identity, StringComparison.Ordinal));
-
-            yield return failure is not null
-                ? new ConformanceResult(test.Identity, ConformanceOutcome.Failed, failure)
-                : new ConformanceResult(
-                    test.Identity, ConformanceOutcome.Missing, "the driver never reported this test");
-        }
+            ToolFailure = programs.Values.Select(program => program.Failure).FirstOrDefault(failure => failure is not null),
+            DriverOutputs = programs.ToDictionary(entry => entry.Key, entry => entry.Value.Output, StringComparer.Ordinal),
+        };
     }
 
     /// <summary>Generates every vector a source at a time, as a command-line build of it would.</summary>

@@ -1,30 +1,8 @@
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using ProtoCross.Backend;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Harness;
-
-/// <summary>One test the generated C# project actually executed, as reported by the test run.</summary>
-/// <param name="Message">
-/// What the test said when it failed, empty when it passed or said nothing.
-/// </param>
-/// <remarks>
-/// <b>The message is the whole reason a failure here is actionable.</b> Without it a conformance
-/// failure reads "Failed: protocross.conformance.DivisionCase.strict_quotient" followed by the word
-/// "Failed" again, which says that a vector did not pass and nothing whatever about why -- and these
-/// run in a generated project in a temporary directory that is gone by the time anybody looks. An
-/// <c>expect fail</c> vector in particular reports one of five quite different things through this
-/// channel: the child never started, never reached the method, returned instead of terminating,
-/// exited with the wrong code, or never exited at all. Those have different causes and different
-/// fixes, and the run that needed to tell them apart was on a machine nobody can log into.
-/// </remarks>
-internal sealed record ExecutedTest(string Name, string Outcome, string Message)
-{
-    public bool Passed => string.Equals(Outcome, "Passed", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>What to show a reader: the message where there is one, the outcome otherwise.</summary>
-    public string Detail => string.IsNullOrWhiteSpace(Message) ? Outcome : Message.Trim();
-}
 
 /// <param name="Executed">
 /// Per-test results parsed from the TRX log. Empty when no TRX was produced, in which case only
@@ -33,7 +11,11 @@ internal sealed record ExecutedTest(string Name, string Outcome, string Message)
 internal sealed record CSharpTestRun(
     ProcessResult Process,
     IReadOnlyList<ExecutedTest> Executed,
-    int? PassedCount);
+    int? PassedCount)
+{
+    /// <summary>How <c>dotnet test</c> itself failed, whatever its tests did; null when it succeeded.</summary>
+    public string? Failure { get; init; }
+}
 
 /// <summary>
 /// A throwaway C# project that compiles ProtoCross's generated behavior and generated tests together
@@ -80,7 +62,7 @@ internal sealed class CSharpTestWorkspace
     }
 
     public ProcessResult GenerateProtobuf(string protoc, string protoPath, params string[] protoFiles)
-        => Toolchain.RunProtoc(protoc, "csharp_out", protoPath, Directory, protoFiles);
+        => TestToolchain.RunProtoc(protoc, "csharp_out", protoPath, Directory, protoFiles);
 
     public void WriteProjectFiles()
     {
@@ -162,78 +144,20 @@ internal sealed class CSharpTestWorkspace
 
     public CSharpTestRun RunTests(string dotnet)
     {
-        var result = RunDotnet(
-            dotnet,
-            "test",
-            "--nologo",
-            "-v",
-            "quiet",
-            "--results-directory",
-            ResultsDirectory,
-            "--logger",
-            "trx;LogFileName=protocross.trx");
-
-        return new CSharpTestRun(result, ReadTrx(), ReadPassedCount(result.Output));
+        var run = TestProjectRunner.RunDotnetTest(dotnet, Directory, ResultsDirectory);
+        return new CSharpTestRun(run.Process, run.Executed, ReadPassedCount(run.Process.Output)) { Failure = run.Failure };
     }
 
     private ProcessResult RunDotnet(string dotnet, params string[] arguments)
     {
-        var startInfo = ProcessRunner.Create(dotnet, Directory);
+        var startInfo = ProcessRunner.CreateDotnet(dotnet, Directory);
 
         foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }
 
-        ProcessRunner.ScrubMsBuildEnvironment(startInfo);
-
-        // Belt and braces. ProtoCross's fail path exits cleanly rather than crashing, so nothing
-        // here should reach the crash reporter, but a genuinely faulting child would otherwise stall
-        // the run while a dump is collected.
-        startInfo.Environment["DOTNET_DbgEnableMiniDump"] = "0";
-
         return ProcessRunner.Run(startInfo);
-    }
-
-    /// <summary>
-    /// Per-test outcomes from the TRX log. Returns an empty list when no TRX was written, which
-    /// leaves callers on the coarser passed-count check rather than failing outright.
-    /// </summary>
-    private IReadOnlyList<ExecutedTest> ReadTrx()
-    {
-        if (!System.IO.Directory.Exists(ResultsDirectory))
-        {
-            return [];
-        }
-
-        var trx = System.IO.Directory.GetFiles(ResultsDirectory, "*.trx", SearchOption.AllDirectories)
-            .OrderByDescending(File.GetLastWriteTimeUtc)
-            .FirstOrDefault();
-
-        if (trx is null)
-        {
-            return [];
-        }
-
-        XDocument document;
-        try
-        {
-            document = XDocument.Load(trx);
-        }
-        catch (System.Xml.XmlException)
-        {
-            return [];
-        }
-
-        XNamespace ns = "http://microsoft.com/schemas/VisualStudio/TeamTest/2010";
-
-        return document.Descendants(ns + "UnitTestResult")
-            .Select(element => new ExecutedTest(
-                (string?)element.Attribute("testName") ?? string.Empty,
-                (string?)element.Attribute("outcome") ?? string.Empty,
-                (string?)element.Element(ns + "Output")?.Element(ns + "ErrorInfo")?.Element(ns + "Message")
-                    ?? string.Empty))
-            .ToList();
     }
 
     /// <summary>

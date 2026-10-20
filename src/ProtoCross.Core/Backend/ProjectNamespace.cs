@@ -65,10 +65,14 @@ public sealed record ProjectNamespace
 
     public override string ToString() => Package;
 
-    private static bool IsPackageName(string name) => name.Split('.').All(IsComponent);
+    private static bool IsPackageName(string name) => name.Split('.').All(IsIdentifier);
 
-    private static bool IsComponent(string component)
-        => component.Length > 0
-            && char.IsAsciiLetter(component[0])
-            && component.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
+    /// <summary>
+    /// Whether <paramref name="name"/> is one component of a namespace: an ASCII letter followed by
+    /// ASCII letters, digits and underscores, which is a name C#, C++ and CMake all take as it stands.
+    /// </summary>
+    internal static bool IsIdentifier(string name)
+        => name.Length > 0
+            && char.IsAsciiLetter(name[0])
+            && name.All(c => char.IsAsciiLetterOrDigit(c) || c == '_');
 }

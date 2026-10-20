@@ -26,16 +26,19 @@ arithmetic behavior it exists to define.
 | [src/ProtoCross.Core](../src/ProtoCross.Core) | Lexer, parser, binder, IR, diagnostics, config. No CLI coupling. |
 | [src/ProtoCross.Backend.CSharp](../src/ProtoCross.Backend.CSharp) | C# emission, plus generated test projects. |
 | [src/ProtoCross.Backend.Cpp](../src/ProtoCross.Backend.Cpp) | The same for C++. |
-| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: argument parsing, driving a compilation, writing files. |
+| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: its verbs and their arguments, driving a compilation, writing files, and running the generated tests. |
 | [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
 | [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
+| [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, running them, and judging what the generated tests reported. |
 | [tests/ProtoCross.Tests](../tests/ProtoCross.Tests) | One xunit project covering all of it. |
 
 Dependencies run one way. Backends, the CLI and the language server reference Core; **Core
 references nothing in the repo**. That is what lets a language server consume the compiler without
 dragging the CLI along, and it is worth preserving. `ProtoCross.Projects` references Core and a
 globbing package and nothing else, so that listing directories to find sources happens beside Core
-rather than in it. The CLI references it too.
+rather than in it. The CLI references it too. `ProtoCross.Toolchain` references Core, for the protoc
+the two share, and nothing else: probing what a machine has installed is the CLI's business and the
+tests', never the compiler's.
 
 Outside the solution, [editors/vscode](../editors/vscode) is the VS Code extension: TypeScript, built with
 npm, and consuming the server only as a process it starts. See *The VS Code extension* below.
@@ -285,6 +288,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
 | Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](../src/ProtoCross.Core/Types/EnumOpenness.cs) |
 | Backend contract | `IBackend`, `ITestBackend`, `ITestProjectScaffold` | [Backend/IBackend.cs](../src/ProtoCross.Core/Backend/IBackend.cs) |
+| What a test project is named and targets, and where each choice is stated | `ScaffoldSettings`, `ScaffoldSetting` | [Backend/ScaffoldSettings.cs](../src/ProtoCross.Core/Backend/ScaffoldSettings.cs) |
 | Identifier mapping | `NameConventions` | [Backend/NameConventions.cs](../src/ProtoCross.Core/Backend/NameConventions.cs) |
 
 ### Diagnostics
@@ -356,7 +360,10 @@ alone, through the same [`XmlInput`](../src/ProtoCross.Core/Config/XmlInput.cs) 
 file is read with, so a position in either is placed the same way.
 [`ProjectSources.Expand`](../src/ProtoCross.Projects/ProjectSources.cs) is the separate step that walks
 directories. A project that states anything it cannot mean is refused whole (`PC2007`–`PC2009`), and
-an element whose patterns match nothing is a warning (`PC2010`).
+an element whose patterns match nothing is a warning (`PC2010`). Its `<Scaffold>` names the test
+projects `--scaffold` writes (spec 25.3.2), through the same `ScaffoldSetting`s the command line's
+flags state, so a value one accepts the other does too. Its `<TestRun>` says how long each step of
+`protocross test` may take (spec 25.3.3).
 [`ProjectFiles`](../src/ProtoCross.Projects/ProjectFiles.cs) says what each build compiles and in which
 role, and [`ProjectPolicy`](../src/ProtoCross.Projects/ProjectPolicy.cs) settles the one configuration
 file the compilation runs under, warning about a member whose own search finds another (`PC2011`).

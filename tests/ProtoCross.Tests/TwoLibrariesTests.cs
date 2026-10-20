@@ -63,17 +63,9 @@ public class TwoLibrariesTests
     [Fact]
     public void TwoLibrariesExtendingOneMessageLinkIntoOneCppProgram()
     {
-        var compiler = Toolchain.LocateCppCompiler();
-        if (compiler is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        var compiler = TestToolchain.RequireCppCompiler();
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null || !protobuf.CanLink)
-        {
-            Assert.Skip("Linking two libraries needs protobuf's C++ headers and libraries. Run 'vcpkg install'.");
-        }
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var workspace = CppTestWorkspace.Create("two-libraries-cpp");
         workspace.Write(Under("alpha", Library(new CppBackend(), "alpha", 1)));
@@ -122,11 +114,7 @@ public class TwoLibrariesTests
     [Fact]
     public void TwoLibrariesExtendingOneMessageBuildIntoOneCSharpAssembly()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
 
         var alpha = Library(new CSharpBackend(), "alpha", 1);
         var beta = Library(new CSharpBackend(), "beta", 2);

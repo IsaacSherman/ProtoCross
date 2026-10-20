@@ -9,6 +9,8 @@ public sealed partial class Parser
         var start = Expect(TokenKind.Test).Span;
         var target = ParseTestTarget();
         var name = Expect(TokenKind.StringLiteral);
+        var nameText = (string?)name.Value ?? string.Empty;
+        ReportIfTestNameEndsInWhitespace(nameText, name.Span);
         Expect(TokenKind.OpenBrace);
 
         // Where a part nobody wrote would be written: just inside the brace. Taken before the body
@@ -86,11 +88,39 @@ public sealed partial class Parser
 
         return new TestDeclaration(
             target,
-            (string?)name.Value ?? string.Empty,
+            nameText,
             receiver,
             arguments,
             expectation,
             Spanning(start, end));
+    }
+
+    /// <summary>Reports a test's name that ends in whitespace (<c>PC0146</c>, spec 25.3).</summary>
+    /// <remarks>
+    /// <para>
+    /// Each backend reports a test by its identity, the target and this name, and that is how a run is
+    /// judged against the declared tests. C#'s test runner does not keep whitespace at the end of a
+    /// display name, so <c>"rounds up"</c> and <c>"rounds up "</c> would be reported as one test, and the
+    /// verdict could not tell which of them ran. Refusing the name where it is written is the one place
+    /// that holds for every backend, rather than each reader trimming and hoping two names never meet.
+    /// </para>
+    /// <para>
+    /// Only the end: whitespace inside a name, or before it, survives every report.
+    /// </para>
+    /// </remarks>
+    private void ReportIfTestNameEndsInWhitespace(string name, SourceSpan span)
+    {
+        if (name.Length == 0 || !char.IsWhiteSpace(name[^1]))
+        {
+            return;
+        }
+
+        _diagnostics.Report(
+            DiagnosticCodes.TestNameEndsInWhitespace,
+            $"Test name \"{name.TrimEnd()}\" ends in whitespace, which C#'s test runner does not keep, so a test of "
+                + "this name could not be told apart from one without it.",
+            span,
+            "Remove the whitespace from the end of the name (spec 25.3).");
     }
 
     /// <summary>Reports a test of an extend method that declares no fixture to call it on (spec 25.3).</summary>

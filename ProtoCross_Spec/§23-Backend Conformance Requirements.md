@@ -51,7 +51,7 @@ time rather than emitting something whose semantics differ.
 | Proto2 presence | Yes | Yes | — | Via `FieldDescriptor.HasPresence`; no syntax-version branch ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)). |
 | Proto3 optional | Yes | Yes | — | Same mechanism. |
 | Editions | Yes | Yes | — | Same mechanism; presence is a resolved feature ([21.3](./§21-Interoperability%20With%20Protobuf.md#213-protobuf-editions-and-syntax-versions)). |
-| Oneof | No | No | — | Blocked on the open question in 8.4. |
+| Oneof | No | No | — | The case discriminator is post-1.0 ([30.8.10](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases)). Each member is a field like any other, and setting one unsets the others in both backends ([18](./§18-Mutability.md#18-mutability)). |
 | ProtoCross `test` declarations | Yes | Yes | — | Both backends emit generated tests. |
 | Message literals | Yes | Yes | — | C# writes an object initializer and `Clone`s a stored message that is not a literal; C++ writes a lambda called where the literal is written, and assigning a message copies it. Both set fields in the order written ([13.2](./§13-Messages.md#132-message-construction), [24.2](./§24-Generated%20API%20Strategy.md#242-c)). |
 | Test project scaffolding | Yes | Yes | — | C# `.csproj`; C++ `CMakeLists.txt`. |

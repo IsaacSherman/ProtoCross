@@ -141,12 +141,14 @@ already meet, and they would multiply what the sweeps cost.
 | `ConformanceVectorTests` | Every vector compiles, declares at least one test, and declares no method another vector does, and no two sources generate files of one name. Needs only protoc, so it always runs |
 | `ConformanceTests.CSharpRunsEveryConformanceVector` | The vectors build into one C# project and every test passes |
 | `ConformanceTests.CppRunsEveryConformanceVector` | Each source that declares tests builds into a C++ executable, and every test passes |
-| `ConformanceTests.BothBackendsRunTheSameVectors` | The set of tests C# ran, the set C++ ran, and the set declared in the corpus are the same set |
+| `ConformanceTests.BothBackendsRunTheSameVectors` | Neither backend left out a test the corpus declares: each is held up against the declared tests, not only against the other |
 
 The last one is the one that matters. Each backend passing on its own is not enough: a driver that
-ran zero tests also exits 0. Both backends report each test by the same backend-independent
-identity — `IrTest.Identity`, which the C# backend uses as the xUnit display name and the C++ driver
-prints — so the sets can be compared directly.
+ran zero tests also exits 0, and two backends that each left out the same test agree. Both backends
+report each test by the same backend-independent identity — `IrTest.Identity`, which the C# backend
+uses as the xUnit display name and the C++ driver prints — so each declared test can be looked up in
+each backend's run. `TestReports` reads the runs and `TestVerdict` judges them, both in
+`src/ProtoCross.Toolchain`, by the rule `protocross test` judges a user's tests by.
 
 When a backend cannot run, its tests skip with a message naming the missing tool rather than
 failing. A fully equipped machine should report no skips.
@@ -161,6 +163,7 @@ failing. A fully equipped machine should report no skips.
 | `floating_remainder` | `%` on `float` and `double`: the sign of the dividend, exactness, negative zero, and a zero, infinite, or NaN operand |
 | `constant_divisor` | Floating-point division whose operands are both written into the source, which the C++ front end works out while compiling rather than leaving to run: a literal, negated, converted, and computed zero divisor, and the field-over-constant divisions that cannot be folded (spec 10.2, 23.1) |
 | `ordinary_names` | `virtual` as a parameter, a local, a method, and a test target: an ordinary name in ProtoCross that both targets reserve, so each has to escape it (spec 17) |
+| `freed_words` | `enum` and `message`, which are names rather than reserved words: fields called so, read alone and together, and a parameter named `enum` and a local named `message`, which each target escapes where it reserves the word itself (spec 6.4) |
 | `control_flow` | `if` / `else if` / `else`, `while`, `while true` with `break`, `continue`, and `for`-`in` (spec 15) |
 | `map_fields` | Maps of every kind of key and value: a key that is there and one that is not, under a fallback and under `fail`; a fallback that would fail and is never evaluated; `in`, `count()` and `is_empty()`; equality in any order, and a NaN that equals nothing; a store, a compound store, and every method that changes a map; a message written through at a missing key, and a map inside one; a key written twice in a literal; and a loop over what a lookup gave while the loop changes the map (spec 14.2) |
 | `switch_statement` | `switch` on an enum and on each integer width at its edges: several values in one arm, a default and none, an empty arm, a number no value names, a case matching a value set by another name for its number, a `break` in an arm leaving the switch and never the loop around it, a `continue` in an arm, a `return` from every arm, an arm a constant condition ends, a nested switch, and a switch on a repeated enum's elements and on a call's result (spec 15.3) |
@@ -179,6 +182,7 @@ failing. A fully equipped machine should report no skips.
 | `property_names` | Fields whose C# property protoc renames -- after the message's own name, after a generated member, a letter after a digit, and an underscore before a leading digit -- read, tested with `has`, iterated, and set in fixtures, as scalar, message, and repeated fields (spec 24.1) |
 | `literals` | Every numeric literal form -- hexadecimal, binary, separators, exponents, `__INF` and `__NAN` -- and the rules that type one: its natural type, a `-` written on it being part of it so that int32 and int64 MIN are literals, a literal on the left adopting the type on the right, rounding once to `float`, and `-0` as negative zero where a `double` is expected (spec 6.6, 10.3) |
 | `bitwise` | `&` `\|` `^` `~` `<<` `>>`: where each binds among the other operators, the type a literal beside one takes -- the value shifted takes the type expected of the shift and never the count's, and a count literal keeps its own -- a count reduced modulo the width whatever its type and sign, a signed right shift copying the sign bit in and an unsigned one zero-filling, a left shift discarding what passes the width, and the idioms of testing, clearing and packing bits (spec 9.2, 10.1) |
+| `operand_order` | Every operand evaluated left to right, in each place C++ fixes no order of its own: a call's arguments, an operator's operands through a runtime helper and as a bare comparison, a division's dividend and divisor, a lookup's map and key, two maps compared, a store's key and value, a change's, and an entry a literal gives a map. Both operands of each end the program, each naming a map of its own, and the conformance tests read which one the C++ run named (spec 9.3) |
 | `compound_assignment` | `+=` `-=` `*=` `/=` `%=` `&=` `\|=` `^=` `<<=` `>>=`, each storing what its long form computes: the whole right side as one operand, an integer division's `on_zero` clause after its divisor, a literal on the right taking the target's type and a shift count keeping its own, the target as its own operand, and a local accumulating across a loop (spec 9.2) |
 | `cross_package` | One source extending messages of two packages, so its C++ header declares functions in two namespaces: a method and a factory of the namespace written first call a method and a factory of the one written after it, and a method of the second calls back into the first (spec 24.2) |
 | `factories` | A message's factory, its methods called on nothing: fields derived from the options, a nested message built by its own factory, a factory calling another's, a sibling called by its bare name, a helper, a `mut fn` called on the message being built, and a factory called from an extend method. A test expects the message by the fields that matter, presence included (spec 16.3, 25.3) |
@@ -204,11 +208,14 @@ The harness is written so a third backend is a small addition, not a third copy:
 
 1. Implement `ITestBackend`, as `CSharpBackend` and `CppBackend` do.
 2. Report each test by `IrTest.Identity`, so the agreement check can see it. The C# backend uses it
-   as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> ...`.
+   as the xUnit display name; the C++ driver prints `[ok] <identity>` and `[FAIL] <identity> (why)`.
+   Give `TestReports` a reader for the new backend's output.
 3. Add a workspace type under `tests/ProtoCross.Tests/Harness/` that writes the generated files,
-   runs protoc for that language, builds, and executes. `ProcessRunner` and `Toolchain` already
-   handle process plumbing and tool discovery.
-4. Add a `ConformanceRun` for it in `ConformanceFixture` and a fact in `ConformanceTests`.
+   runs protoc for that language, builds, and executes. `ProcessRunner` and `ToolLocator`, in
+   `src/ProtoCross.Toolchain`, already handle process plumbing and tool discovery, and
+   `TestToolchain` skips a test with the lookup's own reason when a tool is missing.
+4. Add a `ConformanceRun` for it in `ConformanceFixture`, include it in the fixture's verdict, and add
+   a fact in `ConformanceTests`.
 
 ## Not covered yet
 

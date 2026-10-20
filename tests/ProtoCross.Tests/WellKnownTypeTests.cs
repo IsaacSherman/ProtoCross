@@ -40,15 +40,9 @@ public class WellKnownTypeTests
     [Fact]
     public void AProtobufInstallLaidOutByPackageExposesItsSchemasToo()
     {
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf?.ProtocPath is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
+        var protobuf = TestToolchain.RequireProtobufCppWithProtoc();
 
-        var includes = ProtocLocator.FindWellKnownTypeIncludePaths(protobuf.ProtocPath);
+        var includes = ProtocLocator.FindWellKnownTypeIncludePaths(protobuf.ProtocPath!);
 
         Assert.Contains(
             includes,

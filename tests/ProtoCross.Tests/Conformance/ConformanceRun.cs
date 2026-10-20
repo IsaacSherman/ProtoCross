@@ -1,25 +1,16 @@
+using ProtoCross.Toolchain;
+
 namespace ProtoCross.Tests.Conformance;
-
-internal enum ConformanceOutcome
-{
-    /// <summary>The backend ran the test and it passed.</summary>
-    Passed,
-
-    /// <summary>The backend ran the test and it failed.</summary>
-    Failed,
-
-    /// <summary>The backend never reported this test at all.</summary>
-    Missing,
-}
-
-/// <param name="Identity">The backend-independent test name, from <c>IrTest.Identity</c>.</param>
-internal sealed record ConformanceResult(string Identity, ConformanceOutcome Outcome, string Detail);
 
 /// <summary>
 /// What one backend did with the whole corpus.
 /// </summary>
 /// <param name="SkipReason">
 /// Non-null when this backend could not run at all, because a tool it needs is not installed.
+/// </param>
+/// <param name="Results">
+/// A result for each declared test, as the backend's reader read its run. Whether that is a pass is
+/// <see cref="ConformanceFixture.Verdict"/>'s to say.
 /// </param>
 /// <param name="Workspace">
 /// Where the generated sources were written. Reported in failure messages so a failing run can be
@@ -28,24 +19,32 @@ internal sealed record ConformanceResult(string Identity, ConformanceOutcome Out
 internal sealed record ConformanceRun(
     string Backend,
     string? SkipReason,
-    IReadOnlyList<ConformanceResult> Results,
+    IReadOnlyList<TestReport> Results,
     string Workspace,
     string Output)
 {
+    /// <summary>How the tool that ran the tests failed, apart from any test; null when it succeeded.</summary>
+    public string? ToolFailure { get; init; }
+
+    /// <summary>What each program a backend built printed, by the file it was built from; empty where there are none.</summary>
+    /// <remarks>
+    /// C++ builds a driver for each source that declares tests, and the driver passes on what each test's child
+    /// printed. That is where a failure says which operation ended the program, which no verdict looks at.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string> DriverOutputs { get; init; } = new Dictionary<string, string>();
+
     public static ConformanceRun Skipped(string backend, string reason)
         => new(backend, reason, [], string.Empty, string.Empty);
 
-    public IReadOnlyList<string> Identities => Results.Select(result => result.Identity).ToList();
-
-    public IReadOnlyList<ConformanceResult> NotPassed
-        => Results.Where(result => result.Outcome != ConformanceOutcome.Passed).ToList();
-
-    /// <summary>A failure message that names the backend, what went wrong, and where to look.</summary>
-    public string Describe(string problem)
+    /// <summary>
+    /// A failure message that names the backend, what went wrong, each test in
+    /// <paramref name="notPassed"/>, and where to look.
+    /// </summary>
+    public string Describe(string problem, IReadOnlyList<TestReport> notPassed)
     {
         var lines = new List<string> { $"{Backend}: {problem}" };
 
-        foreach (var result in NotPassed)
+        foreach (var result in notPassed)
         {
             lines.Add($"  {result.Outcome}: {result.Identity}");
             if (!string.IsNullOrWhiteSpace(result.Detail))

@@ -37,11 +37,7 @@ public class FactoryEscapedClassNameReviewTests
         Assert.Equal("New__ItemFactory", NameConventions.GetCppTypeName(other!));
 
         // Writing a header needs protoc and nothing of C++'s, so any protoc will do when no C++ install has one.
-        var protoc = Toolchain.LocateProtobufCpp()?.ProtocPath ?? Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc found to show the C++ name protoc gives the nested type.");
-        }
+        var protoc = TestToolchain.FindProtobufCpp().Tool?.ProtocPath ?? TestToolchain.RequireProtoc();
 
         var workspace = CppTestWorkspace.Create("factory-escaped-name-review");
         var generated = workspace.GenerateProtobuf(protoc, directory, "escaped_factory.proto");

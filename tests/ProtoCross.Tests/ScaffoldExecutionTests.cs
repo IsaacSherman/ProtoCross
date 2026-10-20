@@ -4,6 +4,7 @@ using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Conformance;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -30,11 +31,7 @@ public partial class ScaffoldExecutionTests
     [Fact]
     public void TheEmittedCSharpProjectBuildsAndPassesItsTests()
     {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        var dotnet = TestToolchain.RequireDotnet();
 
         var layout = ScaffoldLayout.Emit(new CSharpBackend(), "scaffold-csharp");
 
@@ -93,58 +90,29 @@ public partial class ScaffoldExecutionTests
     /// </summary>
     private static (string CMake, ProtobufCppInstall Protobuf) RequireCMakeToolchain()
     {
-        var cmake = Toolchain.LocateCMake();
-        if (cmake is null)
-        {
-            Assert.Skip("No cmake found. Install CMake or Visual Studio's C++ workload.");
-        }
+        var cmake = TestToolchain.RequireCMake();
 
-        var protobuf = Toolchain.LocateProtobufCpp();
-        if (protobuf is null)
-        {
-            Assert.Skip(
-                "No protobuf C++ install found. Run 'vcpkg install' or set "
-                + "PROTOCROSS_PROTOBUF_CPP_INCLUDE to the include directory.");
-        }
+        var protobuf = TestToolchain.RequireProtobufCpp();
 
-        if (Toolchain.LocateCppCompiler() is null)
-        {
-            Assert.Skip("No C++ compiler found. Install clang++, g++, or Visual Studio C++ Build Tools.");
-        }
+        TestToolchain.RequireCppCompiler();
 
         return (cmake, protobuf);
     }
 
     private static void BuildAndRun(string cmake, ProtobufCppInstall protobuf, ScaffoldLayout layout)
     {
-        // The include directory's parent is the install prefix: find_package looks for the config
-        // package under <prefix>/share, beside <prefix>/include.
-        var prefix = Directory.GetParent(protobuf.IncludeDirectory)!.FullName;
-        var buildDirectory = Path.Combine(layout.TestDirectory, "build");
+        var run = TestProjectRunner.RunCMake(cmake, protobuf, layout.TestDirectory, TimeSpan.FromMinutes(10));
 
-        var configure = RunCMake(
-            cmake, layout.TestDirectory,
-            "-S", layout.TestDirectory, "-B", buildDirectory, "-DCMAKE_PREFIX_PATH=" + prefix);
-
-        Assert.True(configure.ExitCode == 0, $"cmake configure failed.{Environment.NewLine}{configure.Output}");
-
-        var build = RunCMake(cmake, layout.TestDirectory, "--build", buildDirectory, "--config", "Debug");
-        Assert.True(build.ExitCode == 0, $"cmake build failed.{Environment.NewLine}{build.Output}");
-
-        // -V rather than --output-on-failure, which a human would use: the driver's own summary is
-        // asserted on below, and --output-on-failure prints nothing for a test that passed.
-        var ctest = RunTool(
-            CTestPath(cmake), layout.TestDirectory,
-            "--test-dir", buildDirectory, "-C", "Debug", "-V");
-
-        Assert.True(ctest.ExitCode == 0, $"ctest failed.{Environment.NewLine}{ctest.Output}");
+        Assert.True(run.Configure.ExitCode == 0, $"cmake configure failed.{Environment.NewLine}{run.Configure.Output}");
+        Assert.True(run.Build?.ExitCode == 0, $"cmake build failed.{Environment.NewLine}{run.Build?.Output}");
+        Assert.True(run.Test?.ExitCode == 0, $"ctest failed.{Environment.NewLine}{run.Test?.Output}");
 
         // ctest reports one entry per driver, and a driver that ran nothing also exits 0, so the
         // driver's own summary is what says the tests actually ran.
         Assert.True(
-            ctest.Output.Contains($"protocross: {layout.ExpectedTestCount} test(s), 0 failed", StringComparison.Ordinal),
+            run.DriverOutput.Contains($"protocross: {layout.ExpectedTestCount} test(s), 0 failed", StringComparison.Ordinal),
             $"The driver did not report {layout.ExpectedTestCount} passing tests."
-            + Environment.NewLine + ctest.Output);
+            + Environment.NewLine + run.DriverOutput);
     }
 
     /// <summary>
@@ -197,12 +165,6 @@ public partial class ScaffoldExecutionTests
         ProcessRunner.ScrubMsBuildEnvironment(startInfo);
         return ProcessRunner.Run(startInfo, TimeSpan.FromMinutes(10));
     }
-
-    /// <summary>ctest ships beside cmake, so the located cmake also settles which ctest to use.</summary>
-    private static string CTestPath(string cmake)
-        => Path.Combine(
-            Path.GetDirectoryName(cmake)!,
-            Path.GetFileName(cmake).Replace("cmake", "ctest", StringComparison.Ordinal));
 }
 
 /// <summary>
@@ -231,7 +193,12 @@ internal sealed record ScaffoldLayout(
             Compilation.Compile(sourcePath ?? TestPaths.SimpleScript, [protoDirectory ?? TestPaths.ExampleProtoDirectory]));
 
     /// <summary>Writes what <paramref name="result"/> generates, divided between the two outputs as the CLI divides it.</summary>
-    public static ScaffoldLayout Emit(ITestProjectScaffold backend, string label, CompilationResult result)
+    /// <param name="settings">What the test project is named and targets; the defaults when null.</param>
+    public static ScaffoldLayout Emit(
+        ITestProjectScaffold backend,
+        string label,
+        CompilationResult result,
+        ScaffoldSettings? settings = null)
     {
         Assert.True(
             result.Success,
@@ -257,7 +224,10 @@ internal sealed record ScaffoldLayout(
             result.Descriptors,
             behaviorDirectory,
             testDirectory,
-            testFiles.Select(file => file.RelativePath).ToList());
+            testFiles.Select(file => file.RelativePath).ToList()) with
+        {
+            Settings = settings ?? ScaffoldSettings.Default,
+        };
 
         Write(testDirectory, backend.EmitTestProject(scaffold, diagnostics));
 

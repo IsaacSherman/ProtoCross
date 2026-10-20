@@ -3,6 +3,7 @@ using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -55,18 +56,20 @@ public partial class CliTests
     /// on its search path.
     /// </summary>
     private static ProcessResult Run(string workingDirectory, params string[] arguments)
-    {
-        var dotnet = Toolchain.LocateDotnet();
-        if (dotnet is null)
-        {
-            Assert.Skip("No dotnet host found. Set DOTNET_HOST_PATH or put dotnet on PATH.");
-        }
+        => RunWith(workingDirectory, new Dictionary<string, string?>(), arguments);
 
-        var protoc = Toolchain.LocateProtoc();
-        if (protoc is null)
-        {
-            Assert.Skip("No protoc executable found. Restore Grpc.Tools or install protoc.");
-        }
+    /// <summary>
+    /// <see cref="Run"/>, with each variable in <paramref name="environment"/> set for the command line,
+    /// or removed where its value is null.
+    /// </summary>
+    private static ProcessResult RunWith(
+        string workingDirectory,
+        IReadOnlyDictionary<string, string?> environment,
+        params string[] arguments)
+    {
+        var dotnet = TestToolchain.RequireDotnet();
+
+        var protoc = TestToolchain.RequireProtoc();
 
         var startInfo = ProcessRunner.Create(dotnet, workingDirectory);
         startInfo.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "protocross.dll"));
@@ -78,6 +81,19 @@ public partial class CliTests
         // The protoc this process compiles with, so that what the command line writes can be held
         // up against what the library generates here.
         startInfo.Environment["PROTOCROSS_PROTOC"] = protoc;
+
+        foreach (var (name, value) in environment)
+        {
+            if (value is null)
+            {
+                startInfo.Environment.Remove(name);
+            }
+            else
+            {
+                startInfo.Environment[name] = value;
+            }
+        }
+
         return ProcessRunner.Run(startInfo);
     }
 

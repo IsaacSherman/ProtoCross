@@ -76,7 +76,7 @@ value today, `RequireGuard`.
 
 Open Questions:
 
-- Oneof fields, which have a case discriminator this says nothing about.
+- [`oneof` cases](./§30-Unresolved%20Questions%20Index.md#30810-oneof-cases), post-1.0
 - ~~Map fields, which are not supported at all.~~ Decided: nothing a guard shows is about a map's
   element, since an element is reached only through a key, which no guard names. A message read
   through a lookup has no name and is guarded as a call's result is: bind it to a local
@@ -198,9 +198,7 @@ nothing, whereas taking a meaning back would break code.
 
 Open Questions:
 
-- Does message equality mean identity, field-wise equality, or backend-defined equality?
-- Is deep equality part of version 1?
-- Should a comparison of identity exist, spelled apart from `==` (`===`, say)?
+- [Message equality](./§30-Unresolved%20Questions%20Index.md#30133-message-equality), post-1.0
 - ~~Should the binder reject equality on message and repeated values until this is settled?~~
   Decided: yes, as above.
 
@@ -235,7 +233,4 @@ Implementation Note:
 
 Open Questions:
 
-- Reading an extension is deferred past 1.0. It needs its own syntax, because an extension is named
-  by its full name on the message it *extends*. Protobuf's text format writes that as
-  `[pkg.Host.scoped]` and its option syntax as `(pkg.Host.scoped)`. It also needs presence and
-  repeated rules, and `GetExtension` in both backends.
+- [Reading extensions](./§30-Unresolved%20Questions%20Index.md#30134-reading-extensions), which is deferred past 1.0

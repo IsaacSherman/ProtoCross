@@ -11,6 +11,7 @@
     <ProjectReference Include="..\ProtoCross.Backend.CSharp\ProtoCross.Backend.CSharp.csproj" />
     <ProjectReference Include="..\ProtoCross.Backend.Cpp\ProtoCross.Backend.Cpp.csproj" />
     <ProjectReference Include="..\ProtoCross.Projects\ProtoCross.Projects.csproj" />
+    <ProjectReference Include="..\ProtoCross.Toolchain\ProtoCross.Toolchain.csproj" />
   </ItemGroup>
 
 </Project>

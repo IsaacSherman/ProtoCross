@@ -96,9 +96,7 @@ Backend obligations:
 
 Open Question:
 
-- Whether a non-default behavior should also be declarable per file, per method, or per expression,
-  rather than only per project. The typed IR already carries a per-operation annotation, so the
-  plumbing exists; what is missing is a syntax worth having.
+- [Policy narrower than a project](./§30-Unresolved%20Questions%20Index.md#30108-policy-narrower-than-a-project), post-1.0
 
 ### 10.2 Division
 
@@ -193,18 +191,14 @@ never be taken; no runtime check is emitted in that case.
 
 Open Questions:
 
-- Should division by zero be a compile-time error when the divisor is a statically known zero
-  expression rather than a literal? Today only literal `0` is caught, and only because it fails the
-  proven-non-zero test rather than by any dedicated analysis.
+- [A divisor known to be zero](./§30-Unresolved%20Questions%20Index.md#30109-a-divisor-known-to-be-zero), post-1.0
 - ~~`on_zero fail` gives generated library code the ability to terminate the host process, and a
   server embedding ProtoCross behavior has no way to opt out.~~ Decided: termination stays, and a
   project may forbid it. `Failure/Termination = Forbidden` makes every construct that would end the
   program a compile error where it is written ([10.4](#104-compile-time-policy)), and every method may refuse instead, leaving the
   answer to its caller, with `on_zero refuse` for a zero divisor ([16.3.1](./§16-Methods.md#1631-refusals)). `fail` does not become a
   refusal by itself; a refusal's type is the author's.
-- Python's `/` produces a float and `//` floors, so neither maps to truncating division, and Python
-  raises on float division by zero rather than yielding `inf`. The Python backend will need explicit
-  helpers for both.
+- [Division in a Python backend](./§30-Unresolved%20Questions%20Index.md#301010-division-in-a-python-backend), post-1.0
 
 ### 10.3 Numeric Conversions
 
@@ -320,9 +314,7 @@ an addition rather than a discovery.
 
 Open Question:
 
-- Whether a second conversion behavior is worth having. A checked conversion -- terminating rather
-  than clamping, matching 10.1's `Checked` -- is the obvious candidate, and nothing above rules it
-  out.
+- [A checked conversion](./§30-Unresolved%20Questions%20Index.md#301011-a-checked-conversion), post-1.0
 
 ### 10.4 Compile-Time Policy
 
@@ -448,11 +440,12 @@ language-dependent preference, including the settled ones, so the whole contract
 place. `docs/reference-semantics.md` is the companion table: what each value means in each backend,
 and which of them are C#'s own behavior rather than something ProtoCross invented.
 
-Open Questions:
+Whether a language version is declared in this file or in each source is a question for the version
+that first needs a declaration ([27.1](./§27-Versioning%20and%20Compatibility.md#271-language-versioning)).
 
-- Whether a language version ([27.1](./§27-Versioning%20and%20Compatibility.md#271-language-versioning)) belongs in this file rather than in each source file.
-- Whether a backend may add settings of its own, and if so how a third-party backend's settings
-  avoid colliding with the language's.
+Open Question:
+
+- [A backend's own settings](./§30-Unresolved%20Questions%20Index.md#301012-a-backends-own-settings), post-1.0
 
 ### 10.4.1 Host Configuration
 

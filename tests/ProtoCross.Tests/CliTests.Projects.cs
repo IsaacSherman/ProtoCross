@@ -1,6 +1,7 @@
 using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Tests.Harness;
+using ProtoCross.Toolchain;
 using Xunit;
 
 namespace ProtoCross.Tests;

@@ -184,12 +184,7 @@ public sealed class DescriptorLoader
 
         if (!selection.IsFound)
         {
-            var searched = string.Join(", ", ProtocLocator.GetNuGetPackageRoots());
-            throw new DescriptorLoadException(
-                "Could not find a 'protoc' executable. Install protoc and put it on PATH, set "
-                + $"{ProtocLocator.OverrideEnvironmentVariable} to its full path, or restore the "
-                + "Grpc.Tools NuGet package. "
-                + $"Searched PATH and these package roots: {searched}");
+            throw new DescriptorLoadException(ProtocLocator.DescribeNotFound());
         }
 
         return new DescriptorLoader(selection, options);
@@ -319,6 +314,11 @@ public sealed class DescriptorLoader
 
             var set = FileDescriptorSet.Parser.ParseFrom(ReadDescriptorSet(descriptorSetPath));
 
+            if (UnreadableEditionIn(set) is { } unreadable)
+            {
+                throw new DescriptorLoadException(unreadable);
+            }
+
             // --include_imports emits dependencies before dependents, which is exactly the order
             // BuildFromByteStrings requires.
             var serialized = set.File.Select(file => file.ToByteString()).ToList();
@@ -346,6 +346,33 @@ public sealed class DescriptorLoader
             Release(descriptorSetPath);
         }
     }
+
+    /// <summary>The newest protobuf edition ProtoCross reads (spec 21.3).</summary>
+    /// <remarks>
+    /// The newest the protobuf runtime this compiler is built on can read, Google.Protobuf 3.31.1. A later edition is
+    /// supported once the runtime reads it and its features have been checked against the specification, so
+    /// upgrading the package does not raise this by itself.
+    /// </remarks>
+    private const Edition NewestReadableEdition = Edition._2023;
+
+    /// <summary>
+    /// What is wrong with the first schema in <paramref name="set"/> written in an edition newer than
+    /// <see cref="NewestReadableEdition"/>, or null where there is none (spec 21.3).
+    /// </summary>
+    /// <remarks>
+    /// Asked before the descriptors are built, because the runtime refuses such a schema with an argument
+    /// exception whose message names the edition as the enum spells it, <c>Unsupported edition: _2024</c>, and says
+    /// nothing of which editions would do. protoc reads a newer edition than the runtime does, so this is the
+    /// ordinary way to meet one.
+    /// </remarks>
+    internal static string? UnreadableEditionIn(FileDescriptorSet set)
+        => set.File.FirstOrDefault(file => file.Syntax == "editions" && file.Edition > NewestReadableEdition) is { } newer
+            ? $"'{newer.Name}' is written in edition {EditionName(newer.Edition)}, and ProtoCross reads proto2, proto3 and "
+                + $"editions up to {EditionName(NewestReadableEdition)}."
+            : null;
+
+    /// <summary>An edition as a schema writes it: <c>2023</c>.</summary>
+    private static string EditionName(Edition edition) => edition.ToString().TrimStart('_');
 
     /// <summary>Reads back what protoc was asked to write, or says why it could not be read.</summary>
     /// <remarks>

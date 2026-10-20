@@ -11,11 +11,14 @@ Normative Requirements:
 - No locale-sensitive operations are available.
 - Ordered string comparison is not supported.
 - String indexing, length, case conversion, and normalization operations are not implemented.
+- **`==` and `!=` compare two strings by their Unicode scalar values**, one by one. For a well-formed
+  string that is what C#'s ordinal comparison and C++'s comparison of UTF-8 bytes give already, so
+  each backend writes its own `==`. A string protobuf read from bytes that are not UTF-8 compares as
+  its runtime decoded it.
+- **Strings are compared as they are stored, and never normalized.** `é` written as one code point,
+  and as `e` followed by a combining accent, are two different strings.
 
 Open Questions:
 
-- Should string indexing be supported at all?
-- Should normalization be specified?
-- Should string equality be specified in terms of Unicode scalar values, UTF-16 code units, or a
-  protobuf-runtime guarantee?
-- Should string comparison beyond equality be supported?
+- [String indexing](./§30-Unresolved%20Questions%20Index.md#30111-string-indexing), post-1.0
+- [Ordered string comparison](./§30-Unresolved%20Questions%20Index.md#30114-ordered-string-comparison), post-1.0

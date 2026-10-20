@@ -85,7 +85,7 @@ public sealed partial class CSharpBackend
     public IReadOnlyList<GeneratedFile> EmitTestProject(
         ScaffoldOptions options,
         DiagnosticBag diagnostics)
-        => [new GeneratedFile(CSharpTestProject.FileName, CSharpTestProject.Build(options))];
+        => [new GeneratedFile(CSharpTestProject.FileNameFor(options.Settings), CSharpTestProject.Build(options))];
 
     private static void WriteTestHeader(SourceWriter writer, BackendOptions options)
     {

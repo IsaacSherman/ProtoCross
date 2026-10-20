@@ -24,9 +24,10 @@ public sealed partial class CppBackend
         => lookup.OnMissing switch
         {
             MissingKeyBehavior.Fallback => ValueOr(lookup, Deferred(Expression(lookup.Fallback!, placement)), placement),
-            MissingKeyBehavior.Fail =>
-                $"{RuntimeNamespace}::found_or_fail({Expression(lookup.Map, placement)}, {Expression(lookup.Key, placement)}, "
-                + $"{FormatString(lookup.MapName)})",
+            MissingKeyBehavior.Fail => InLookupOrder(
+                lookup,
+                operands => $"{RuntimeNamespace}::found_or_fail({operands[0]}, {operands[1]}, {FormatString(lookup.MapName)})",
+                placement),
             MissingKeyBehavior.Refuse => placement.Held[lookup],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(lookup), lookup.OnMissing, "A lookup with no clause never reaches a backend."),
@@ -34,7 +35,16 @@ public sealed partial class CppBackend
 
     /// <summary>The value at the key, calling <paramref name="fallback"/>, a lambda, where the key is missing.</summary>
     private static string ValueOr(IrMapLookup lookup, string fallback, Placement placement)
-        => $"{RuntimeNamespace}::value_or({Expression(lookup.Map, placement)}, {Expression(lookup.Key, placement)}, {fallback})";
+        => InLookupOrder(lookup, operands => $"{RuntimeNamespace}::value_or({operands[0]}, {operands[1]}, {fallback})", placement);
+
+    /// <summary>What <paramref name="build"/> makes of the map and the key, the map evaluated first where that can be seen.</summary>
+    private static string InLookupOrder(IrMapLookup lookup, Func<IReadOnlyList<string>, string> build, Placement placement)
+        => InOrder(
+            lookup,
+            [lookup.Map, lookup.Key],
+            [Expression(lookup.Map, placement), Expression(lookup.Key, placement)],
+            build,
+            placement);
 
     /// <summary><c>count()</c>, as the <c>int32</c> protoc's own size is, or <c>is_empty()</c>.</summary>
     private static string EmitMapQuery(IrMapQuery query, Placement placement)
@@ -44,10 +54,13 @@ public sealed partial class CppBackend
         return query.Method == MapMethod.IsEmpty ? $"{map}.empty()" : $"static_cast<::std::int32_t>({map}.size())";
     }
 
-    /// <summary>Two maps compared, <c>==</c> or <c>!=</c>, by keys and by each value's own <c>==</c>.</summary>
-    private static string EmitMapEquality(IrBinary binary, Placement placement)
+    /// <summary>
+    /// Two maps compared, <c>==</c> or <c>!=</c>, by keys and by each value's own <c>==</c>, written as
+    /// <paramref name="left"/> and <paramref name="right"/>.
+    /// </summary>
+    private static string MapsCompared(IrBinary binary, string left, string right)
     {
-        var equal = $"{RuntimeNamespace}::maps_equal({Expression(binary.Left, placement)}, {Expression(binary.Right, placement)})";
+        var equal = $"{RuntimeNamespace}::maps_equal({left}, {right})";
 
         return binary.Operator == IrBinaryOperator.NotEqual ? $"(!{equal})" : equal;
     }
@@ -108,13 +121,42 @@ public sealed partial class CppBackend
     private static void EmitElementAssignment(SourceWriter writer, IrElementAssignment assignment, Placement placement)
     {
         var key = Expression(assignment.Target.Key, placement);
+        var valueFirst = assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target);
+
+        if (!valueFirst && IrEvaluationOrder.IsObservable([assignment.Target.Key, assignment.Value]))
+        {
+            EmitKeyBeforeValue(writer, assignment, key, StoredValue(assignment.Value, placement), placement);
+            return;
+        }
 
         EmitValueFirstWhereItReadsAnElement(
             writer,
             assignment,
-            assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
+            valueFirst,
             StoredValue(assignment.Value, placement),
             value => EmitOnMap(writer, assignment, assignment.Target.Map, placement, map => $"{map}[{key}] = {value};"));
+    }
+
+    /// <summary>
+    /// <c>prices[sku] = value;</c> where the key and the value may each not complete: the map reached, then the key
+    /// held in a local, then the store, which evaluates the value before it gives the element (spec 9.3).
+    /// </summary>
+    /// <remarks>
+    /// C++17 evaluates the right side of <c>=</c> before its left, so the store as it is otherwise written evaluates
+    /// the value before the key. The map is bound before either, as <see cref="EmitOnMap"/> binds one reached
+    /// through links, because reaching it comes first.
+    /// </remarks>
+    private static void EmitKeyBeforeValue(
+        SourceWriter writer, IrElementAssignment assignment, string key, string value, Placement placement)
+    {
+        var names = NamesFor(assignment, [.. OutNames(placement)]);
+        var map = names.Next("map");
+        var held = names.Next("key");
+
+        using var scope = writer.Block(string.Empty);
+        writer.WriteLine($"auto& {map} = {MutableMap(assignment.Target.Map, placement)};");
+        writer.WriteLine($"auto {held} = {key};");
+        writer.WriteLine($"{map}[{held}] = {value};");
     }
 
     /// <summary>
@@ -157,8 +199,10 @@ public sealed partial class CppBackend
         {
             MapMethod.Remove => $"{map}.erase({arguments[0]});",
             MapMethod.Clear => $"{map}.clear();",
-            MapMethod.AddIfAbsent => $"{RuntimeNamespace}::add_if_absent({map}, {arguments[0]}, {arguments[1]});",
-            MapMethod.ReplaceIfPresent => $"{RuntimeNamespace}::replace_if_present({map}, {arguments[0]}, {arguments[1]});",
+            MapMethod.AddIfAbsent => InOrder(
+                update, update.Arguments, arguments, given => $"{RuntimeNamespace}::add_if_absent({map}, {given[0]}, {given[1]})", placement) + ";",
+            MapMethod.ReplaceIfPresent => InOrder(
+                update, update.Arguments, arguments, given => $"{RuntimeNamespace}::replace_if_present({map}, {given[0]}, {given[1]})", placement) + ";",
             MapMethod.Merge => $"{RuntimeNamespace}::merge({map}, {Expression(update.Arguments[0], placement)});",
             _ => throw new ArgumentOutOfRangeException(nameof(update), update.Method, "Not a change to a map."),
         });
@@ -168,13 +212,30 @@ public sealed partial class CppBackend
     /// The entries a literal gives a map field, stored through <c>operator[]</c> in the order written,
     /// so a key written twice holds the later value (spec 13.2).
     /// </summary>
-    private static void EmitMapEntries(SourceWriter writer, string access, IrFieldInitializer initializer, Placement placement)
+    /// <remarks>
+    /// An entry whose key and value may each not complete holds its key in a local first, in a block of its own,
+    /// because C++17 evaluates the value of <c>=</c> before the element it is stored to (spec 9.3).
+    /// </remarks>
+    private static void EmitMapEntries(
+        SourceWriter writer, string access, IrFieldInitializer initializer, NameAllocator names, Placement placement)
     {
         var map = $"(*{access}mutable_{NameConventions.GetCppFieldName(initializer.Field)}())";
 
         foreach (var entry in ((IrMapEntries)initializer.Value).Entries)
         {
-            writer.WriteLine($"{map}[{Expression(entry.Key, placement)}] = {StoredValue(entry.Value, placement)};");
+            var key = Expression(entry.Key, placement);
+            var value = StoredValue(entry.Value, placement);
+
+            if (!IrEvaluationOrder.IsObservable([entry.Key, entry.Value]))
+            {
+                writer.WriteLine($"{map}[{key}] = {value};");
+                continue;
+            }
+
+            var held = names.Next("key");
+            using var scope = writer.Block(string.Empty);
+            writer.WriteLine($"auto {held} = {key};");
+            writer.WriteLine($"{map}[{held}] = {value};");
         }
     }
 

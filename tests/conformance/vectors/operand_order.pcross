@@ -1,0 +1,105 @@
+// Conformance vectors for the order operands are evaluated in (spec 9.3).
+//
+// Every operand is evaluated left to right. Two operands can be told apart by when they ran only where each of
+// them may end the program, so in each case both are lookups that do, each of a map of its own, and the fixture
+// leaves every map empty. A lookup that ends the program names its map, and the conformance tests read which name
+// each case printed. C++ fixes no order for a call's arguments, nor for most operators' operands, so these are the
+// places it could go its own way:
+//
+// - a call's arguments;
+// - an operator's operands, through a runtime helper and as a bare comparison;
+// - an integer division's dividend and divisor;
+// - a lookup's map and its key;
+// - two maps compared;
+// - a store's key and its value;
+// - a change's key and its value;
+// - an entry a literal gives a map.
+
+import proto "operand_order.proto";
+
+extend OrderProbe {
+    fn first_of(first: int32, second: int32) -> int32 {
+        return first;
+    }
+
+    fn call_in_order() -> int32 {
+        return first_of(call_first[1] on_missing fail, call_second[1] on_missing fail);
+    }
+
+    fn sum_in_order() -> int32 {
+        return (sum_first[1] on_missing fail) + (sum_second[1] on_missing fail);
+    }
+
+    fn less_in_order() -> bool {
+        return (less_first[1] on_missing fail) < (less_second[1] on_missing fail);
+    }
+
+    fn quotient_in_order() -> int32 {
+        return (quotient_first[1] on_missing fail) / (quotient_second[1] on_missing fail) on_zero 0;
+    }
+
+    fn lookup_in_order() -> int32 {
+        return (lookup_first[1] on_missing fail).inner[lookup_second[1] on_missing fail] on_missing 0;
+    }
+
+    fn equal_in_order() -> bool {
+        return (equal_first[1] on_missing fail).inner == (equal_second[1] on_missing fail).inner;
+    }
+
+    mut fn store_in_order() {
+        stored[store_first[1] on_missing fail] = store_second[1] on_missing fail;
+    }
+
+    mut fn add_in_order() {
+        stored.add_if_absent(add_first[1] on_missing fail, add_second[1] on_missing fail);
+    }
+
+    fn entry_in_order() -> OrderProbe {
+        return new OrderProbe { stored: [{ key: entry_first[1] on_missing fail, value: entry_second[1] on_missing fail }] };
+    }
+}
+
+test OrderProbe.call_in_order "a call's arguments are evaluated left to right" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.sum_in_order "an operator's operands are evaluated left to right" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.less_in_order "a comparison's operands are evaluated left to right" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.quotient_in_order "a division's dividend is evaluated before its divisor" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.lookup_in_order "a lookup's map is evaluated before its key" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.equal_in_order "two maps compared are evaluated left to right" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.store_in_order "a store's key is evaluated before its value" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.add_in_order "a change's key is evaluated before its value" {
+    receiver {}
+    expect fail;
+}
+
+test OrderProbe.entry_in_order "a literal's entry has its key evaluated before its value" {
+    receiver {}
+    expect fail;
+}

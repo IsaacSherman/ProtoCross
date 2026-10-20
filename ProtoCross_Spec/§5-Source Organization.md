@@ -80,8 +80,8 @@ Normative Requirements:
 
 Open Questions:
 
-- Should descriptor-set input exist in addition to direct `.proto` imports?
-- Should ProtoCross ever be embedded directly in `.proto` files?
+- [Descriptor-set input](./§30-Unresolved%20Questions%20Index.md#30213-descriptor-set-input), post-1.0
+- [ProtoCross embedded in `.proto` files](./§30-Unresolved%20Questions%20Index.md#3055-protocross-embedded-in-proto-files), post-1.0
 
 ### 5.3 Compilation Unit
 
@@ -158,6 +158,10 @@ Normative Requirements:
     come before any include path a build adds, which can add to what a project's imports can reach
     but not change what one already finds.
   - `<Config>`, at most once: the configuration file the project's compilation runs under.
+  - `<Scaffold>`, at most once: what the test projects `--scaffold` writes are named and target,
+    as [25.3.2](./§25-Testing%20and%20Conformance%20Vectors.md#2532-test-projects) says.
+  - `<TestRun>`, at most once: how long each step of `protocross test` may take, as
+    [25.3.3](./§25-Testing%20and%20Conformance%20Vectors.md#2533-running-the-tests) says.
 - Anything else is `PC2008`, and so is an attribute an element does not take. An attribute in a
   namespace, such as `xsi:schemaLocation`, belongs to another vocabulary and is left alone. There is no element
   naming `protoc`, because a project comes with a repository and a repository does not choose what
@@ -185,7 +189,9 @@ Normative Requirements:
   for an element without its patterns, patterns written as text, text standing directly inside
   `<ProtoCrossProject>`, a full path used as a pattern, a pattern that cannot be matched (a `../`
   after its start), an empty or impossible path, `<Config>` stated twice, or `<Config>` naming a file
-  that is not there. A project that names its policy and is built under the defaults instead ships
+  that is not there, and for a `<Scaffold>` or `<TestRun>` that states what it cannot mean
+  ([25.3.2](./§25-Testing%20and%20Conformance%20Vectors.md#2532-test-projects),
+  [25.3.3](./§25-Testing%20and%20Conformance%20Vectors.md#2533-running-the-tests)). A project that names its policy and is built under the defaults instead ships
   code nobody asked for.
 - An element that matches no source is `PC2010`, a warning at that element. It is almost always a
   typo, and the rest of the project still stands.
@@ -208,7 +214,10 @@ Normative Requirements:
   nearest one at or above the project's directory, whichever directories its sources are in
   ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)).
 - A project says what is compiled, not where it goes. Where generated files are written, and for
-  which targets, is the build's to say, and a project has no element for either.
+  which targets, is the build's to say, and a project has no element for either. `<Scaffold>` says
+  neither: it names what builds the tests wherever they are written, and a build that writes no test
+  project for a target leaves that target's settings unread. Nor does `<TestRun>`, which says how
+  long running the tests may take, and which only `protocross test` reads.
 
 Implementation Note:
 

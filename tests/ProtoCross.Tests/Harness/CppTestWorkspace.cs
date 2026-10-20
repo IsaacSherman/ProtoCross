@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.RegularExpressions;
 using ProtoCross.Backend;
+using ProtoCross.Toolchain;
 
 namespace ProtoCross.Tests.Harness;
 
@@ -12,6 +13,14 @@ namespace ProtoCross.Tests.Harness;
 internal sealed record CppProgramResult(string DriverSource, int ExitCode, string Output)
 {
     public bool Succeeded => ExitCode == 0;
+
+    /// <summary>How the driver failed, whatever its lines said: null when it built, ran and exited 0.</summary>
+    public string? Failure => ExitCode switch
+    {
+        0 => null,
+        ProcessResult.NotRun => $"the driver {DriverSource} did not build",
+        var code => $"the driver {DriverSource} exited with code {code}",
+    };
 }
 
 /// <summary>
@@ -49,7 +58,7 @@ internal sealed class CppTestWorkspace
     }
 
     public ProcessResult GenerateProtobuf(string protoc, string protoPath, params string[] protoFiles)
-        => Toolchain.RunProtoc(protoc, "cpp_out", protoPath, Directory, protoFiles);
+        => TestToolchain.RunProtoc(protoc, "cpp_out", protoPath, Directory, protoFiles);
 
     /// <summary>Parses a source file without producing an object, to check the emitted C++ is valid.</summary>
     public ProcessResult RunSyntaxOnly(CppCompiler compiler, string sourcePath, string protobufInclude)
@@ -188,7 +197,10 @@ internal sealed class CppTestWorkspace
             lines.Add($"link.exe @{ProcessRunner.QuoteForCmd(linkResponse)}");
             lines.Add($"if errorlevel 1 echo {Marker(i)} LINK-FAILED");
             lines.Add($"if errorlevel 1 goto {next}");
-            lines.Add(ProcessRunner.QuoteForCmd(executable));
+            // Its standard error, and what each expect-fail child it runs prints there, joins its standard output, so
+            // the marker after it divides both. Left apart, every driver's would arrive after the whole script's
+            // output, under no driver's marker, and a failure would not say which driver's test it came from.
+            lines.Add(ProcessRunner.QuoteForCmd(executable) + " 2>&1");
             lines.Add($"echo {Marker(i)} EXIT=%errorlevel%");
             lines.Add($":{next}");
         }

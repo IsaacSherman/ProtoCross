@@ -5,8 +5,8 @@ This section defines the token-level syntax.
 ### 6.1 Character Set
 
 - Source files are UTF-8.
-- Identifiers use .NET character classification: the first character is `char.IsLetter` or `_`, and
-  following characters are `char.IsLetterOrDigit` or `_`.
+- Identifiers are ASCII: the first character is a letter or `_`, and the characters after it are
+  letters, digits or `_` ([6.3](#63-identifiers)).
 - String literals support `\n`, `\t`, `\r`, `\\`, and `\"`.
 - A string literal ends at the closing quote or at the end of the line. Multi-line string literals
   are not supported.
@@ -46,8 +46,22 @@ Implementation Note:
 The implemented rule is:
 
 ```text
-identifier = (.NET letter | "_") { .NET letter-or-digit | "_" }
+identifier = (letter | "_") { letter | digit | "_" }
+letter     = "A" … "Z" | "a" … "z"
+digit      = "0" … "9"
 ```
+
+**Decided: an identifier is ASCII.** A name that holds any other letter or digit, `größe` say, is
+`PC0145`, which names the character and its code point. It is still read as one name, so the rest of
+the file is checked as usual.
+
+- The targets do not agree about any other letter. C# takes one by its Unicode category, and C++ by a
+  rule of its own, which also depends on the compiler and on the encoding it reads the generated file
+  in, so a name one target accepted could be one the other refuses.
+- protobuf's names are ASCII already, so this narrows only what a source declares for itself: a
+  method, a parameter or a local.
+- A name was checked against .NET's letters until 1.0, and narrowing it then was the only time it
+  could be narrowed without breaking a program. Widening it later breaks nothing.
 
 Identifiers are case-sensitive. ProtoCross does not impose a naming convention on source names.
 Backends may map method names to target conventions when emitting public APIs ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
@@ -55,11 +69,6 @@ Backends may map method names to target conventions when emitting public APIs ([
 `__INF` and `__NAN` are spelled like identifiers and are floating-point literals ([6.6](#66-numeric-literals)), so
 neither one names anything. Nothing that merely resembles them is reserved: `__inf`, `___INF` and
 `__INFINITY` are ordinary names.
-
-Open Question:
-
-- Should source names be restricted to ASCII before language stabilization to avoid backend-specific
-  identifier edge cases?
 
 ### 6.4 Keywords
 
@@ -77,7 +86,6 @@ continue
 default
 double
 else
-enum
 expect
 extend
 fail
@@ -91,7 +99,6 @@ import
 in
 int32
 int64
-message
 not
 on_missing
 on_refused
@@ -150,9 +157,10 @@ written instead.
 field or package component named `default` can no longer be written, which was accepted as the cost
 of reading as every C-family reader expects.
 
-Open Question:
-
-- `enum` and `message` are reserved by the lexer but do not yet have source syntax.
+**Decided: `enum` and `message` are not reserved.** They were, with no syntax that used either, and so
+took their names from every schema for nothing: a field called `message`, as `google.rpc.Status` has,
+could not be read. Each is an identifier now. A later syntax that uses one makes it contextual, as `new`
+is, rather than reserving it again.
 
 ### 6.5 Source Classification
 
