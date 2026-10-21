@@ -198,21 +198,21 @@ jobs:
   # The VS Code extension, on every platform it claims. The .NET job above runs the server's own suite on
   # Windows; this is where "Windows, macOS and Linux" stops being a claim, because the extension starts
   # the server through the user's own dotnet, searches PATH by platform rules, and runs in a real editor.
-  vscode:
+  #
+  # Linux goes first, and alone. Its runner is the cheapest and the fastest, so it is the one that builds
+  # and keeps the package, and a change that fails there has failed before a Windows or macOS minute is
+  # spent on it. The other platforms wait for it, so a green run takes longer and a red one costs a
+  # fraction of what it did.
+  vscode-linux:
     name: vscode extension (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
 
+    # A one-entry matrix, so that the steps the extension's jobs share have the 'matrix.os' they key
+    # on, and the check keeps the name the sprint ruleset requires.
     strategy:
-      fail-fast: false
-      # macOS only for a pull request into main. A macOS runner costs about ten times a Linux one, around
-      # three dollars a run, which is too much to spend on every pull request into a sprint branch. A
-      # sprint reaches main as one pull request, so every sprint is still tested on macOS before it
-      # ships, once rather than once per issue. The platform has earned that much: #118 was an
-      # intermittent end-to-end failure seen on macOS. 'base_ref' is empty for a push, so main's own
-      # run, which follows a pull request that already ran it, leaves macOS out too.
       matrix:
-        os: ${{ fromJSON(github.base_ref == 'main' && '["windows-latest", "ubuntu-latest", "macos-latest"]' || '["windows-latest", "ubuntu-latest"]') }}
+        os: [ubuntu-latest]
 
     defaults: &vscode-defaults
       run:
@@ -327,8 +327,9 @@ jobs:
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'Linux'
         run: npm run test:e2e
 
+      # On Linux alone: the package is one file for every platform, and Linux builds it cheapest.
       - name: Package
-        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Linux'
         run: npm run package
 
       - name: Keep the package
@@ -356,13 +357,36 @@ jobs:
           path: .ci-validation/vscode-${{ matrix.os }}
           key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
 
+  # The other platforms, once Linux has passed, with the same steps by alias.
+  vscode:
+    name: vscode extension (${{ matrix.os }})
+    needs: vscode-linux
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+
+    strategy:
+      fail-fast: false
+      # macOS only for a pull request into main. A macOS runner costs about ten times a Linux one, around
+      # three dollars a run, which is too much to spend on every pull request into a sprint branch. A
+      # sprint reaches main as one pull request, so every sprint is still tested on macOS before it
+      # ships, once rather than once per issue. The platform has earned that much: #118 was an
+      # intermittent end-to-end failure seen on macOS. 'base_ref' is empty for a push, so main's own
+      # run, which follows a pull request that already ran it, leaves macOS out too.
+      matrix:
+        os: ${{ fromJSON(github.base_ref == 'main' && '["windows-latest", "macos-latest"]' || '["windows-latest"]') }}
+
+    defaults: *vscode-defaults
+    env: *vscode-env
+    steps: *vscode-steps
+
   # The same suites on macOS, on any branch, when someone asks for them: a sprint before its pull
   # request into main, say, or a change to how the extension finds dotnet, protoc or the server. It runs
   # from 'Run workflow' on the branch to be tested. At the price given at the matrix above, the 'macos'
   # environment holds it for an administrator's approval before any runner starts.
   #
-  # The steps are the job above's, by alias, so the two cannot drift apart. The one-entry matrix gives
-  # them the 'matrix.os' they key on, and keeps the check's name.
+  # The steps are the Linux job's, by alias, so the jobs cannot drift apart. The one-entry matrix gives
+  # them the 'matrix.os' they key on, and keeps the check's name. It does not wait for Linux, since a
+  # run started by hand is macOS alone.
   vscode-macos:
     name: vscode extension (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
