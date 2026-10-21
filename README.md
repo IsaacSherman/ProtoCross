@@ -3,6 +3,8 @@
 Write the business methods of your protobuf messages once, and generate them as matching C# and C++.
 Both backends behave identically, down to integer overflow, and one set of tests proves it in each.
 
+C# and C++ are the backends today. Python is planned but **not yet supported**.
+
 ## What it looks like
 
 Methods are written against the messages a `.proto` file declares. These two are from
@@ -216,7 +218,8 @@ Implemented:
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
 Not implemented: `==` between two messages (a test compares an expected literal by the fields it
-sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members
+sets instead), asking which member of a `oneof` is set, and the Python backend, which is planned
+but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
 than emitting something whose semantics differ from the spec.
@@ -642,7 +645,7 @@ extend InvoiceItem {
 }
 ```
 
-That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
+That behavior is generated for C# and C++ today. Python is not yet supported; it and potentially other languages are meant to follow, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
 
 This is not meant to be a clever language. It is meant to be deliberately plain: old-fashioned pseudocode with enough type information and control flow to express common domain behavior clearly.
 
@@ -657,11 +660,11 @@ ProtoCross is built around a small semantic core:
 - The compiler should lower source code into a typed intermediate representation before emitting target-language code.
 - Each target language should have its own backend with documented conformance requirements.
 
-The first target backends under consideration are:
+The first target backends are:
 
-- C#
-- C++
-- Python
+- C#, implemented
+- C++, implemented
+- Python, planned and not yet supported
 
 Other languages may be possible later if the core semantics remain small enough.
 
