@@ -204,7 +204,7 @@ internal sealed record ScaffoldLayout(
             result.Success,
             "the source did not compile: " + string.Join("; ", result.Diagnostics.Select(d => d.ToString())));
 
-        var root = Path.Combine(Path.GetTempPath(), "protocross-" + label, Guid.NewGuid().ToString("N"));
+        var root = Path.Combine(TestPaths.PhysicalTempPath, "protocross-" + label, Guid.NewGuid().ToString("N"));
 
         // Mirrors 'protocross -o <root>/generated --test-out <root>/generated/tests'.
         var behaviorDirectory = Path.Combine(root, "generated", backend.Name);

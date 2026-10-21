@@ -25,6 +25,27 @@ internal static class TestToolchain
 
     public static string RequireProtoc() => Require(ToolLocator.FindProtoc());
 
+    /// <summary>The protoc of the Grpc.Tools version this repository pins, for a test of one version's rules.</summary>
+    /// <remarks>
+    /// Never a protoc found on <c>PATH</c>, and never another version in the NuGet cache. What protoc accepts
+    /// and generates changes between versions -- protoc 21.x escapes a shorter C++ keyword list, protoc 35 puts
+    /// a macro between <c>class</c> and a message's name, and Homebrew's refuses an <c>@</c> in
+    /// <c>csharp_namespace</c> -- so another version would fail a test for a reason that is not ProtoCross's.
+    /// The newest version in a cache is whatever that machine last restored, which is not always what this
+    /// commit pins.
+    /// </remarks>
+    public static string RequirePinnedProtoc()
+    {
+        var pinned = TestPaths.CentralPackageVersions["Grpc.Tools"];
+        var protoc = ProtocLocator.FindBundledProtoc(pinned);
+        if (protoc is null)
+        {
+            Assert.Skip($"No Grpc.Tools {pinned} protoc in the NuGet cache. Restore the solution first.");
+        }
+
+        return protoc;
+    }
+
     public static string RequireCMake() => Require(ToolLocator.FindCMake());
 
     public static CppCompiler RequireCppCompiler() => Require(ToolLocator.FindCppCompiler());
