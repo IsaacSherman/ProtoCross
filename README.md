@@ -1,16 +1,15 @@
 # ProtoCross
 
-ProtoCross is an experimental language for defining portable behavior over Protocol Buffer messages, with tests that run across every target it supports.
+Write the business methods of your protobuf messages once, and generate them as matching C# and C++.
+Both backends behave identically, down to integer overflow, and one set of tests proves it in each.
 
-Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams reimplement the same methods in every target language, write parallel test suites using similar-but-not-identical frameworks and extension points, and hope both the implementations and their tests stay semantically identical.
+C# and C++ are the backends today. Python is planned but **not yet supported**.
 
-ProtoCross makes that shared behavior a shared, executable contract. Define a method and its declarative tests once; the compiler generates native behavior and test artifacts for each backend, while the conformance suite requires the same observable results everywhere. The goal is not merely similar code in several languages, but behavior we can verify is equivalent as closely as the targets allow, without turning protobuf into a full programming platform.
+## What it looks like
 
-## Vision
-
-The goal is simple: define behavior and its tests once, then transpile both into the languages where the protobuf messages are used.
-
-ProtoCross should let a team write small, explicit methods against protobuf message types:
+Methods are written against the messages a `.proto` file declares. These two are from
+[examples/simpleScript.pcross](examples/simpleScript.pcross), over the `Invoice` and `InvoiceItem`
+messages in [invoice.proto](examples/protos/invoice.proto):
 
 ```protocross
 extend InvoiceItem {
@@ -18,94 +17,132 @@ extend InvoiceItem {
         return quantity * unit_price_cents;
     }
 }
+
+extend Invoice {
+    fn total_cents() -> int64 {
+        var total: int64 = 0;
+
+        for item in items {
+            total = total + item.line_total_cents();
+        }
+
+        return total;
+    }
+}
 ```
 
-That behavior can then be generated for C#, C++, Python, and potentially other languages, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
+The compiler generates C# extension methods, in `simpleScript.g.cs`:
 
-This is not meant to be a clever language. It is meant to be deliberately plain: old-fashioned pseudocode with enough type information and control flow to express common domain behavior clearly.
+```csharp
+public static long LineTotalCents(this global::ProtoCross.Examples.InvoiceItem self)
+{
+    return unchecked(self.Quantity * self.UnitPriceCents);
+}
 
-## Scope
+public static long TotalCents(this global::ProtoCross.Examples.Invoice self)
+{
+    long total = 0L;
+    foreach (var item in self.Items)
+    {
+        total = unchecked(total + global::ProtoCross.Examples.InvoiceItemProtoCrossExtensions.LineTotalCents(item));
+    }
+    return total;
+}
+```
 
-ProtoCross is built around a small semantic core:
+and header-only C++ free functions, in `simpleScript.pc.h`:
 
-- Protocol Buffer messages and fields are the foundation of the type system.
-- Methods are attached to protobuf message types.
-- Methods are public.
-- Semantics should be explicit and portable across target languages.
-- The compiler should lower source code into a typed intermediate representation before emitting target-language code.
-- Each target language should have its own backend with documented conformance requirements.
+```cpp
+inline ::std::int64_t line_total_cents(const ::protocross::examples::InvoiceItem& self)
+{
+  return ::protocross_runtime::wrap_mul_i64(self.quantity(), self.unit_price_cents());
+}
 
-The first target backends under consideration are:
+inline ::std::int64_t total_cents(const ::protocross::examples::Invoice& self)
+{
+  ::std::int64_t total = 0LL;
+  for (const auto& item : self.items())
+  {
+    total = ::protocross_runtime::wrap_add_i64(total, ::protocross::examples::line_total_cents(item));
+  }
+  return total;
+}
+```
 
-- C#
-- C++
-- Python
+So C# calls `invoice.TotalCents()` and C++ calls `protocross::examples::total_cents(invoice)`. The
+`unchecked` and `wrap_mul_i64` are the point: what an overflow does is decided once, wrapping unless
+the project chooses checked or saturating, and each backend spells that out rather than leaving it to
+the target. Signed overflow is undefined behavior in C++, so its arithmetic goes through a small
+runtime header instead of the built-in operators.
 
-Other languages may be possible later if the core semantics remain small enough.
+## Try it
 
-## Non-Goals
+ProtoCross is not on NuGet yet, so for now it runs from a clone. It needs the
+[.NET 10 SDK](https://dotnet.microsoft.com/download) and [`protoc`](https://protobuf.dev/installation/)
+on `PATH`; a `Grpc.Tools` package already in your NuGet cache will do instead of the latter.
 
-ProtoCross is intentionally not a general-purpose programming language.
+```bash
+git clone https://github.com/IsaacSherman/ProtoCross.git
+```
 
-It does not aim to support:
+```bash
+cd ProtoCross
+```
 
-- Exceptions
-- Inheritance as a language feature
-- Private, protected, or internal methods
-- LINQ-style query syntax
-- Lambdas or anonymous functions
-- Target-language syntactic sugar
-- Threading, locks, async, or scheduling primitives
-- File, network, console, database, or other I/O
-- Reflection-dependent behavior
-- A replacement for `.proto` schemas
+```bash
+dotnet run --project src/ProtoCross.Cli -- examples/simpleScript.pcross -I examples/protos -o generated
+```
 
-These omissions are part of the design. The more ProtoCross depends on target-language-specific features, the harder it becomes to guarantee equivalent behavior across C#, C++, Python, and future backends.
+That writes the C# to `generated/csharp/` and the C++ to `generated/cpp/`. ProtoCross generates only
+the behavior; the message classes still come from `protoc --csharp_out` and `--cpp_out`.
 
-## No Overridable Behavior
+To build and run the example's twelve tests in both backends, which also needs CMake, a C++20 compiler
+and a protobuf C++ install (see [Optional C++ Smoke Test Dependencies](#optional-c-smoke-test-dependencies)):
 
-A ProtoCross method means one thing, stated once. There are no virtual methods and no override mechanism: a method whose behavior could be replaced from outside would be a second source of truth, which is what the language exists to prevent. The spec records the decision in section 17.
-
-## Compiler Direction
-
-The intended architecture is:
+```bash
+dotnet run --project src/ProtoCross.Cli -- test examples/simpleScript.pcross -I examples/protos -o generated
+```
 
 ```text
-ProtoCross source
-    -> parser
-    -> protobuf descriptor binding
-    -> type checking
-    -> typed IR
-    -> language-specific backend
-    -> generated C# / C++ / Python / ...
+csharp: dotnet test in generated\tests\csharp
+cpp: cmake and ctest in generated\tests\cpp
+csharp: 12 passed
+cpp: 12 passed
+every declared test passed in csharp and cpp
 ```
 
-The typed IR is important. It gives the project a place to define semantics once before target-language code generation begins. Backend output should be judged against the IR and the language specification, not against whatever is convenient in a particular target language.
+For a real codebase, a [`.pcproj` project file](#running-the-compiler) names the sources and schemas
+so that building is one command, and the [VS Code extension](editors/vscode/README.md) gives live
+diagnostics, completion, hover and go to definition.
 
-## Specification
+## Why not protoc and hand-written code?
 
-The current draft specification is in:
+Protocol Buffers are excellent at defining shared data contracts, but they deliberately stop at data. A `.proto` file can tell C#, C++, Python, and other languages what a message looks like, but it cannot define the behavior that should live with that message. In practice, teams reimplement the same methods in every target language, write parallel test suites using similar-but-not-identical frameworks and extension points, and hope both the implementations and their tests stay semantically identical.
 
-[ProtoCross_Spec/](ProtoCross_Spec/README.md), one file per numbered section
+ProtoCross makes that shared behavior a shared, executable contract. Define a method and its declarative tests once; the compiler generates native behavior and test artifacts for each backend, while the conformance suite requires the same observable results everywhere. The goal is not merely similar code in several languages, but behavior we can verify is equivalent as closely as the targets allow, without turning protobuf into a full programming platform.
 
-That document separates:
+Hand-writing a method twice, once in C# and once in C++, gives two methods that agree on the cases
+someone thought to test. Underneath, the languages disagree: a C# `long` wraps on overflow where C++
+signed overflow is undefined, an integer division by zero throws in one and is undefined in the other,
+and `MIN / -1` throws in C# even under `unchecked` while C++ traps. ProtoCross gives each such
+operation one meaning and holds both backends to it:
 
-- Normative language semantics
-- Backend and implementation details
-- Open design questions
-
-The project is still early, so the spec intentionally captures unresolved decisions rather than pretending the language is finished.
-
-Alongside it, [docs/reference-semantics.md](docs/reference-semantics.md) collects the behavior of
-every operation the targets disagree about, in one table: what C# does, what ProtoCross guarantees,
-and what each other backend has to emit to match. C# is the reference, and the rows that depart from
-it say why. The spec stays normative; that file is the reference the spec's decisions are read out
-of.
+- **Identical behavior in both backends.** [docs/reference-semantics.md](docs/reference-semantics.md)
+  lists every operation the targets disagree about and what ProtoCross guarantees for it. The
+  [conformance suite](tests/conformance/README.md) compiles the same vectors to both languages, builds
+  and runs them, and requires the results to agree, in CI as well as locally.
+- **Tests written once, run in every backend.** A `test` declared beside a method is generated into
+  xUnit tests and a C++ test executable, and `protocross test` builds and runs both. It passes only
+  when every declared test passed in every backend.
+- **A deliberately small language.** No I/O, exceptions, inheritance or threads (see
+  [Non-Goals](#non-goals)): just enough types and control flow for domain behavior, so that every
+  construct can mean the same thing in every target.
 
 ## Status
 
-There is now a working compiler for a small slice of the language. It takes the example in
-[examples/simpleScript.pcross](examples/simpleScript.pcross) all the way to C# and C++ source.
+The language planned for 1.0 is complete. Everything listed below is specified in
+[ProtoCross_Spec/](ProtoCross_Spec/README.md), implemented in both the C# and the C++ backend,
+and exercised in both by the [conformance suite](#conformance-suite).
 
 Implemented:
 
@@ -181,7 +218,8 @@ Implemented:
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
 Not implemented: `==` between two messages (a test compares an expected literal by the fields it
-sets instead), asking which member of a `oneof` is set, and the Python backend. A `oneof`'s members
+sets instead), asking which member of a `oneof` is set, and the Python backend, which is planned
+but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
 than emitting something whose semantics differ from the spec.
@@ -189,63 +227,7 @@ than emitting something whose semantics differ from the spec.
 Not planned: `Result` types, or any other value that holds a refusal. A method that cannot give its
 result refuses, and each call says what a refusal makes of it. The spec has the rule in section 19.
 
-### Building
-
-```bash
-dotnet test ProtoCross.slnx
-```
-
-That is the whole gate. It builds and runs real generated projects in both backends rather than
-asserting about strings, so it takes about 7 minutes, and about 15 with the long editing soak below
-(`PROTOCROSS_SOAK=1`), which CI always runs. It needs `protoc`, the .NET SDK and a
-C++ toolchain on the machine; a test that cannot find what it needs says so and declines rather than
-failing, so a short run with a lot of skips means a missing dependency rather than a passing suite.
-
-The SDK feature band is pinned in [`global.json`](global.json), and CI installs whatever it names, so
-a build here and a build there are the same build. Warnings are errors in this repository, which is
-what makes the pin worth having: an SDK that ships one new analyzer rule would otherwise turn a green
-change red on a schedule nobody here controls.
-
-Three checks are switched off by default, because none is what a person mid-iteration wants to wait
-for:
-
-```bash
-PROTOCROSS_SWEEP=1 dotnet test ProtoCross.slnx   # every completion item, at every caret, over the whole corpus
-PROTOCROSS_SOAK=1 dotnet test ProtoCross.slnx    # a long editing session, watched for leaked work
-PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release   # the latency budgets, against a fixed corpus
-```
-
-The first two are switched on by CI. The third is not, and deliberately: it measures wall-clock
-latency, which on a shared runner flakes until the threshold stops describing anything. It also
-requires `-c Release` and refuses to run without it, because a Debug reading is not a Release reading
-with a constant factor missing. What CI
-checks of that work instead is counted work -- compilations per caret move, protoc invocations --
-which is deterministic and runs unconditionally. [`docs/performance.md`](docs/performance.md) has the
-budgets, the corpus, the procedure and the measured results, and a benchmark run writes
-`artifacts/perf/report.md` whether it passes or fails.
-
-In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- and stays set for the
-rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
-
-Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
-full suite, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
-sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. Pushing to a
-feature branch triggers no build, and a pull request left in draft is not tested until it is marked
-ready for review. So the cost of ordinary work
-is nothing, and the cost of proposing a change is one run of the same suite you would run yourself.
-
-When every changed file is Markdown, the required checks pass after checking the changed paths,
-without building or running the suites. This applies to both pull requests and pushes to `main`;
-a documentation-only update to a pull request that includes code reuses each suite's successful
-validation of the same non-Markdown tree. The record includes code, build inputs, workflows and the
-merged base, and is separate for each suite and platform. A changed tree or a missing record runs
-the suite; a failed run never records success. Rerunning a workflow explicitly runs the suites again.
-Documentation and any tests that read it are checked locally before merging.
-
-A run that skips a gated test fails, rather than passing quickly. A switch that quietly stayed shut
-produces a green build indistinguishable from a thorough one, which is the failure this arrangement
-exists to prevent; [`report.ps1`](.github/workflows/report.ps1) names the gated tests and refuses a
-run that did not perform them.
+## Using ProtoCross
 
 ### Running the compiler
 
@@ -646,6 +628,166 @@ out-of-process test. The C# backend emits an extra `ProtoCrossTestSupport.g.cs` 
 initializer that lets the test assembly be relaunched for one named test; the generated `[Fact]`
 starts that child and checks its exit code. The C++ driver reruns itself with `--run <name>` and
 does the same. Neither needs any wiring from you beyond building the generated files as usual.
+
+## Design
+
+### Vision
+
+The goal is simple: define behavior and its tests once, then transpile both into the languages where the protobuf messages are used.
+
+ProtoCross should let a team write small, explicit methods against protobuf message types:
+
+```protocross
+extend InvoiceItem {
+    fn line_total_cents() -> int64 {
+        return quantity * unit_price_cents;
+    }
+}
+```
+
+That behavior is generated for C# and C++ today. Python is not yet supported; it and potentially other languages are meant to follow, with the same core semantics in each target. Its tests travel with it, so each backend proves the same cases rather than relying on separately maintained test suites to stay aligned.
+
+This is not meant to be a clever language. It is meant to be deliberately plain: old-fashioned pseudocode with enough type information and control flow to express common domain behavior clearly.
+
+### Scope
+
+ProtoCross is built around a small semantic core:
+
+- Protocol Buffer messages and fields are the foundation of the type system.
+- Methods are attached to protobuf message types.
+- Methods are public.
+- Semantics should be explicit and portable across target languages.
+- The compiler should lower source code into a typed intermediate representation before emitting target-language code.
+- Each target language should have its own backend with documented conformance requirements.
+
+The first target backends are:
+
+- C#, implemented
+- C++, implemented
+- Python, planned and not yet supported
+
+Other languages may be possible later if the core semantics remain small enough.
+
+### Non-Goals
+
+ProtoCross is intentionally not a general-purpose programming language.
+
+It does not aim to support:
+
+- Exceptions
+- Inheritance as a language feature
+- Private, protected, or internal methods
+- LINQ-style query syntax
+- Lambdas or anonymous functions
+- Target-language syntactic sugar
+- Threading, locks, async, or scheduling primitives
+- File, network, console, database, or other I/O
+- Reflection-dependent behavior
+- A replacement for `.proto` schemas
+
+These omissions are part of the design. The more ProtoCross depends on target-language-specific features, the harder it becomes to guarantee equivalent behavior across C#, C++, Python, and future backends.
+
+### No Overridable Behavior
+
+A ProtoCross method means one thing, stated once. There are no virtual methods and no override mechanism: a method whose behavior could be replaced from outside would be a second source of truth, which is what the language exists to prevent. The spec records the decision in section 17.
+
+### Compiler Direction
+
+The intended architecture is:
+
+```text
+ProtoCross source
+    -> parser
+    -> protobuf descriptor binding
+    -> type checking
+    -> typed IR
+    -> language-specific backend
+    -> generated C# / C++ / Python / ...
+```
+
+The typed IR is important. It gives the project a place to define semantics once before target-language code generation begins. Backend output should be judged against the IR and the language specification, not against whatever is convenient in a particular target language.
+
+### Specification
+
+The current draft specification is in:
+
+[ProtoCross_Spec/](ProtoCross_Spec/README.md), one file per numbered section
+
+That document separates:
+
+- Normative language semantics
+- Backend and implementation details
+- Open design questions
+
+Every question it asked on the way to 1.0 is settled:
+[section 30](ProtoCross_Spec/§30-Unresolved%20Questions%20Index.md) records each one as decided or
+deferred past 1.0, and [section 31](ProtoCross_Spec/§31-Decision%20Log.md) dates the decisions.
+
+Alongside it, [docs/reference-semantics.md](docs/reference-semantics.md) collects the behavior of
+every operation the targets disagree about, in one table: what C# does, what ProtoCross guarantees,
+and what each other backend has to emit to match. C# is the reference, and the rows that depart from
+it say why. The spec stays normative; that file is the reference the spec's decisions are read out
+of.
+
+## Developing ProtoCross
+
+### Building
+
+```bash
+dotnet test ProtoCross.slnx
+```
+
+That is the whole gate. It builds and runs real generated projects in both backends rather than
+asserting about strings, so it takes about 7 minutes, and about 15 with the long editing soak below
+(`PROTOCROSS_SOAK=1`), which CI always runs. It needs `protoc`, the .NET SDK and a
+C++ toolchain on the machine; a test that cannot find what it needs says so and declines rather than
+failing, so a short run with a lot of skips means a missing dependency rather than a passing suite.
+
+The SDK feature band is pinned in [`global.json`](global.json), and CI installs whatever it names, so
+a build here and a build there are the same build. Warnings are errors in this repository, which is
+what makes the pin worth having: an SDK that ships one new analyzer rule would otherwise turn a green
+change red on a schedule nobody here controls.
+
+Three checks are switched off by default, because none is what a person mid-iteration wants to wait
+for:
+
+```bash
+PROTOCROSS_SWEEP=1 dotnet test ProtoCross.slnx   # every completion item, at every caret, over the whole corpus
+PROTOCROSS_SOAK=1 dotnet test ProtoCross.slnx    # a long editing session, watched for leaked work
+PROTOCROSS_BENCH=1 dotnet test ProtoCross.slnx -c Release   # the latency budgets, against a fixed corpus
+```
+
+The first two are switched on by CI. The third is not, and deliberately: it measures wall-clock
+latency, which on a shared runner flakes until the threshold stops describing anything. It also
+requires `-c Release` and refuses to run without it, because a Debug reading is not a Release reading
+with a constant factor missing. What CI
+checks of that work instead is counted work -- compilations per caret move, protoc invocations --
+which is deterministic and runs unconditionally. [`docs/performance.md`](docs/performance.md) has the
+budgets, the corpus, the procedure and the measured results, and a benchmark run writes
+`artifacts/perf/report.md` whether it passes or fails.
+
+In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- and stays set for the
+rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
+
+Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
+full suite, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
+sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. Pushing to a
+feature branch triggers no build, and a pull request left in draft is not tested until it is marked
+ready for review. So the cost of ordinary work
+is nothing, and the cost of proposing a change is one run of the same suite you would run yourself.
+
+When every changed file is Markdown, the required checks pass after checking the changed paths,
+without building or running the suites. This applies to both pull requests and pushes to `main`;
+a documentation-only update to a pull request that includes code reuses each suite's successful
+validation of the same non-Markdown tree. The record includes code, build inputs, workflows and the
+merged base, and is separate for each suite and platform. A changed tree or a missing record runs
+the suite; a failed run never records success. Rerunning a workflow explicitly runs the suites again.
+Documentation and any tests that read it are checked locally before merging.
+
+A run that skips a gated test fails, rather than passing quickly. A switch that quietly stayed shut
+produces a green build indistinguishable from a thorough one, which is the failure this arrangement
+exists to prevent; [`report.ps1`](.github/workflows/report.ps1) names the gated tests and refuses a
+run that did not perform them.
 
 ### Conformance Suite
 
