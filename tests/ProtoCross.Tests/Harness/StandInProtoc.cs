@@ -58,6 +58,11 @@ public static class StandInProtoc
     /// there it is the directory that loses its write permission. <see cref="Unlock"/> is the other
     /// half of each.
     /// </para>
+    /// <para>
+    /// The POSIX script gives the directory its write permission back before it writes, because the run
+    /// before took it away: without that, every load after the first could not write its descriptor set
+    /// at all, and only one would ever be stranded where Windows strands one per load.
+    /// </para>
     /// </remarks>
     public static string Obstructive()
         => Write(
@@ -73,6 +78,7 @@ public static class StandInProtoc
             [
                 "#!/bin/sh",
                 "out=\"${1#--descriptor_set_out=}\"",
+                "chmod 700 \"$(dirname \"$out\")\"",
                 "echo refused > \"$out\"",
                 "chmod 500 \"$(dirname \"$out\")\"",
                 "echo 'protoc: refused' >&2",

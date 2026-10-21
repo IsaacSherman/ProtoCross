@@ -1,3 +1,4 @@
+using System.Globalization;
 using ProtoCross.Backend;
 using ProtoCross.Toolchain;
 
@@ -163,12 +164,12 @@ internal sealed class CppTestWorkspace
             return NotBuilt(driverSources, configured.Output);
         }
 
-        if (sharedSources.Count > 0 && BuildTarget(cmake, SharedTarget) is { ExitCode: not 0 } shared)
+        if (sharedSources.Count > 0 && Build(cmake, "--target", SharedTarget) is { ExitCode: not 0 } shared)
         {
             return NotBuilt(driverSources, shared.Output);
         }
 
-        var built = RunCMake(cmake, "--build", BuildDirectory, "--config", "Debug", "--parallel");
+        var built = Build(cmake);
         return driverSources.Select((driver, index) => Run(cmake, driver, index, built)).ToList();
     }
 
@@ -184,7 +185,7 @@ internal sealed class CppTestWorkspace
     private CppProgramResult Run(string cmake, string driver, int index, ProcessResult built)
     {
         if (built.ExitCode != 0 && !File.Exists(ExecutableOf(index))
-            && BuildTarget(cmake, DriverTarget(index)) is { ExitCode: not 0 } alone)
+            && Build(cmake, "--target", DriverTarget(index)) is { ExitCode: not 0 } alone)
         {
             return new CppProgramResult(driver, ProcessResult.NotRun, alone.Output);
         }
@@ -198,8 +199,20 @@ internal sealed class CppTestWorkspace
         return new CppProgramResult(driver, ran.ExitCode, ran.Output);
     }
 
-    private ProcessResult BuildTarget(string cmake, string target)
-        => RunCMake(cmake, "--build", BuildDirectory, "--config", "Debug", "--parallel", "--target", target);
+    /// <summary>Builds the workspace's project, or the targets <paramref name="targetArguments"/> name.</summary>
+    /// <remarks>
+    /// The job count is stated because <c>--parallel</c> alone hands make a bare <c>-j</c>, which runs every
+    /// compile at once: the conformance vectors then started a compiler per schema and per driver together
+    /// and ran a 16 GB Linux machine out of memory. MSBuild and <c>/MP</c> already stop at the processor count.
+    /// </remarks>
+    private ProcessResult Build(string cmake, params string[] targetArguments)
+        => RunCMake(
+            cmake,
+            [
+                "--build", BuildDirectory, "--config", "Debug",
+                "--parallel", Environment.ProcessorCount.ToString(CultureInfo.InvariantCulture),
+                .. targetArguments,
+            ]);
 
     private ProcessResult RunCMake(string cmake, params string[] arguments)
     {
