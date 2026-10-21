@@ -1,7 +1,7 @@
 name: entra probe
 on:
   push:
-    branches: [entra-probe]
+    branches: [establish-marketplace-ID]
 permissions:
   id-token: write
   contents: read
