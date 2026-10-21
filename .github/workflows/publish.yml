@@ -1,0 +1,209 @@
+# Ships the VS Code extension: to the Visual Studio Marketplace, to Open VSX, and onto the GitHub
+# release that asked for it, all as the one file built below.
+#
+# A release is the trigger, not a push to main, because a store never takes the same version twice: a
+# mistake is fixed by shipping another number, never by taking this one back. Creating the release is
+# the decision to ship. The 'marketplace' environment's required reviewer is a second look at it, and
+# comes after the checks have passed and the package exists, so what is approved is what goes out.
+#
+# Nothing here runs the suites. The tag has to name a commit on main whose 'build and test' run passed,
+# so what ships is a tree CI has already judged rather than one judged a second time here.
+#
+# Open VSX is where VSCodium, Cursor and other editors outside Microsoft's own install from. The
+# Marketplace's terms limit it to Microsoft's products, so the second store is how those users find it.
+#
+# Outside the repository, this needs:
+#
+# - A 'marketplace' environment, with the owner as its required reviewer, deployable from 'v*' tags and
+#   from main. A release deploys from its tag. A manual rerun deploys from the branch it is started on.
+# - For the Marketplace, a user-assigned managed identity with a federated credential for
+#   'repo:IsaacSherman@8573464/ProtoCross@1333362202:environment:marketplace', added as a Contributor
+#   to the 'isaacsherman' publisher, and its ids in the environment's variables AZURE_CLIENT_ID and
+#   AZURE_TENANT_ID. The subject carries the owner's and the repository's numeric ids because this
+#   repository issues immutable subjects, which a rename or a new repository under the old name cannot
+#   reproduce. A managed identity, as Microsoft's publishing guide uses, because an app
+#   registration is reported to sign in and then be refused the publish. vsce's own token has to
+#   reach every Azure DevOps organization, and Azure DevOps no longer issues one that does: global
+#   tokens stopped being created on 2026-03-15 and stop working on 2026-12-01.
+# - For Open VSX, the 'isaacsherman' namespace, and either an OVSX_PAT secret in the environment or a
+#   trusted publisher registered for this workflow. With no token, ovsx trades the run's own identity
+#   for one, so nothing long-lived needs to be stored.
+name: publish extension
+
+on:
+  release:
+    types: [published]
+  # For finishing a publish that failed part of the way. The checks below hold it to the same rules as
+  # a release.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The release tag to publish, such as v0.8.0
+        required: true
+
+permissions:
+  contents: read
+
+# A release and a rerun of it must not publish at the same time. Neither is cancelled, since a publish
+# stopped part of the way is the state a rerun exists to finish.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+env:
+  TAG: ${{ github.event.release.tag_name || inputs.tag }}
+  GH_REPO: ${{ github.repository }}
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  # Builds the one package everything after it ships. It can neither publish nor write to the
+  # repository, because it is the job that runs npm's install scripts.
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    defaults:
+      run:
+        working-directory: editors/vscode
+        shell: pwsh
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+          fetch-depth: 0
+
+      - name: The tag names the version the package says
+        id: version
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($env:TAG -cne "v$version") {
+            Write-Output "::error::The tag $env:TAG does not name the version in package.json, $version. Release as v$version, or bump the version on main first."
+            exit 1
+          }
+          "version=$version" | Add-Content -LiteralPath $env:GITHUB_OUTPUT
+
+      - name: The tagged commit is on main
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::$env:TAG is not on main. Only a commit main has accepted is published; tag one that is."
+            exit 1
+          }
+
+      # A release created the moment a sprint merges arrives while main's run is still going, so this
+      # waits for that run rather than refusing.
+      - name: CI passed on the tagged commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $commit = git rev-parse HEAD
+          $run = gh run list --workflow ci.yml --commit $commit --event push --limit 1 --json databaseId --jq '.[].databaseId'
+          if (-not $run) {
+            Write-Output "::error::No 'build and test' run on main tested $commit. Tag a commit that was main's tip when it was pushed."
+            exit 1
+          }
+          gh run watch $run --exit-status --compact --interval 30
+          if ($LASTEXITCODE -ne 0) {
+            Write-Output "::error::'build and test' did not pass on $commit. Fix main, and release the fix under a new version."
+            exit 1
+          }
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # No cache. A release is rare enough that a cold install costs nothing worth saving, and a cache
+      # is the one input here that a run on another branch could have written.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install
+        run: npm ci
+
+      - name: Package
+        run: npm run package
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: protocross-vsix
+          path: editors/vscode/dist/protocross.vsix
+          if-no-files-found: error
+
+  # The same file the stores receive, for anyone who installs from a VSIX. It needs no approval, so the
+  # release has its package while the stores wait for one, and when a store refuses it.
+  attach:
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: protocross-vsix
+
+      # Named for its version, because a download folder collects every release's package side by side.
+      # --clobber lets a rerun replace it with the identical file.
+      - name: Attach the package to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: |
+          Move-Item protocross.vsix "protocross-$env:VERSION.vsix"
+          gh release upload $env:TAG "protocross-$env:VERSION.vsix" --clobber
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+
+    defaults:
+      run:
+        working-directory: editors/vscode
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # Only for vsce and ovsx, at the versions the lockfile pins. Neither needs an install script, and
+      # this job can obtain a publishing token, so none is run.
+      - name: Install the publishing tools
+        run: npm ci --ignore-scripts
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: protocross-vsix
+          path: editors/vscode/dist
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      # --skip-duplicate is what lets a rerun finish what a failed run started: a version a store
+      # already has is passed over rather than refused.
+      - name: Publish to the Visual Studio Marketplace
+        run: npx --no-install vsce publish --packagePath dist/protocross.vsix --azure-credential --skip-duplicate
+
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: npx --no-install ovsx publish dist/protocross.vsix --skip-duplicate
