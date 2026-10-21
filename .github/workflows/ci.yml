@@ -8,7 +8,8 @@
 # gating them was always about the person waiting.
 name: build and test
 
-# Two events and no others, and the branch filters are what keep it that way.
+# Two events decide when the suites run, and the branch filters are what keep it that way. A third,
+# run by hand, is for the macOS leg alone.
 #
 # 'pull_request.branches' filters the branch being merged *into*, so this is every proposal to change
 # main or a sprint branch, and nothing else. A sprint branch is where parallel issue branches meet
@@ -28,6 +29,9 @@ name: build and test
 # leave those checks pending, so each job reads the complete diff and declines only its costly steps.
 # A successful suite also records the non-Markdown tree it tested. A later documentation update
 # to that same pull request reuses the result; missing evidence or any changed input runs the suite.
+#
+# 'workflow_dispatch' runs the extension's suites on macOS, on the branch it is started from, and
+# nothing else. Why macOS waits to be asked is at that job.
 on:
   pull_request:
     branches: [main, 'sprints/**']
@@ -37,14 +41,17 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 # A pull request that is pushed to twice does not need the first run finished. The default branch is
-# excluded from cancellation, since a push to main is the record of what main was.
+# excluded from cancellation, since a push to main is the record of what main was. The event is part of
+# the group so that a macOS run started on main neither waits behind main's own run nor is displaced
+# from the queue by the next push.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
@@ -55,7 +62,7 @@ jobs:
     # A draft is a proposal that is not being proposed yet, and validating one spends minutes on a
     # branch whose author has said out loud that they are not finished. Marking it ready is the event
     # that asks the question, and that is the event this then answers.
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
 
     strategy:
       # Both legs report, because "the other one failed too" and "only this one failed" are different
@@ -191,25 +198,26 @@ jobs:
   # The VS Code extension, on every platform it claims. The .NET job above runs the server's own suite on
   # Windows; this is where "Windows, macOS and Linux" stops being a claim, because the extension starts
   # the server through the user's own dotnet, searches PATH by platform rules, and runs in a real editor.
+  # Every proposal runs it on Windows and Linux; macOS is the next job, run by hand.
   vscode:
     name: vscode extension (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
 
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest]
 
-    defaults:
+    defaults: &vscode-defaults
       run:
         working-directory: editors/vscode
 
-    env:
+    env: &vscode-env
       DOTNET_NOLOGO: 1
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
-    steps:
+    steps: &vscode-steps
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -219,7 +227,9 @@ jobs:
         working-directory: .
         shell: pwsh
         env:
-          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+          # A run started by hand has no base to compare with. The all-zero commit is how changes.ps1 is
+          # told so, and as for a branch's first push, it runs the suites.
+          BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
           HEAD_REF: ${{ github.event.pull_request.head.sha || github.sha }}
           IS_PULL_REQUEST: ${{ github.event_name == 'pull_request' }}
         run: >
@@ -340,3 +350,27 @@ jobs:
         with:
           path: .ci-validation/vscode-${{ matrix.os }}
           key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
+
+  # The same suites on macOS, when someone asks for them. A macOS runner costs about ten times a Linux
+  # one, around three dollars a run, which is too much to spend on every proposal. The platform has still
+  # earned its place: #118 was an intermittent end-to-end failure seen on macOS. So it runs from 'Run
+  # workflow' on the branch to be tested, and the 'macos' environment holds it for an administrator's
+  # approval before any runner starts. Run it before a release, and on a change to how the extension
+  # finds dotnet, protoc or the server.
+  #
+  # The steps are the job above's, by alias, so the two cannot drift apart. The one-entry matrix gives
+  # them the 'matrix.os' they key on, and keeps the check's name. It is not a required check, since
+  # nothing would ever arrive to satisfy it.
+  vscode-macos:
+    name: vscode extension (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    if: github.event_name == 'workflow_dispatch'
+    environment: macos
+
+    strategy:
+      matrix:
+        os: [macos-latest]
+
+    defaults: *vscode-defaults
+    env: *vscode-env
+    steps: *vscode-steps

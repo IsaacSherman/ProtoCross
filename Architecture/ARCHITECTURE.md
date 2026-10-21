@@ -802,7 +802,9 @@ A successful suite records the non-Markdown tree it tested, including the merged
 documentation updates to a pull request that includes code can reuse that validation. The record
 is separate per suite and platform; changed inputs, a missing record or an explicit rerun run the
 suite again. It also runs the extension's
-three suites on Windows, Linux and macOS, before and after a `protoc` is installed.
+three suites on Windows and Linux, before and after a `protoc` is installed. The same suites run on
+macOS only when started by hand from the Actions tab, after approval, because a macOS runner costs
+about ten times a Linux one.
 
 ## Invariants that constrain a change
 
