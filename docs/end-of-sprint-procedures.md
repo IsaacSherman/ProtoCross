@@ -134,6 +134,16 @@ Once the findings are fixed and the suite passes on the head:
 ## 10. After it merges
 
 - Check that every issue the body closes is closed: `gh issue view <n> --json state`.
+- Publish the extension when the owner says to, by releasing the merge commit under its version:
+
+  ```bash
+  gh release create v0.<N+1>.0 --target "$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)" --generate-notes
+  ```
+
+  The release starts [publish.yml](../.github/workflows/publish.yml). It checks the tag against the
+  version, waits for CI on `main`, and attaches the VSIX to the release. Then it waits for the owner
+  to approve the `marketplace` deployment before publishing to the stores. To finish a publish that
+  failed part of the way, run the workflow again with the same tag.
 - Open the next sprint only when the owner says to start it. That is its own pull request, as #189
   was:
   - cut `sprints/language-1-<N+1>` from `main`;
