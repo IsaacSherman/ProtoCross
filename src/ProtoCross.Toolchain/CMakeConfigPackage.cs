@@ -124,7 +124,7 @@ public static class CMakeConfigPackage
         => Subdirectories(directory)
             .Where(subdirectory => Path.GetFileName(subdirectory).StartsWith(name, StringComparison.OrdinalIgnoreCase));
 
-    private static IEnumerable<string> Subdirectories(string directory)
+    internal static IEnumerable<string> Subdirectories(string directory)
     {
         // A directory that is not there, or cannot be listed, holds no package: the search goes on, as CMake's does.
         try

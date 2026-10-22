@@ -37,6 +37,34 @@ internal static class TestPaths
                 element => (string)element.Attribute("Version")!,
                 StringComparer.Ordinal);
 
+    /// <summary>
+    /// <see cref="Path.GetTempPath"/> with every symbolic link in it resolved: where the temporary
+    /// directory physically is.
+    /// </summary>
+    /// <remarks>
+    /// For a test whose output holds a relative path back to the repository. macOS's temporary directory is
+    /// under <c>/var</c>, which links to <c>/private/var</c>, and protoc resolves such a path from the
+    /// physical working directory, one level deeper than the path was computed from (#205). Where the
+    /// output goes is incidental to what those tests check, so it goes where no link lies in between.
+    /// </remarks>
+    public static string PhysicalTempPath { get; } = Physical(Path.GetTempPath());
+
+    private static string Physical(string path)
+    {
+        var physical = Path.GetPathRoot(path)!;
+        foreach (var part in Path.GetRelativePath(physical, path)
+            .Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries))
+        {
+            physical = Path.Combine(physical, part);
+            if (new DirectoryInfo(physical).ResolveLinkTarget(returnFinalTarget: true) is { } target)
+            {
+                physical = target.FullName;
+            }
+        }
+
+        return physical;
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

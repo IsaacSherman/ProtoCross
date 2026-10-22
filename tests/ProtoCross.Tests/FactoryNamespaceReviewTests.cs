@@ -58,12 +58,14 @@ public class FactoryNamespaceReviewTests
         Assert.Null(result.SchemaFailure);
         Assert.NotNull(result.Module);
         var dotnet = TestToolchain.LocateDotnet();
-        var protoc = TestToolchain.LocateProtoc();
         Assert.NotNull(dotnet);
-        Assert.NotNull(protoc);
+
+        // The pinned protoc, because newer ones refuse the escaped namespace outright, and then there is
+        // no generated C# for a factory to collide with.
+        var protoc = TestToolchain.RequirePinnedProtoc();
 
         var workspace = CSharpTestWorkspace.Create("factory-namespace-review");
-        var generated = workspace.GenerateProtobuf(protoc!, directory, "lower.proto", "upper.proto");
+        var generated = workspace.GenerateProtobuf(protoc, directory, "lower.proto", "upper.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
         workspace.WriteProjectFiles();
         var schemasAlone = workspace.Build(dotnet!);

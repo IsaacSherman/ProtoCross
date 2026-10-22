@@ -795,7 +795,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
   commit that moves that number rather than on the day it ships.
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs the same
-suite, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
+suite on Windows, Linux and macOS, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
 every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
 required checks pass after checking the changed paths, without building or running the suites.
 A successful suite records the non-Markdown tree it tested, including the merged base, so later

@@ -63,7 +63,7 @@ public class TwoLibrariesTests
     [Fact]
     public void TwoLibrariesExtendingOneMessageLinkIntoOneCppProgram()
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
 
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
@@ -99,7 +99,7 @@ public class TwoLibrariesTests
                 """),
         ]);
 
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf, ["main.cc"], ["beta_elsewhere.cc"]));
+        var run = Assert.Single(workspace.BuildAndRun(protobuf, ["main.cc"], ["beta_elsewhere.cc"]));
 
         Assert.True(
             run.Succeeded,

@@ -64,7 +64,7 @@ public class NumericFactoryNameReviewTests
             Assert.True(baseline.ExitCode == 0, baseline.Output);
             workspace.Write(files);
             var driver = Assert.Single(files, file => file.RelativePath.EndsWith(".cc", StringComparison.Ordinal)).RelativePath;
-            var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf, [driver], ["numeric_factory.pb.cc"]));
+            var run = Assert.Single(workspace.BuildAndRun(protobuf, [driver], ["numeric_factory.pb.cc"]));
             Assert.True(run.Succeeded, run.Output);
             Assert.Contains("[ok] " + Assert.Single(result.Module.Tests).Identity, run.Output, StringComparison.Ordinal);
         }

@@ -53,7 +53,7 @@ public class MapMergeAliasingReviewTests
     [Fact]
     public void ACppMergeCanReadAMapInsideAnElementItReplaces()
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, result) = Compile();
@@ -67,7 +67,7 @@ public class MapMergeAliasingReviewTests
         workspace.Write(files);
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "map_merge_alias.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["map_merge_alias.tests.cc"], ["map_merge_alias.pb.cc"]));
         Assert.True(run.Succeeded, $"Native exit code: {run.ExitCode}\n{run.Output}");
         Assert.Contains("[ok] ", run.Output, StringComparison.Ordinal);

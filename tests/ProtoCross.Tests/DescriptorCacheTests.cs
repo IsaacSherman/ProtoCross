@@ -939,12 +939,27 @@ public class DescriptorCacheTests
     }
 
     /// <summary>A second protoc install, at a path of its own, that really runs.</summary>
+    /// <remarks>
+    /// The copy goes in a <c>bin</c> with the original's <c>lib</c> linked beside it, where there is one.
+    /// A protoc linked against its own shared libraries, as Homebrew's is, finds them at
+    /// <c>../lib</c> from wherever it runs, so a copy of the executable alone cannot start. Windows finds
+    /// a DLL beside the executable instead, and no protoc there is built that way.
+    /// </remarks>
     private static string CopyProtoc()
     {
         var source = RequireProtoc();
-        var destination = Path.Combine(TestPaths.CreateTempDirectory(), Path.GetFileName(source));
+        var install = TestPaths.CreateTempDirectory();
+        var destination = Path.Combine(install, "bin", Path.GetFileName(source));
+        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
 
         File.Copy(source, destination);
+
+        var original = File.ResolveLinkTarget(source, returnFinalTarget: true)?.FullName ?? source;
+        var libraries = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(original)!, "..", "lib"));
+        if (!OperatingSystem.IsWindows() && Directory.Exists(libraries))
+        {
+            Directory.CreateSymbolicLink(Path.Combine(install, "lib"), libraries);
+        }
 
         return destination;
     }

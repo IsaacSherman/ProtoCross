@@ -47,7 +47,7 @@ public class CppLiteralReviewRegressionTests
     [InlineData(true)]
     public void ALiteralFromAnIndependentSchemaBuildsAndRunsInCpp(bool inFixture)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(inFixture);
@@ -56,7 +56,7 @@ public class CppLiteralReviewRegressionTests
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "anchor.proto", "foreign.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
 
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["foreign_literal.tests.cc"], ["anchor.pb.cc", "foreign.pb.cc"]));
         Assert.True(run.Succeeded,
             "A literal's imported message must be declared where the literal is emitted."
@@ -70,7 +70,7 @@ public class CppLiteralReviewRegressionTests
     [InlineData("expectation")]
     public void ACallOnATestLiteralFindsAMethodDeclaredInAnotherSource(string position)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var schemas = TestPaths.CreateTempDirectory();
@@ -108,7 +108,7 @@ public class CppLiteralReviewRegressionTests
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "anchor.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
 
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["use_literal.tests.cc"], ["anchor.pb.cc"]));
         Assert.True(run.Succeeded,
             "A test expression must be able to call a method declared in another source."

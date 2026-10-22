@@ -31,9 +31,16 @@ param(
     # shared runner flakes until somebody loosens it past the point of describing anything. What CI
     # checks of the performance work is PerformanceCostTests, which counts work rather than time and
     # runs unconditionally. See docs/performance.md.
+    #
+    # The two C++ tests are here for the same reason as the gates. CI installs protobuf C++ so that
+    # generated C++ is built and run on every platform, and an install the suite cannot find skips all
+    # of it: one test for the harness that builds the conformance vectors, one for the CMake project
+    # 'protocross test' builds.
     [string[]] $Required = @(
         'EveryItemOfferedAnywhereInTheCorpusBindsWhenItIsAccepted',
-        'ALongSessionOfEditingLeavesNoBacklogProcessesOrTemporaryFiles')
+        'ALongSessionOfEditingLeavesNoBacklogProcessesOrTemporaryFiles',
+        'CppRunsEveryConformanceVector',
+        'TheEmittedCMakeProjectBuildsAndPassesItsTests')
 )
 
 Set-StrictMode -Version Latest

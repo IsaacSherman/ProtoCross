@@ -62,7 +62,7 @@ public class WrapperReviewRegressionTests
     [Trait("ReviewRegression", "WrapperFields")]
     public void CppWrapperLoopsAndStoresPreserveTheMessageSemantics(string vector, int testCount)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = Compile(vector, testCount);
@@ -70,7 +70,7 @@ public class WrapperReviewRegressionTests
         workspace.Write(Generate(result, new CppBackend(), vector));
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, Schemas, vector + ".proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler!, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             [vector + ".tests.cc"], [vector + ".pb.cc"]));
 
         Assert.True(run.Succeeded, run.Output);

@@ -181,9 +181,8 @@ public static class ToolLocator
     /// missing tool is exit 2 and writes nothing.
     /// </para>
     /// <para>
-    /// The package rather than <see cref="ProtobufCppInstall.CanLink"/>, whose libraries are vcpkg's Windows file
-    /// names: the package is what the project actually reads, on every platform, and it names the libraries
-    /// and protoc itself.
+    /// Only the package, where <see cref="ProtobufCppInstall.CanLink"/> also asks for a protoc beside the
+    /// headers: the generated project finds protoc through the package, and the suite runs one itself.
     /// </para>
     /// </remarks>
     public static ToolLookup<ProtobufCppInstall> FindBuildableProtobufCpp(string searchFrom, string? configuredInclude = null)
@@ -196,28 +195,67 @@ public static class ToolLocator
 
     private static ProtobufCppInstall CreateProtobufCppInstall(string includeDirectory)
     {
-        if (ProtobufCppInstall.PrefixOf(includeDirectory) is not { } tripletDirectory)
+        if (ProtobufCppInstall.PrefixOf(includeDirectory) is not { } prefix)
         {
             return new ProtobufCppInstall(includeDirectory, null, null, null);
         }
 
-        var lib = Path.Combine(tripletDirectory, "lib");
-        var bin = Path.Combine(tripletDirectory, "bin");
-
         return new ProtobufCppInstall(
             includeDirectory,
-            LocateProtocInVcpkgTriplet(tripletDirectory),
-            File.Exists(Path.Combine(lib, "libprotobuf.lib")) ? lib : null,
-            File.Exists(Path.Combine(bin, "libprotobuf.dll")) ? bin : null);
+            LocateProtocUnder(prefix),
+            LocateLibraryDirectoryUnder(prefix),
+            LocateRuntimeDirectoryUnder(prefix));
     }
 
     private static bool ContainsProtobufCppHeaders(string includeDirectory)
         => File.Exists(Path.Combine(includeDirectory, "google", "protobuf", "message.h"));
 
-    private static string? LocateProtocInVcpkgTriplet(string tripletDirectory)
+    /// <summary>The protoc built with the install: under vcpkg's tools directory, or in the prefix's <c>bin</c>.</summary>
+    /// <remarks>
+    /// vcpkg keeps executables out of <c>bin</c>, which on Windows holds its DLLs; Homebrew, a system package,
+    /// and protobuf's own CMake install put protoc in <c>bin</c> beside the headers' <c>include</c>.
+    /// </remarks>
+    private static string? LocateProtocUnder(string prefix)
+        => new[]
+            {
+                Path.Combine(prefix, "tools", "protobuf", ProtocExecutableName),
+                Path.Combine(prefix, "bin", ProtocExecutableName),
+            }
+            .FirstOrDefault(File.Exists);
+
+    /// <summary>The directory holding <c>libprotobuf</c> under the prefix: <c>lib</c>, or a multiarch one below it.</summary>
+    /// <remarks>
+    /// Debian and Ubuntu put a package's libraries in <c>lib/&lt;triplet&gt;</c>, such as
+    /// <c>lib/x86_64-linux-gnu</c>, rather than in <c>lib</c> itself.
+    /// </remarks>
+    private static string? LocateLibraryDirectoryUnder(string prefix)
     {
-        var protoc = Path.Combine(tripletDirectory, "tools", "protobuf", ProtocExecutableName);
-        return File.Exists(protoc) ? protoc : null;
+        var lib = Path.Combine(prefix, "lib");
+        return new[] { lib }.Concat(CMakeConfigPackage.Subdirectories(lib)).FirstOrDefault(
+            directory => ProtobufLibraryNames().Any(name => File.Exists(Path.Combine(directory, name))));
+    }
+
+    /// <summary>The file names <c>libprotobuf</c> is linked from on this platform.</summary>
+    /// <remarks>
+    /// On Windows the import library of a DLL build and a static library share one name. Elsewhere the archive
+    /// and the shared object differ, and either one links.
+    /// </remarks>
+    private static IEnumerable<string> ProtobufLibraryNames()
+        => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? ["libprotobuf.lib"]
+            : ["libprotobuf.a", "libprotobuf.so", "libprotobuf.dylib"];
+
+    /// <summary>The directory a program built against a DLL build needs on <c>PATH</c>: Windows only.</summary>
+    /// <remarks>
+    /// A shared library elsewhere is found from <see cref="ProtobufCppInstall.LibraryDirectory"/> or the rpath
+    /// the build wrote, so no POSIX install has one.
+    /// </remarks>
+    private static string? LocateRuntimeDirectoryUnder(string prefix)
+    {
+        var bin = Path.Combine(prefix, "bin");
+        return RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && File.Exists(Path.Combine(bin, "libprotobuf.dll"))
+            ? bin
+            : null;
     }
 
     private static IEnumerable<string> VcpkgInstalledIncludeCandidates(string searchFrom)

@@ -14,14 +14,28 @@ public sealed record CppCompiler(
     string? VisualStudioDevCommand = null);
 
 /// <summary>A protobuf C++ install: headers, and for linking, libraries and runtime binaries.</summary>
+/// <param name="LibraryDirectory">Where <c>libprotobuf</c> is, under the platform's own file names.</param>
+/// <param name="BinaryDirectory">
+/// Where a DLL build's runtime libraries are, which only Windows has: elsewhere a shared library sits in
+/// <paramref name="LibraryDirectory"/>.
+/// </param>
 public sealed record ProtobufCppInstall(
     string IncludeDirectory,
     string? ProtocPath,
     string? LibraryDirectory,
     string? BinaryDirectory)
 {
-    /// <summary>Whether this install has everything needed to link and run, not just to parse.</summary>
-    public bool CanLink => ProtocPath is not null && LibraryDirectory is not null && BinaryDirectory is not null;
+    /// <summary>
+    /// Whether this install has everything needed to compile protoc's C++ for its headers, link and run, not
+    /// just to parse: the protoc built with it, and the CMake package a build links it through.
+    /// </summary>
+    /// <remarks>
+    /// The package rather than the library files, because a program is linked through it: protobuf 22 and
+    /// later need Abseil and <c>utf8_range</c> beside <c>libprotobuf</c>, in a set that varies by version,
+    /// platform, and static or shared build, and only the package names it. Looking for vcpkg's Windows file
+    /// names instead once found no POSIX install linkable at all (#18).
+    /// </remarks>
+    public bool CanLink => ProtocPath is not null && FindCMakePackage() is not null;
 
     /// <summary>The prefix the install is under: the include directory's parent.</summary>
     /// <remarks>
@@ -70,21 +84,16 @@ public sealed record ProtobufCppInstall(
 
         if (ProtocPath is null)
         {
-            missing.Add("a matching protoc");
+            missing.Add("matching protoc");
         }
 
-        if (LibraryDirectory is null)
+        if (FindCMakePackage() is null)
         {
-            missing.Add("import libraries");
+            missing.Add($"CMake package (ProtobufConfig.cmake or protobuf-config.cmake under '{Prefix}')");
         }
 
-        if (BinaryDirectory is null)
-        {
-            missing.Add("runtime binaries");
-        }
-
-        return $"The protobuf C++ headers at '{IncludeDirectory}' have no {string.Join(", ", missing)} "
-            + "beside them. A vcpkg install provides all of them; set PROTOCROSS_PROTOBUF_CPP_INCLUDE "
+        return $"The protobuf C++ headers at '{IncludeDirectory}' have no {string.Join(" and no ", missing)} "
+            + "beside them. A vcpkg or Homebrew install provides both; set PROTOCROSS_PROTOBUF_CPP_INCLUDE "
             + "to the include directory of one to use it.";
     }
 }

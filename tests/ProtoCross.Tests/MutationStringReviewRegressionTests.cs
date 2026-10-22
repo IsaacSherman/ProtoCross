@@ -51,7 +51,7 @@ public class MutationStringReviewRegressionTests
     [Fact]
     public void CppCopiesAStringBeforeItsOneofAssignmentDestroysTheSource()
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(new CppBackend());
@@ -59,7 +59,7 @@ public class MutationStringReviewRegressionTests
         workspace.Write(files);
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "mutation_string_review.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["mutation_string_review.tests.cc"], ["mutation_string_review.pb.cc"]));
         Assert.True(run.Succeeded, "Assigning a string must preserve its value when the setter replaces its source oneof."
             + Environment.NewLine + run.Output);

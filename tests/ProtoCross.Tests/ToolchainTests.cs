@@ -10,7 +10,7 @@ namespace ProtoCross.Tests;
 /// makes these worth writing is that a bug here does not fail anything: it makes a test skip, which reads
 /// as "this machine is not equipped" whether or not that is true.
 /// </summary>
-public class ToolchainTests
+public partial class ToolchainTests
 {
     /// <summary>
     /// Setting the documented override must not leave the toolchain looking less capable than
@@ -57,9 +57,8 @@ public class ToolchainTests
 
         var description = headersOnly.DescribeMissingLinkInputs();
         Assert.Contains("/somewhere/include", description, StringComparison.Ordinal);
-        Assert.Contains("a matching protoc", description, StringComparison.Ordinal);
-        Assert.Contains("import libraries", description, StringComparison.Ordinal);
-        Assert.Contains("runtime binaries", description, StringComparison.Ordinal);
+        Assert.Contains("matching protoc", description, StringComparison.Ordinal);
+        Assert.Contains("CMake package", description, StringComparison.Ordinal);
     }
 
     // ------- running a test project

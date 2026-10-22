@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using ProtoCross.Backend;
 using ProtoCross.Backend.Cpp;
 using ProtoCross.Diagnostics;
@@ -32,31 +31,18 @@ public partial class CppSyntaxSmokeTests
     }
 
     [Fact]
-    public void GeneratedCppLinksAndRunsWithVcpkgProtobuf()
+    public void GeneratedCppLinksAndRuns()
     {
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            Assert.Skip("The link-and-run C++ smoke test currently targets MSVC with vcpkg protobuf.");
-        }
-
-        var compiler = TestToolchain.RequireMsvc();
-
-        var protobuf = TestToolchain.RequireProtobufCpp();
-
-        if (!protobuf.CanLink)
-        {
-            Assert.Skip(
-                "The link-and-run C++ smoke test needs more than headers. "
-                + protobuf.DescribeMissingLinkInputs());
-        }
+        TestToolchain.RequireCppCompiler();
+        var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var workspace = PrepareSmokeWorkspace(protobuf.ProtocPath!, out var driver);
 
-        var runResult = Assert.Single(workspace.BuildAndRun(compiler, protobuf, [driver], ["invoice.pb.cc"]));
+        var runResult = Assert.Single(workspace.BuildAndRun(protobuf, [driver], ["invoice.pb.cc"]));
 
         Assert.True(
             runResult.Succeeded,
-            $"C++ link-and-run smoke test failed with {compiler.DisplayName}.{Environment.NewLine}"
+            $"C++ link-and-run smoke test failed.{Environment.NewLine}"
             + $"exit code {runResult.ExitCode}{Environment.NewLine}{runResult.Output}");
     }
 

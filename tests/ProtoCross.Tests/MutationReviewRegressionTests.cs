@@ -96,7 +96,7 @@ public class MutationReviewRegressionTests
     [InlineData("oneof")]
     public void CppEvaluatesTheValueBeforeSettingTheMessageFieldBeingAssigned(string scenario)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = AssignmentCase(scenario);
@@ -104,7 +104,7 @@ public class MutationReviewRegressionTests
         workspace.Write(Generate(result, new CppBackend()));
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, Schemas, "mutating_methods.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["mutation_assignment_review.tests.cc"], ["mutating_methods.pb.cc"]));
         Assert.True(run.Succeeded, "The final field is stored only after its value has been evaluated (spec 9.3)."
             + Environment.NewLine + run.Output);

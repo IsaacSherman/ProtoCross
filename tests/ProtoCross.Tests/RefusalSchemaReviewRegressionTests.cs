@@ -27,7 +27,7 @@ public class RefusalSchemaReviewRegressionTests
     [InlineData("Shade")]
     public void ARefusalTypeFromAnIndependentSchemaBuildsAndRunsInCpp(string refusalType)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var result = Compile(refusalType, out var schemas);
@@ -44,7 +44,7 @@ public class RefusalSchemaReviewRegressionTests
         Assert.True(generated.ExitCode == 0, generated.Output);
 
         var driver = Assert.Single(tests, file => file.RelativePath.EndsWith(".cc", StringComparison.Ordinal)).RelativePath;
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf, [driver], ["anchor.pb.cc", "foreign.pb.cc"]));
+        var run = Assert.Single(workspace.BuildAndRun(protobuf, [driver], ["anchor.pb.cc", "foreign.pb.cc"]));
         Assert.True(run.Succeeded, run.Output);
         Assert.Contains("[ok] " + Assert.Single(result.Module.Tests).Identity, run.Output, StringComparison.Ordinal);
     }

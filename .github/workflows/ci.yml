@@ -65,11 +65,15 @@ jobs:
     if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
 
     strategy:
-      # Both legs report, because "the other one failed too" and "only this one failed" are different
+      # Every leg reports, because "the other one failed too" and "only this one failed" are different
       # facts about a change and the second is the interesting one.
+      #
+      # Linux and macOS because generated C++ is compiled by gcc and clang there, against protobuf as
+      # those platforms install it, and a harness that only ever linked on Windows once read every
+      # POSIX install as headers alone and skipped all of it (#18).
       fail-fast: false
       matrix:
-        os: [windows-latest]
+        os: [windows-latest, ubuntu-latest, macos-latest]
 
     env:
       PROTOCROSS_SWEEP: 1
@@ -146,6 +150,53 @@ jobs:
       - name: Restore
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         run: dotnet restore ProtoCross.slnx
+
+      # Protobuf C++, for the suites that build and run generated C++. Without it they skip, and a run
+      # whose C++ all skipped looks exactly like one whose C++ all passed; report.ps1 names two of them
+      # that must run. Each needs the CMake package the generated project and the harness link through,
+      # and the protoc built with it.
+      #
+      # vcpkg on Windows and Linux, from the repository's vcpkg.json into vcpkg_installed, where the
+      # suite finds it as a developer's machine does. Not apt on Linux: Ubuntu's libprotobuf-dev ships
+      # pkg-config files and no CMake package, so find_package(Protobuf CONFIG) cannot find it. Homebrew on
+      # macOS, which is how a Mac developer would get it, and which ships the package.
+      #
+      # vcpkg builds protobuf and Abseil from source, which takes many minutes, so the built packages are
+      # kept between runs. The key names the vcpkg checkout on the runner as well as the manifest,
+      # because that checkout decides the versions; a key that missed it would only cost a rebuild,
+      # since vcpkg checks each archive's own hash before using it.
+      - name: Find vcpkg
+        id: vcpkg
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'macOS'
+        shell: pwsh
+        run: |
+          "root=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_OUTPUT
+          "commit=$(git -C $env:VCPKG_INSTALLATION_ROOT rev-parse HEAD)" >> $env:GITHUB_OUTPUT
+          "cache=${{ runner.temp }}/vcpkg-archives" >> $env:GITHUB_OUTPUT
+
+      - name: Cache vcpkg packages
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.vcpkg.outputs.cache }}
+          key: ${{ runner.os }}-vcpkg-${{ steps.vcpkg.outputs.commit }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: ${{ runner.os }}-vcpkg-
+
+      - name: Install protobuf C++ (vcpkg)
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'macOS'
+        shell: pwsh
+        env:
+          VCPKG_DEFAULT_BINARY_CACHE: ${{ steps.vcpkg.outputs.cache }}
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          # Named, because older vcpkg defaulted to 32-bit on Windows, and the suite looks for these.
+          $triplet = if ($IsWindows) { 'x64-windows' } else { 'x64-linux' }
+          & (Join-Path '${{ steps.vcpkg.outputs.root }}' 'vcpkg') install --triplet $triplet
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Install protobuf C++ (Homebrew)
+        if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'macOS'
+        run: brew install protobuf
 
       # Release, because the suite's longest tests are the compiler itself run tens of thousands of
       # times -- the resilience sweeps compile every file once per character of it -- and an

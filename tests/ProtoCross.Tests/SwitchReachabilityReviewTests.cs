@@ -69,7 +69,7 @@ public class SwitchReachabilityReviewTests
     [InlineData("while 1 == 1 { return 1; }", 1L)]
     public void ConstantConditionArmBuildsAndRunsInCpp(string statements, long expected)
     {
-        var compiler = TestToolchain.RequireCppCompiler();
+        TestToolchain.RequireCppCompiler();
         var protobuf = TestToolchain.RequireLinkableProtobufCpp();
 
         var (schemas, files) = Generate(statements, expected, new CppBackend());
@@ -77,7 +77,7 @@ public class SwitchReachabilityReviewTests
         workspace.Write(files);
         var generated = workspace.GenerateProtobuf(protobuf.ProtocPath!, schemas, "switch_flow.proto");
         Assert.True(generated.ExitCode == 0, generated.Output);
-        var run = Assert.Single(workspace.BuildAndRun(compiler, protobuf,
+        var run = Assert.Single(workspace.BuildAndRun(protobuf,
             ["switch_flow.tests.cc"], ["switch_flow.pb.cc"]));
         Assert.True(run.Succeeded, run.Output);
         Assert.Contains("[ok] ", run.Output, StringComparison.Ordinal);
