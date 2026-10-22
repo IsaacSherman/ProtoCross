@@ -1,4 +1,14 @@
 <Solution>
+  <Folder Name="/Architecture/">
+    <File Path="Architecture/ARCHITECTURE.md" />
+    <File Path="Architecture/Compilation-and-Projects.md" />
+    <File Path="Architecture/Cpp-Backend.md" />
+    <File Path="Architecture/CSharp-Backend.md" />
+    <File Path="Architecture/Editor.md" />
+    <File Path="Architecture/Feature-Index.md" />
+    <File Path="Architecture/IR.md" />
+    <File Path="Architecture/Language.md" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/ProtoCross.Backend.Cpp/ProtoCross.Backend.Cpp.csproj" />
     <Project Path="src/ProtoCross.Backend.CSharp/ProtoCross.Backend.CSharp.csproj" />
