@@ -142,9 +142,16 @@ Once the findings are fixed and the suite passes on the head:
   ```
 
   The release starts [publish.yml](../.github/workflows/publish.yml). It checks the tag against the
-  version, waits for CI on `main`, and attaches the VSIX to the release. Then it waits for the owner
-  to approve the `marketplace` deployment before publishing to the stores. To finish a publish that
-  failed part of the way, run the workflow again with the same tag.
+  version, waits for CI on `main`, packs the tool, and attaches the VSIX and the tool's `.nupkg` to
+  the release. Then it waits for the owner to approve the `marketplace` deployment, once, before
+  publishing the extension to the stores and the tool to nuget.org. To finish a publish that failed
+  part of the way, run the workflow again with the same tag.
+- Check the published tool from outside the repository, once nuget.org lists the version, which takes
+  a few minutes. It should print the version just released:
+
+  ```bash
+  dnx ProtoCross@0.<N+1>.0 --version
+  ```
 - Open the next sprint only when the owner says to start it. That is its own pull request, as #189
   was:
   - cut `sprints/language-1-<N+1>` from `main`;

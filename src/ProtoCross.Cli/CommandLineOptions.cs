@@ -342,6 +342,7 @@ internal sealed record CommandLineOptions(
         Console.Error.WriteLine();
         Console.Error.WriteLine("usage: protocross [build] <source.pcross>... [options]");
         Console.Error.WriteLine("       protocross [build] <project.pcproj> [options]");
+        Console.Error.WriteLine($"       protocross {CommandLine.VersionOption}");
         Console.Error.WriteLine();
         Console.Error.WriteLine("commands:");
         foreach (var verb in CommandLine.All)
