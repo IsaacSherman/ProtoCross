@@ -83,7 +83,7 @@ jobs:
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -105,7 +105,7 @@ jobs:
       - name: Look for successful validation of this source tree
         id: verified
         if: steps.changes.outputs.run_tests == 'true' && github.run_attempt == 1
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ci-validation/test-${{ matrix.os }}
           key: verified-v1-test-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
@@ -120,7 +120,7 @@ jobs:
       # imprecise: TreatWarningsAsErrors is on, so a feature band that ships one new analyzer
       # warning turns a green pull request red without anybody having changed anything, on a
       # schedule this repository does not control.
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           global-json-file: global.json
@@ -138,7 +138,7 @@ jobs:
       # downloads only the difference.
       - name: Cache packages
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/Directory.Packages.props', '**/Directory.Build.props', '**/*.csproj') }}
@@ -176,7 +176,7 @@ jobs:
 
       - name: Cache vcpkg packages
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os != 'macOS'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ steps.vcpkg.outputs.cache }}
           key: ${{ runner.os }}-vcpkg-${{ steps.vcpkg.outputs.commit }}-${{ hashFiles('vcpkg.json') }}
@@ -224,7 +224,7 @@ jobs:
 
       - name: Keep the results
         if: always() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-results-${{ matrix.os }}
           path: artifacts/test
@@ -241,7 +241,7 @@ jobs:
 
       - name: Remember successful source validation
         if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ci-validation/test-${{ matrix.os }}
           key: verified-v1-test-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
@@ -274,7 +274,7 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
     steps: &vscode-steps
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -295,7 +295,7 @@ jobs:
       - name: Look for successful validation of this source tree
         id: verified
         if: steps.changes.outputs.run_tests == 'true' && github.run_attempt == 1
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ci-validation/vscode-${{ matrix.os }}
           key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}
@@ -307,12 +307,12 @@ jobs:
         working-directory: .
         run: Write-Output 'This non-Markdown source tree already passed this suite; reusing that validation.'
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           global-json-file: global.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
         with:
           node-version: 22
@@ -365,7 +365,7 @@ jobs:
       # suite's claim to start from a clean profile is only true if nothing carries it into the next.
       - name: Cache VS Code for the end-to-end tests
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: editors/vscode/.vscode-test/vscode-*
           key: ${{ runner.os }}-${{ runner.arch }}-vscode-${{ hashFiles('editors/vscode/test/e2e/vscode-version.json') }}
@@ -385,7 +385,7 @@ jobs:
 
       - name: Keep the package
         if: steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true' && runner.os == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocross-vsix
           path: editors/vscode/dist/protocross.vsix
@@ -403,7 +403,7 @@ jobs:
 
       - name: Remember successful source validation
         if: success() && steps.changes.outputs.run_tests == 'true' && steps.verified.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ci-validation/vscode-${{ matrix.os }}
           key: verified-v1-vscode-${{ matrix.os }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ steps.changes.outputs.source_key }}

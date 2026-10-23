@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
           fetch-depth: 0
@@ -116,15 +116,17 @@ jobs:
             exit 1
           }
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           global-json-file: global.json
 
       # No cache. A release is rare enough that a cold install costs nothing worth saving, and a cache
-      # is the one input here that a run on another branch could have written.
-      - uses: actions/setup-node@v4
+      # is the one input here that a run on another branch could have written. Said outright, because
+      # setup-node turns caching on by itself once package.json names npm as its package manager.
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
 
       - name: Install
         run: npm ci
@@ -133,7 +135,7 @@ jobs:
         run: npm run package
 
       - name: Keep the package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: protocross-vsix
           path: editors/vscode/dist/protocross.vsix
@@ -148,7 +150,7 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: protocross-vsix
 
@@ -176,20 +178,22 @@ jobs:
         working-directory: editors/vscode
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ env.TAG }}
 
-      - uses: actions/setup-node@v4
+      # No cache, for the reason the package job gives, and more so in the one job that can publish.
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          package-manager-cache: false
 
       # Only for vsce and ovsx, at the versions the lockfile pins. Neither needs an install script, and
       # this job can obtain a publishing token, so none is run.
       - name: Install the publishing tools
         run: npm ci --ignore-scripts
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: protocross-vsix
           path: editors/vscode/dist
