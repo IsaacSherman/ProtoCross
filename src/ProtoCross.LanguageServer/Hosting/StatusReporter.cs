@@ -109,9 +109,9 @@ public sealed class StatusReporter
 
     /// <inheritdoc cref="ProductVersion.Of"/>
     /// <remarks>
-    /// Kept for the callers that name it here. The lookup itself is <see cref="ProductVersion"/>'s, which
-    /// the command line's <c>--version</c> shares, so the report and the command line state one version
-    /// in one form.
+    /// Kept so that code naming it still compiles; nothing here calls it any more. The lookup is
+    /// <see cref="ProductVersion"/>'s, which the command line's <c>--version</c> shares, so the report and
+    /// the command line state one version in one form.
     /// </remarks>
     public static string VersionOf(Type type) => ProductVersion.Of(type);
 
@@ -166,8 +166,8 @@ public sealed class StatusReporter
         "Versions",
         [
             new StatusFact("extension", Client.ExtensionVersion ?? "(not reported)", Client.ExtensionName),
-            new StatusFact("server", VersionOf(typeof(StatusReporter))),
-            new StatusFact("compiler", VersionOf(typeof(ProtoCross.Compilation))),
+            new StatusFact("server", ProductVersion.Of(typeof(StatusReporter))),
+            new StatusFact("compiler", ProductVersion.Of(typeof(ProtoCross.Compilation))),
             new StatusFact("editor", Client.Version ?? "(not reported)", Client.Name),
             new StatusFact("runtime", RuntimeInformation.FrameworkDescription),
         ],

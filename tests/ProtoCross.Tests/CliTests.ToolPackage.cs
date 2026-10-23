@@ -70,7 +70,15 @@ public partial class CliTests
             workingDirectory,
             // The launcher looks for a runtime itself, and should find the one this suite builds with
             // rather than whichever the machine registered.
-            new Dictionary<string, string?> { ["DOTNET_ROOT"] = Path.GetDirectoryName(TestToolchain.RequireDotnet()) });
+            new Dictionary<string, string?> { ["DOTNET_ROOT"] = DotnetRoot(TestToolchain.RequireDotnet()) });
+
+    /// <summary>The directory <paramref name="dotnet"/> is really in, with any link to it followed.</summary>
+    /// <remarks>
+    /// A package manager's <c>dotnet</c> is usually a link, <c>/usr/bin/dotnet</c> to
+    /// <c>/usr/lib/dotnet/dotnet</c>, and the directory holding the link holds no runtime.
+    /// </remarks>
+    private static string DotnetRoot(string dotnet)
+        => Path.GetDirectoryName(new FileInfo(dotnet).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? dotnet)!;
 
     /// <summary>
     /// Packs the command line as the release does, installs the package from a feed holding nothing else,

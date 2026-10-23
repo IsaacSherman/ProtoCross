@@ -46,14 +46,13 @@ internal static class TestPaths
     /// Read here as JSON rather than taken from an assembly, so a test comparing a build's version with it
     /// is checking the build against the manifest, not against itself.
     /// </remarks>
-    public static string ReleasedVersion
+    public static string ReleasedVersion { get; } = ReadReleasedVersion();
+
+    private static string ReadReleasedVersion()
     {
-        get
-        {
-            using var manifest = JsonDocument.Parse(
-                File.ReadAllText(Path.Combine(RepositoryRoot, "editors", "vscode", "package.json")));
-            return manifest.RootElement.GetProperty("version").GetString()!;
-        }
+        using var manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(RepositoryRoot, "editors", "vscode", "package.json")));
+        return manifest.RootElement.GetProperty("version").GetString()!;
     }
 
     /// <summary>
