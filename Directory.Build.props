@@ -17,4 +17,39 @@
     <CheckForOverflowUnderflow>false</CheckForOverflowUnderflow>
   </PropertyGroup>
 
+  <!--
+    The version has one home, the extension's package.json, which `npm version` moves with each pull
+    request (docs/language-1-workflow.md). Every build reads it from there: the release, the server the
+    extension stages, the tool package, and `dotnet run`. So the command line, the server and the
+    package all report the number the extension is released under, and a build from source no longer
+    calls itself 1.0.0. The manifest's own "version" is the only key of that name in it, so the first
+    match is the right one. A -p:Version= on the command line still wins, as a global property does.
+  -->
+  <PropertyGroup>
+    <ExtensionManifest>$(MSBuildThisFileDirectory)editors/vscode/package.json</ExtensionManifest>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="Exists('$(ExtensionManifest)')">
+    <ReleasedVersion>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(ExtensionManifest)')), '"version"\s*:\s*"([^"]+)"').Groups[1].Value)</ReleasedVersion>
+    <Version>$(ReleasedVersion)</Version>
+  </PropertyGroup>
+
+  <!--
+    A manifest that is there and states no version is a mistake, and building on would quietly ship
+    every assembly as the SDK's 1.0.0. A tree without the extension, such as an export of src/ alone,
+    has no number to read and builds as before.
+  -->
+  <Target Name="RequireTheReleasedVersion" BeforeTargets="BeforeBuild" Condition="Exists('$(ExtensionManifest)') and '$(ReleasedVersion)' == ''">
+    <Error Text="Could not read a version from $(ExtensionManifest). Every assembly takes its version from that file's &quot;version&quot;." />
+  </Target>
+
+  <!--
+    Only the command line is a package, the ProtoCross tool. The libraries are not published: the IR
+    stays free to change (spec 30.22.2), so a library package would promise an API nobody has decided
+    to keep.
+  -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
 </Project>
