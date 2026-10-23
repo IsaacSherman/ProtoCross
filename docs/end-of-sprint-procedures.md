@@ -101,7 +101,8 @@ gh pr create --draft --base main --head sprintN-to-main --title "..." --body-fil
 
   Include an issue finished across several pull requests, one found along the way, and an umbrella
   whose sub-issues are now all done (sprint 5 closed #79). End the body with one `Closes #N.` for
-  each, then `Part of #108.` Leave deferred issues and #108 open.
+  each, then `Part of` the sprint's epic, which was #108 through sprint 6. Leave deferred issues and
+  the epic open. Sprint 7 belongs to no epic, so it ends with its `Closes` lines.
 - **Turn Auto-fix on as soon as it opens:** `get_status`, then `bind_pr` if the pull request isn't
   reported, then `set_monitor` with `auto_fix` and `address_comments`.
 
