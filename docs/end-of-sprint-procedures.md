@@ -149,4 +149,6 @@ Once the findings are fixed and the suite passes on the head:
   - cut `sprints/language-1-<N+1>` from `main`;
   - point the sprint line in [language-1-workflow.md](language-1-workflow.md) at it, recording what
     sprint N carried and which pull request took it to `main`;
-  - bump to `0.<N+1>.1`.
+  - bump to the number after `main`'s version: `0.<N+1>.1`, unless a release from `main` has taken
+    it since. Sprint 7 opens at `0.7.2`, after `0.7.1`
+    ([language-1-workflow.md](language-1-workflow.md#the-version-follows-the-sprint)).

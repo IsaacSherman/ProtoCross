@@ -53,8 +53,13 @@ one version for both.
 - **Every pull request into a sprint branch increments the third number.** Sprint 6 began at
   `0.6.0`, and the pull request that opened it made it `0.6.1`, so #30's makes it `0.6.2`.
 - **The pull request that takes a sprint to `main` increments the second number and resets the
-  third**, so sprint 6 reaches `main` as `0.7.0`, and the pull request that opens sprint 7 makes it
-  `0.7.1`.
+  third**, so sprint 6 reaches `main` as `0.7.0`.
+- **A release from `main` between sprints increments the third number there.** The store listing's
+  refresh after 0.7.0 is `0.7.1` (#208).
+- **The pull request that opens a sprint takes the number after `main`'s.** Sprint 7 opens at
+  `0.7.2`, because `main` is at `0.7.1`; without that release it would have opened at `0.7.1`. A
+  store never accepts a version twice, and a status report has to name one build per number, so a
+  sprint never reuses a number `main` has released.
 
 Each part is a number, not a digit, so a sprint never runs out: `0.6.9` is followed by `0.6.10`,
 which npm and VS Code order after it. Never pad one to keep the width. Semver forbids a leading zero,
