@@ -1,7 +1,8 @@
 # ProtoCross
 
-Write the business methods of your protobuf messages once, and generate them as matching C# and C++.
-Both backends behave identically, down to integer overflow, and one set of tests proves it in each.
+Write the business methods of your protobuf messages once, and generate them as C# and C++ with
+defined, tested cross-language semantics. Each construct the language supports has one specified
+meaning, down to integer overflow, and the same tests check it in both backends.
 
 C# and C++ are the backends today. Python is planned but **not yet supported**.
 
@@ -127,16 +128,26 @@ signed overflow is undefined, an integer division by zero throws in one and is u
 and `MIN / -1` throws in C# even under `unchecked` while C++ traps. ProtoCross gives each such
 operation one meaning and holds both backends to it:
 
-- **Identical behavior in both backends.** [docs/reference-semantics.md](docs/reference-semantics.md)
-  lists every operation the targets disagree about and what ProtoCross guarantees for it. The
+- **Defined semantics, tested in both backends.** [docs/reference-semantics.md](docs/reference-semantics.md)
+  lists the operations the targets are known to disagree about, what ProtoCross specifies for each,
+  and how each backend gets there. One meaning often takes deliberately different code: C++ routes
+  signed integer arithmetic through helpers and fixes the order operands run in, and C# converts
+  protobuf's wrapper types where they meet a message. The
   [conformance suite](tests/conformance/README.md) compiles the same vectors to both languages, builds
-  and runs them, and requires the results to agree, in CI as well as locally.
+  and runs them, and requires the results to agree, in CI as well as locally. A construct a backend
+  cannot emit with the same meaning is refused at compile time rather than emitted differently
+  (spec 23).
 - **Tests written once, run in every backend.** A `test` declared beside a method is generated into
   xUnit tests and a C++ test executable, and `protocross test` builds and runs both. It passes only
   when every declared test passed in every backend.
 - **A deliberately small language.** No I/O, exceptions, inheritance or threads (see
   [Non-Goals](#non-goals)): just enough types and control flow for domain behavior, so that every
   construct can mean the same thing in every target.
+- **Where the promise stops.** It covers what a ProtoCross method computes and how it ends. What the
+  two protobuf runtimes hand a method after parsing is each runtime's own, and they can read one
+  closed enum field differently (spec 21.4). Time and memory are each target's too: a method that
+  recurses without end runs out of stack the way its host process does, not the way `fail` does
+  (spec 28).
 
 ## Status
 
@@ -346,9 +357,9 @@ from a method that declares one. Nothing is reinterpreted, so a source that comp
 thing under either setting. Checked overflow ends the program on an overflow, so a file that states
 it and forbids termination is refused.
 
-Every mode of every setting produces identical observable behavior in both backends. No mode means
-"whatever C# or C++ happens to do" -- `checked` overflow terminates with the same exit code and the
-same message in both, and `saturating` clamps to the same bound. See
+Every mode of every setting is defined for both backends, and the conformance suite tests it in
+each. No mode means "whatever C# or C++ happens to do" -- `checked` overflow terminates with the same
+exit code and the same message in both, and `saturating` clamps to the same bound. See
 [docs/reference-semantics.md](docs/reference-semantics.md) for what each value means in each target,
 and spec 10.4 for the rules.
 
@@ -724,10 +735,10 @@ Every question it asked on the way to 1.0 is settled:
 deferred past 1.0, and [section 31](ProtoCross_Spec/§31-Decision%20Log.md) dates the decisions.
 
 Alongside it, [docs/reference-semantics.md](docs/reference-semantics.md) collects the behavior of
-every operation the targets disagree about, in one table: what C# does, what ProtoCross guarantees,
-and what each other backend has to emit to match. C# is the reference, and the rows that depart from
-it say why. The spec stays normative; that file is the reference the spec's decisions are read out
-of.
+the operations the targets are known to disagree about, in one table: what C# does, what ProtoCross
+guarantees, and what each other backend has to emit to match. C# is the reference, and the rows that
+depart from it say why. The spec stays normative; that file is the reference the spec's decisions are
+read out of.
 
 ## Developing ProtoCross
 
