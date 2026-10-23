@@ -147,7 +147,8 @@ Once the findings are fixed and the suite passes on the head:
   publishing the extension to the stores and the tool to nuget.org. To finish a publish that failed
   part of the way, run the workflow again with the same tag.
 - Check the published tool from outside the repository, once nuget.org lists the version, which takes
-  a few minutes. It should print the version just released:
+  a few minutes. It asks before downloading the package, and should then print the version just
+  released:
 
   ```bash
   dnx ProtoCross@0.<N+1>.0 --version

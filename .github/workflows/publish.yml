@@ -181,11 +181,11 @@ jobs:
           path: dist/ProtoCross.${{ needs.package.outputs.version }}.nupkg
           if-no-files-found: error
 
-  # The same files the stores and nuget.org receive, for anyone who installs from a VSIX or a local feed.
-  # It needs no approval, so the release has its packages while the stores wait for one, and when a
-  # store refuses them.
+  # The same file the stores receive, for anyone who installs from a VSIX. It needs no approval, so the
+  # release has its package while the stores wait for one, and when a store refuses it. It waits for
+  # nothing but the VSIX, so a tool that fails to pack does not keep it off the release.
   attach:
-    needs: [package, pack-tool]
+    needs: package
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -195,20 +195,36 @@ jobs:
         with:
           name: protocross-vsix
 
-      - uses: actions/download-artifact@v8
-        with:
-          name: protocross-nupkg
-
-      # Named for its version, because a download folder collects every release's package side by side;
-      # the tool's package already is. --clobber lets a rerun replace each with the identical file.
-      - name: Attach the packages to the release
+      # Named for its version, because a download folder collects every release's package side by side.
+      # --clobber lets a rerun replace it with the identical file.
+      - name: Attach the package to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.package.outputs.version }}
         run: |
           Move-Item protocross.vsix "protocross-$env:VERSION.vsix"
-          gh release upload $env:TAG "protocross-$env:VERSION.vsix" "ProtoCross.$env:VERSION.nupkg" --clobber
+          gh release upload $env:TAG "protocross-$env:VERSION.vsix" --clobber
+
+  # The same file nuget.org receives, for anyone who installs the tool from a local feed. Named for its
+  # version already; --clobber, for the reason 'attach' gives.
+  attach-tool:
+    needs: [package, pack-tool]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: protocross-nupkg
+
+      - name: Attach the tool's package to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: gh release upload $env:TAG "ProtoCross.$env:VERSION.nupkg" --clobber
 
   # This and 'publish-tool' need the same jobs, so they wait for the reviewer together, and one approval
   # ships the release everywhere.
