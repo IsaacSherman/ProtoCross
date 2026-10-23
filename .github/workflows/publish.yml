@@ -1,5 +1,6 @@
-# Ships the VS Code extension: to the Visual Studio Marketplace, to Open VSX, and onto the GitHub
-# release that asked for it, all as the one file built below.
+# Ships a release: the VS Code extension to the Visual Studio Marketplace and Open VSX, the command
+# line to nuget.org as the ProtoCross tool, and both onto the GitHub release that asked for them. Each
+# goes out as the one file built below, under the one version the tag names.
 #
 # A release is the trigger, not a push to main, because a store never takes the same version twice: a
 # mistake is fixed by shipping another number, never by taking this one back. Creating the release is
@@ -30,7 +31,14 @@
 # - For Open VSX, the 'isaacsherman' namespace, and either an OVSX_PAT secret in the environment or a
 #   trusted publisher registered for this workflow. With no token, ovsx trades the run's own identity
 #   for one, so nothing long-lived needs to be stored.
-name: publish extension
+
+# - For nuget.org, a trusted publishing policy on the owner's account: repository owner IsaacSherman,
+#   repository ProtoCross, workflow file publish.yml, environment marketplace, allowed to push the
+#   ProtoCross package and new versions of it. The account's profile name goes in the environment's
+#   variable NUGET_USER; it is public, so it is not a secret. The policy names this file, so renaming
+#   it stops the tool publishing. nuget.org locks the policy to the repository's and the owner's numeric
+#   ids on its first use, for the reason the Marketplace's subject carries them.
+name: publish
 
 on:
   release:
@@ -141,10 +149,43 @@ jobs:
           path: editors/vscode/dist/protocross.vsix
           if-no-files-found: error
 
-  # The same file the stores receive, for anyone who installs from a VSIX. It needs no approval, so the
-  # release has its package while the stores wait for one, and when a store refuses it.
-  attach:
+  # Packs the command line as the ProtoCross tool. A job of its own rather than a step in 'package',
+  # because that job runs npm's install scripts, and the package nuget.org receives is not built where
+  # they ran. It comes after 'package', so it packs only a tag that has been checked against the version
+  # and that CI passed on.
+  pack-tool:
     needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TAG }}
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      # The version is package.json's (Directory.Build.props), the one 'package' checked against the tag,
+      # so the package's file name below is checked too. ContinuousIntegrationBuild makes the build
+      # reproducible, with source paths that do not depend on where the runner checked it out.
+      - name: Pack
+        run: dotnet pack src/ProtoCross.Cli/ProtoCross.Cli.csproj --configuration Release --output dist -p:ContinuousIntegrationBuild=true
+
+      - name: Keep the package
+        uses: actions/upload-artifact@v7
+        with:
+          name: protocross-nupkg
+          path: dist/ProtoCross.${{ needs.package.outputs.version }}.nupkg
+          if-no-files-found: error
+
+  # The same files the stores and nuget.org receive, for anyone who installs from a VSIX or a local feed.
+  # It needs no approval, so the release has its packages while the stores wait for one, and when a
+  # store refuses them.
+  attach:
+    needs: [package, pack-tool]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -154,19 +195,25 @@ jobs:
         with:
           name: protocross-vsix
 
-      # Named for its version, because a download folder collects every release's package side by side.
-      # --clobber lets a rerun replace it with the identical file.
-      - name: Attach the package to the release
+      - uses: actions/download-artifact@v8
+        with:
+          name: protocross-nupkg
+
+      # Named for its version, because a download folder collects every release's package side by side;
+      # the tool's package already is. --clobber lets a rerun replace each with the identical file.
+      - name: Attach the packages to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.package.outputs.version }}
         run: |
           Move-Item protocross.vsix "protocross-$env:VERSION.vsix"
-          gh release upload $env:TAG "protocross-$env:VERSION.vsix" --clobber
+          gh release upload $env:TAG "protocross-$env:VERSION.vsix" "ProtoCross.$env:VERSION.nupkg" --clobber
 
+  # This and 'publish-tool' need the same jobs, so they wait for the reviewer together, and one approval
+  # ships the release everywhere.
   publish:
-    needs: package
+    needs: [package, pack-tool]
     runs-on: ubuntu-latest
     environment: marketplace
     permissions:
@@ -213,3 +260,38 @@ jobs:
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}
         run: npx --no-install ovsx publish dist/protocross.vsix --skip-duplicate
+
+  # nuget.org takes the tool through trusted publishing: NuGet/login trades the run's own identity for a
+  # key that lasts an hour, so no key is stored, as none is for the Marketplace. The key is asked for
+  # just before the push, so it cannot expire on the way.
+  publish-tool:
+    needs: [package, pack-tool]
+    runs-on: ubuntu-latest
+    environment: marketplace
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: protocross-nupkg
+
+      # Only for `dotnet nuget push`, so the SDK's major version rather than global.json's band: this job
+      # checks nothing out.
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Sign in to nuget.org
+        id: nuget
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      # --skip-duplicate, for the reason the store publish gives.
+      - name: Publish to nuget.org
+        env:
+          NUGET_API_KEY: ${{ steps.nuget.outputs.NUGET_API_KEY }}
+          VERSION: ${{ needs.package.outputs.version }}
+        run: dotnet nuget push "ProtoCross.$VERSION.nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate

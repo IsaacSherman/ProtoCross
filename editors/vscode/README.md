@@ -19,6 +19,15 @@ from the ProtoCross compiler itself, so what the editor says about a file is wha
 - Saving an imported `.proto` or a `protocross.config.xml` refreshes the diagnostics of open ProtoCross
   files, without you having to type in them.
 
+The extension checks your files but does not build them. To generate the C# and C++, install the
+command line, which is the same compiler, as a .NET tool:
+
+```bash
+dotnet tool install --global ProtoCross
+```
+
+Then `protocross --help` lists what it does. That needs the .NET SDK rather than only the runtime.
+
 ## Prerequisites
 
 The extension brings its language server but no toolchain. It uses the ones on your machine, so you choose

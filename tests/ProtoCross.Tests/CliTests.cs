@@ -66,14 +66,36 @@ public partial class CliTests
         string workingDirectory,
         IReadOnlyDictionary<string, string?> environment,
         params string[] arguments)
-    {
-        var dotnet = TestToolchain.RequireDotnet();
+        => RunExactly(workingDirectory, environment, [.. arguments, "-I", TestPaths.ExampleProtoDirectory]);
 
+    /// <summary>
+    /// The built command line in <paramref name="workingDirectory"/>, given <paramref name="arguments"/>
+    /// and nothing else, for a command line whose meaning depends on there being nothing else on it.
+    /// </summary>
+    private static ProcessResult RunExactly(
+        string workingDirectory,
+        IReadOnlyDictionary<string, string?> environment,
+        IReadOnlyList<string> arguments)
+        => RunProgram(
+            TestToolchain.RequireDotnet(),
+            [Path.Combine(AppContext.BaseDirectory, "protocross.dll"), .. arguments],
+            workingDirectory,
+            environment);
+
+    /// <summary>
+    /// Runs <paramref name="program"/> as <see cref="RunWith"/> runs the command line: compiling with this
+    /// process's protoc, with each variable in <paramref name="environment"/> set or removed.
+    /// </summary>
+    private static ProcessResult RunProgram(
+        string program,
+        IReadOnlyList<string> arguments,
+        string workingDirectory,
+        IReadOnlyDictionary<string, string?> environment)
+    {
         var protoc = TestToolchain.RequireProtoc();
 
-        var startInfo = ProcessRunner.Create(dotnet, workingDirectory);
-        startInfo.ArgumentList.Add(Path.Combine(AppContext.BaseDirectory, "protocross.dll"));
-        foreach (var argument in arguments.Concat(["-I", TestPaths.ExampleProtoDirectory]))
+        var startInfo = ProcessRunner.Create(program, workingDirectory);
+        foreach (var argument in arguments)
         {
             startInfo.ArgumentList.Add(argument);
         }

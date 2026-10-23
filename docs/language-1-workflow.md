@@ -47,9 +47,10 @@ in [CLAUDE.md](../CLAUDE.md).
 ### The version follows the sprint
 
 The extension's version in [editors/vscode/package.json](../editors/vscode/package.json) is numbered
-as the sprints are: **`0.<sprint>.<pull request>`**. The server inside the package takes the same
-number, because `npm run stage` publishes it with the extension's version, so a status report names
-one version for both.
+as the sprints are: **`0.<sprint>.<pull request>`**. Every assembly takes the same number, because
+`Directory.Build.props` reads it from that file: the server inside the package, the command line, and
+the `ProtoCross` tool on nuget.org (#209). So a status report and `protocross --version` name one
+version for all of them, and a release publishes the extension and the tool under it.
 
 - **Every pull request into a sprint branch increments the third number.** The pull request that
   opened sprint 7 made it `0.7.2`, so the next one into it makes it `0.7.3`.
