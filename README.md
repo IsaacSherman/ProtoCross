@@ -770,8 +770,10 @@ In PowerShell the variable is set separately -- `$env:PROTOCROSS_SWEEP = 1` -- a
 rest of the session, so unset it with `$env:PROTOCROSS_SWEEP = $null` when you want the short run back.
 
 Continuous integration turns both on. [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the
-full suite on Windows, Linux and macOS, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
-sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. Pushing to a
+full suite on Windows and Linux, both switches thrown, for **changes beyond Markdown in pull requests to `main` or a
+sprint branch (`sprints/**`), and pushes to `main`** -- and for nothing else. macOS joins only a pull
+request into `main`, which each sprint makes once, because its runner costs about ten times a Linux
+one. Pushing to a
 feature branch triggers no build, and a pull request left in draft is not tested until it is marked
 ready for review. So the cost of ordinary work
 is nothing, and the cost of proposing a change is one run of the same suite you would run yourself.
