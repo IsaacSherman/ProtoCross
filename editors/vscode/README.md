@@ -1,6 +1,6 @@
 # ProtoCross for Visual Studio Code
 
-Language support for [ProtoCross](https://github.com/IsaacSherman/ProtoCross), which compiles methods written against protobuf messages into equivalent C# and C++. Everything this extension tells you comes from the ProtoCross compiler itself, so what the editor says about a file is what a build would say.
+Language support for [ProtoCross](https://github.com/IsaacSherman/ProtoCross), which compiles methods written against protobuf messages into C# and C++ with defined, tested cross-language semantics. Everything this extension tells you comes from the ProtoCross compiler itself, so what the editor says about a file is what a build would say.
 
 ![A ProtoCross file in VS Code, with a misspelt field underlined](images/screenshot.png)
 
