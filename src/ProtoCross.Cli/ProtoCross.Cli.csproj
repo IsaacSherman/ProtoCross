@@ -4,7 +4,43 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>ProtoCross.Cli</RootNamespace>
     <AssemblyName>protocross</AssemblyName>
+    <!--
+      Runs on the oldest .NET it was built for or any newer major the machine has, as the language
+      server does. A tool runs on the user's own dotnet, and a user who has moved on to the next
+      release should not be told to install an older one to build.
+    -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
+
+  <!--
+    Published to nuget.org as a .NET tool (#209), so building ProtoCross needs a `dotnet tool install`
+    rather than a clone of this repository. Framework-dependent and platform-agnostic: one package runs
+    wherever .NET is installed. Like the extension, it brings no protoc, so users choose their own
+    version. A machine without .NET is #212.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>protocross</ToolCommandName>
+    <PackageId>ProtoCross</PackageId>
+    <Authors>Isaac Sherman</Authors>
+    <Description>The ProtoCross compiler. Write the business methods of your protobuf messages once, in a small language with defined, tested cross-language semantics, and generate them as C# and C++, with their tests.</Description>
+    <PackageTags>protobuf;protocol-buffers;code-generation;compiler;csharp;cpp</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/IsaacSherman/ProtoCross</PackageProjectUrl>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
+  </PropertyGroup>
+
+  <!--
+    The package's README is its own rather than the repository's, because nuget.org cannot follow the
+    repository README's relative links. The icon is the extension's, packed from where it lives.
+  -->
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\editors\vscode\images\icon.png" Pack="true" PackagePath="\" Visible="false" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ProtoCross.Core\ProtoCross.Core.csproj" />

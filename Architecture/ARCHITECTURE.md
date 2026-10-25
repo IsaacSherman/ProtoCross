@@ -19,14 +19,16 @@ Behavior is defined once and generated per target, and it has to mean the same t
 `ProtoCross.slnx`, seven projects, `net10.0`. Settings are central in
 [Directory.Build.props](../Directory.Build.props): nullable enabled, implicit usings, **warnings as
 errors**, and `CheckForOverflowUnderflow=false` on purpose — the compiler must never inherit the
-arithmetic behavior it exists to define.
+arithmetic behavior it exists to define. It also gives every assembly the version in
+[editors/vscode/package.json](../editors/vscode/package.json), so the extension, the server, the
+command line and its package report one number, and makes only the command line packable.
 
 | Project | Role |
 |---|---|
 | [src/ProtoCross.Core](../src/ProtoCross.Core) | Lexer, parser, binder, IR, diagnostics, config. No CLI coupling. |
 | [src/ProtoCross.Backend.CSharp](../src/ProtoCross.Backend.CSharp) | C# emission, plus generated test projects. |
 | [src/ProtoCross.Backend.Cpp](../src/ProtoCross.Backend.Cpp) | The same for C++. |
-| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: its verbs and their arguments, driving a compilation, writing files, and running the generated tests. |
+| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: its verbs and their arguments, driving a compilation, writing files, and running the generated tests. Packed as the `ProtoCross` .NET tool, which [publish.yml](../.github/workflows/publish.yml) ships to nuget.org with each release. |
 | [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
 | [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
 | [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, running them, and judging what the generated tests reported. |

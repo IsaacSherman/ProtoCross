@@ -1209,6 +1209,6 @@ public sealed class LanguageServerHost : IDisposable
         };
     }
 
-    /// <inheritdoc cref="StatusReporter.VersionOf"/>
-    private static string Version { get; } = StatusReporter.VersionOf(typeof(LanguageServerHost));
+    /// <inheritdoc cref="ProductVersion.Of"/>
+    private static string Version { get; } = ProductVersion.Of(typeof(LanguageServerHost));
 }
