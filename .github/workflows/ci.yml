@@ -71,9 +71,14 @@ jobs:
       # Linux and macOS because generated C++ is compiled by gcc and clang there, against protobuf as
       # those platforms install it, and a harness that only ever linked on Windows once read every
       # POSIX install as headers alone and skipped all of it (#18).
+      #
+      # macOS only for a pull request into main, by the rule and at the price given at the extension's
+      # matrix below, which leaves main's own run out as well. The leg is kept rather than dropped
+      # because its first run failed five tests that passed on Windows and Linux, three of them over a
+      # real bug (#205).
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: ${{ fromJSON(github.base_ref == 'main' && '["windows-latest", "ubuntu-latest", "macos-latest"]' || '["windows-latest", "ubuntu-latest"]') }}
 
     env:
       PROTOCROSS_SWEEP: 1

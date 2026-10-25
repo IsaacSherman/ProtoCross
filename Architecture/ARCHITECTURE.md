@@ -795,7 +795,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
   commit that moves that number rather than on the day it ships.
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs the same
-suite on Windows, Linux and macOS, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
+suite on Windows and Linux, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
 every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
 required checks pass after checking the changed paths, without building or running the suites.
 A successful suite records the non-Markdown tree it tested, including the merged base, so later
@@ -804,8 +804,8 @@ is separate per suite and platform; changed inputs, a missing record or an expli
 suite again. It also runs the extension's
 three suites on Windows and Linux, before and after a `protoc` is installed. Linux runs first and
 alone, and is the only platform that builds the package; the others start once it passes. A macOS runner costs about
-ten times a Linux one, so the same suites run on macOS only for a pull request into `main`, or when
-started by hand from the Actions tab after approval.
+ten times a Linux one, so the suite and the extension's run on macOS only for a pull request into
+`main`, and the extension's also when started by hand from the Actions tab after approval.
 
 ## Invariants that constrain a change
 
