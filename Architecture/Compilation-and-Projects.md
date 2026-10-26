@@ -18,6 +18,7 @@
 | Source/test globs and membership | [ProjectSources][members]: `ExpandForBuild`, `RoleOf` | [Source patterns][members-t], [Build refusal][refusal-t] |
 | Project-wide policy | [ProjectPolicy][policy]: `Resolve` | [CLI projects][cli-t] |
 | CLI verbs, arguments, source/project builds | [CommandLine][cli]: `Run`, `All`; [CommandLineOptions][options]: `Parse`; [BuildCommand][build]: `Run`, `CanBuild`, `Build`, `Generate`, `Write`, `CompilationOfSources`, `CompilationOfProject` | [CLI projects][cli-t], [Verbs][verbs-t] |
+| The version, `--version`, and the `ProtoCross` tool package | [ProductVersion][version]: `Of`; [CommandLine][cli]: `VersionOption`; [the CLI project][cli-project]: `PackAsTool`; [Directory.Build.props][build-props]: `Version`; [publish.yml][publish]: `pack-tool`, `publish-tool` | [Version][version-t], [Tool package][package-t] |
 | `protocross test`: tools first, then the build, then each backend's run and the verdict; its step limit, `<TestRun>` | [TestCommand][test]: `Run`, `FindTesters`, `Print`; [TestRunSettings][test-run]: `TryParseStepTimeout`; [ProtoCrossProject][project]: `ReadTestRun` | [CLI test][test-t], [Project files][test-run-project-t] |
 | Test project settings: `<Scaffold>` and its flags | [ScaffoldSettings][scaffold]: `ScaffoldSetting.All`, `ProblemWith`, `Flag`, `ScaffoldSettings.OverriddenBy`; [ProtoCrossProject][project]: `ReadScaffold`; [BuildCommand][build]: `ScaffoldSettingsFor`; [CommandLineOptions][options]: `AreScaffoldFlagsUsed` | [Settings][scaffold-t], [Project files][scaffold-project-t], [CLI][scaffold-cli-t], [Builds][scaffold-run-t] |
 | Diagnostic codes and CLI rendering | [Diagnostic][diagnostics]: `DiagnosticBag.Report`, `Diagnostic.ToString`; [BuildCommand][build]: `PrintDiagnostics` | [Diagnostic codes][diagnostic-t] |
@@ -51,6 +52,10 @@
 [options]: ../src/ProtoCross.Cli/CommandLineOptions.cs
 [build]: ../src/ProtoCross.Cli/BuildCommand.cs
 [test]: ../src/ProtoCross.Cli/TestCommand.cs
+[version]: ../src/ProtoCross.Core/ProductVersion.cs
+[cli-project]: ../src/ProtoCross.Cli/ProtoCross.Cli.csproj
+[build-props]: ../Directory.Build.props
+[publish]: ../.github/workflows/publish.yml
 [test-run]: ../src/ProtoCross.Projects/TestRunSettings.cs
 [scaffold]: ../src/ProtoCross.Core/Backend/ScaffoldSettings.cs
 [diagnostics]: ../src/ProtoCross.Core/Diagnostics/Diagnostic.cs
@@ -74,6 +79,8 @@
 [cli-t]: ../tests/ProtoCross.Tests/CliTests.Projects.cs
 [verbs-t]: ../tests/ProtoCross.Tests/CliTests.Verbs.cs
 [test-t]: ../tests/ProtoCross.Tests/CliTests.Test.cs
+[version-t]: ../tests/ProtoCross.Tests/CliTests.Version.cs
+[package-t]: ../tests/ProtoCross.Tests/CliTests.ToolPackage.cs
 [test-run-project-t]: ../tests/ProtoCross.Tests/ProjectFileTests.TestRun.cs
 [tools-t]: ../tests/ProtoCross.Tests/ToolchainTests.cs
 [verdict-t]: ../tests/ProtoCross.Tests/TestVerdictTests.cs

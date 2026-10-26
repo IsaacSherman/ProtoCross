@@ -19,14 +19,16 @@ Behavior is defined once and generated per target, and it has to mean the same t
 `ProtoCross.slnx`, seven projects, `net10.0`. Settings are central in
 [Directory.Build.props](../Directory.Build.props): nullable enabled, implicit usings, **warnings as
 errors**, and `CheckForOverflowUnderflow=false` on purpose — the compiler must never inherit the
-arithmetic behavior it exists to define.
+arithmetic behavior it exists to define. It also gives every assembly the version in
+[editors/vscode/package.json](../editors/vscode/package.json), so the extension, the server, the
+command line and its package report one number, and makes only the command line packable.
 
 | Project | Role |
 |---|---|
 | [src/ProtoCross.Core](../src/ProtoCross.Core) | Lexer, parser, binder, IR, diagnostics, config. No CLI coupling. |
 | [src/ProtoCross.Backend.CSharp](../src/ProtoCross.Backend.CSharp) | C# emission, plus generated test projects. |
 | [src/ProtoCross.Backend.Cpp](../src/ProtoCross.Backend.Cpp) | The same for C++. |
-| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: its verbs and their arguments, driving a compilation, writing files, and running the generated tests. |
+| [src/ProtoCross.Cli](../src/ProtoCross.Cli) | `protocross`: its verbs and their arguments, driving a compilation, writing files, and running the generated tests. Packed as the `ProtoCross` .NET tool, which [publish.yml](../.github/workflows/publish.yml) ships to nuget.org with each release. |
 | [src/ProtoCross.LanguageServer](../src/ProtoCross.LanguageServer) | `protocross-server`: LSP over stdio, and the workspace configuration model under it. |
 | [src/ProtoCross.Projects](../src/ProtoCross.Projects) | Reading a `.pcproj`, finding the sources its patterns match, and settling what each build compiles and under which policy. |
 | [src/ProtoCross.Toolchain](../src/ProtoCross.Toolchain) | Finding the tools generated code is built and run with (dotnet, protoc, cmake, a C++ compiler, a protobuf C++ install), saying why when one is missing, running them, and judging what the generated tests reported. |
@@ -795,7 +797,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
   commit that moves that number rather than on the day it ships.
 
 `dotnet test` locally is the gate. [.github/workflows/ci.yml](../.github/workflows/ci.yml) runs the same
-suite on Windows, Linux and macOS, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
+suite on Windows and Linux, with both gated switches thrown, on every pull request to `main` or to a sprint branch, and on
 every commit landed on `main` directly, unless every changed file is Markdown. In that case the same
 required checks pass after checking the changed paths, without building or running the suites.
 A successful suite records the non-Markdown tree it tested, including the merged base, so later
@@ -804,8 +806,8 @@ is separate per suite and platform; changed inputs, a missing record or an expli
 suite again. It also runs the extension's
 three suites on Windows and Linux, before and after a `protoc` is installed. Linux runs first and
 alone, and is the only platform that builds the package; the others start once it passes. A macOS runner costs about
-ten times a Linux one, so the same suites run on macOS only for a pull request into `main`, or when
-started by hand from the Actions tab after approval.
+ten times a Linux one, so the suite and the extension's run on macOS only for a pull request into
+`main`, and the extension's also when started by hand from the Actions tab after approval.
 
 ## Invariants that constrain a change
 

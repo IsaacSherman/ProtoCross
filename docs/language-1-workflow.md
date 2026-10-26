@@ -15,7 +15,7 @@ the table on #108. A sprint branch is cut from `main`, each issue branches off i
 into it by pull request, and the sprint then goes to `main` as one pull request, the way
 `epics/language-server-N` did.
 
-The current sprint branch is **`sprints/language-1-6`**. This line is the only record of that, so
+The current sprint branch is **`sprints/language-1-7`**. This line is the only record of that, so
 moving to the next sprint means editing it here. `sprints/language-1-1` carried sprint 1 — #10,
 #65, #105, #28 and the catch-up half of #107 — and reached `main` as #129. `sprints/language-1-2`
 carried the multi-file sprint — #69, #127, #27, #106 and #29 — and reached `main` as #150.
@@ -23,18 +23,19 @@ carried the multi-file sprint — #69, #127, #27, #106 and #29 — and reached `
 reached `main` as #165. `sprints/language-1-4` carried the rest of the core language — #158, #159,
 #168, #166, #6, #11, #175, #177, #173 and #162 — and reached `main` as #181. `sprints/language-1-5`
 carried factories and refusal — #163, #82, #83, #84 and #16, and #135, found on the way — and reached
-`main` as #188. Sprint 6 is what makes 1.0 usable outside this repository: #30, #23, #8 and the
-close-out of #107, in that order, with the plan and its decisions in the comments on #108 and on each
-issue.
+`main` as #188. `sprints/language-1-6` made 1.0 usable outside this repository — #30, #23 and the
+close-out of #107, with #197 and #198 found on the way, and #8 deferred past 1.0 — and reached `main`
+as #201, which finished #108. Sprint 7 comes after the epic: it publishes the command line to
+nuget.org as a .NET tool, #209, with the plan in that issue and its decisions in the comments on it.
 
 ```bash
-git checkout sprints/language-1-6 && git pull && git checkout -b issue-30-scaffold-options
+git checkout sprints/language-1-7 && git pull && git checkout -b issue-209-dotnet-tool
 ```
 
 Issue pull requests use the sprint branch as their base, never `main`:
 
 ```bash
-gh pr create --draft --base sprints/language-1-6 --title "..." --body-file pr-body.md
+gh pr create --draft --base sprints/language-1-7 --title "..." --body-file pr-body.md
 ```
 
 They land one at a time. A ruleset on `sprints/**` requires a pull request, the CI checks, and a
@@ -46,14 +47,15 @@ in [CLAUDE.md](../CLAUDE.md).
 ### The version follows the sprint
 
 The extension's version in [editors/vscode/package.json](../editors/vscode/package.json) is numbered
-as the sprints are: **`0.<sprint>.<pull request>`**. The server inside the package takes the same
-number, because `npm run stage` publishes it with the extension's version, so a status report names
-one version for both.
+as the sprints are: **`0.<sprint>.<pull request>`**. Every assembly takes the same number, because
+`Directory.Build.props` reads it from that file: the server inside the package, the command line, and
+the `ProtoCross` tool on nuget.org (#209). So a status report and `protocross --version` name one
+version for all of them, and a release publishes the extension and the tool under it.
 
-- **Every pull request into a sprint branch increments the third number.** Sprint 6 began at
-  `0.6.0`, and the pull request that opened it made it `0.6.1`, so #30's makes it `0.6.2`.
+- **Every pull request into a sprint branch increments the third number.** The pull request that
+  opened sprint 7 made it `0.7.2`, so the next one into it makes it `0.7.3`.
 - **The pull request that takes a sprint to `main` increments the second number and resets the
-  third**, so sprint 6 reaches `main` as `0.7.0`.
+  third**, so sprint 7 reaches `main` as `0.8.0`.
 - **A release from `main` between sprints increments the third number there.** The store listing's
   refresh after 0.7.0 is `0.7.1` (#208).
 - **The pull request that opens a sprint takes the number after `main`'s.** Sprint 7 opens at
@@ -137,5 +139,6 @@ issue over, name what to try in the extension alongside the short list of what d
 ## What is not different
 
 The per-issue loop, the review-until-clean cycle, the draft-then-ready rule in CLAUDE.md, and the
-byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-6` in
-place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.`
+byte-for-byte proof against a base worktree. All of it is as written in [epic-47-workflow.md](epic-47-workflow.md), with `sprints/language-1-7` in
+place of `epics/language-server-4` and `Part of #108.` in place of `Part of #47.` Sprint 7 comes after
+#108 closed, so its pull requests name the issue they build instead: `Part of #209.`

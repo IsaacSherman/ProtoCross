@@ -1,56 +1,50 @@
 # ProtoCross for Visual Studio Code
 
-Language support for [ProtoCross](https://github.com/IsaacSherman/ProtoCross), which compiles methods
-written against protobuf messages into C# and C++ with defined, tested cross-language semantics.
-Everything this extension tells you comes from the ProtoCross compiler itself, so what the editor says
-about a file is what a build would say.
+Language support for [ProtoCross](https://github.com/IsaacSherman/ProtoCross), which compiles methods written against protobuf messages into C# and C++ with defined, tested cross-language semantics. Everything this extension tells you comes from the ProtoCross compiler itself, so what the editor says about a file is what a build would say.
 
 ![A ProtoCross file in VS Code, with a misspelt field underlined](images/screenshot.png)
 
 ## What you get
 
-- Syntax colouring, bracket matching, comment toggling and indentation for `.pcross` files, with or
-  without anything else installed.
+- Syntax colouring, bracket matching, comment toggling and indentation for `.pcross` files, with or without anything else installed.
 - With the language server running:
   - live diagnostics as you type, including errors `protoc` reports inside the `.proto` files you import;
   - completion of fields, enum values, names in scope and import paths;
-  - hover, go to definition (into `.proto` files too), find all references, highlighting of a name's
-    other uses, signature help, and the outline;
+  - hover, go to definition (into `.proto` files too), find all references, highlighting of a name's other uses, signature help, and the outline;
   - colouring by meaning, so a field, a parameter and a method look different.
-- Saving an imported `.proto` or a `protocross.config.xml` refreshes the diagnostics of open ProtoCross
-  files, without you having to type in them.
+- Saving an imported `.proto` or a `protocross.config.xml` refreshes the diagnostics of open ProtoCross files, without you having to type in them.
+
+The extension checks your files but does not build them. To generate the C# and C++, install the
+command line, which is the same compiler, as a .NET tool:
+
+```bash
+dotnet tool install --global ProtoCross
+```
+
+Then `protocross --help` lists what it does. That needs the .NET SDK rather than only the runtime.
 
 ## Prerequisites
 
-The extension brings its language server but no toolchain. It uses the ones on your machine, so you choose
-their versions.
+The extension brings its language server but no toolchain. It uses the ones on your machine, so you choose their versions.
 
 - **.NET 10 or newer**, to run the language server. [Download .NET](https://dotnet.microsoft.com/download).
-  Only the runtime is needed. The extension finds `dotnet` through `protocross.dotnetPath`, then
-  `DOTNET_ROOT`, then `PATH`, then the usual install locations.
+  Only the runtime is needed. The extension finds `dotnet` through `protocross.dotnetPath`, then `DOTNET_ROOT`, then `PATH`, then the usual install locations.
 - **`protoc`**, to read the schemas your files import. [Install protoc](https://protobuf.dev/installation/).
 
-**Without .NET**, colouring, brackets and comments still work. The extension tells you once that
-the language server could not start. Choose **Use Without the Server**, or set
-`protocross.server.enabled` to `false`, and it will not mention it again.
+**Without .NET**, colouring, brackets and comments still work. The extension tells you once that the language server could not start. Choose **Use Without the Server**, or set `protocross.server.enabled` to `false`, and it will not mention it again.
 
 ### How `protoc` is found
 
 In order:
 
-1. `protocross.protocPath`, if set. A folder setting wins over a workspace setting, which wins over your
-   user setting.
+1. `protocross.protocPath`, if set. A folder setting wins over a workspace setting, which wins over your user setting.
 2. The `PROTOCROSS_PROTOC` environment variable.
 3. `PATH`.
 4. A `Grpc.Tools` package in your NuGet package cache.
 
-If none of these finds one, every ProtoCross file that imports a schema says so on its `import` line,
-with where the server looked and where to get `protoc`. **ProtoCross: Show Language Server Status**
-shows the same explanation.
+If none of these finds one, every ProtoCross file that imports a schema says so on its `import` line, with where the server looked and where to get `protoc`. **ProtoCross: Show Language Server Status** shows the same explanation.
 
-Relative `PATH` entries such as `.` or `bin` are not searched. The server is started outside your
-workspace, with those entries removed, so a `protoc` committed to a repository cannot be found and run
-that way. If one of your entries was skipped, the explanation names it.
+Relative `PATH` entries such as `.` or `bin` are not searched. The server is started outside your workspace, with those entries removed, so a `protoc` committed to a repository cannot be found and run that way. If one of your entries was skipped, the explanation names it.
 
 ## Settings
 
@@ -65,67 +59,41 @@ that way. If one of your entries was skipped, the explanation names it.
 | `protocross.server.path` | `""` | A language server to run instead of the bundled one: `protocross-server.dll`, or an executable. For developing the server. User settings only. |
 | `protocross.dotnetPath` | `""` | The `dotnet` that runs the server, as a full path. User settings only. |
 
-Include paths, the `protoc` path, the config path and the project can be set per folder in a multi-root
-workspace. A change takes effect on the next compilation, with no reload.
+Include paths, the `protoc` path, the config path and the project can be set per folder in a multi-root workspace. A change takes effect on the next compilation, with no reload.
 
-A file inside a project (a `.pcproj`) takes its settings from the project first, as the compiler does when
-it builds that project: the project's `<ProtoPath>` directories are searched before
-`protocross.includePaths`, and the configuration file it settles on is used instead of
-`protocross.configPath`. A file's project is the nearest `.pcproj` at or above it whose patterns include
-it, unless `protocross.project` names one. The file is compiled with the rest of its project, so a call
-into another file of it resolves, and go-to-definition and find-references cross into the others; files
-you have open are compiled from what is in the editor, and the rest from disk. Problems are shown for the
-files you have open. Language policy, such as overflow behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor
-and your build agree about what the code means.
+A file inside a project (a `.pcproj`) takes its settings from the project first, as the compiler does when it builds that project: the project's `<ProtoPath>` directories are searched before `protocross.includePaths`, and the configuration file it settles on is used instead of `protocross.configPath`. A file's project is the nearest `.pcproj` at or above it whose patterns include it, unless `protocross.project` names one. The file is compiled with the rest of its project, so a call into another file of it resolves, and go-to-definition and find-references cross into the others; files you have open are compiled from what is in the editor, and the rest from disk. Problems are shown for the files you have open. Language policy, such as overflow behaviour, is not an editor setting: it lives in `protocross.config.xml` beside your code, so the editor and your build agree about what the code means.
 
 ## Commands
 
 - **ProtoCross: Restart Language Server**
-- **ProtoCross: Show Language Server Status**: which `protoc`, which configuration and include paths
-  are in effect, what the server has cached, its last error, and how long requests have been taking.
-  It still produces a report when the server failed to start or has stopped answering, and says why.
-- **ProtoCross: Copy Language Server Status**: copies the whole report. You are shown what it
-  contains before anything is copied; it names file paths from your machine, and nothing is sent anywhere.
+- **ProtoCross: Show Language Server Status**: which `protoc`, which configuration and include paths are in effect, what the server has cached, its last error, and how long requests have been taking. It still produces a report when the server failed to start or has stopped answering, and says why.
+- **ProtoCross: Copy Language Server Status**: copies the whole report. You are shown what it contains before anything is copied; it names file paths from your machine, and nothing is sent anywhere.
 - **ProtoCross: Show Language Server Log**
 
 If the server crashes, it is restarted automatically, up to four times in three minutes.
 
 ## Untrusted workspaces
 
-VS Code asks whether you trust a folder before letting it configure things that could run code. In a
-workspace you have not trusted, ProtoCross keeps every feature except one:
+VS Code asks whether you trust a folder before letting it configure things that could run code. In a workspace you have not trusted, ProtoCross keeps every feature except one:
 
 - **What stays:** diagnostics, completion, navigation, colouring, include paths and config files.
-- **What is withheld:** `protocross.protocPath`. A repository's settings could name any program there,
-  and ProtoCross would run it the moment a file opened. Instead, `protoc` is found as if the setting were
-  not there: `PROTOCROSS_PROTOC`, then `PATH`, then the NuGet package cache.
-- **Your own `protocross.protocPath` is withheld too.** VS Code merges user and workspace settings before
-  the server sees them, so the server cannot tell which one a value came from.
+- **What is withheld:** `protocross.protocPath`. A repository's settings could name any program there, and ProtoCross would run it the moment a file opened. Instead, `protoc` is found as if the setting were not there: `PROTOCROSS_PROTOC`, then `PATH`, then the NuGet package cache.
+- **Your own `protocross.protocPath` is withheld too.** VS Code merges user and workspace settings before the server sees them, so the server cannot tell which one a value came from.
 - `protocross.server.path` and `protocross.dotnetPath` are never read from a workspace, trusted or not.
 
-The first time a setting is withheld you are told once, and the status report lists it. To lift it, run
-**Workspaces: Manage Workspace Trust** and trust the folder. The setting takes effect straight away, with no
-restart.
+The first time a setting is withheld you are told once, and the status report lists it. To lift it, run **Workspaces: Manage Workspace Trust** and trust the folder. The setting takes effect straight away, with no restart.
 
 ## Platforms
 
-Windows, macOS and Linux, wherever .NET 10 runs. The extension and its server are the same on every
-platform, and are tested on all three.
+Windows, macOS and Linux, wherever .NET 10 runs. The extension and its server are the same on every platform, and are tested on all three.
 
 ## Troubleshooting
 
-- **No diagnostics at all:** run **ProtoCross: Show Language Server Status**. The *Server* section says
-  whether the server is running, and the *protoc* section says which `protoc` it found, or why it found
-  none.
-- **"needs .NET 10 or newer":** install a .NET 10 or newer runtime, or point `protocross.dotnetPath` at
-  one. A preview does not count, whichever version it is a preview of: .NET only rolls forward onto a
-  prerelease when it is told to, so the server would not be given one. The message lists the runtimes
-  it did find.
-- **Errors that do not match your build:** check the *Configuration* section of the status report for
-  which `protocross.config.xml` and include paths each file is using.
+- **No diagnostics at all:** run **ProtoCross: Show Language Server Status**. The *Server* section says whether the server is running, and the *protoc* section says which `protoc` it found, or why it found none.
+- **"needs .NET 10 or newer":** install a .NET 10 or newer runtime, or point `protocross.dotnetPath` at one. A preview does not count, whichever version it is a preview of: .NET only rolls forward onto a prerelease when it is told to, so the server would not be given one. The message lists the runtimes it did find.
+- **Errors that do not match your build:** check the *Configuration* section of the status report for which `protocross.config.xml` and include paths each file is using.
 
-When reporting a problem, include the status report. It names the extension, server, compiler and
-editor versions.
+When reporting a problem, please include the status report. It names the extension, server, compiler and editor versions.
 
 ## Developing
 
@@ -147,9 +115,4 @@ npm run build
 npm test
 ```
 
-`npm run stage` publishes the server from `src/ProtoCross.LanguageServer` into `server/`. `npm test`
-checks types, runs the unit tests, and then starts VS Code to run the end-to-end suite. It runs the
-release named in `test/e2e/vscode-version.json`, downloaded into `.vscode-test/` the first time and
-again only when that version changes. Moving the version is how a new VS Code gets tested. `npm run test:server` starts the staged server
-under the extension's launch rules and checks what it can find. `npm run package` builds
-`dist/protocross.vsix`.
+`npm run stage` publishes the server from `src/ProtoCross.LanguageServer` into `server/`. `npm test` checks types, runs the unit tests, and then starts VS Code to run the end-to-end suite. It runs the release named in `test/e2e/vscode-version.json`, downloaded into `.vscode-test/` the first time and again only when that version changes. Moving the version is how a new VS Code gets tested. `npm run test:server` starts the staged server under the extension's launch rules and checks what it can find. `npm run package` builds `dist/protocross.vsix`.

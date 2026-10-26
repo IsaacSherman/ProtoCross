@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Reflection;
 using System.Runtime.InteropServices;
 using ProtoCross.Binding;
 using ProtoCross.LanguageServer.Protocol;
@@ -108,20 +107,13 @@ public sealed class StatusReporter
     /// </summary>
     private readonly Lock _clientGate = new();
 
-    /// <summary>The version of the assembly <paramref name="type"/> is in.</summary>
+    /// <inheritdoc cref="ProductVersion.Of"/>
     /// <remarks>
-    /// One home for the attribute read, because the report states three versions and the handshake
-    /// states one more; four spellings of the same lookup is three chances for one of them to fall
-    /// back differently and for a reader to conclude two components are out of step when they are
-    /// not.
+    /// Kept so that code naming it still compiles; nothing here calls it any more. The lookup is
+    /// <see cref="ProductVersion"/>'s, which the command line's <c>--version</c> shares, so the report and
+    /// the command line state one version in one form.
     /// </remarks>
-    public static string VersionOf(Type type)
-    {
-        ArgumentNullException.ThrowIfNull(type);
-
-        return type.Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
-            ?? "0.0.0";
-    }
+    public static string VersionOf(Type type) => ProductVersion.Of(type);
 
     /// <summary>The whole report, for <paramref name="document"/> where the client named one.</summary>
     /// <param name="document">
@@ -174,8 +166,8 @@ public sealed class StatusReporter
         "Versions",
         [
             new StatusFact("extension", Client.ExtensionVersion ?? "(not reported)", Client.ExtensionName),
-            new StatusFact("server", VersionOf(typeof(StatusReporter))),
-            new StatusFact("compiler", VersionOf(typeof(ProtoCross.Compilation))),
+            new StatusFact("server", ProductVersion.Of(typeof(StatusReporter))),
+            new StatusFact("compiler", ProductVersion.Of(typeof(ProtoCross.Compilation))),
             new StatusFact("editor", Client.Version ?? "(not reported)", Client.Name),
             new StatusFact("runtime", RuntimeInformation.FrameworkDescription),
         ],

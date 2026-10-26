@@ -101,7 +101,8 @@ gh pr create --draft --base main --head sprintN-to-main --title "..." --body-fil
 
   Include an issue finished across several pull requests, one found along the way, and an umbrella
   whose sub-issues are now all done (sprint 5 closed #79). End the body with one `Closes #N.` for
-  each, then `Part of #108.` Leave deferred issues and #108 open.
+  each, then `Part of` the sprint's epic, which was #108 through sprint 6. Leave deferred issues and
+  the epic open. Sprint 7 belongs to no epic, so it ends with its `Closes` lines.
 - **Turn Auto-fix on as soon as it opens:** `get_status`, then `bind_pr` if the pull request isn't
   reported, then `set_monitor` with `auto_fix` and `address_comments`.
 
@@ -141,9 +142,17 @@ Once the findings are fixed and the suite passes on the head:
   ```
 
   The release starts [publish.yml](../.github/workflows/publish.yml). It checks the tag against the
-  version, waits for CI on `main`, and attaches the VSIX to the release. Then it waits for the owner
-  to approve the `marketplace` deployment before publishing to the stores. To finish a publish that
-  failed part of the way, run the workflow again with the same tag.
+  version, waits for CI on `main`, packs the tool, and attaches the VSIX and the tool's `.nupkg` to
+  the release. Then it waits for the owner to approve the `marketplace` deployment, once, before
+  publishing the extension to the stores and the tool to nuget.org. To finish a publish that failed
+  part of the way, run the workflow again with the same tag.
+- Check the published tool from outside the repository, once nuget.org lists the version, which takes
+  a few minutes. It asks before downloading the package, and should then print the version just
+  released:
+
+  ```bash
+  dnx ProtoCross@0.<N+1>.0 --version
+  ```
 - Open the next sprint only when the owner says to start it. That is its own pull request, as #189
   was:
   - cut `sprints/language-1-<N+1>` from `main`;
