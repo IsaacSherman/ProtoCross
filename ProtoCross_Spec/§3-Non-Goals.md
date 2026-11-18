@@ -2,7 +2,7 @@
 
 ProtoCross does not aim to provide:
 
-- Exceptions.
+- Exceptions ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
 - Inheritance as a language feature.
 - Private, protected, or internal methods.
 - LINQ-style query syntax.

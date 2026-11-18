@@ -154,13 +154,21 @@ Normative Requirements:
   that declares a refusal may write it, with a value of the type it declares, and only on a division
   that stands on its own: a `var` initializer, a local's new value, or a `return` value
   ([16.3.1](./§16-Methods.md#1631-refusals)). The value is evaluated only for a zero divisor, after both operands.
-- A backend must terminate with a primitive that cannot be intercepted and does not engage the
-  platform's crash reporting: `Environment.Exit` in C#, `std::_Exit` in C++. `Environment.FailFast`
-  and `std::abort` are the wrong tools even though they look like the obvious ones. Both are
-  crash-reporting primitives, so on Windows they hand the process to Windows Error Reporting and to
-  any postmortem debugger registered under `AeDebug`; generated library code must not be able to put
-  a dialog on a user's screen or stall a batch run waiting for one. `abort` is also weaker than it
-  appears: it raises `SIGABRT`, which a program may catch and resume from, defeating the clause.
+- A backend must terminate with a primitive that nothing can cancel or resume from and that does not
+  engage the platform's crash reporting: `Environment.Exit` in C#, `std::_Exit` in C++.
+  `Environment.FailFast` and `std::abort` are the wrong tools even though they look like the obvious
+  ones. Both are crash-reporting primitives, so on Windows they hand the process to Windows Error
+  Reporting and to any postmortem debugger registered under `AeDebug`; generated library code must
+  not be able to put a dialog on a user's screen or stall a batch run waiting for one. `abort` is also
+  weaker than it appears: it raises `SIGABRT`, which a program may catch and resume from, defeating
+  the clause.
+- **The guarantee ends where the generated code does.** In every backend the method goes no further
+  than the failing operation and never returns to its caller, the diagnostic reaches standard error
+  before the process ends, and the exit code is 70. What the host's own runtime does on the way out
+  is the host's: whether its buffered output is flushed, and whether its exit handlers, finalizers or
+  destructors run, differ between the primitives above and are not part of the clause. A host that
+  needs its output kept flushes it before calling generated code that may fail, or forbids
+  termination ([10.4](#104-compile-time-policy)).
 - The clause binds to the single division it follows: `x + a / b on_zero 0` means
   `x + (a / b on_zero 0)`. The fallback parses at unary precedence, so anything more involved than a
   literal, name, or call must be parenthesized.
@@ -170,16 +178,21 @@ Normative Requirements:
   of IEEE 754 division.
 - Backends emit a runtime zero check for every integer division except the proven-literal case.
 
-`fail` is deliberately blunt. A catchable exception would let a consumer resume from a state the
-author explicitly said has no valid result, and C++ has no equivalent construct under the
-free-function design in 24.2. Termination is the only failure mode that means the same thing in
-every target, which is the whole point of the section.
+`fail` is deliberately blunt. ProtoCross has no exceptions because no two targets implement them
+alike: what may be caught, what unwinds, and what runs on the way out all differ, so a failure
+translated into each target's exceptions could not mean one thing
+([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)). A
+catchable failure would also let a consumer resume from a state the author said has no valid result.
+Ending the program is the one failure every target can carry out identically, so it is the design
+and not a stand-in for something better. Every target has a primitive that does it, though not always
+the obvious one, which is why the rule above names what the primitive must do rather than which to
+call: Python's `sys.exit`, for one, raises an exception that a caller may catch.
 
-This is also why ProtoCross does not need `Result` in order to ship. `Result` remains the better
-long-term answer for recoverable failure, but it forces propagation syntax into every expression
-containing a division, and that cost multiplies with each new backend rather than amortizing. The
-two `on_zero` forms cover the cases that actually arise: there is a sensible substitute, or there
-is not.
+Termination is only for the case where no value is correct. Where a substitute is sensible, the
+clause gives a fallback, and where the caller should decide, the method refuses
+([16.3.1](./§16-Methods.md#1631-refusals)). A refusal is a return value, which every target has, so
+it carries a recoverable failure without relying on any target's error machinery. A `Result` type
+was considered for that role and declined (19).
 
 Rationale: leaving this to the target is not a portability compromise, it is three different
 programs. The same source produces a `DivideByZeroException` in C#, a `SIGFPE` crash on x86 in C++,
