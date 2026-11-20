@@ -1296,7 +1296,8 @@ public sealed class CompletionProvider
             return null;
         }
 
-        var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference);
+        // 'void' is a result's type, and not a list's element (spec 8.1).
+        var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference) && !declared.IsRepeated;
 
         // A literal builds a message, so the type after 'new' is a message and nothing else: a scalar
         // or an enum offered there is a name the binder refuses the moment it is accepted.
@@ -1310,6 +1311,8 @@ public sealed class CompletionProvider
 
         subject = written.Subject;
 
+        // 'repeated' itself is not offered: accepted on its own it names no type yet, and every item offered
+        // here binds where it is accepted. A list's element is offered after it as any type is.
         return written.Writable(
         [
             // The spellings the scalar factory accepts, taken from the one keyword table rather than
