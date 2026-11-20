@@ -1,4 +1,5 @@
 using ProtoCross.Ir;
+using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
 
@@ -53,6 +54,9 @@ public sealed partial class CSharpBackend
         {
             IrList list => Braced(header: null, list.Elements.Select(element => FieldValue(element, placement, receiverName))),
             IrMapEntries entries => MapEntries(entries, placement, receiverName),
+
+            // A whole list, added to the read-only list as one collection, a copy of it as the field stores it.
+            { Type: RepeatedType } whole when field.Field.IsRepeated => Braced(header: null, [StoredValue(whole, placement, receiverName)]),
             _ => FieldValue(field.Value, placement, receiverName),
         };
 
@@ -82,7 +86,48 @@ public sealed partial class CSharpBackend
     private static string StoredValue(IrExpression value, Placement placement, string receiverName)
     {
         var written = Expression(value, placement, receiverName);
-        return value.IsCopiedWhenStored && !IsHeldAsItsValue(value) ? written + ".Clone()" : written;
+
+        if (!value.IsCopiedWhenStored || IsHeldAsItsValue(value))
+        {
+            return written;
+        }
+
+        return IsHeldAsAReadOnlyList(value) ? CopyOfList(written) : written + ".Clone()";
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> where something holds it as its type is declared: a local, a result, a refusal or a
+    /// fallback. A list parameter is given as a <c>RepeatedField</c> of its own, and anything else as it is.
+    /// </summary>
+    /// <remarks>
+    /// A list parameter is an <c>IReadOnlyList</c> (<see cref="ParameterTypeName"/>), and every other place a list is
+    /// held declares a <c>RepeatedField</c>, which C# does not convert one to. A copy is what the language says a
+    /// stored list is anyway (spec 14.1), and where nothing changes it cannot be told from the parameter itself.
+    /// </remarks>
+    private static string Held(IrExpression value, Placement placement, string receiverName = ReceiverName)
+    {
+        var written = Expression(value, placement, receiverName);
+        return IsHeldAsAReadOnlyList(value) ? CopyOfList(written) : written;
+    }
+
+    /// <summary>A copy of the list parameter <paramref name="written"/>, as a <c>RepeatedField</c> of its own.</summary>
+    private static string CopyOfList(string written) => $"{CSharpRuntime.CollectionsTypeName}.CopyOf({written})";
+
+    /// <summary>
+    /// A list written as a value (spec 14.1), as a collection initializer of a <c>RepeatedField</c> of its
+    /// own, each element stored as a field's list stores it.
+    /// </summary>
+    /// <remarks>
+    /// C# adds a collection initializer's elements in the order they are written, which is the order a list
+    /// evaluates them in (spec 9.3). An empty list is a new, empty field.
+    /// </remarks>
+    private static string ListLiteral(IrList list, Placement placement, string receiverName)
+    {
+        var construction = "new " + TypeName(list.ListType);
+
+        return list.Elements.Count == 0
+            ? construction + "()"
+            : Braced(construction, list.Elements.Select(element => FieldValue(element, placement, receiverName)));
     }
 
     /// <summary>Whether a field of a literal sets anything, which one given no elements does not.</summary>

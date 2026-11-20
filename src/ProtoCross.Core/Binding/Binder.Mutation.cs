@@ -253,9 +253,14 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Everything that can make a field unwritable here: being a map or a repeated field, being reached
-    /// through something the method may not change, and holding a field a loop is traversing.
+    /// Everything that can make a field unwritable here: being a map, being reached through something the
+    /// method may not change, and holding a field a loop is traversing.
     /// </summary>
+    /// <remarks>
+    /// A repeated field may be assigned whole, and stores a copy of the list it is given (spec 18). Assigning
+    /// the field a loop traverses replaces what it traverses, which the traversal check refuses as it refuses
+    /// assigning any message the field is in.
+    /// </remarks>
     private void CheckFieldWrite(IrFieldAccess field, SourceSpan span, MethodContext context)
     {
         if (field.Field.IsMap)
@@ -266,16 +271,6 @@ public sealed partial class Binder
                 span,
                 $"A map is changed by key: '{field.Field.Name}[key] = value;', or through '{MapMethods.NameOf(MapMethod.Clear)}' "
                 + $"and '{MapMethods.NameOf(MapMethod.Merge)}' (spec 14.2).");
-            return;
-        }
-
-        if (field.Field.IsRepeated)
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.InvalidAssignmentTarget,
-                $"'{field.Field.Name}' is a repeated field, which cannot be assigned.",
-                span,
-                "A repeated field is given its elements by a message literal's list (spec 13.2).");
             return;
         }
 

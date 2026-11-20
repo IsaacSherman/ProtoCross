@@ -79,7 +79,7 @@ public sealed partial class CSharpBackend
 
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
-            => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Expression(value, Placement);
+            => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Held(value, Placement);
 
         /// <summary>
         /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
@@ -308,6 +308,20 @@ public sealed partial class CSharpBackend
     private static string EnumValue(EnumValueDescriptor value)
         => "global::" + NameConventions.GetCSharpTypeName(value.EnumDescriptor)
             + "." + NameConventions.GetCSharpValueName(value);
+
+    /// <summary>The type a parameter of <paramref name="type"/> is declared with.</summary>
+    /// <remarks>
+    /// A list is an <c>IReadOnlyList</c>, so that a consumer can pass a <c>List</c>, an array or a message's
+    /// field without copying it, and a method could never change it anyway: nothing changes a parameter
+    /// (spec 16.2, 24.1). Every other type is declared as it is anywhere else.
+    /// </remarks>
+    private static string ParameterTypeName(PlType type) => type is RepeatedType repeated
+        ? $"global::System.Collections.Generic.IReadOnlyList<{HeldTypeName(repeated.ElementType)}>"
+        : TypeName(type);
+
+    /// <summary>Whether C# holds <paramref name="value"/> as an <c>IReadOnlyList</c>, which has no <c>Clone</c>: a list parameter.</summary>
+    private static bool IsHeldAsAReadOnlyList(IrExpression value)
+        => value is IrParameterReference { Type: RepeatedType };
 
     private static string TypeName(PlType type) => type switch
     {

@@ -58,12 +58,44 @@ public sealed partial class Binder
             "Qualify the name with its protobuf package.");
     }
 
+    /// <summary>The type <paramref name="reference"/> names: a scalar, an enum, a message, or a list of one (spec 8.1).</summary>
+    /// <remarks>
+    /// A list's element is resolved as a reference written on its own would be, at its own name, so an
+    /// unknown element type is underlined without the <c>repeated</c> before it.
+    /// </remarks>
+    private PlType ResolveTypeReference(TypeReference reference)
+    {
+        if (!reference.IsRepeated)
+        {
+            return ResolveNamedType(reference);
+        }
+
+        var element = ResolveNamedType(reference with { RepeatedWord = null, Span = reference.Name.Span });
+        return ListOf(element, reference);
+    }
+
+    /// <summary>A list of <paramref name="element"/>, or an error where there can be no list of it.</summary>
+    private PlType ListOf(PlType element, TypeReference reference)
+    {
+        if (element is VoidType)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.VoidIsNotAValueType,
+                "A list cannot hold 'void'.",
+                reference.Span,
+                "void is a return marker only. A list holds scalars, enums or messages (spec 8.1).");
+            return ErrorType.Instance;
+        }
+
+        return element is ErrorType ? element : new RepeatedType(element);
+    }
+
     /// <remarks>
     /// A name the parser never saw resolves to <see cref="ErrorType"/> in silence. It has already
     /// been reported as a syntax error at the position it is missing from, and an unknown-type
     /// diagnostic on top of that says the same thing twice.
     /// </remarks>
-    private PlType ResolveTypeReference(TypeReference reference)
+    private PlType ResolveNamedType(TypeReference reference)
     {
         if (reference.Name.IsMissing)
         {

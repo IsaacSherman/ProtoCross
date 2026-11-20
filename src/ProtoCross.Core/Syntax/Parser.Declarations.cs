@@ -212,7 +212,45 @@ public sealed partial class Parser
         return ParseTypeReference();
     }
 
+    /// <summary>Parses a type: a name, a type keyword, or <c>repeated</c> and one of those (spec 8.1).</summary>
     private TypeReference ParseTypeReference()
+    {
+        if (!ContextualKeywords.BeginsARepeatedType(Current, Peek(1)))
+        {
+            return ParseNamedType();
+        }
+
+        var word = Advance().Span;
+        SkipNestedRepeatedWords();
+        var element = ParseNamedType();
+        return element with { RepeatedWord = word, Span = Spanning(word, element.Span) };
+    }
+
+    /// <summary>
+    /// Reports and steps over each further <c>repeated</c> of <c>repeated repeated double</c>, which
+    /// would be a list of lists (spec 8.1).
+    /// </summary>
+    /// <remarks>
+    /// Refused here rather than by the binder, because a reference holds one element name and nothing
+    /// could carry the second word to it (<see cref="TypeReference.RepeatedWord"/>). What is left is read
+    /// as the list it would most likely have been, so its element is still resolved and checked.
+    /// </remarks>
+    private void SkipNestedRepeatedWords()
+    {
+        while (ContextualKeywords.BeginsARepeatedType(Current, Peek(1)))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.NestedList,
+                "A list cannot hold lists.",
+                Current.Span,
+                "Write one 'repeated' before the element's type. To group values, declare a message for "
+                + "the group and make a list of it (spec 8.1).");
+            Advance();
+        }
+    }
+
+    /// <summary>Parses a type keyword or a message's or enum's name.</summary>
+    private TypeReference ParseNamedType()
     {
         var token = Current;
 

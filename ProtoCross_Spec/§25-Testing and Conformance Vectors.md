@@ -65,6 +65,10 @@ Normative Requirements:
   exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
   exception no test could say that a result is not a number; and which NaN it is cannot matter,
   because nothing in the language can tell two apart ([6.6](./§6-Lexical%20Structure.md#66-numeric-literals)). `0.0` still meets `-0.0`.
+- **An `expect return` of a list, on a method that returns one, is met when the result has as many
+  elements, and each meets its own expectation** as an `expect return` of it alone would: under `==`,
+  a NaN meeting a NaN. This needs no `==` on two lists, which the language refuses
+  ([30.14.6](./§30-Unresolved%20Questions%20Index.md#30146-list-equality)). A list of messages cannot be expected yet (`PC0092`).
 - **An `expect return` of a message literal, on a method that returns a message, is met when every
   field the literal sets has that value in the message returned.** The fields it leaves out are not
   looked at. A field with presence ([8.4](./§8-Type%20System.md#84-nullability-and-presence)) -- a message, a member of a `oneof`, an `optional`

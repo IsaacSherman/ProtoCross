@@ -30,8 +30,8 @@ Normative Requirements:
   - a message held in a local, which is the method's own copy ([13.2](./§13-Messages.md#132-message-construction));
   - a singular field of either, at any depth, and an element of a repeated field of either, through
     the name a `for` binds to it;
-  - a repeated field of either, at any depth, and a repeated value held in a local, by appending to
-    it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations));
+  - a repeated field of either, at any depth, and a list held in a local, by appending to it or
+    assigning it a whole list ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations));
   - a map field of either, at any depth, and a map held in a local, by storing to its elements,
     writing through them, or through its methods ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 
@@ -41,18 +41,21 @@ Normative Requirements:
 - **A factory's method has no receiver** ([16.3](./§16-Methods.md#163-factories)), so what it may change is what it holds in
   locals, the messages it builds included, and one marked `mut` is `PC0128`.
 - **Assignment.** `place = value;` and `place op= value;` ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)) assign a local
-  declared with `var`, or a singular field of a message the method may change: `total = 5;`,
-  `customer.name = "x";`.
+  declared with `var`, or a field of a message the method may change: `total = 5;`,
+  `customer.name = "x";`, `weights = [1.0, 2.0];`.
   - A parameter and the name a `for` binds cannot be assigned, nor can anything that is neither a
     local nor a field. Each is `PC0034`, and the help for the first two is to copy the value into a
     local.
-  - A repeated field cannot be assigned (`PC0034`). A message literal gives one its elements
-    ([13.2](./§13-Messages.md#132-message-construction)).
+  - A repeated field is assigned a whole list, any list of its type, and stores a copy of it,
+    messages and all, in place of what it held
+    ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The copy is taken before the field is emptied, so `items = items;`
+    changes nothing. A map field cannot be assigned whole (`PC0034`)
+    ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
   - Writing through a message field that is unset sets it, as protobuf's mutable accessors do:
     `audit.flagged.cents = 1;` sets `audit` and `audit.flagged` when either is unset. So the links of
     a target are not reads, and need no guard ([13.1](./§13-Messages.md#131-field-access)). A compound assignment
     also reads its target, and that read is guarded like any other.
-  - A message assigned is stored as a copy, unless it is a literal
+  - A message or a list assigned is stored as a copy, unless it is a literal
     ([13.2](./§13-Messages.md#132-message-construction)).
   - Assigning one member of a `oneof`, or writing through one, unsets the others, as setting one
     does in protobuf.
@@ -83,13 +86,15 @@ Normative Requirements:
     two `for` loops bind over one field are taken to share, since they may be one element.
   - A message argument that is not a place -- a call's result, or something read from one -- is passed
     as a copy, because it may be part of the receiver.
-- **Loops.** While a `for` traverses a repeated field, nothing inside it may change that field's
-  membership, order or identity ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+- **Loops.** While a `for` traverses a repeated field, or a local holding a list, nothing inside it
+  may change that list's membership, order or identity, assigning it included
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - **Locals.** A local holds a message of its own. Initializing or assigning one with a message, or
   with a repeated value, that is not a literal stores a copy
   ([13.2](./§13-Messages.md#132-message-construction)).
-- No field can be cleared, and no element can be removed from a repeated field. A map's keys can be
-  removed, and nothing a guard shows is ever about one. So nothing a guard has
+- No field can be cleared, and no element can be removed from a repeated field, except by assigning the
+  field a whole list, which ends every fact shown about what it held, as assigning any field does. A
+  map's keys can be removed, and nothing a guard shows is ever about one. So nothing a guard has
   shown to be set becomes unset, except by setting another member of its `oneof`, which an assignment
   or an append writing through it does, or by the message holding it being replaced
   ([13.1](./§13-Messages.md#131-field-access)).

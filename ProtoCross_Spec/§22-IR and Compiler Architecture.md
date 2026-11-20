@@ -94,8 +94,11 @@ The IR preserves:
   order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
   value is a list node holding its elements. A fixture is the same node, built for the message its
   test's target extends, so no consumer handles a fixture and a literal differently.
-- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
-  copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
+- **A list written as a value**, `[first, second]`, as the same list node wherever it stands: its
+  elements in the order written, and its type, `repeated T`, which the binder takes from what is
+  expected of the list or from its elements ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal -- a
+  message's or a list's -- is copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
   each backend asks rather than deciding what to copy.
 - **Which block declared each method, and so whether it has a receiver.** A method's signature says
   whether it is an `extend` block's, a factory's, or a factory's helper ([16.3](./§16-Methods.md#163-factories)). A factory's
@@ -198,7 +201,7 @@ unnoticed, as it did before #107 caught it up.
 | `IrBinary`, `IrUnary`, `IrConversion`, `IrIntegerDivision` | Exact numeric operation kinds, how each operation behaves, and what a zero divisor does |
 | `IrEnumValue`, `IrEnumToNumber`, `IrNumberToEnum`, `IrEnumMembership` | Descriptor identities for enum values, and an enum's number |
 | `IrLiteral` | A literal's value in one stated representation |
-| `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node |
+| `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node; a list written as a value |
 | `IrMapLookup`, `IrMapContains`, `IrMapQuery`, `IrMapElement`, `IrMapEntries`, `IrMapEntry` | A map's reads and writes |
 | `IrMissingMemberAccess`, `IrUncallableInvocation`, `IrValuelessCall` | Error placeholder nodes, and what was written in part |
 

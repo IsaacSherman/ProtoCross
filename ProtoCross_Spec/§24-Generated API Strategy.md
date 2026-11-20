@@ -199,7 +199,25 @@ A message stored in a field, or appended to one, is `Clone`d unless it is a lite
 literal's field ([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that
 changes a message, and an append to a local counts: in any other, nothing can change through the local or through what it was copied from, so a
 copy and a share cannot be told apart, and every method written before mutation is generated as it
-was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
+was.
+
+**A list is a `RepeatedField<T>` wherever it is held, and an `IReadOnlyList<T>` where it is a
+parameter** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A local, a result, a refusal and a field hold a `RepeatedField`, as protoc's
+fields do. A parameter is an `IReadOnlyList`, so that a consumer can pass a `List`, an array or a
+message's field without copying it, and the method could never change it anyway. Widening a
+`RepeatedField` parameter later would keep callers compiling but break them binarily, so the
+parameter is declared wide from the first. Where something holds a list parameter, it holds
+`ProtoCrossCollections.CopyOf(given)`, a `RepeatedField` of its own with each message cloned, since an
+`IReadOnlyList` has no `Clone`. A list written as a value is a collection initializer of a new
+`RepeatedField`, its elements stored as a field's are, and an empty one is `new RepeatedField<T>()`. A
+repeated enum is a `RepeatedField` of the enum, as protoc declares one.
+
+protoc declares a repeated field's property with no setter, so a whole list assigned to one is
+`ProtoCrossCollections.Replace(field, copy)`, which empties the field and adds what the copy holds. C#
+evaluates the arguments in order, so the field is reached, setting any unset message on the way, before
+the copy is taken, and the copy is taken before the field is emptied, so a field given itself keeps
+what it held. A message literal gives a repeated field a whole list as a collection initializer of
+the copy, `Weights = { given.Clone() }`. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
 because the call may have returned part of the very receiver being changed. For the same reason, in
 a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
 result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
@@ -457,6 +475,16 @@ field is: `*self.add_entries() = T(value);`, which evaluates the value first, an
 is reached through `auto& owner` in a block of its own first, in the same way. A local holds a
 `RepeatedField` or a `RepeatedPtrField` of its own, and is added to with `Add(value)`, or with
 `*Add() = value` for an element held by pointer.
+
+**A list is protobuf's own container, a `RepeatedField` for numbers and enums and a `RepeatedPtrField`
+for strings, bytes and messages** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A parameter takes one by `const&`, and a result
+returns one by value. A list written as a value is a lambda that builds one, called where it is
+written, as a message literal is, adding each element as an append to a local adds one, and building a
+message literal among them in place, through the pointer `Add()` returns. An empty list is the
+container's value-initialized temporary. protobuf holds a repeated enum as `int`, so a list of an enum
+is a `RepeatedField<int>`, in a signature as anywhere else. A repeated field is assigned a whole list
+through `*mutable_x() = copy`, as a message field is, which evaluates the copy before the field is
+replaced.
 
 A loop whose body changes the element it is given, an append to it included, binds it as `auto&`,
 over the field's mutable accessor; every other loop binds `const auto&` as it always has. protobuf
