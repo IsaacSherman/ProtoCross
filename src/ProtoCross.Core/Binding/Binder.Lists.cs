@@ -84,11 +84,7 @@ public sealed partial class Binder
                 return null;
 
             case RepeatedType:
-                _diagnostics.Report(
-                    DiagnosticCodes.NestedList,
-                    "A list cannot hold lists.",
-                    list.Elements[Math.Max(anchor, 0)].Span,
-                    "To group values, declare a message for the group and make a list of it (spec 14.1).");
+                ReportNestedList(list.Elements[Math.Max(anchor, 0)].Span);
                 return null;
 
             case MapType:
@@ -105,9 +101,13 @@ public sealed partial class Binder
         }
     }
 
-    private static bool IsFloatingPointLiteral(Expression expression)
-        => expression is FloatLiteralExpression
-            or UnaryExpression { Operator: UnaryOperatorKind.Negate, Operand: FloatLiteralExpression };
+    /// <summary>Reports a list, or a repeated value, written as one element of another list (spec 14.1).</summary>
+    private void ReportNestedList(SourceSpan element)
+        => _diagnostics.Report(
+            DiagnosticCodes.NestedList,
+            "A list cannot hold lists.",
+            element,
+            "To group values, declare a message for the group and make a list of it (spec 14.1).");
 
     /// <summary>
     /// <paramref name="bound"/>, with each numeric literal of another type bound again as a value of
@@ -151,11 +151,7 @@ public sealed partial class Binder
 
             if (element.Type is RepeatedType)
             {
-                _diagnostics.Report(
-                    DiagnosticCodes.NestedList,
-                    "A list cannot hold lists.",
-                    list.Elements[index].Span,
-                    "To group values, declare a message for the group and make a list of it (spec 14.1).");
+                ReportNestedList(list.Elements[index].Span);
                 continue;
             }
 
@@ -165,10 +161,31 @@ public sealed partial class Binder
                     ? $"This list holds '{elementType.DisplayName}' values, but this element is '{element.Type.DisplayName}'."
                     : $"This list's elements are '{elementType.DisplayName}', but this one is '{element.Type.DisplayName}'.",
                 list.Elements[index].Span,
-                expectedHere
-                    ? "ProtoCross applies no implicit conversion. Convert the element with 'as', or change the list's type (spec 10.3)."
-                    : "Every element of a list has one type. Convert this element with 'as', or declare the list's type, "
-                      + "as in 'var items: repeated double = [...]' (spec 14.1).");
+                MismatchHelp(element.Type, elementType, expectedHere));
         }
+    }
+
+    /// <summary>What an element of the wrong type can be made into, which 'as' does only between numbers and enums.</summary>
+    /// <remarks>
+    /// <c>as</c> converts a number to another number, and an enum to and from one (spec 10.3, 12.1), so it is
+    /// offered only for those. A string, a message, or an enum where another enum is held has no conversion
+    /// to name, and the list's type is what can change.
+    /// </remarks>
+    private static string MismatchHelp(PlType element, PlType elementType, bool expectedHere)
+    {
+        var convertible = (IsNumber(element) && (IsNumber(elementType) || elementType is EnumPlType))
+            || (element is EnumPlType && IsNumber(elementType));
+
+        return (convertible, expectedHere) switch
+        {
+            (true, true) => "ProtoCross applies no implicit conversion. Convert the element with 'as', or change the list's type (spec 10.3).",
+            (true, false) => "Every element of a list has one type. Convert this element with 'as', or declare the list's type, "
+                             + "as in 'var items: repeated double = [...]' (spec 14.1).",
+            (false, true) => "Write an element of the list's type, or change the list's type (spec 14.1).",
+            (false, false) => "Every element of a list has one type. Write elements of one type, or declare the list's type, "
+                              + "as in 'var items: repeated double = [...]' (spec 14.1).",
+        };
+
+        static bool IsNumber(PlType type) => type is ScalarType { IsNumeric: true };
     }
 }

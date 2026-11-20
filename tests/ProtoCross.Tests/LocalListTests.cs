@@ -154,6 +154,31 @@ public class LocalListTests
         Assert.Contains("'double'", error.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>The help suggests 'as' only where 'as' can convert the element: between numbers, and an enum and a number.</summary>
+    [Theory]
+    [InlineData("var values: repeated double = [1.0, base];", true)]
+    [InlineData("var values: repeated double = [1.0, name];", false)]
+    [InlineData("var values = [ratio, name];", false)]
+    [InlineData("var values: repeated Parcel = [new Parcel {}, Shade.SHADE_DARK];", false)]
+    public void TheHelpOffersAsOnlyWhereItConverts(string declaration, bool offersAs)
+    {
+        var error = TheOnly(Compile($"    fn f() {{\n        {declaration}\n    }}"), DiagnosticCodes.ListElementTypeMismatch.Code);
+
+        Assert.Equal(offersAs, error.Help!.Contains("'as'", StringComparison.Ordinal));
+    }
+
+    /// <summary>A list a call's parenthesis closes is missing its bracket, and the call is not missing its parenthesis.</summary>
+    [Fact]
+    public void AListMissingItsBracketEndsAtACallsParenthesis()
+    {
+        var result = Compile(
+            "    fn total(values: repeated double) -> double { return 0.0; }\n"
+            + "    fn f() -> double {\n        return total([1.0, 2.0);\n    }");
+
+        var error = Assert.Single(result.Diagnostics);
+        Assert.StartsWith("Expected ]", error.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AnEmptyListNeedsAType()
     {

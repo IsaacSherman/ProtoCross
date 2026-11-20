@@ -188,11 +188,14 @@ public sealed partial class Parser
         return Match(TokenKind.OpenBrace);
     }
 
-    /// <summary>Parses <c>[value, ...]</c>, the values of a repeated field, with the bracket as the current token.</summary>
+    /// <summary>Parses <c>[value, ...]</c>, a list, with the bracket as the current token.</summary>
     /// <remarks>
     /// <para>
     /// A trailing comma is allowed, as it is after a field. A list nothing closes ends where the next
-    /// field or the enclosing brace begins, so it costs one diagnostic and not the fields after it.
+    /// field or the enclosing brace begins, so it costs one diagnostic and not the fields after it. It
+    /// ends at a closing parenthesis too, since a list is a value anywhere one is (spec 14.1): in
+    /// <c>total([1.0, 2.0);</c> the parenthesis closes the call, and taking it into the list would
+    /// report the call's missing parenthesis as well as the list's missing bracket.
     /// </para>
     /// <para>
     /// A missing comma between two values is reported and both are kept: the value after it is read
@@ -210,7 +213,7 @@ public sealed partial class Parser
         var afterAMissingComma = false;
         var tallest = 0;
 
-        while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon)
+        while (Current.Kind is not (TokenKind.CloseBracket or TokenKind.Semicolon or TokenKind.CloseParen)
             && !EndsAFieldList()
             && !StartsAField())
         {
@@ -219,7 +222,7 @@ public sealed partial class Parser
             elements.Add(ParseListElement(out var elementHeight));
             tallest = Math.Max(tallest, elementHeight);
 
-            if (Match(TokenKind.Comma) || Current.Kind == TokenKind.CloseBracket || EndsAFieldList())
+            if (Match(TokenKind.Comma) || Current.Kind is TokenKind.CloseBracket or TokenKind.CloseParen || EndsAFieldList())
             {
                 afterAMissingComma = false;
             }

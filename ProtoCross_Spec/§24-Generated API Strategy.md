@@ -199,7 +199,10 @@ A message stored in a field, or appended to one, is `Clone`d unless it is a lite
 literal's field ([13.2](./§13-Messages.md#132-message-construction)). A message or repeated value stored in a local is `Clone`d only in a method that
 changes a message, and an append to a local counts: in any other, nothing can change through the local or through what it was copied from, so a
 copy and a share cannot be told apart, and every method written before mutation is generated as it
-was.
+was. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
+because the call may have returned part of the very receiver being changed. For the same reason, in
+a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
+result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
 
 **A list is a `RepeatedField<T>` wherever it is held, and an `IReadOnlyList<T>` where it is a
 parameter** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A local, a result, a refusal and a field hold a `RepeatedField`, as protoc's
@@ -217,10 +220,8 @@ protoc declares a repeated field's property with no setter, so a whole list assi
 evaluates the arguments in order, so the field is reached, setting any unset message on the way, before
 the copy is taken, and the copy is taken before the field is emptied, so a field given itself keeps
 what it held. A message literal gives a repeated field a whole list as a collection initializer of
-the copy, `Weights = { given.Clone() }`. A message passed to a `mut fn` that is a call's result, or read from one, is `Clone`d too,
-because the call may have returned part of the very receiver being changed. For the same reason, in
-a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
-result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
+the copy, `Weights = { other.Weights.Clone() }`, or `Weights = { ProtoCrossCollections.CopyOf(given) }` for a
+list parameter.
 
 **A map is protoc's `MapField`, and what it does not say as the language does goes through
 `ProtoCrossMaps` in the support file** ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). A lookup with a fallback is

@@ -100,9 +100,17 @@ public sealed partial class CSharpBackend
     /// fallback. A list parameter is given as a <c>RepeatedField</c> of its own, and anything else as it is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A list parameter is an <c>IReadOnlyList</c> (<see cref="ParameterTypeName"/>), and every other place a list is
     /// held declares a <c>RepeatedField</c>, which C# does not convert one to. A copy is what the language says a
     /// stored list is anyway (spec 14.1), and where nothing changes it cannot be told from the parameter itself.
+    /// </para>
+    /// <para>
+    /// So every place generated code holds a value writes it through this or <see cref="StoredValue"/>, and a new one
+    /// must too: one that writes <see cref="Expression"/> straight into a <c>RepeatedField</c> builds for every list
+    /// but a parameter. The alternative, a <c>RepeatedField</c> parameter, would cost every consumer holding a
+    /// <c>List</c> or an array a copy, and the type a consumer passes is the one that cannot change later.
+    /// </para>
     /// </remarks>
     private static string Held(IrExpression value, Placement placement, string receiverName = ReceiverName)
     {
