@@ -723,19 +723,19 @@ public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
     /// would show through both.
     /// </para>
     /// <para>
-    /// Only a literal is exempt, because a literal is built where it is stored and nothing else can
-    /// hold it. A method's result is not: the method may have returned a field of its receiver, which
-    /// is still the receiver's.
+    /// Only a literal is exempt, a message literal or a list, because a literal is built where it is
+    /// stored and nothing else can hold it. A method's result is not: the method may have returned a
+    /// field of its receiver, which is still the receiver's.
     /// </para>
     /// <para>
-    /// A repeated value is copied too. No field is ever given one, since a literal takes only a list
-    /// (spec 13.2), but a local can hold one (#13), and a C# <c>RepeatedField</c> is a reference whose
-    /// elements are the messages the field holds: a change made to an element through the local would
-    /// otherwise be a change to the field. C++ copies it, elements and all, as it copies a message.
-    /// A map is copied for the same reason, since a C# <c>MapField</c> is a reference too (#11).
+    /// A repeated value is copied too, into a local (#13) or a field (spec 14.1). A C#
+    /// <c>RepeatedField</c> is a reference whose elements are the messages the field holds: a change
+    /// made to an element through the local would otherwise be a change to the field. C++ copies it,
+    /// elements and all, as it copies a message. A map is copied for the same reason, since a C#
+    /// <c>MapField</c> is a reference too (#11).
     /// </para>
     /// </remarks>
-    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType or MapType && this is not IrMessageLiteral;
+    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType or MapType && this is not (IrMessageLiteral or IrList);
 }
 
 /// <summary>The implicit receiver of the enclosing method.</summary>
@@ -1296,13 +1296,17 @@ public sealed record IrMessageLiteral(
 /// </remarks>
 public sealed record IrFieldInitializer(FieldDescriptor Field, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
-/// <summary>The elements a repeated field is given, <c>[first, second]</c>, in order (spec 13.2).</summary>
+/// <summary>A list, <c>[first, second]</c>: its elements, in order (spec 14.1, 13.2).</summary>
 /// <remarks>
 /// <para>
-/// An expression, so that a field's value is one slot whatever the field is, but a value nowhere
-/// except as a repeated field's: the language has no list values, and the binder builds one only
-/// where a repeated field is given one. Its type is the field's, which is what lets a value of that
-/// type stand in the same slot once a field may be given a whole repeated value (spec 30).
+/// A value wherever a value is: a repeated field's contents in a message literal, a local's, an
+/// argument or a result. Its type is the list's, which a field's list takes from the field, and a list
+/// anywhere else from what is expected of it or from its elements.
+/// </para>
+/// <para>
+/// It is built where it is written, so storing it stores no copy of it
+/// (<see cref="IrExpression.IsCopiedWhenStored"/>). Each element that is a message is stored in it as
+/// a field's message is: a copy, unless it is a literal.
 /// </para>
 /// </remarks>
 public sealed record IrList(RepeatedType ListType, IReadOnlyList<IrExpression> Elements, SourceSpan Span)

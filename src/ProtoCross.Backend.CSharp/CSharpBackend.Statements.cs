@@ -1,6 +1,7 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
 
@@ -95,6 +96,13 @@ public sealed partial class CSharpBackend
                 EmitStoreThroughAReach(writer, assignment, body);
                 break;
 
+            // A repeated field's property has no setter, so a whole list is put in it in place of what it held.
+            case IrFieldAssignment { Target.Type: RepeatedType } assignment:
+                writer.WriteLine(
+                    $"{CSharpRuntime.CollectionsTypeName}.Replace({WritableField(assignment.Target, placement)}, "
+                    + $"{StoredValue(assignment.Value, placement, ReceiverName)});");
+                break;
+
             case IrFieldAssignment assignment:
                 EmitValueFirstWhereItReadsAnElement(
                     writer,
@@ -123,7 +131,7 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrReturn returnStatement:
-                writer.WriteLine($"return {Expression(returnStatement.Value!, placement)};");
+                writer.WriteLine($"return {Held(returnStatement.Value!, placement)};");
                 break;
 
             case IrForEach forEach:

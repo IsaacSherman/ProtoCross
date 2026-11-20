@@ -109,9 +109,72 @@ public static class CSharpRuntime
             EmitWrappers(writer);
             writer.WriteLine();
             EmitRefusals(writer);
+            writer.WriteLine();
+            EmitCollections(writer);
         }
 
         return writer.ToString();
+    }
+
+    /// <summary>The class <see cref="EmitCollections"/> declares, as generated code names it.</summary>
+    public const string CollectionsTypeName = "global::ProtoCross.Runtime.ProtoCrossCollections";
+
+    /// <summary>
+    /// Emits the copy of a list a method was given, which a local or a field stores, and the store of a whole list
+    /// into a repeated field (spec 14.1, 18).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list parameter is an <c>IReadOnlyList</c>, so that a caller can pass a <c>List</c>, an array or a
+    /// message's field without copying it (spec 24.1). That has no <c>Clone</c>, which every other list the
+    /// generated code holds is copied with, so its copy is built here: a <c>RepeatedField</c> of its own,
+    /// each message in it cloned, as <c>RepeatedField.Clone</c> clones them. A <c>RepeatedField</c> passed as
+    /// the parameter is cloned as it is anywhere else.
+    /// </para>
+    /// <para>
+    /// protoc declares a repeated field's property with no setter, so assigning one empties and fills it. The
+    /// call reaches the field before it evaluates the copy, which C# evaluates arguments in the order of, so the
+    /// field is reached first and set last, as any field is (spec 9.3).
+    /// </para>
+    /// </remarks>
+    private static void EmitCollections(SourceWriter writer)
+    {
+        const string list = "global::Google.Protobuf.Collections.RepeatedField<T>";
+
+        writer.WriteLine("/// <summary>What generated code does with a list it was given rather than holds.</summary>");
+        using (writer.Block("internal static class ProtoCrossCollections"))
+        {
+            writer.WriteLine("/// <summary>A list of its own holding what <paramref name=\"source\"/> holds, each message a copy.</summary>");
+            using (writer.Block($"public static {list} CopyOf<T>(global::System.Collections.Generic.IReadOnlyList<T> source)"))
+            {
+                using (writer.Block($"if (source is {list} repeated)"))
+                {
+                    writer.WriteLine("return repeated.Clone();");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine($"var copy = new {list}();");
+                using (writer.Block("foreach (var element in source)"))
+                {
+                    writer.WriteLine("copy.Add(element is global::Google.Protobuf.IDeepCloneable<T> message ? message.Clone() : element);");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return copy;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>");
+            writer.WriteLine("/// Gives a repeated field what <paramref name=\"copy\"/> holds, in place of what it held. Its property has");
+            writer.WriteLine("/// no setter, so it is emptied and filled. The copy is taken before this is called, so a field given");
+            writer.WriteLine("/// itself is given what it held.");
+            writer.WriteLine("/// </summary>");
+            using (writer.Block($"public static void Replace<T>({list} field, {list} copy)"))
+            {
+                writer.WriteLine("field.Clear();");
+                writer.WriteLine("field.Add(copy);");
+            }
+        }
     }
 
     /// <summary>The class <see cref="EmitMaps"/> declares, as generated code names it.</summary>

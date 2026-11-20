@@ -87,7 +87,22 @@ public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, S
 /// A syntactic type reference. Names are resolved later against protobuf descriptors, since
 /// spec 8.1 defines the ProtoCross type universe as exactly the protobuf type universe.
 /// </summary>
-public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNode(Span);
+public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// The <c>repeated</c> of <c>repeated double</c>, where the reference names a list of what
+    /// <see cref="Name"/> names, or null where it names that type itself (spec 8.1).
+    /// </summary>
+    /// <remarks>
+    /// A span beside the element's name rather than a reference to an element type, because lists do
+    /// not nest: <c>repeated repeated double</c> is refused as it is parsed, so the element is always
+    /// a name. Init-only, so the references that name a type itself are built as they always were.
+    /// </remarks>
+    public SourceSpan? RepeatedWord { get; init; }
+
+    /// <summary>Whether the reference names a list, <c>repeated T</c>.</summary>
+    public bool IsRepeated => RepeatedWord is not null;
+}
 
 /// <summary>
 /// The <c>Invoice.total_cents</c> of a test declaration: which message, and which of its methods.
@@ -607,9 +622,8 @@ public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : Sy
 /// entries of a map (spec 13.2, 14.2).
 /// </summary>
 /// <remarks>
-/// A value only where a map field is given one, as a <see cref="ListExpression"/> is only where a
-/// repeated field is. It is braces without the <c>new T</c> a message literal begins with, because the
-/// entry's type is the field's and has no name an author could write.
+/// A value only where a map field is given one. It is braces without the <c>new T</c> a message literal
+/// begins with, because the entry's type is the field's and has no name an author could write.
 /// </remarks>
 public sealed record MapEntryExpression(IReadOnlyList<FieldInitializer> Fields, SourceSpan Span) : Expression(Span);
 
@@ -666,11 +680,11 @@ public sealed record MessageLiteralExpression(
     IReadOnlyList<FieldInitializer> Fields,
     SourceSpan Span) : Expression(Span);
 
-/// <summary>The values of a repeated field, in order: <c>items: [first, second]</c> (spec 13.2).</summary>
+/// <summary>A list, in order: <c>[first, second]</c> (spec 14.1, 13.2).</summary>
 /// <remarks>
-/// A value only where a field is given one. There are no list values in the language, so a list is
-/// the whole of a repeated field's contents rather than something that could be stored or passed.
-/// Lists do not nest, because no protobuf field holds a list of lists.
+/// A value wherever a value is: a repeated field's contents, a local's, an argument or a result. Lists
+/// do not nest, because no protobuf field holds a list of lists, so a list of them is refused where it
+/// is bound.
 /// </remarks>
 public sealed record ListExpression(IReadOnlyList<Expression> Elements, SourceSpan Span) : Expression(Span);
 

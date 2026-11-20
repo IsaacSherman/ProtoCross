@@ -780,6 +780,26 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor TestNameEndsInWhitespace =
         new("PC0146", DiagnosticSeverity.Error, "test name ends in whitespace");
 
+    // ------------------------------------------------------- lists
+
+    /// <summary>
+    /// A list of lists: a type written <c>repeated repeated T</c>, or a list whose element is itself a
+    /// list (spec 8.1, 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor NestedList =
+        new("PC0147", DiagnosticSeverity.Error, "lists do not nest");
+
+    /// <summary>
+    /// An element of a list whose type is not the list's element type, whether the list's type was
+    /// expected where it is written or taken from its other elements (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ListElementTypeMismatch =
+        new("PC0148", DiagnosticSeverity.Error, "list element has the wrong type");
+
+    /// <summary>An empty list written where nothing says what it would hold (spec 14.1).</summary>
+    public static readonly DiagnosticDescriptor EmptyListWithoutAType =
+        new("PC0149", DiagnosticSeverity.Error, "empty list has no type");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

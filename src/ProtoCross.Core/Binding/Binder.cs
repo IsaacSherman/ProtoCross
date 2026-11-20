@@ -631,6 +631,7 @@ public sealed partial class Binder
             MembershipExpression membership => BindMembership(membership, scope, context),
             IndexExpression index => BindLookup(index, scope, context),
             MapEntryExpression entry => BindStrayEntry(entry, scope, context),
+            ListExpression list => BindListValue(list, scope, context, expectedType),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),

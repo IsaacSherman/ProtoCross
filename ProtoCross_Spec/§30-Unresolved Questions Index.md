@@ -345,10 +345,10 @@ backends.
 
 #### 30.14.1 ~~Repeated field mutation rules for current implementation~~
 
-Decided: an element changes through the name a `for` binds; a repeated field cannot be assigned,
-cleared or have an element removed; an element is appended with `place.append(value);`, to a field
-or to a local holding a repeated value; and nothing inside a `for` may change the field it traverses,
-an append to it included
+Decided: an element changes through the name a `for` binds; a repeated field may be assigned a whole
+list, which it stores a copy of (since #218), and cannot be cleared or have an element removed; an
+element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
+and nothing inside a `for` may change the list it traverses, an append to it included
 ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations),
 [18](./§18-Mutability.md#18-mutability)).
 
@@ -371,6 +371,15 @@ Decided: yes, if indexing is ever added. An index out of range is answered expli
 **Post-1.0.** A repeated field of entries made into a map, the last of a key winning, may be added later.
 
 Asked in [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps).
+
+#### 30.14.6 List equality
+
+**Post-1.0.** Should `==` compare two lists, element by element? It is refused for now, as it is for two
+messages ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)). A test may still expect a list, which it compares element by element
+([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), and a list of messages would wait on what makes two messages equal
+([30.13.3](#30133-message-equality)).
+
+Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
 
 ### 30.15 Control Flow
 

@@ -4,19 +4,23 @@
 
 Implemented operation set:
 
-- Iterate in order with `for <name> in <repeated expression> { ... }`.
-- Read the repeated field as a collection value for iteration.
-- Change the element a `for` is given, where the method may change the field
+- Write a list as a value, `[first, second]`, of the type `repeated T`, and hold one in a local, pass
+  one as an argument, and return one ([8.1](./§8-Type%20System.md#81-type-sources)).
+- Iterate any list in order with `for <name> in <list> { ... }`.
+- Change the element a `for` is given, where the method may change the list
   ([18](./§18-Mutability.md#18-mutability)).
 - Append an element to the end with `place.append(value);`, where the method may change the place
   ([18](./§18-Mutability.md#18-mutability)).
+- Give a repeated field a whole list, in a message literal or by assignment, which it stores a copy of
+  ([13.2](./§13-Messages.md#132-message-construction), [18](./§18-Mutability.md#18-mutability)).
 
 Not implemented:
 
 - Length.
 - Indexing.
-- Clear, and removing an element. Decided against: a field that cannot be emptied keeps what a guard
-  shows set ([13.1](./§13-Messages.md#131-field-access)).
+- Clear, and removing an element. Decided against. A field is emptied only by assigning it a list,
+  `items = [];`, which ends every fact shown about what it held, as assigning any field does
+  ([13.1](./§13-Messages.md#131-field-access), [18](./§18-Mutability.md#18-mutability)).
 - Element assignment.
 
 Example syntax:
@@ -39,16 +43,65 @@ extend Invoice {
 }
 ```
 
+```protocross
+extend Interval {
+    fn bounds(scale: double) -> repeated double {
+        var products: repeated double = [low * scale, high * scale];
+
+        var minimum = low * scale;
+        var maximum = minimum;
+        for product in products {
+            if product < minimum {
+                minimum = product;
+            }
+            if product > maximum {
+                maximum = product;
+            }
+        }
+
+        return [minimum, maximum];
+    }
+}
+```
+
 Normative Requirement:
 
-- `for` may iterate only a protobuf repeated field value. Iterating anything else is `PC0033`.
-- Iteration order is the protobuf repeated-field order.
+- **A list is a value**, `[first, second]`, written wherever an expression may be: a local's
+  initializer, an argument, a result, a fallback, a repeated field's value. A comma after the last
+  element is allowed. Its type is `repeated T` ([8.1](./§8-Type%20System.md#81-type-sources)).
+  - Where a list's type is expected -- a local declared `repeated T`, a parameter, a result, a field --
+    each element is bound as a value of `T`, so a literal takes `T`, as one does wherever a type is
+    expected ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). An element of another type is `PC0148`.
+  - Where nothing says what a list holds, its elements do. Every element has one type, which is that
+    of the first element that is not a numeric literal; a literal takes it, as a literal operand takes
+    the other operand's ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). A list of literals alone has their natural type, and `double` where
+    any of them is a floating-point literal, so `[1, 2.5]` is a `repeated double`. An element of another
+    type is `PC0148`.
+  - An empty list where nothing says what it holds is `PC0149`: write its type where it is declared,
+    `var items: repeated double = [];`.
+  - Lists do not nest: a list holding a list, or a repeated value, is `PC0147`, and so is
+    `repeated repeated T`. A list holding a map is `PC0148`.
+  - Its elements are evaluated in the order they are written
+    ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)), and each message among them is stored as a copy, unless it is a literal,
+    as a field's message is ([13.2](./§13-Messages.md#132-message-construction)).
+- **A stored list is a copy.** A local, or a field, given a list holds a copy of it, messages and all,
+  so nothing done through either shows through the other
+  ([13.2](./§13-Messages.md#132-message-construction)). A list written in place is exempt, since nothing else holds it.
+- **A list is passed and returned as any value is.** A parameter of type `repeated T` is read-only, as
+  every parameter is: it is not appended to (`PC0094`) or assigned (`PC0034`), and neither are its
+  messages changed through it ([16.2](./§16-Methods.md#162-parameters-and-returns), [18](./§18-Mutability.md#18-mutability)). It is not copied as it is passed, which
+  nothing could tell. A list returned belongs to the caller, which stores a copy of it, under the rule
+  above, wherever it stores it.
+- `for` may iterate any list: a repeated field, a local, a parameter, a call's result, or a list
+  written in place. Iterating anything else is `PC0033`.
+- Iteration order is the list's order, which for a field is the protobuf repeated-field order.
 - The name a `for` binds is read-only: assigning it is `PC0034`, `n = n + 2;` included. To work
   with a changed value, copy it into a local.
-- The element itself may change, through that name, when the method may change the field it is
+- The element itself may change, through that name, when the method may change the list it is
   an element of ([18](./§18-Mutability.md#18-mutability)): a field of it may be assigned, and a `mut fn` called on
-  it. `for item in items { item.add_trait(trait); }` is allowed, because the field still holds the
-  same elements in the same order.
+  it. `for item in items { item.add_trait(trait); }` is allowed, because the list still holds the
+  same elements in the same order. A local's list is the method's own, so its elements may always
+  change, and a parameter's never may.
 - **`place.append(value);` adds `value` to the end of a repeated value the method may change**: a
   repeated field of a message it may change, at any depth, or a local holding a repeated value, which
   is the method's own copy ([18](./§18-Mutability.md#18-mutability), [13.2](./§13-Messages.md#132-message-construction)).
@@ -63,15 +116,16 @@ Normative Requirement:
     way is set, and needs no guard, and setting a member of a `oneof` that way unsets the others.
   - It reaches its target first, then evaluates its value, and adds the element last
     ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A value that counts the elements counts the ones that were there.
-  - Appending to a parameter's field, to the receiver of a method that is not `mut`, or to a value
-    nothing holds -- a call's result, a literal -- is `PC0094`.
+  - Appending to a list parameter, to a parameter's field, to the receiver of a method that is not
+    `mut`, or to a value nothing holds -- a call's result, a literal -- is `PC0094`.
   - `append` is not a keyword. A method a source declares on a message under that name is called as
     any method is.
-- **While a `for` traverses a repeated field, nothing inside it may change that field's
-  membership, order or identity** (`PC0096`). That refuses anything that could, whether or not it
-  would:
-  - assigning the field, the message holding it, or anything further out, which replaces it;
-  - appending to the field, which adds to it;
+- **While a `for` traverses a repeated field, or a local holding a list, nothing inside it may change
+  that list's membership, order or identity** (`PC0096`). That refuses anything that could, whether or
+  not it would:
+  - assigning the field or the local, the message holding it, or anything further out, which replaces
+    it;
+  - appending to it, which adds to it;
   - assigning, or writing through, another member of a `oneof` holding it, which unsets it;
   - calling a `mut fn` on the message holding it, or on anything further out, which may change it.
 
@@ -88,7 +142,9 @@ Open Questions:
 
 - ~~Should repeated field mutation ever be allowed?~~ Decided: an element may change through the name
   a `for` binds, and a field, or a local holding a repeated value, may be appended to with
-  `place.append(value);`. Nothing may be cleared or removed ([18](./§18-Mutability.md#18-mutability)).
+  `place.append(value);`. A field may be assigned a whole list. Nothing may be cleared or removed
+  ([18](./§18-Mutability.md#18-mutability)).
+- [List equality](./§30-Unresolved%20Questions%20Index.md#30146-list-equality), post-1.0
 
 ### 14.2 Maps
 

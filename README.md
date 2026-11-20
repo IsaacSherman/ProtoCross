@@ -210,14 +210,21 @@ Implemented:
   now a reserved word.
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
-  `items: [a, b]`, and the values are evaluated in the order written. A literal shows no field to be
-  present, so a message field read straight off one still needs a guard. The spec has the rules in
-  section 13.2.
+  `items: [a, b]` or any list of its type, and the values are evaluated in the order written. A
+  literal shows no field to be present, so a message field read straight off one still needs a guard.
+  The spec has the rules in section 13.2.
+- Lists. `var products: repeated double = [low * scale, high * scale];` holds a list in a local, and
+  `repeated T` is a parameter's, a result's or a refusal's type too. A list is written wherever a
+  value can be, takes its element type from what is expected of it or from its elements, and is
+  iterated with `for`. A stored list is a copy, messages and all, and a repeated field takes a whole
+  one, `values: products` in a literal or `values = products;`. A test expects a list element by
+  element. The spec has the rules in section 14.1.
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
-  element to a repeated value. Nothing clears a repeated value or removes its elements, though a map
-  has `remove` and `clear`, as above. A mutating call stands on its own rather
+  element to a repeated value. A repeated field is assigned a whole list, which it stores a copy of.
+  Nothing else clears a repeated value or removes its elements, though a map has `remove` and `clear`,
+  as above. A mutating call stands on its own rather
   than inside a larger expression, and nothing inside a `for` may change the field it traverses. The
   spec has the rules in section 18.
 - Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
@@ -252,9 +259,10 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `==` between two messages (a test compares an expected literal by the fields it
-sets instead), asking which member of a `oneof` is set, and the Python backend, which is planned
-but not yet started. A `oneof`'s members
+Not implemented: `==` between two messages or two lists (a test compares an expected literal by the
+fields it sets, and an expected list element by element, instead), a list's length and reading one of
+its elements, expecting a list of messages in a test, asking which member of a `oneof` is set, and the
+Python backend, which is planned but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
 than emitting something whose semantics differ from the spec.

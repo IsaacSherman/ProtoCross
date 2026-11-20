@@ -54,9 +54,12 @@ public sealed partial class Binder
     /// to.
     /// </summary>
     private static bool IsNumericLiteral(Expression expression)
-        => IntegerLiteralOf(expression) is not null
-            || expression is FloatLiteralExpression
-                or UnaryExpression { Operator: UnaryOperatorKind.Negate, Operand: FloatLiteralExpression };
+        => IntegerLiteralOf(expression) is not null || IsFloatingPointLiteral(expression);
+
+    /// <summary>Whether <paramref name="expression"/> is a floating-point literal as written, a <c>-</c> written directly on it included.</summary>
+    private static bool IsFloatingPointLiteral(Expression expression)
+        => expression is FloatLiteralExpression
+            or UnaryExpression { Operator: UnaryOperatorKind.Negate, Operand: FloatLiteralExpression };
 
     /// <summary>
     /// Binds an integer literal in the type expected of it where that is a numeric type, and in its

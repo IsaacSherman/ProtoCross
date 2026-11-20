@@ -388,7 +388,7 @@ public sealed partial class Binder
     /// <remarks>
     /// One comparison for both, because a refusal is a value as a result is: a literal of a message says which
     /// of its fields to compare, which is the one comparison two messages have until spec 13.3 decides what
-    /// makes them equal, and any other value is compared under <c>==</c>.
+    /// makes them equal, a list is compared element by element, and any other value is compared under <c>==</c>.
     /// </remarks>
     private IrTestExpectation BindExpectedValue(Expression written, SourceSpan span, Outcome outcome, MethodContext context)
     {
@@ -401,8 +401,17 @@ public sealed partial class Binder
         // Refused whatever the value is, because what is missing is not a value but a meaning
         // for '=='. The value is still bound, for the names in it, and not checked against the
         // return type: a second diagnostic would be about a comparison that cannot be made.
-        var cannotCompare = !HasEquality(outcome.Type);
-        if (cannotCompare && outcome.Type is MessageType returned)
+        var cannotCompare = !CanBeExpected(outcome.Type);
+        if (cannotCompare && outcome.Type is RepeatedType { ElementType: MessageType } messages)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MessageReturnCannotBeExpected,
+                $"'{signature.Name}' {outcome.Verb} '{messages.DisplayName}', and a list of messages cannot be expected yet.",
+                span,
+                "Expect a list of scalars, enums, strings or bytes instead: test a method that returns the field you "
+                + "want to check of each message (spec 25.3).");
+        }
+        else if (cannotCompare && outcome.Type is MessageType returned)
         {
             _diagnostics.Report(
                 DiagnosticCodes.MessageReturnCannotBeExpected,
@@ -436,6 +445,19 @@ public sealed partial class Binder
 
         return new IrTestReturnExpectation(value, span);
     }
+
+    /// <summary>
+    /// Whether a test can compare a value of <paramref name="type"/> with the one it expects: one <c>==</c>
+    /// compares, or a list of them, element by element (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// A list is compared although <c>==</c> refuses two lists (spec 9.2), because a test compares what a
+    /// method gave with what its author wrote, and as many elements, each equal, is the one thing that can
+    /// mean. What <c>==</c> on two lists should mean in a program is left open. A list of messages waits for
+    /// elements that can be read one at a time, which each expected literal's fields would be checked on.
+    /// </remarks>
+    private static bool CanBeExpected(PlType type)
+        => type is RepeatedType list ? HasEquality(list.ElementType) : HasEquality(type);
 
     /// <summary>
     /// Binds <c>expect return new T { … };</c> on a method that returns a message: the fields the literal

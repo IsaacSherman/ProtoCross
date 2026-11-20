@@ -180,13 +180,10 @@ public partial class MutationTests
         TheOnly(Compile("mut fn f() { balance = \"one\"; }"), "PC0035");
     }
 
+    /// <summary>A repeated field is assigned a whole list of its type, which it stores a copy of (spec 18, 14.1).</summary>
     [Fact]
-    public void ARepeatedFieldCannotBeAssigned()
-    {
-        var refused = TheOnly(Compile("mut fn f(other: Ledger) { entries = other.entries; }"), "PC0034");
-
-        Assert.Contains("repeated field", refused.Message, StringComparison.Ordinal);
-    }
+    public void ARepeatedFieldIsAssignedAWholeList()
+        => AssertOk(Compile("mut fn f(other: Ledger) { entries = other.entries; }"));
 
     // ---------------------------------------------------------------- names that cannot be assigned
 

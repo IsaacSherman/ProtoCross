@@ -208,7 +208,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
         // A factory's method is called on nothing, so it is a plain static method of its class.
         var parameters = method.Signature.HasReceiver ? [$"this {receiverType} {ReceiverName}"] : new List<string>();
-        parameters.AddRange(method.Parameters.Select(p => $"{TypeName(p.Type)} {Escape(p.Name)}"));
+        parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
         parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
         var access = method.Signature.Kind is IrMethodKind.Helper ? "private" : "public";
@@ -253,6 +253,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrEnumValue enumValue => EnumValue(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement, receiverName),
+        IrList list => ListLiteral(list, placement, receiverName),
         IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
         IrMapContains contains
             => $"{Expression(contains.Map, placement, receiverName)}.ContainsKey({Expression(contains.Key, placement, receiverName)})",

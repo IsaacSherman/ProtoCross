@@ -22,6 +22,7 @@ method_decl       = [ "mut" | "helper" ] "fn" identifier
 
 parameter_list    = parameter { "," parameter };
 parameter         = identifier ":" type_ref;
+type_ref          = [ "repeated" ] qualified_name;                  (* a type keyword, or a message's or enum's name *)
 
 block             = "{" { statement } "}";
 
@@ -74,7 +75,7 @@ message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an express
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
 field_value       = list_value | expression;
-list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";
+list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";   (* a primary expression too *)
 list_element      = map_entry | expression;
 map_entry         = "{" [ field_list ] "}";                         (* a map field's entry *)
 ```
@@ -92,7 +93,12 @@ Normative Requirement:
   identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). A message literal is a primary expression, so it may appear
   wherever an expression may, an unparenthesized `if` or `while` condition included: the brace after
   `new` and a type name is the literal's, and the body's is the first one after it. A list is a
-  repeated field's value only.
+  primary expression too, so it may appear wherever an expression may
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+- `repeated` is not a keyword. It begins a list's type, `repeated double`, only where a type follows
+  it, a name or a type keyword, and is an identifier anywhere else
+  ([6.4](./§6-Lexical%20Structure.md#64-keywords), [8.1](./§8-Type%20System.md#81-type-sources)). A second `repeated` after the first, `repeated repeated
+  double`, is `PC0147`, because lists do not nest.
 - `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
 - `factory` is not a keyword. At the start of a top-level declaration it begins a factory block,

@@ -44,6 +44,9 @@ Open Questions:
 Normative Requirements:
 
 - Parameters are named and typed: `name: type`.
+- A parameter, a result and a refusal may each be a list, `repeated T`, as a local may
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A list parameter is the caller's, and read-only as every parameter is; a list
+  returned is the caller's own.
 - `void` is allowed only as an omitted or explicit method return type. It is not allowed for
   parameters or variables (`PC0024`).
 - Methods have either one return value or no return value. Multiple return values are not supported.

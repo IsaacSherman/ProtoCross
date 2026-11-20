@@ -405,6 +405,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),
+        IrList list => ListLiteral(list, placement),
         IrMapLookup lookup => EmitMapLookup(lookup, placement),
         IrMapContains contains => $"{Expression(contains.Map, placement)}.contains({Expression(contains.Key, placement)})",
         IrMapQuery query => EmitMapQuery(query, placement),

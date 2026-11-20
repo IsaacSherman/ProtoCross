@@ -33,7 +33,7 @@ public sealed partial class CSharpBackend
         var call = EmitCall(refusable.Call, placement, receiverName, $"out var {built}", "out _");
         var otherwise = refusable.OnRefused switch
         {
-            RefusalBehavior.Fallback => Expression(refusable.Fallback!, placement, receiverName),
+            RefusalBehavior.Fallback => Held(refusable.Fallback!, placement, receiverName),
             RefusalBehavior.Fail
                 => $"{CSharpRuntime.RefusalsTypeName}.Fail<{TypeName(refusable.Type)}>({FormatString(refusable.Call.Target.QualifiedName)})",
             _ => throw new ArgumentOutOfRangeException(
@@ -96,7 +96,7 @@ public sealed partial class CSharpBackend
     {
         if (value is not null)
         {
-            writer.WriteLine($"{outs.Result} = {Expression(value, placement)};");
+            writer.WriteLine($"{outs.Result} = {Held(value, placement)};");
         }
 
         writer.WriteLine($"{outs.Refusal} = default;");
@@ -135,7 +135,7 @@ public sealed partial class CSharpBackend
             writer.WriteLine($"{outs.Result} = default;");
         }
 
-        writer.WriteLine($"{outs.Refusal} = {Expression(refusal, placement)};");
+        writer.WriteLine($"{outs.Refusal} = {Held(refusal, placement)};");
         writer.WriteLine("return false;");
     }
 

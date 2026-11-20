@@ -189,12 +189,15 @@ public sealed partial class Binder
         return new IrFieldInitializer(descriptorField, value, field.Span);
     }
 
-    /// <summary>What a repeated field is given: a list of its elements, and nothing else yet (spec 13.2).</summary>
+    /// <summary>
+    /// What a repeated field is given: a list of its elements, or any list of its type, which it stores a copy
+    /// of (spec 13.2).
+    /// </summary>
     /// <remarks>
-    /// A value of the field's whole repeated type -- <c>items: other.items</c> -- is refused for now,
-    /// with help that says so rather than help that only says to write a list. Whether it may be given
-    /// whole is open (spec 30), and refusing it is what keeps either answer open: allowing it later
-    /// accepts more, where taking it back would break code.
+    /// A list written in place is bound element by element against the field (<see cref="BindList"/>), so an
+    /// element of the wrong type is the field's mismatch. Any other value is bound as a list the field expects,
+    /// <c>items: other.items</c> or <c>items: kept()</c>, and stored as a copy, messages and all, as a local
+    /// stores one (<see cref="IrExpression.IsCopiedWhenStored"/>).
     /// </remarks>
     private IrExpression BindRepeatedValue(
         FieldDescriptor descriptorField,
@@ -207,10 +210,10 @@ public sealed partial class Binder
             return BindList(descriptorField, list, scope, context);
         }
 
-        var bound = BindExpression(field.Value, scope, context, null);
-        var elementType = TypeFactory.FromFieldValue(descriptorField).DisplayName;
+        var fieldType = TypeFactory.FromField(descriptorField);
+        var bound = BindExpression(field.Value, scope, context, fieldType);
 
-        if (bound.Type is ErrorType)
+        if (bound.Type is ErrorType || TypesMatch(fieldType, bound.Type))
         {
             return bound;
         }
@@ -218,10 +221,12 @@ public sealed partial class Binder
         _diagnostics.Report(
             DiagnosticCodes.LiteralFieldTypeMismatch,
             bound.Type is RepeatedType
-                ? $"Field '{descriptorField.Name}' takes its elements in a list, not a whole repeated value."
-                : $"Field '{descriptorField.Name}' is repeated and takes a list of '{elementType}' values.",
+                ? $"Field '{descriptorField.Name}' holds '{fieldType.DisplayName}', not '{bound.Type.DisplayName}'."
+                : $"Field '{descriptorField.Name}' is repeated and takes a list of '{TypeFactory.FromFieldValue(descriptorField).DisplayName}' values.",
             field.Span,
-            $"Write '{descriptorField.Name}: [value, ...]', with one value in the list if there is one.");
+            bound.Type is RepeatedType
+                ? "ProtoCross applies no implicit conversion, to a list's elements or anywhere else (spec 10.3)."
+                : $"Write '{descriptorField.Name}: [value, ...]', with one value in the list if there is one.");
 
         return bound;
     }
@@ -264,9 +269,8 @@ public sealed partial class Binder
     /// bound, for the names written inside it.
     /// </para>
     /// <para>
-    /// A list as one element of another is refused here and never handed to an expression binder,
-    /// which knows no lists. The parser does not build one, because a list's elements are
-    /// expressions, but a tree built any other way may, and binding it must not throw.
+    /// A list given as one element of a field's list is refused here, as a field's mismatch, since no
+    /// protobuf field holds a list of lists. Its elements are still bound, for the names in them.
     /// </para>
     /// </remarks>
     private IrExpression BindStoredValue(
@@ -324,10 +328,10 @@ public sealed partial class Binder
     /// be kept among what the node standing there refused (<see cref="IrNode.Refused"/>).
     /// </summary>
     /// <remarks>
-    /// A list is bound element by element, because no expression binder is handed one: a list is only
-    /// ever a repeated field's value, and this one has no field. An entry of a map is bound field by
-    /// field, for the same reason: it is only ever an element of a map field's list. Either is an
-    /// error holding what was written in it.
+    /// A list is bound element by element, because it stands where a field's element was expected, and
+    /// bound as a list it would be refused a second time for its own type. An entry of a map is bound
+    /// field by field: it is only ever an element of a map field's list. Either is an error holding what
+    /// was written in it.
     /// </remarks>
     private IrExpression BindRefused(Expression value, Scope scope, MethodContext context) => value switch
     {

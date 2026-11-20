@@ -139,6 +139,11 @@ Contextual keywords:
   follows it, and is an identifier everywhere else, for the same reason. Nothing but the body's brace
   can follow a method's signature, so the parser reads it there whatever follows, and a refusal whose
   type is not written yet is still one, as a factory whose message is not named yet is.
+- `repeated` is not reserved. It begins a list's type ([8.1](./§8-Type%20System.md#81-type-sources)) where a name or a type keyword follows it,
+  and is an identifier everywhere else, for the same reason: protobuf lets a message be named
+  `repeated`, and a schema field or a local may be too. Where a name follows a type, the two words
+  read as a list's type, as they do for `refuses`: a method returning a message named `repeated` that
+  also refuses, `-> repeated refuses Refusal`, is read as returning a list.
 
 `refuse` and `on_refused` are reserved ([16.3.1](./§16-Methods.md#1631-refusals)), for `on_missing`'s reason below. `refuse` begins a
 statement as `return` does, and its value may begin with a `-` or a parenthesis, so the word and the one

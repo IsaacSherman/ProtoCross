@@ -14,8 +14,11 @@ Normative Requirements:
 - ProtoCross value types are protobuf scalar primitives, protobuf enums, and protobuf messages.
 - ProtoCross does not add non-protobuf numeric types such as `decimal`.
 - `void` is a method return marker only; it is not a protobuf value type and cannot be used for fields, variables, or parameters.
-- Repeated fields have a compiler type, `repeated <element>`, so they can be iterated, but there is
-  no source syntax for declaring a repeated local or parameter.
+- **A list's type is `repeated T`**, as protobuf writes a repeated field's: a repeated field's value,
+  and a local, a parameter, a result or a refusal a source declares, have it alike
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). `T` is a scalar, an enum or a message. Lists do not nest, as no protobuf field
+  holds a list of lists, so `repeated repeated T` is `PC0147`, and `repeated void` is `PC0024`. No type
+  reference names a map, so there is no list of maps.
 - There are no helper or result types. A method that cannot give its result refuses with a type it
   declares ([16.3.1](./§16-Methods.md#1631-refusals)), and the language has no type of its own to report an error with
   ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).

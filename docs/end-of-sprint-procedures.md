@@ -101,8 +101,10 @@ gh pr create --draft --base main --head sprintN-to-main --title "..." --body-fil
 
   Include an issue finished across several pull requests, one found along the way, and an umbrella
   whose sub-issues are now all done (sprint 5 closed #79). End the body with one `Closes #N.` for
-  each, then `Part of` the sprint's epic, which was #108 through sprint 6. Leave deferred issues and
-  the epic open. Sprint 7 belongs to no epic, so it ends with its `Closes` lines.
+  each, then `Part of` the sprint's epic: #108 through sprint 6, and #222 in sprint 8.
+  - Leave deferred issues open, and an epic that still has an open sub-issue.
+  - An epic whose sub-issues are all done is an umbrella like #79: it is closed, not named.
+  - Sprint 7 belonged to no epic, so it ended with its `Closes` lines.
 - **Turn Auto-fix on as soon as it opens:** `get_status`, then `bind_pr` if the pull request isn't
   reported, then `set_monitor` with `auto_fix` and `address_comments`.
 
@@ -159,5 +161,5 @@ Once the findings are fixed and the suite passes on the head:
   - point the sprint line in [language-1-workflow.md](language-1-workflow.md) at it, recording what
     sprint N carried and which pull request took it to `main`;
   - bump to the number after `main`'s version: `0.<N+1>.1`, unless a release from `main` has taken
-    it since. Sprint 7 opens at `0.7.2`, after `0.7.1`
+    it since. Sprint 8 opens at `0.8.1`, and sprint 7 opened at `0.7.2`, after the `0.7.1` release
     ([language-1-workflow.md](language-1-workflow.md#the-version-follows-the-sprint)).

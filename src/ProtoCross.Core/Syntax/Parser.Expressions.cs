@@ -742,6 +742,11 @@ public sealed partial class Parser
                 return inner;
             }
 
+            // A list is a value wherever a value is (spec 14.1), so it is parsed here rather than only
+            // where a field is given one.
+            case TokenKind.OpenBracket:
+                return ParseListValue(out height);
+
             default:
                 _diagnostics.Report(
                     DiagnosticCodes.ExpectedExpression,
