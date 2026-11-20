@@ -1,6 +1,11 @@
 ## 19. Error Handling Without Exceptions
 
-ProtoCross has no exceptions. The implemented failure model is:
+ProtoCross has no exceptions, because it translates behavior into many targets and no two of them
+implement exceptions alike. What may be caught, what unwinds, and what runs on the way out differ
+from one target to the next, so a failure written once could not be made to behave the same in each. The language keeps only the
+failures that every target can reproduce identically.
+
+The implemented failure model is:
 
 - Compile-time rejection where portability cannot be guaranteed.
 - `on_zero <fallback>` for recoverable integer division and modulo by zero.
