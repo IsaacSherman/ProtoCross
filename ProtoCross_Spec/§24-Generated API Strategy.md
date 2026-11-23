@@ -215,6 +215,13 @@ parameter is declared wide from the first. Where something holds a list paramete
 `RepeatedField`, its elements stored as a field's are, and an empty one is `new RepeatedField<T>()`. A
 repeated enum is a `RepeatedField` of the enum, as protoc declares one.
 
+**A list a method returns is the caller's own** ([16.2](./§16-Methods.md#162-parameters-and-returns)), as it is in C++, which returns the container
+by value. A C# list is a reference, so `return items;` returns `items.Clone()`: a method returns a copy of
+any list it does not own outright, a field, a parameter, or a local in a method that shares rather than
+copies into locals. A list literal, a call's result and a local the method copied into are returned as
+they are. A method that may refuse gives its `result` the same way, and a refusal's fallback is copied
+by the same rule, so a loop over what a call gives never traverses the receiver's own field.
+
 protoc declares a repeated field's property with no setter, so a whole list assigned to one is
 `ProtoCrossCollections.Replace(field, copy)`, which empties the field and adds what the copy holds. C#
 evaluates the arguments in order, so the field is reached, setting any unset message on the way, before

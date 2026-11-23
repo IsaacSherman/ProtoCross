@@ -71,7 +71,7 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrReturn returned when body.Outs is { } outs:
-                EmitBuilt(writer, returned.Value, outs, placement);
+                EmitBuilt(writer, returned.Value, outs, placement, body.CopiesIntoLocals);
                 break;
 
             case IrRefuse refused:
@@ -131,7 +131,7 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrReturn returnStatement:
-                writer.WriteLine($"return {Held(returnStatement.Value!, placement)};");
+                writer.WriteLine($"return {Returned(returnStatement.Value!, placement, body.CopiesIntoLocals)};");
                 break;
 
             case IrForEach forEach:

@@ -241,6 +241,23 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         Assert.DoesNotContain($"OrderProbe.{scenario}_second has no such key", output, StringComparison.Ordinal);
     }
 
+    /// <summary>C++ ends the program at the element of a list written first (spec 14.1, 9.3).</summary>
+    /// <remarks>
+    /// Each element of local_lists' first_element_first is a lookup of an empty map of its own that ends the
+    /// program, naming its map, so the test passes whichever ends it; what the driver passed on says which did. C#
+    /// is not asked, for <see cref="CppEndsTheProgramAtTheOperandWrittenFirst"/>'s reason.
+    /// </remarks>
+    [Fact]
+    public void CppEndsAListAtTheElementWrittenFirst()
+    {
+        SkipIfUnavailable(_fixture.Cpp);
+
+        var output = _fixture.Cpp.DriverOutputs["local_lists.tests.cc"];
+
+        Assert.Contains("Basket.order_first has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Basket.order_second has no such key", output, StringComparison.Ordinal);
+    }
+
     private void AssertBackendAgrees(ConformanceRun run)
     {
         SkipIfUnavailable(run);

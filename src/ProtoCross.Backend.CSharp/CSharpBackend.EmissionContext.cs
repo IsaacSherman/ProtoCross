@@ -83,8 +83,7 @@ public sealed partial class CSharpBackend
 
         /// <summary>
         /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
-        /// changes a message, a copy of the list a call returns, or a field of a copy of the call's result
-        /// it is read from.
+        /// changes a message, a field of a copy of the call's result it is read from.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -95,28 +94,14 @@ public sealed partial class CSharpBackend
         /// else, and is traversed as it is.
         /// </para>
         /// <para>
-        /// A call that returns a list may return a field of the receiver itself, <c>return items;</c>,
-        /// and a list returned is the caller's own (spec 14.1): C++ traverses the temporary it returns by
-        /// value, and C# a <c>Clone</c> of it, messages and all, so a change the body makes to the field's
-        /// messages does not reach the ones the loop is given.
+        /// A list a call returns is traversed as it is: it is the caller's own already, a copy wherever the
+        /// method returned a list it did not own (<see cref="Returned"/>).
         /// </para>
         /// </remarks>
         public string Collection(IrForEach loop)
-        {
-            if (!CopiesIntoLocals)
-            {
-                return Expression(loop.Collection, Placement);
-            }
-
-            if (loop.Collection is IrMethodCall or IrRefusableCall)
-            {
-                return Expression(loop.Collection, Placement) + ".Clone()";
-            }
-
-            return IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
+            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
-        }
     }
 
     /// <summary>

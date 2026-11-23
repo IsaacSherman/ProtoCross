@@ -91,8 +91,10 @@ The IR preserves:
   field descriptor, which a presence guard must have established where the field is a message
   ([13.1](./§13-Messages.md#131-field-access)).
 - **A message literal, and a test's fixture, as one node.** A literal holds the fields written, in the
-  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
-  value is a list node holding its elements. A fixture is the same node, built for the message its
+  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A repeated field's
+  value is any expression of the field's repeated type: a list node holding its elements where a list
+  is written in place, or a whole list the field stores a copy of, such as another message's field,
+  a parameter, a local or a call's result ([13.2](./§13-Messages.md#132-message-construction)). A fixture is the same node, built for the message its
   test's target extends, so no consumer handles a fixture and a literal differently.
 - **A list written as a value**, `[first, second]`, as the same list node wherever it stands: its
   elements in the order written, and its type, `repeated T`, which the binder takes from what is

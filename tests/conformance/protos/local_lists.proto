@@ -22,6 +22,11 @@ message Basket {
 
   // Unset until a list is assigned through it, which sets it.
   Basket spare = 10;
+
+  // Left empty, so a lookup of either ends the program and names its own map, which shows which element of a
+  // list was evaluated first.
+  map<int32, int32> order_first = 11;
+  map<int32, int32> order_second = 12;
 }
 
 message Parcel {

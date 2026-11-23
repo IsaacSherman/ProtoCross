@@ -1287,8 +1287,9 @@ public sealed record IrMessageLiteral(
 
 /// <summary>One field of a message literal, <c>name: value</c>.</summary>
 /// <param name="Value">
-/// For a repeated field, an <see cref="IrList"/> holding every element. For any other field, a value
-/// of the field's type.
+/// A value of the field's type. For a repeated field that is an <see cref="IrList"/> holding every element
+/// where a list is written in place, or any other expression of the field's repeated type, whose list the field
+/// stores a copy of (spec 13.2).
 /// </param>
 /// <remarks>
 /// It spans the whole field, name through value, so a position on the name is on the field and finds

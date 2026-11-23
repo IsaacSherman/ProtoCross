@@ -118,6 +118,39 @@ public sealed partial class CSharpBackend
         return IsHeldAsAReadOnlyList(value) ? CopyOfList(written) : written;
     }
 
+    /// <summary>
+    /// <paramref name="value"/> as a method gives it to its caller, as its result or as a refusal's fallback: a list
+    /// the caller owns, and anything else as it is held.
+    /// </summary>
+    /// <param name="localsAreCopies">
+    /// Whether the method copies what it stores in a local (<see cref="Body.CopiesIntoLocals"/>), so a local's list
+    /// is already its own. False where that is not known, which costs a copy and never a share.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// A list returned is the caller's own (spec 16.2, 14.1). C++ returns one by value, so a C++ caller holds a copy
+    /// of whatever the method returned. A C# list is a reference, and <c>return items;</c> would hand the caller the
+    /// receiver's own field: a change the caller made to the list, or to a message in it, would change the receiver.
+    /// So C# gives a copy of any list the method does not own outright: a field, a parameter, or a local in a method
+    /// that shares rather than copies into locals.
+    /// </para>
+    /// <para>
+    /// A list literal is built where it is written, a call's result is the copy that method gave, and a local in a
+    /// method that copies into locals is a copy already, so none of them is copied again. A loop over what a call
+    /// returns therefore traverses a list of its own, and a change the loop makes to the field the call read does not
+    /// reach it.
+    /// </para>
+    /// </remarks>
+    private static string Returned(
+        IrExpression value, Placement placement, bool localsAreCopies, string receiverName = ReceiverName)
+    {
+        var owned = value.Type is not RepeatedType
+            || value is IrList or IrMethodCall or IrRefusableCall
+            || (localsAreCopies && value is IrLocalReference);
+
+        return owned ? Held(value, placement, receiverName) : StoredValue(value, placement, receiverName);
+    }
+
     /// <summary>A copy of the list parameter <paramref name="written"/>, as a <c>RepeatedField</c> of its own.</summary>
     private static string CopyOfList(string written) => $"{CSharpRuntime.CollectionsTypeName}.CopyOf({written})";
 

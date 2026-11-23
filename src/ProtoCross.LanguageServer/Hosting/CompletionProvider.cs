@@ -1291,7 +1291,13 @@ public sealed class CompletionProvider
             && subject.PrecededByNew
             && !NamesAValue(model, subject, ContextualKeywords.New);
 
-        if (reference is null && !beginningALiteral)
+        // A list's element type not yet begun: 'repeated' with nothing after it is a type of that name to the
+        // parser (SchemaSubject.PrecededByRepeated), and the caret after it is where the element's type goes.
+        var beginningAListElement = reference is null
+            && subject.PrecededByRepeated
+            && NamesAnUnfinishedListType(model, subject, document.Text);
+
+        if (reference is null && !beginningALiteral && !beginningAListElement)
         {
             return null;
         }
@@ -1428,6 +1434,27 @@ public sealed class CompletionProvider
         NameExpression name => name.Name.Text,
         _ => string.Empty,
     };
+
+    /// <summary>
+    /// Whether the word before the caret is a <c>repeated</c> the parser read as a type's name, because nothing
+    /// that begins a type follows it yet: <c>-&gt; repeated |</c>, <c>given: repeated |</c>, <c>var local: repeated | =</c>.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the tree, so the word counts only where a type is written: a field or a local named <c>repeated</c>
+    /// in an expression is no type reference, and a name being typed after it is not a list's element.
+    /// </remarks>
+    private static bool NamesAnUnfinishedListType(SemanticModel model, SchemaSubject subject, string text)
+    {
+        var end = subject.Start;
+        while (end > 0 && char.IsWhiteSpace(text[end - 1]))
+        {
+            end--;
+        }
+
+        return end > 0
+            && model.SyntaxAt(end - 1)?.Enclosing<TypeReference>() is { IsRepeated: false } named
+            && named.Name.Text == ContextualKeywords.Repeated;
+    }
 
     /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
     /// <remarks>

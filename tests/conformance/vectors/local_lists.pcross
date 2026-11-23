@@ -99,9 +99,10 @@ extend Basket {
         return count;
     }
 
-    // The elements are evaluated in the order they are written: the first fails before the second can.
-    fn first_element_first(divisor: int32) -> repeated int32 {
-        return [base / divisor on_zero fail, divisor / 0 on_zero fail];
+    // The elements are evaluated in the order they are written. Each is a lookup of an empty map of its own,
+    // which ends the program and names its map, and the conformance tests read which name was printed.
+    fn first_element_first() -> repeated int32 {
+        return [order_first[1] on_missing fail, order_second[1] on_missing fail];
     }
 
     // ---- held in a local, and appended to
@@ -390,8 +391,7 @@ test Basket.nothing_counted "an empty list of messages has nothing to iterate" {
 }
 
 test Basket.first_element_first "elements are evaluated in the order written" {
-    receiver { base: 4 }
-    arg divisor = 0;
+    receiver { }
     expect fail;
 }
 

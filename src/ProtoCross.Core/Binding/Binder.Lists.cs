@@ -32,7 +32,7 @@ public sealed partial class Binder
     {
         if (expectedType is RepeatedType { ElementType: not ErrorType } expected)
         {
-            var expectedElements = list.Elements.Select(element => BindExpression(element, scope, context, expected.ElementType)).ToList();
+            var expectedElements = list.Elements.Select(element => BindElement(element, scope, context, expected.ElementType)).ToList();
             ReportElementMismatches(list, expectedElements, expected.ElementType, expectedHere: true);
             return new IrList(expected, expectedElements, list.Span);
         }
@@ -50,7 +50,7 @@ public sealed partial class Binder
         // Every element but a numeric literal first, in the order written. A literal is bound once the list's
         // type is known, so its range is checked in the type it takes and never in one it does not: the
         // -9223372036854775809 of [-9223372036854775809, ratio] is a double, though no integer type holds it.
-        var typed = list.Elements.Select(element => IsNumericLiteral(element) ? null : BindExpression(element, scope, context, null)).ToList();
+        var typed = list.Elements.Select(element => IsNumericLiteral(element) ? null : BindElement(element, scope, context, null)).ToList();
         if (ElementTypeOf(list, typed) is not { } elementType)
         {
             return Refusal([.. typed.OfType<IrExpression>()], list.Span);
@@ -112,6 +112,27 @@ public sealed partial class Binder
             default:
                 return elementType;
         }
+    }
+
+    /// <summary>
+    /// One element of a list, bound as a value of <paramref name="expectedType"/>, or refused where it is a list
+    /// written in place.
+    /// </summary>
+    /// <remarks>
+    /// A list written as an element is refused for what it is, before it is bound as a list, because lists do not
+    /// nest whatever they hold: <c>[[]]</c> is <c>PC0147</c> with or without a type for the outer list, and binding
+    /// the inner one first would report that nothing gives it a type (<c>PC0149</c>), which no type would cure. Its
+    /// elements are still bound, for the names in them.
+    /// </remarks>
+    private IrExpression BindElement(Expression element, Scope scope, MethodContext context, PlType? expectedType)
+    {
+        if (element is not ListExpression nested)
+        {
+            return BindExpression(element, scope, context, expectedType);
+        }
+
+        ReportNestedList(nested.Span);
+        return BindRefused(nested, scope, context);
     }
 
     /// <summary>Reports a list, or a repeated value, written as one element of another list (spec 14.1).</summary>

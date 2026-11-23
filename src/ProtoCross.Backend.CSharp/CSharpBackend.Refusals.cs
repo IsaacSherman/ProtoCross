@@ -33,7 +33,7 @@ public sealed partial class CSharpBackend
         var call = EmitCall(refusable.Call, placement, receiverName, $"out var {built}", "out _");
         var otherwise = refusable.OnRefused switch
         {
-            RefusalBehavior.Fallback => Held(refusable.Fallback!, placement, receiverName),
+            RefusalBehavior.Fallback => Returned(refusable.Fallback!, placement, localsAreCopies: false, receiverName),
             RefusalBehavior.Fail
                 => $"{CSharpRuntime.RefusalsTypeName}.Fail<{TypeName(refusable.Type)}>({FormatString(refusable.Call.Target.QualifiedName)})",
             _ => throw new ArgumentOutOfRangeException(
@@ -92,11 +92,12 @@ public sealed partial class CSharpBackend
         => body.ForLocal(new HeldCopy(built, refusable.Type));
 
     /// <summary>A method that may refuse ending with its result: <c>return</c>, with or without a value.</summary>
-    private static void EmitBuilt(SourceWriter writer, IrExpression? value, Outs outs, Placement placement)
+    /// <param name="localsAreCopies">Whether the method copies into its locals, as <see cref="Returned"/> asks.</param>
+    private static void EmitBuilt(SourceWriter writer, IrExpression? value, Outs outs, Placement placement, bool localsAreCopies)
     {
         if (value is not null)
         {
-            writer.WriteLine($"{outs.Result} = {Held(value, placement)};");
+            writer.WriteLine($"{outs.Result} = {Returned(value, placement, localsAreCopies)};");
         }
 
         writer.WriteLine($"{outs.Refusal} = default;");
@@ -120,7 +121,7 @@ public sealed partial class CSharpBackend
             writer.WriteLine("#pragma warning disable CS0162 // A constant condition above may end the method first.");
         }
 
-        EmitBuilt(writer, null, outs, placement);
+        EmitBuilt(writer, null, outs, placement, localsAreCopies: false);
         if (guarded)
         {
             writer.WriteLine("#pragma warning restore CS0162");
