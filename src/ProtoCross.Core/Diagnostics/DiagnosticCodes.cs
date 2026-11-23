@@ -800,6 +800,20 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor EmptyListWithoutAType =
         new("PC0149", DiagnosticSeverity.Error, "empty list has no type");
 
+    /// <summary>
+    /// <c>on_refused refuse</c> after a list's try method, which refuses with no value of its own, so there is none to
+    /// pass on (spec 14.1, 16.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor NothingToPassOn =
+        new("PC0150", DiagnosticSeverity.Error, "no refusal to pass on");
+
+    /// <summary>
+    /// <c>on_refused refuse value</c> after a call to a method a source declares, whose refusal is passed on as it is
+    /// rather than replaced (spec 16.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalCannotBeReplaced =
+        new("PC0151", DiagnosticSeverity.Error, "refusal cannot be replaced");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

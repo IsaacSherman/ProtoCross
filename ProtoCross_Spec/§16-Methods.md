@@ -198,13 +198,14 @@ Normative Requirements:
   have the type the method refuses with (`PC0137`); no implicit conversion is applied. A `refuse` in a
   method that declares no refusal, or in a test, is `PC0136`. The value is evaluated as the method ends,
   so it may not itself refuse (`PC0142`) or call a `mut fn` (`PC0095`).
-- **A division, a conversion to an enum and a map lookup may refuse where they would otherwise give no
-  value**, with `refuse` and a value as their clause: `a / b on_zero refuse value`,
-  `n as Grade on_unknown refuse value`, `m[k] on_missing refuse value`. Each ends the method with that
+- **A division, a conversion to an enum, a map lookup and a list's try method may refuse where they
+  would otherwise give no value**, with `refuse` and a value as their clause: `a / b on_zero refuse value`,
+  `n as Grade on_unknown refuse value`, `m[k] on_missing refuse value`,
+  `items.try_get_index(i) on_refused refuse value`. Each ends the method with that
   refusal, as `refuse` does, and is bound as `refuse` is: only in a method that declares a refusal
   (`PC0136`), and with a value of the type it declares (`PC0137`). The value is evaluated only where the
   operation gives none, after its operands, as a fallback is
-  ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause), [12.1](./§12-Enums.md#121-an-enums-number), [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+  ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause), [12.1](./§12-Enums.md#121-an-enums-number), [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps), [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - **A call to a method that may refuse says what a refusal makes of it**, with an `on_refused` clause
   after the call. One without it is `PC0138`, whose help lists the forms that fit where it is written:
   - `on_refused <fallback>` gives the fallback instead. It must have the type the call gives
@@ -215,7 +216,10 @@ Normative Requirements:
     error naming the method as the language does, `acme.Invoice.factory.create refused`
     ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)).
   - `on_refused refuse` ends the calling method with the same refusal. A refusal is passed on as it is,
-    so the caller must refuse with the same type (`PC0141`).
+    so the caller must refuse with the same type (`PC0141`). It is not replaced: a value after
+    `on_refused refuse` on a call to a method a source declares is `PC0151`
+    ([30.16.4](./§30-Unresolved%20Questions%20Index.md#30164-replacing-a-methods-refusal)). Only a list's try method, which refuses with no
+    value of its own, takes one ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - **A refusal ends the method only from an operation that stands on its own**: a call as a statement,
   and a call, a division, a conversion or a lookup as a `var` initializer, a local's new value or a
   `return` value. These are the places a mutating call may stand ([18](./§18-Mutability.md#18-mutability)), because the method ends there
@@ -238,3 +242,7 @@ it ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)) writes one wh
 refusal by itself: a refusal's type is the author's, and only the author can say what value means
 "no time" or "no price". No value holds a refusal
 ([19](./§19-Error%20Handling%20Without%20Exceptions.md#19-error-handling-without-exceptions)).
+
+Open Questions:
+
+- [Replacing a method's refusal](./§30-Unresolved%20Questions%20Index.md#30164-replacing-a-methods-refusal), post-1.0

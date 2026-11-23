@@ -169,6 +169,7 @@ public sealed partial class CSharpBackend
         IrIntegerDivision division => Divided(division, "OrNull", placement, ReceiverName),
         IrNumberToEnum conversion => NamedOrNull(conversion, placement, ReceiverName),
         IrMapLookup lookup => Found(lookup, placement, ReceiverName),
+        IrElementLookup lookup => ElementFound(lookup, placement, ReceiverName),
         _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Not an operation a clause may refuse from."),
     };
 

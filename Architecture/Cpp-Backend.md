@@ -12,6 +12,7 @@
 | Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`, `UsesFloatingRemainder`, `UsesFoldableFloatingDivision`; [Emitter]: `Deferred` hands every clause's fallback to the runtime as a lambda, so it is evaluated only where needed; [Formatting]: `EmitLiteral`, `FormatDouble`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `EmitConstruction`, `EmitFields`; [Context]: `NamesFor`, `NameAllocator`; immediate lambdas or construction in place use shared name allocation. | [literal emission] |
 | Mutation, copies and append | [Emitter]: `Signature`; [Statements]: `EmitFieldAssignment`, `EmitAppend`, `EmitFieldWrite`, `StoredValue`, `MutableMessage`; [mutation]: `IrMutation.ChangesElementsOf`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
+| A list's count and elements | [Lists]: `EmitListQuery`, `EmitElementLookup` through the runtime's `element_or` under a fallback, a lambda it calls only where there is no element, and `element_or_fail` under `fail`, the list and the index in the order written (`InElementOrder`); an enum element is read back as the enum; [Runtime]: `EmitElementHelpers`, whose `element_position` compares an index of any integer type with the count exactly. | [conformance] |
 | Lists | [Literals]: `ListLiteral` builds a list in a called lambda, adding each element as an append to a local adds one; [Context]: `RepeatedTypeName`, `ParameterTypeName` (`const&`), `IsHeldByPointer`; [Statements]: a whole list assigned to a repeated field through `*mutable_x() =`, as a message field is (`FieldWriter.TakesAMessage`); [Tests]: `EmitListHelpers` compares and prints an expected list, only in a driver that expects one. | [conformance] |
 | Methods that may refuse, and calls to them | [Refusals]: `EmitRefusableCall`, `EmitPassedOn`, `EmitPassedOnInto`, `EmitClauseRefusal`; [Context]: `Outs`, `Placement.Outs`, `Placement.Held`, `NamesFor`; a refusing method returns `bool` with reference parameters, a call written for its value is a lambda as a literal is, and a clause that refuses hands its fallback helper a lambda that marks it refused (`DividedOr`, `NamedOr`, `ValueOr`). | [refusal emission]; [clause refusal emission]; [conformance] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `MapsCompared`, `EmitElementAssignment`, `EmitKeyBeforeValue`, `EmitMapUpdate`, `MutableElement`. | [map emission] |
@@ -31,6 +32,7 @@
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs
 [Literals]: ../src/ProtoCross.Backend.Cpp/CppBackend.MessageLiterals.cs
 [Maps]: ../src/ProtoCross.Backend.Cpp/CppBackend.Maps.cs
+[Lists]: ../src/ProtoCross.Backend.Cpp/CppBackend.Lists.cs
 [Ordering]: ../src/ProtoCross.Backend.Cpp/CppBackend.Ordering.cs
 [Refusals]: ../src/ProtoCross.Backend.Cpp/CppBackend.Refusals.cs
 [Runtime]: ../src/ProtoCross.Backend.Cpp/CppRuntime.cs

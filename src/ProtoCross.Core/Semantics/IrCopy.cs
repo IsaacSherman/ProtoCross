@@ -78,6 +78,13 @@ public static class IrCopy
             },
             IrMapContains contains => contains with { Key = Of(contains.Key), Map = Of(contains.Map) },
             IrMapQuery query => query with { Map = Of(query.Map) },
+            IrListQuery query => query with { List = Of(query.List) },
+            IrElementLookup lookup => lookup with
+            {
+                List = Of(lookup.List),
+                Index = Of(lookup.Index),
+                Fallback = OrNull(lookup.Fallback),
+            },
             IrMapElement element => element with { Map = Of(element.Map), Key = Of(element.Key) },
             IrMissingMemberAccess awaiting => awaiting with { Receiver = Of(awaiting.Receiver) },
             IrUncallableInvocation call => call with

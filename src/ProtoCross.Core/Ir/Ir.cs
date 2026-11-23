@@ -1202,6 +1202,78 @@ public sealed record IrMapContains(IrExpression Key, IrExpression Map, SourceSpa
 public sealed record IrMapQuery(MapMethod Method, IrExpression Map, SourceSpan NameSpan, SourceSpan Span)
     : IrExpression(MapMethods.ResultOf(Method), Span);
 
+/// <summary>What a list's try method gives when there is no element at its index (spec 14.1).</summary>
+public enum OutOfRangeBehavior
+{
+    /// <summary>The fallback <c>on_refused</c> wrote, evaluated only where there is no element.</summary>
+    Fallback,
+
+    /// <summary><c>on_refused fail</c>: the program ends there, naming the list, the index and the count.</summary>
+    Fail,
+
+    /// <summary><c>on_refused refuse value</c>: the calling method ends with that refusal, as a clause's does (spec 16.3.1).</summary>
+    Refuse,
+
+    /// <summary>
+    /// No clause was written, which is <c>PC0138</c>. Kept as the element's type, so the expression around it reports
+    /// nothing further; no backend is handed one, because a compilation that reported it has failed.
+    /// </summary>
+    Unstated,
+}
+
+/// <summary>
+/// The element of a list at an index checked as the program runs, <c>items.try_get_index(i) on_refused 0</c> or
+/// <c>items.try_get_backward_index(1) on_refused fail</c> (spec 14.1).
+/// </summary>
+/// <param name="Method"><see cref="RepeatedMethod.TryGetIndex"/> or <see cref="RepeatedMethod.TryGetBackwardIndex"/>.</param>
+/// <param name="List">The list read, of a <see cref="RepeatedType"/>.</param>
+/// <param name="Index">The index, of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="Fallback">
+/// The value the clause wrote: what an index out of range gives where <paramref name="OnRefused"/> is
+/// <see cref="OutOfRangeBehavior.Fallback"/>, and the refusal where it is <see cref="OutOfRangeBehavior.Refuse"/>.
+/// Null otherwise, and evaluated only where there is no element.
+/// </param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A node of its own rather than a call, because no source declares the method, and the shape of
+/// <see cref="IrMapLookup"/>, because it answers the same question the same three ways: what is given where there is
+/// nothing to read. Where it refuses, it refuses with a value of the calling method's own, as a lookup's clause does,
+/// since the try method has no refusal of its own to pass on.
+/// </para>
+/// <para>
+/// The range is checked whatever the index's type: a negative index, a <c>uint64</c> past what a list can hold, a
+/// from-end <c>0</c>, and an index one past the count all find no element, and none of them overflows on the way.
+/// What it gives is a value, as a lookup's is: a message is copied where it is stored.
+/// </para>
+/// </remarks>
+public sealed record IrElementLookup(
+    RepeatedMethod Method,
+    IrExpression List,
+    IrExpression Index,
+    OutOfRangeBehavior OnRefused,
+    IrExpression? Fallback,
+    SourceSpan NameSpan,
+    SourceSpan Span) : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <summary>Whether the index counts from the end, as <c>try_get_backward_index</c>'s does.</summary>
+    public bool FromEnd => Method == RepeatedMethod.TryGetBackwardIndex;
+
+    /// <summary>
+    /// What <c>on_refused fail</c> names the list by: the field's protobuf name, or the list's type where no field
+    /// holds it, as <see cref="IrMapLookup.MapName"/> names a map.
+    /// </summary>
+    public string ListName => List is IrFieldAccess access ? access.Field.FullName : List.Type.DisplayName;
+}
+
+/// <summary>A value worked out from a list, <c>items.count()</c> or <c>items.is_empty()</c> (spec 14.1).</summary>
+/// <param name="Method"><see cref="RepeatedMethod.Count"/> or <see cref="RepeatedMethod.IsEmpty"/>.</param>
+/// <param name="List">The list asked about, of a <see cref="RepeatedType"/>.</param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>A node of its own beside <see cref="IrMapQuery"/>, for a list's own table of methods (<see cref="RepeatedMethods"/>).</remarks>
+public sealed record IrListQuery(RepeatedMethod Method, IrExpression List, SourceSpan NameSpan, SourceSpan Span)
+    : IrExpression(RepeatedMethods.ResultOf(Method, (RepeatedType)List.Type), Span);
+
 /// <summary>
 /// An element of a map as a place: what <c>prices[sku] = 5;</c> stores to, and what
 /// <c>orders[id].status = SHIPPED;</c> writes through (spec 14.2, 18).

@@ -203,4 +203,185 @@ public sealed partial class Binder
 
         static bool IsNumber(PlType type) => type is ScalarType { IsNumeric: true };
     }
+
+    // ------- a list's methods
+
+    /// <summary>
+    /// Binds a call to one of a list's methods written where a value is used (spec 14.1): <c>count()</c>,
+    /// <c>is_empty()</c>, a try method, or an append, which is refused there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An append standing as a statement of its own was bound before it got here (<see cref="BindAppend"/>), so one
+    /// that reaches this is inside an expression, or adds to a list nothing holds, and is refused as it always was.
+    /// </para>
+    /// <para>
+    /// A try method is bound as the element it reads, with no answer yet. Whatever holds it answers it: the clause
+    /// written after it (<see cref="AnswerOutOfRange"/>), or nothing, which is <c>PC0138</c>, as a call to a method
+    /// that may refuse is.
+    /// </para>
+    /// </remarks>
+    private IrExpression BindListMethodValue(
+        IrExpression list,
+        RepeatedType listType,
+        MemberAccessExpression callee,
+        InvocationExpression invocation,
+        Scope scope,
+        MethodContext context)
+    {
+        if (RepeatedMethods.Named(callee.Name.Text) is not { } method)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MethodCallOnANonMessage,
+                $"Type '{listType.DisplayName}' has no method named '{callee.Name}'.",
+                invocation.Span,
+                $"A list has {string.Join(", ", RepeatedMethods.All.Select(each => $"'{RepeatedMethods.NameOf(each)}'"))}, "
+                + "and an element is read by its index: 'items[0]' (spec 14.1).");
+            return Uncallable();
+        }
+
+        if (RepeatedMethods.Changes(method))
+        {
+            RefuseAppend(list, invocation, context);
+            return Uncallable();
+        }
+
+        if (!RepeatedMethods.Refuses(method))
+        {
+            if (invocation.Arguments.Count != 0)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.WrongNumberOfArguments,
+                    $"'{callee.Name}' takes no arguments but {invocation.Arguments.Count} were supplied.",
+                    invocation.Span);
+                return Uncallable();
+            }
+
+            return new IrListQuery(method, list, callee.Name.Span, invocation.Span);
+        }
+
+        if (invocation.Arguments.Count != 1)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.WrongNumberOfArguments,
+                $"'{callee.Name}' takes 1 argument, the index, but {invocation.Arguments.Count} were supplied.",
+                invocation.Span);
+            return Uncallable();
+        }
+
+        var index = BindExpression(invocation.Arguments[0], scope, context, null);
+        if (index.Type is not (ErrorType or ScalarType { IsInteger: true }))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.ArgumentTypeMismatch,
+                $"An index is an integer, but this one is '{index.Type.DisplayName}'.",
+                invocation.Arguments[0].Span,
+                "An index may be of any integer type. Convert this one with 'as' (spec 14.1).");
+        }
+
+        return new IrElementLookup(method, list, index, OutOfRangeBehavior.Unstated, null, callee.Name.Span, invocation.Span);
+
+        IrUncallableInvocation Uncallable()
+            => new(list, [.. invocation.Arguments.Select(argument => BindExpression(argument, scope, context, null))], invocation.Span);
+    }
+
+    /// <summary>
+    /// What <paramref name="lookup"/>, a try method as it was bound, gives once the clause written after it says what
+    /// an index out of range makes of it (spec 14.1).
+    /// </summary>
+    /// <param name="handled">The call with the clause written after it, or null where none was written.</param>
+    /// <remarks>
+    /// <para>
+    /// The answers a call to a method that may refuse has (<see cref="AnswerRefusal"/>), with one difference: a try
+    /// method refuses with no value of its own, so there is nothing for <c>on_refused refuse</c> to pass on
+    /// (<c>PC0150</c>), and the caller refuses with a value it names instead, <c>on_refused refuse value</c>, as
+    /// <c>on_missing refuse value</c> does after a map's lookup. That value is bound as any clause's refusal is: only
+    /// in a method that declares one, of its type, and from an operation that stands on its own.
+    /// </para>
+    /// <para>
+    /// The fallback is the element's type, with no implicit conversion, and evaluated only where there is no element.
+    /// </para>
+    /// </remarks>
+    private IrExpression AnswerOutOfRange(IrElementLookup lookup, OnRefusedExpression? handled, Scope scope, MethodContext context)
+    {
+        var name = RepeatedMethods.NameOf(lookup.Method);
+        if (handled is null)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.RefusalNotAnswered,
+                $"'{name}' refuses where there is no element at its index, so a call to it has to say what a refusal "
+                + "makes of it.",
+                lookup.Span,
+                $"{Written(WaysToAnswerOutOfRange(lookup, context))} (spec 14.1).");
+            return lookup;
+        }
+
+        var clause = handled.Clause;
+        if (clause.PassesItOn)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.NothingToPassOn,
+                $"'{name}' refuses with no value of its own, so there is no refusal to pass on.",
+                clause.Span,
+                $"{Written(WaysToAnswerOutOfRange(lookup, context))} (spec 14.1).");
+            return lookup with { Span = handled.Span };
+        }
+
+        if (clause.Refusal is { } refused)
+        {
+            return lookup with
+            {
+                OnRefused = OutOfRangeBehavior.Refuse,
+                Fallback = BindRefusal(refused, clause.Span, scope, context),
+                Span = handled.Span,
+            };
+        }
+
+        if (clause.Fallback is not { } written)
+        {
+            ReportIfTerminationIsForbidden("'on_refused fail'", clause.Span, WaysToAnswerOutOfRange(lookup, context));
+            return lookup with { OnRefused = OutOfRangeBehavior.Fail, Span = handled.Span };
+        }
+
+        var fallback = BindExpression(written, scope, context, lookup.Type);
+        if (fallback.Type is not ErrorType && lookup.Type is not ErrorType && !TypesMatch(lookup.Type, fallback.Type))
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.OnRefusedTypeMismatch,
+                $"The fallback is a '{fallback.Type.DisplayName}', but the list's elements are '{lookup.Type.DisplayName}'.",
+                written.Span,
+                NumericOrNull(lookup.Type, fallback.Type)
+                    ?? $"A refusal gives a '{lookup.Type.DisplayName}', as the element would have (spec 14.1).");
+        }
+
+        return lookup with { OnRefused = OutOfRangeBehavior.Fallback, Fallback = fallback, Span = handled.Span };
+    }
+
+    /// <summary>The ways a try method may answer an index out of range from where it is, as help to write one.</summary>
+    /// <remarks>
+    /// A fallback always, <c>fail</c> where the project allows ending the program, and a refusal of the method's own
+    /// where it declares one: a try method refuses with nothing a caller could pass on. Where ending the program is
+    /// forbidden, a method that declares no refusal is told it could, as it is after a call (<see cref="WaysToAnswer"/>).
+    /// </remarks>
+    private List<string> WaysToAnswerOutOfRange(IrElementLookup lookup, MethodContext context)
+    {
+        List<string> ways = [$"'on_refused' and a '{lookup.Type.DisplayName}' after the call"];
+        if (!TerminationIsForbidden)
+        {
+            ways.Add("'on_refused fail' to end the program where there is no element");
+        }
+
+        switch (context.Method)
+        {
+            case { Refusal: { } own } when own is not ErrorType:
+                ways.Add($"'on_refused refuse' and a '{own.DisplayName}' to refuse with");
+                break;
+
+            case { Refusal: null } method when TerminationIsForbidden:
+                ways.Add($"declare what '{method.Name}' refuses with and write 'on_refused refuse' and one");
+                break;
+        }
+
+        return ways;
+    }
 }

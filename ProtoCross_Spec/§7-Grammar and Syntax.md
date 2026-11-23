@@ -70,7 +70,7 @@ membership        = expression "in" ( postfix_expr | type_ref );    (* an expres
 lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
                     [ "on_missing" ( unary_expr | "fail" | "refuse" unary_expr ) ];
 answered_call     = call "on_refused"                              (* a postfix expression *)
-                    ( unary_expr | "fail" | "refuse" );
+                    ( unary_expr | "fail" | "refuse" [ unary_expr ] );
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
@@ -131,7 +131,10 @@ Normative Requirement:
   reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). An `on_refused` clause after a call's closing parenthesis belongs to that call.
   Its fallback is a unary expression, as `on_missing`'s is, and the clause ends the postfix chain, so
   `(Invoice.factory.create(o) on_refused fail).total` reads a member of what the call gives
-  ([16.3.1](./§16-Methods.md#1631-refusals)).
+  ([16.3.1](./§16-Methods.md#1631-refusals)). A value after `on_refused refuse` is the refusal to refuse with
+  instead, which only a list's try method takes ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The clause's statement, or
+  the expression around it, ends with a token that begins no value, so `refuse` alone passes the
+  refusal on.
 - Braces in a list are an entry of a map field, `{ key: k, value: v }`, with fields written as a
   literal's are ([13.2](./§13-Messages.md#132-message-construction)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows

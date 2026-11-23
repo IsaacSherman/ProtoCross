@@ -79,7 +79,7 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutAppend(model, offset) ?? AboutMapMethod(model, offset) ?? AboutExpression(model, offset);
+        return card ?? AboutListMethod(model, offset) ?? AboutMapMethod(model, offset) ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -221,12 +221,12 @@ internal static class HoverCard
         }
     }
 
-    /// <summary>What an append does, where the caret is on its <c>append</c>.</summary>
+    /// <summary>What one of a list's methods does, where the caret is on its name: <c>append</c>, <c>count</c> and the rest.</summary>
     /// <remarks>
     /// <para>
-    /// <c>append</c> is the language's, and names no symbol (spec 22.2), so the symbol arm has nothing
-    /// to say about it. Neither does the expression arm: an append is a statement, with no type to
-    /// show. What it is, is the method it reads as, and that is the card.
+    /// Each is the language's, and names no symbol (spec 22.2), so the symbol arm has nothing to say about it.
+    /// Neither does the expression arm, for an append, which is a statement with no type to show. What each is, is
+    /// the method it reads as, from the one table of them (<see cref="RepeatedMethods"/>), and that is the card.
     /// </para>
     /// <para>
     /// On the name only, because the card's range is the name, and a range that does not hold the
@@ -234,26 +234,41 @@ internal static class HoverCard
     /// value it adds, is on an expression of its own, which the arm after this one describes.
     /// </para>
     /// </remarks>
-    private static Hover? AboutAppend(SemanticModel model, int offset)
+    private static Hover? AboutListMethod(SemanticModel model, int offset)
     {
-        if (model.IrAt(offset)?.Node is not IrAppend { Collection.Type: RepeatedType collection } append
-            || !EditorPositions.Covers(append.NameSpan, offset))
+        var (method, list, name) = model.IrAt(offset)?.Node switch
+        {
+            IrAppend { Collection.Type: RepeatedType collection } append => (RepeatedMethod.Append, collection, append.NameSpan),
+            IrListQuery { List.Type: RepeatedType queried } query => (query.Method, queried, query.NameSpan),
+            IrElementLookup { List.Type: RepeatedType read } lookup => (lookup.Method, read, lookup.NameSpan),
+            _ => default((RepeatedMethod, RepeatedType?, SourceSpan)),
+        };
+
+        if (list is null || !EditorPositions.Covers(name, offset))
         {
             return null;
         }
 
-        return Card(
-            [
-                Signature(IrAppend.DisplayNameFor(collection)),
-                "Adds `value` to the end. A message is added as a copy of its own, unless it is a literal "
-                    + "(spec 14.1).",
-            ],
-            append.NameSpan);
+        return Card([Signature(RepeatedMethods.DisplayNameFor(method, list)), ListMethodSummary(method)], name);
     }
+
+    /// <summary>What each of a list's methods does, in the words of its card.</summary>
+    private static string ListMethodSummary(RepeatedMethod method) => method switch
+    {
+        RepeatedMethod.Count => "How many elements the list holds (spec 14.1).",
+        RepeatedMethod.IsEmpty => "Whether the list holds no element (spec 14.1).",
+        RepeatedMethod.Append => "Adds `value` to the end. A message is added as a copy of its own, unless it is a literal "
+            + "(spec 14.1).",
+        RepeatedMethod.TryGetIndex => "The element at `index`, counting from 0, or a refusal where there is none, which "
+            + "`on_refused` answers. The index may be of any integer type (spec 14.1).",
+        RepeatedMethod.TryGetBackwardIndex => "The element at `index` from the end, 1 being the last, or a refusal where "
+            + "there is none, which `on_refused` answers. The index may be of any integer type (spec 14.1).",
+        _ => throw new ArgumentOutOfRangeException(nameof(method), method, "Not a list's method."),
+    };
 
     /// <summary>The card for one of a map's methods, written as the method it reads as (spec 14.2).</summary>
     /// <remarks>
-    /// For the reason <see cref="AboutAppend"/> gives: none of them is a symbol, so the symbol arm has
+    /// For the reason <see cref="AboutListMethod"/> gives: none of them is a symbol, so the symbol arm has
     /// nothing to say, and the card is the signature with a line on what it does. On the name only.
     /// </remarks>
     private static Hover? AboutMapMethod(SemanticModel model, int offset)

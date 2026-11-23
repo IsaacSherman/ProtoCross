@@ -174,6 +174,95 @@ public static class CSharpRuntime
                 writer.WriteLine("field.Clear();");
                 writer.WriteLine("field.Add(copy);");
             }
+
+            EmitElementHelpers(writer);
+        }
+    }
+
+    /// <summary>
+    /// Emits what a list's try methods read with (spec 14.1): the element at an index, or null where there is none,
+    /// in the three shapes <see cref="EmitMaps"/>' lookups take, and the element or the end of the program.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An index of any integer type reaches one overload or the other: <c>long</c> for every type but <c>ulong</c>,
+    /// which C# converts to it, and <c>ulong</c> for that one, so a <c>uint64</c> past what a list holds finds no
+    /// element rather than wrapping to a negative one, and <c>on_refused fail</c> prints it as it was written. The
+    /// range is checked against the count without any arithmetic that could overflow.
+    /// </para>
+    /// <para>
+    /// From the end, 1 is the last element and the count the first; 0 and anything past the count find none. The
+    /// failure names the list, the index, with a <c>^</c> where it counts from the end, and the count, as the C++
+    /// runtime's does, word for word.
+    /// </para>
+    /// </remarks>
+    private static void EmitElementHelpers(SourceWriter writer)
+    {
+        const string readOnly = "global::System.Collections.Generic.IReadOnlyList";
+
+        foreach (var index in new[] { "long", "ulong" })
+        {
+            var forward = index == "long" ? "index >= 0 && index < (long)count" : "index < (ulong)count";
+            var backward = index == "long" ? "index >= 1 && index <= (long)count" : "index >= 1 && index <= (ulong)count";
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Where the element at <paramref name=\"index\"/> is held, from the start or from the end, or -1 where there is none.</summary>");
+            using (writer.Block($"private static int Position(int count, {index} index, bool fromEnd)"))
+            {
+                using (writer.Block("if (fromEnd)"))
+                {
+                    writer.WriteLine($"return {backward} ? count - (int)index : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine($"return {forward} ? (int)index : -1;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a value type.</summary>");
+            writer.WriteLine($"public static T? ElementValue<T>({readOnly}<T> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : struct"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a nullable value: a wrapper's.</summary>");
+            writer.WriteLine($"public static T? ElementNullable<T>({readOnly}<T?> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : struct"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a reference.</summary>");
+            writer.WriteLine($"public static T? ElementReference<T>({readOnly}<T> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : class"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or termination where there is none. Reached from a try method's 'on_refused fail'.</summary>");
+            using (writer.Block($"public static T ElementOrFail<T>({readOnly}<T> list, {index} index, bool fromEnd, string listName)"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                using (writer.Block("if (at < 0)"))
+                {
+                    writer.WriteLine(
+                        $"global::System.Console.Error.WriteLine(\"{FailMarker}\" + listName + \" has no element at \" + (fromEnd ? \"^\" : \"\") "
+                        + "+ index.ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \"; it holds \" "
+                        + "+ list.Count.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
+                    writer.WriteLine("global::System.Console.Error.Flush();");
+                    writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return list[at];");
+            }
         }
     }
 

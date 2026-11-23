@@ -258,6 +258,8 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrMapContains contains
             => $"{Expression(contains.Map, placement, receiverName)}.ContainsKey({Expression(contains.Key, placement, receiverName)})",
         IrMapQuery query => EmitMapQuery(query, placement, receiverName),
+        IrListQuery query => EmitListQuery(query, placement, receiverName),
+        IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 

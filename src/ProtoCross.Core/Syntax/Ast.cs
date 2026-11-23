@@ -428,7 +428,18 @@ public sealed record OnRefusedClause(Expression? Fallback, SourceSpan Span) : Sy
     /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
     public bool PassesItOn { get; init; }
 
-    public bool IsFail => Fallback is null && !PassesItOn;
+    /// <summary>
+    /// The value written after <c>refuse</c>, <c>on_refused refuse value</c>, which refuses with a value of the calling
+    /// method's own, or null where the clause has none (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// A list's try methods refuse with no type of their own, so nothing could be passed on from one, and the
+    /// caller names what it refuses with instead, as <c>on_missing refuse value</c> does. Init-only, as
+    /// <see cref="PassesItOn"/> is; a clause with a refusal does not pass one on.
+    /// </remarks>
+    public Expression? Refusal { get; init; }
+
+    public bool IsFail => Fallback is null && !PassesItOn && Refusal is null;
 }
 
 public enum BinaryOperatorKind
@@ -593,7 +604,18 @@ public sealed record IndexExpression(
     Expression Collection,
     Expression Key,
     SourceSpan Span,
-    OnMissingClause? OnMissing = null) : Expression(Span);
+    OnMissingClause? OnMissing = null) : Expression(Span)
+{
+    /// <summary>
+    /// The <c>^</c> of <c>items[^1]</c>, where the index counts from the end of a list, or null where it counts from
+    /// the start or looks up a map's key (spec 14.1).
+    /// </summary>
+    /// <remarks>Init-only beside the positional members, so every index built before it counts from the start.</remarks>
+    public SourceSpan? FromEndMarker { get; init; }
+
+    /// <summary>Whether the index counts from the end of the list, <c>items[^1]</c>.</summary>
+    public bool IsFromEnd => FromEndMarker is not null;
+}
 
 /// <summary>
 /// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, <c>fail</c>,

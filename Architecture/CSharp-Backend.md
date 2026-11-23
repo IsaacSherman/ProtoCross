@@ -12,6 +12,7 @@
 | Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`; [Formatting]: `EmitLiteral`, `FormatFloatingPoint`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
 | Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
+| A list's count and elements | [Lists]: `EmitListQuery`, `EmitElementLookup`, which reads through the runtime's `ElementValue`, `ElementNullable` or `ElementReference` under a fallback, and `ElementOrFail` under `fail`; a refusing one is what its clause's test held (`EmitClauseRefusal`); [Runtime]: `EmitElementHelpers`, whose `Position` compares an index of any integer type with the count exactly. | [conformance] |
 | Lists | [Literals]: `ListLiteral` writes a list as a collection initializer, `Held` gives a list parameter where something holds it, `StoredValue` copies one with `CopyOf`; [Context]: `ParameterTypeName` declares a list parameter `IReadOnlyList<T>`, `IsHeldAsAReadOnlyList`; [Statements]: a whole list assigned to a repeated field through `ProtoCrossCollections.Replace` in [Runtime]. | [conformance] |
 | Methods that may refuse, and calls to them | [Refusals]: `EmitRefusableCall`, `EmitStandingRefusableCall`, `EmitPassedOn`, `EmitBuilt`, `EmitRefused`, `EmitClauseRefusal`, `OrNull`; [Context]: `Outs`, `BuiltNamesIn`, `HeldStemOf`, `Placement.Built`; [Wrappers]: `EmitRefusableChangeThroughACopy`; a refusing method returns `bool` with `out` parameters, each call's `out var` and each refusing clause's local is named once per method, and a clause that refuses is matched against its `…OrNull` helper before its statement. | [refusal emission]; [clause refusal emission]; [conformance] |
 | Map reads and writes | [Maps]: `EmitMapLookup`, `EmitMapQuery`, `EmitMapEquality`, `EmitElementAssignment`, `EmitMapUpdate`, `MapEntries`. | [map emission] |
@@ -31,6 +32,7 @@
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs
 [Literals]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.MessageLiterals.cs
 [Maps]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Maps.cs
+[Lists]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Lists.cs
 [Refusals]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Refusals.cs
 [Wrappers]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Wrappers.cs
 [Runtime]: ../src/ProtoCross.Backend.CSharp/CSharpRuntime.cs

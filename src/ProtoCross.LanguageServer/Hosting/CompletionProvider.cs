@@ -2065,7 +2065,8 @@ public sealed class CompletionProvider
         // after 'x.'.
         var receiver = at.Path
             .LastOrDefault(node => node
-                is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend or IrMapQuery or IrMapUpdate) switch
+                is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend or IrMapQuery or IrMapUpdate
+                    or IrListQuery or IrElementLookup) switch
             {
                 IrMissingMemberAccess awaiting => awaiting.Receiver,
                 IrFieldAccess access => access.Receiver,
@@ -2074,6 +2075,8 @@ public sealed class CompletionProvider
                 IrAppend append => append.Collection,
                 IrMapQuery query => query.Map,
                 IrMapUpdate update => update.Map,
+                IrListQuery query => query.List,
+                IrElementLookup lookup => lookup.List,
                 _ => null,
             };
 
@@ -2132,7 +2135,9 @@ public sealed class CompletionProvider
         return (link.Kind, type) switch
         {
             (LinkKind.Index, MapType map) => Reaches(map.ValueType, links, index + 1, module),
-            (LinkKind.Member, RepeatedType) => link.Member == IrAppend.MethodName,
+            (LinkKind.Member, RepeatedType) when link.Member is null => true,
+            (LinkKind.Member, RepeatedType list) => RepeatedMethods.Named(link.Member!) is { } method
+                && Reaches(RepeatedMethods.ResultOf(method, list), links, AfterACall(links, index + 1), module),
             (LinkKind.Member, MapType) when link.Member is null => true,
             (LinkKind.Member, MapType) => MapMethods.Named(link.Member!) is { } method
                 && Reaches(MapMethods.ResultOf(method), links, AfterACall(links, index + 1), module),
@@ -2219,18 +2224,22 @@ public sealed class CompletionProvider
                     : [],
             ],
 
-            // An append has no value, so it is offered only where it stands as a statement, which is
-            // never a receiver or the operand of 'has' (spec 14.1).
-            RepeatedType repeated when aStatement =>
+            // A list's methods (spec 14.1). An append has no value, so it is offered only where it stands as a
+            // statement, which is never a receiver or the operand of 'has'. A count is an int32 and is_empty a bool,
+            // neither of which has a member, and a try method's clause ends the chain it is in, so none of the others
+            // is offered where a receiver goes, or as the operand of 'has'.
+            RepeatedType repeated =>
             [
-                Member(
-                    subject.FollowedByCall ? IrAppend.MethodName : IrAppend.MethodName + "()",
-                    CompletionItemKind.Method,
-                    IrAppend.DisplayNameFor(repeated),
-                    null,
-                    rank: "1",
-                    subject,
-                    document),
+                .. RepeatedMethods.All
+                    .Where(method => RepeatedMethods.Changes(method) ? aStatement : !writingAReceiver && !presence)
+                    .Select(method => Member(
+                        subject.FollowedByCall ? RepeatedMethods.NameOf(method) : RepeatedMethods.NameOf(method) + "()",
+                        CompletionItemKind.Method,
+                        RepeatedMethods.DisplayNameFor(method, repeated),
+                        null,
+                        rank: "1",
+                        subject,
+                        document)),
             ],
 
             // A map's methods (spec 14.2). Each gives an int32, a bool or nothing, none of which has a

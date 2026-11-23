@@ -74,6 +74,7 @@ public static class SyntaxWalk
             InvocationExpression invocation => [invocation.Callee, .. invocation.Arguments],
             OnRefusedExpression handled => [handled.Call, handled.Clause],
             OnRefusedClause { Fallback: { } fallback } => [fallback],
+            OnRefusedClause { Refusal: { } refusal } => [refusal],
             BinaryExpression binary => binary.OnZero is { } onZero
                 ? [binary.Left, binary.Right, onZero]
                 : [binary.Left, binary.Right],

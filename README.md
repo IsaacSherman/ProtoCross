@@ -218,7 +218,9 @@ Implemented:
   value can be, takes its element type from what is expected of it or from its elements, and is
   iterated with `for`. A stored list is a copy, messages and all, and a repeated field takes a whole
   one, `values: products` in a literal or `values = products;`. A test expects a list element by
-  element. The spec has the rules in section 14.1.
+  element. A list has `count()` and `is_empty()`, and `items.try_get_index(i)` and
+  `items.try_get_backward_index(j)` read an element, from the start or from the end, with
+  `on_refused` saying what an index out of range gives. The spec has the rules in section 14.1.
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
@@ -260,8 +262,8 @@ Implemented:
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
 Not implemented: `==` between two messages or two lists (a test compares an expected literal by the
-fields it sets, and an expected list element by element, instead), a list's length and reading one of
-its elements, expecting a list of messages in a test, asking which member of a `oneof` is set, and the
+fields it sets, and an expected list element by element, instead), indexing a list directly,
+`items[i]`, expecting a list of messages in a test, asking which member of a `oneof` is set, and the
 Python backend, which is planned but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather

@@ -607,23 +607,9 @@ public sealed partial class Binder
                     return BindMapMethodValue(boundReceiver, map, member, invocation, scope, context);
                 }
 
-                // A statement of its own was bound as an append before it got here (spec 14.1), so
-                // this one is inside an expression, or adds to a value nothing holds.
-                if (boundReceiver.Type is RepeatedType && member.Name.Text == IrAppend.MethodName)
+                if (boundReceiver.Type is RepeatedType list)
                 {
-                    RefuseAppend(boundReceiver, invocation, context);
-                    return Uncallable(boundReceiver);
-                }
-
-                if (boundReceiver.Type is RepeatedType)
-                {
-                    _diagnostics.Report(
-                        DiagnosticCodes.MethodCallOnANonMessage,
-                        $"Type '{boundReceiver.Type.DisplayName}' has no method named '{member.Name}'.",
-                        invocation.Span,
-                        $"A repeated value has one method, '{IrAppend.MethodName}', which adds an element to its "
-                        + "end. Nothing can be removed from one (spec 14.1).");
-                    return Uncallable(boundReceiver);
+                    return BindListMethodValue(boundReceiver, list, member, invocation, scope, context);
                 }
 
                 if (boundReceiver.Type is not MessageType messageType)

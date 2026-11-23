@@ -409,6 +409,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrMapLookup lookup => EmitMapLookup(lookup, placement),
         IrMapContains contains => $"{Expression(contains.Map, placement)}.contains({Expression(contains.Key, placement)})",
         IrMapQuery query => EmitMapQuery(query, placement),
+        IrListQuery query => EmitListQuery(query, placement),
+        IrElementLookup lookup => EmitElementLookup(lookup, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 

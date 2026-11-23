@@ -205,6 +205,7 @@ unnoticed, as it did before #107 caught it up.
 | `IrLiteral` | A literal's value in one stated representation |
 | `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node; a list written as a value |
 | `IrMapLookup`, `IrMapContains`, `IrMapQuery`, `IrMapElement`, `IrMapEntries`, `IrMapEntry` | A map's reads and writes |
+| `IrListQuery`, `IrElementLookup` | A list's count and whether it is empty; an element read by a try method, with what its clause does where there is none |
 | `IrMissingMemberAccess`, `IrUncallableInvocation`, `IrValuelessCall` | Error placeholder nodes, and what was written in part |
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of

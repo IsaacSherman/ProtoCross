@@ -319,6 +319,8 @@ public sealed class SemanticModel
                     {
                         IrAppend append => append.NameSpan,
                         IrMapQuery query => query.NameSpan,
+                        IrListQuery query => query.NameSpan,
+                        IrElementLookup lookup => lookup.NameSpan,
                         IrMapUpdate update => update.NameSpan,
                         _ => (SourceSpan?)null,
                     })

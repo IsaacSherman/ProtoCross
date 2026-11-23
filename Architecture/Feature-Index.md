@@ -17,6 +17,7 @@ to each group's actual home; central files hold dispatch and shared state rather
 | Enum values, openness, unknown numbers | [Language](Language.md) | `Binder` in `Binder.Enums.cs`, `EnumOpenness` |
 | Message construction, maps, mutation, presence | [Language](Language.md) | `Binder` in `Binder.MessageLiterals.cs`, `Binder.Maps.cs`, `Binder.Mutation.cs` |
 | Lists: `repeated T`, a list written as a value, a repeated field given a whole list | [Language](Language.md) | `TypeReference.RepeatedWord`, `Binder.BindListValue`, `Binder.ResolveTypeReference`, `IrList`, `ProtoCrossCollections` |
+| A list's methods: `count()`, `is_empty()`, `try_get_index`, `try_get_backward_index` | [Language](Language.md) | `RepeatedMethods`, `Binder.BindListMethodValue`, `Binder.AnswerOutOfRange`, `IrListQuery`, `IrElementLookup` |
 | Control flow, switches, method calls, language tests | [Language](Language.md) | `Binder.BindExpression`, `Binder.BindTest`, `Parser.ParseBlock` |
 | Factories, helpers, calls through `Message.factory` | [Language](Language.md) | `Binder` in `Binder.Factories.cs`, `Parser.ParseFactoryDeclaration`, `IrMethodKind` |
 | Refusals: `refuses`, `refuse`, `on_refused`, `on_zero refuse`, `expect refuse` | [Language](Language.md) | `Binder` in `Binder.Refusals.cs`, `IrRefusableCall`, `IrMethodSignature.Refusal`, `IrRefusals` |

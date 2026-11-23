@@ -11,13 +11,15 @@ Implemented operation set:
   ([18](./§18-Mutability.md#18-mutability)).
 - Append an element to the end with `place.append(value);`, where the method may change the place
   ([18](./§18-Mutability.md#18-mutability)).
+- Count a list's elements, `items.count()`, and ask whether it holds none, `items.is_empty()`.
+- Read the element at an index, from the start with `items.try_get_index(i)` or from the end with
+  `items.try_get_backward_index(j)`, saying with `on_refused` what an index out of range gives.
 - Give a repeated field a whole list, in a message literal or by assignment, which it stores a copy of
   ([13.2](./§13-Messages.md#132-message-construction), [18](./§18-Mutability.md#18-mutability)).
 
 Not implemented:
 
-- Length.
-- Indexing.
+- Indexing a list directly, `items[i]`.
 - Clear, and removing an element. Decided against. A field is emptied only by assigning it a list,
   `items = [];`, which ends every fact shown about what it held, as assigning any field does
   ([13.1](./§13-Messages.md#131-field-access), [18](./§18-Mutability.md#18-mutability)).
@@ -105,10 +107,36 @@ Normative Requirement:
   it. `for item in items { item.add_trait(trait); }` is allowed, because the list still holds the
   same elements in the same order. A local's list is the method's own, so its elements may always
   change, and a parameter's never may.
+- **A list has five methods: `count`, `is_empty`, `append`, `try_get_index` and
+  `try_get_backward_index`.** Any other is `PC0042`. None is a keyword: a method a source declares on
+  a message under one of these names is called as any method is.
+- **`items.count()` is how many elements `items` holds, an `int32`**, as protobuf's own size is in both
+  targets, and as a map's count is ([14.2](#142-maps)). `items.is_empty()` is whether it holds none. Each
+  takes no argument (`PC0045`), and reads any list: a field, a local, a parameter, a call's result, or a
+  list written in place.
+- **`items.try_get_index(i)` is the element at `i`, counting from 0, and
+  `items.try_get_backward_index(j)` the element `j` from the end, 1 being the last and the count the
+  first.** Each refuses where there is no element there, so a call to one says what that gives, with an
+  `on_refused` clause after it, as a call to a method that may refuse does ([16.3.1](./§16-Methods.md#1631-refusals)):
+  - `on_refused <fallback>` gives the fallback, which must already have the element type (`PC0140`);
+    no implicit conversion is applied. It is evaluated only where there is no element.
+  - `on_refused fail` ends the program, with a line on standard error naming the list, the index and
+    the count, and exit code 70, as `on_missing fail` does ([14.2](#142-maps)).
+  - `on_refused refuse value` ends the method with the refusal `value`, as `on_missing refuse value`
+    does: only in a method that declares a refusal (`PC0136`), with a value of the type it declares
+    (`PC0137`), and from a read that stands on its own (`PC0142`). A try method refuses with no value
+    of its own, so a bare `on_refused refuse` has nothing to pass on (`PC0150`).
+  - A call with no clause is `PC0138`, whose help lists the forms that fit where it is written.
+  - The index may be of any integer type, and anything else is `PC0046`. It is compared with the count
+    as the number it is, so a negative index, a from-end `0`, and one past the count have no element,
+    in every integer type, and none wraps around to an element that is there.
+  - The list is evaluated before the index, and the fallback or the refusal only after both
+    ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
+  - What a try method gives is a value, as what a map's lookup gives is ([14.2](#142-maps)): storing a
+    message it gives stores a copy ([13.2](./§13-Messages.md#132-message-construction)).
 - **`place.append(value);` adds `value` to the end of a repeated value the method may change**: a
   repeated field of a message it may change, at any depth, or a local holding a repeated value, which
   is the method's own copy ([18](./§18-Mutability.md#18-mutability), [13.2](./§13-Messages.md#132-message-construction)).
-  - It is the one method a repeated value has. Any other is `PC0042`.
   - It takes one value, of the element type. Another number of them is `PC0045`, and a value of
     another type is `PC0046`: no implicit numeric conversion is applied.
   - It has no value, so it is a statement of its own. Anywhere else -- an operand, an argument, an
@@ -121,8 +149,6 @@ Normative Requirement:
     ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A value that counts the elements counts the ones that were there.
   - Appending to a list parameter, to a parameter's field, to the receiver of a method that is not
     `mut`, or to a value nothing holds -- a call's result, a literal -- is `PC0094`.
-  - `append` is not a keyword. A method a source declares on a message under that name is called as
-    any method is.
 - **While a `for` traverses a repeated field, or a local holding a list, nothing inside it may change
   that list's membership, order or identity** (`PC0096`). That refuses anything that could, whether or
   not it would:

@@ -410,6 +410,18 @@ supported in 1.0.
 
 Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
 
+#### 30.16.4 Replacing a method's refusal
+
+**Post-1.0.** Should `on_refused refuse value` be accepted after a call to a method a source declares,
+refusing with `value` in place of the refusal the call gave, so a caller could translate a callee's
+refusal into one of its own type? It is `PC0151` for now, and a refusal is passed on only as it is. A
+list's try method takes a value there already, because it has no refusal of its own to pass on
+([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Translating one would
+discard what the callee said, unless the value could read it, and no value holds a refusal
+([16.3.1](./§16-Methods.md#1631-refusals)).
+
+Asked in [16.3.1](./§16-Methods.md#1631-refusals).
+
 ### 30.17 Virtual and Override Semantics
 
 #### 30.17.1 ~~Virtual method inclusion in version 1~~

@@ -110,6 +110,12 @@ public static class CppRuntime
             writer.WriteLine();
 
             EmitRefusalHelper(writer);
+
+            writer.WriteLine();
+            writer.WriteLine("// --- lists (14.1) ---");
+            writer.WriteLine();
+
+            EmitElementHelpers(writer);
         }
 
         writer.WriteLine();
@@ -800,6 +806,105 @@ public static class CppRuntime
     /// way.
     /// </para>
     /// </remarks>
+    /// <summary>Emits what a list's try methods read with (spec 14.1): the element at an index, from either end.</summary>
+    /// <remarks>
+    /// <para>
+    /// An index of any integer type is compared with the count in its own signedness, widened, so nothing on the way
+    /// overflows: a negative index, a <c>uint64</c> past what a list holds, a from-end 0 and an index one past the
+    /// count all find no element. From the end, 1 is the last element and the count the first.
+    /// </para>
+    /// <para>
+    /// The element is returned by value, as a map's lookup returns its value (<see cref="EmitMapHelpers"/>): what a
+    /// try method gives is a value, and a fallback is a temporary a reference would outlive. The failure names the
+    /// list, the index, with a <c>^</c> where it counts from the end, and the count, as the C# runtime's does, word for
+    /// word. A clause that refuses reads through <c>element_or</c> too, with a fallback that marks the element missing,
+    /// as a map's lookup does.
+    /// </para>
+    /// </remarks>
+    private static void EmitElementHelpers(SourceWriter writer)
+    {
+        writer.WriteLine("// Where the element at index is held, from the start or from the end, or -1 where there is none.");
+        writer.WriteLine("template <typename Index>");
+        using (writer.Block("inline int element_position(int count, Index index, bool from_end)"))
+        {
+            using (writer.Block("if constexpr (::std::numeric_limits<Index>::is_signed)"))
+            {
+                writer.WriteLine("const long long at = static_cast<long long>(index);");
+                using (writer.Block("if (from_end)"))
+                {
+                    writer.WriteLine("return at >= 1 && at <= count ? count - static_cast<int>(at) : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return at >= 0 && at < count ? static_cast<int>(at) : -1;");
+            }
+
+            using (writer.Block("else"))
+            {
+                writer.WriteLine("const unsigned long long at = static_cast<unsigned long long>(index);");
+                writer.WriteLine("const unsigned long long held = static_cast<unsigned long long>(count);");
+                using (writer.Block("if (from_end)"))
+                {
+                    writer.WriteLine("return at >= 1 && at <= held ? count - static_cast<int>(at) : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return at < held ? static_cast<int>(at) : -1;");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// Reached from a try method's 'on_refused fail'.");
+        writer.WriteLine("template <typename Index>");
+        using (writer.Block("[[noreturn]] inline void fail_no_element(const char* list_name, Index index, bool from_end, int count)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(list_name, stderr);");
+            writer.WriteLine("::std::fputs(from_end ? \" has no element at ^\" : \" has no element at \", stderr);");
+            using (writer.Block("if constexpr (::std::numeric_limits<Index>::is_signed)"))
+            {
+                writer.WriteLine("::std::fprintf(stderr, \"%lld\", static_cast<long long>(index));");
+            }
+
+            using (writer.Block("else"))
+            {
+                writer.WriteLine("::std::fprintf(stderr, \"%llu\", static_cast<unsigned long long>(index));");
+            }
+
+            writer.WriteLine("::std::fprintf(stderr, \"; it holds %d\\n\", count);");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename List, typename Index, typename Fallback>");
+        using (writer.Block("inline typename List::value_type element_or(const List& list, Index index, bool from_end, Fallback fallback)"))
+        {
+            writer.WriteLine("const int at = element_position(list.size(), index, from_end);");
+            using (writer.Block("if (at >= 0)"))
+            {
+                writer.WriteLine("return list.Get(at);");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return fallback();");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename List, typename Index>");
+        using (writer.Block("inline typename List::value_type element_or_fail(const List& list, Index index, bool from_end, const char* list_name)"))
+        {
+            writer.WriteLine("const int at = element_position(list.size(), index, from_end);");
+            using (writer.Block("if (at < 0)"))
+            {
+                writer.WriteLine("fail_no_element(list_name, index, from_end, list.size());");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return list.Get(at);");
+        }
+    }
+
     private static void EmitMapHelpers(SourceWriter writer)
     {
         writer.WriteLine("// Reached from an 'on_missing fail' clause.");

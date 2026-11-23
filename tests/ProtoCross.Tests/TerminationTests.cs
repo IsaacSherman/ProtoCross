@@ -30,6 +30,7 @@ public partial class TerminationTests
           int32 grade = 3;
           map<string, int64> prices = 4;
           string sku = 5;
+          repeated int64 readings = 6;
         }
 
         message Refusal {
@@ -208,6 +209,7 @@ public partial class TerminationTests
     [InlineData("Grade", "return grade as Grade on_unknown fail;", "'on_unknown fail'")]
     [InlineData("int64", "return prices[sku] on_missing fail;", "'on_missing fail'")]
     [InlineData("int64", "return may_refuse() on_refused fail;", "'on_refused fail'")]
+    [InlineData("int64", "return readings.try_get_index(0) on_refused fail;", "'on_refused fail'")]
     public void EveryFailClauseIsRefused(string returnType, string statements, string construct)
     {
         var diagnostic = TheOnly(Compile(InMeter(returnType, statements)), DiagnosticCodes.TerminationForbidden);
@@ -222,6 +224,7 @@ public partial class TerminationTests
     [InlineData("return grade as Grade on_unknown fail;")]
     [InlineData("return prices[sku] on_missing fail;")]
     [InlineData("return may_refuse() on_refused fail;")]
+    [InlineData("return readings.try_get_backward_index(1) on_refused fail;")]
     public void AFailClauseIsNotRefusedWhereTerminationIsAllowed(string statements)
     {
         var returnType = statements.Contains("Grade", StringComparison.Ordinal) ? "Grade" : "int64";
@@ -289,6 +292,7 @@ public partial class TerminationTests
     [Theory]
     [InlineData("int64", "return count / seconds;", "Write 'on_zero' and a 'int64' to use instead, or declare what 'f' refuses with and write 'on_zero refuse' and one after '/ <divisor>'.")]
     [InlineData("int64", "return prices[sku];", "Write 'on_missing' and a 'int64' to use instead, or declare what 'f' refuses with and write 'on_missing refuse' and one: 'prices[…] on_missing …' (spec 14.2).")]
+    [InlineData("int64", "return readings.try_get_index(0);", "Write 'on_refused' and a 'int64' after the call, or declare what 'f' refuses with and write 'on_refused refuse' and one (spec 14.1).")]
     public void AMissingClauseIsNotToldToFail(string returnType, string statements, string help)
         => Assert.Equal(help, Assert.Single(Compile(InMeter(returnType, statements)).Diagnostics).Help);
 

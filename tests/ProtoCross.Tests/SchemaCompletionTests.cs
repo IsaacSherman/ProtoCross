@@ -292,32 +292,41 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// There is no member access into a repetition -- only 'for x in ...' -- so the element type's
-    /// members are names that cannot be written where the caret is. Its one method is (spec 14.1).
+    /// A dot after a repetition reaches the list, not an element -- an element is read by index or by
+    /// 'for x in ...' -- so the element type's members are names that cannot be written where the caret
+    /// is. The list's own methods are (spec 14.1).
     /// </summary>
     [Fact]
-    public async Task ADotAfterARepeatedFieldOffersAppendRatherThanTheElementTypesMembers()
+    public async Task ADotAfterARepeatedFieldOffersTheListsMethodsRatherThanTheElementTypesMembers()
     {
         var offered = await OfferedAsync(
             "extend Outer {\n    mut fn f() {\n        nested_values.\n    }\n}\n",
             "nested_values.");
 
-        var append = Assert.Single(offered);
-        Assert.Equal("append()", append.Label);
-        Assert.Equal(CompletionItemKind.Method, append.Kind);
-        Assert.Equal("mut fn append(value: protocross.tests.Outer.Nested) -> void", append.Detail);
+        Assert.Equal(
+            ["append()", "count()", "is_empty()", "try_get_backward_index()", "try_get_index()"],
+            Labels(offered).Order());
+        Assert.All(offered, item => Assert.Equal(CompletionItemKind.Method, item.Kind));
+        Assert.Equal(
+            "mut fn append(value: protocross.tests.Outer.Nested) -> void",
+            offered.Single(item => item.Label == "append()").Detail);
+        Assert.Equal(
+            "fn try_get_index(index: integer) -> protocross.tests.Outer.Nested refuses",
+            offered.Single(item => item.Label == "try_get_index()").Detail);
     }
 
     /// <summary>
     /// An append has no value, so it is offered only where it stands as a statement: anywhere else it
-    /// is refused, and would be the one item in the list.
+    /// is refused. A list's other methods have one, and are.
     /// </summary>
     [Theory]
     [InlineData("    fn f() -> int64 {\n        return nested_values.\n    }\n", "return nested_values.")]
     [InlineData("    mut fn f() {\n        var added = nested_values.\n    }\n", "added = nested_values.")]
     public async Task AppendIsNotOfferedInsideAnExpression(string method, string marker)
     {
-        Assert.Empty(await OfferedAsync("extend Outer {\n" + method + "}\n", marker));
+        var offered = await OfferedAsync("extend Outer {\n" + method + "}\n", marker);
+
+        Assert.Equal(["count()", "is_empty()", "try_get_backward_index()", "try_get_index()"], Labels(offered).Order());
     }
 
     /// <summary>
@@ -397,17 +406,19 @@ public partial class SchemaCompletionTests
     }
 
     /// <summary>
-    /// Completion asked again on an append already written offers it again, as it offers a field's
-    /// siblings on a field already written, and without parentheses, which are already there.
+    /// Completion asked again on an append already written offers it again, with the list's other
+    /// methods, as it offers a field's siblings on a field already written, and without parentheses,
+    /// which are already there.
     /// </summary>
     [Fact]
     public async Task CompletionOnAnAppendAlreadyWrittenOffersIt()
     {
-        var offered = await OfferedAsync(
+        var offered = Labels(await OfferedAsync(
             "extend Outer {\n    mut fn f() {\n        nested_values.append(nested);\n    }\n}\n",
-            "nested_values.app");
+            "nested_values.app"));
 
-        Assert.Equal("append", Assert.Single(offered).Label);
+        Assert.Contains("append", offered);
+        Assert.All(offered, label => Assert.DoesNotContain("(", label, StringComparison.Ordinal));
     }
 
     /// <summary>

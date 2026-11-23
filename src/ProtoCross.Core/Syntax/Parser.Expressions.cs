@@ -466,11 +466,16 @@ public sealed partial class Parser
 
             if (linkToken.Kind == TokenKind.OpenBracket)
             {
+                // A '^' is never a prefix operator, so one at the start of an index counts from the end (spec 14.1).
+                SourceSpan? fromEnd = Current.Kind == TokenKind.Caret ? Advance().Span : null;
                 var key = ParseExpression(out var keyHeight);
                 var close = Expect(TokenKind.CloseBracket).Span;
                 var onMissing = ParseOnMissingClause(out var fallbackHeight);
 
-                link = new IndexExpression(expression, key, Spanning(expression.Span, onMissing?.Span ?? close), onMissing);
+                link = new IndexExpression(expression, key, Spanning(expression.Span, onMissing?.Span ?? close), onMissing)
+                {
+                    FromEndMarker = fromEnd,
+                };
                 linkHeight = Math.Max(height, Math.Max(keyHeight, fallbackHeight)) + 1;
 
                 if (!TryReachHeight(linkHeight, linkToken.Span))
@@ -582,12 +587,29 @@ public sealed partial class Parser
         if (Current.Kind == TokenKind.Refuse)
         {
             var refuseToken = Advance();
-            return new OnRefusedClause(null, Spanning(onRefusedToken.Span, refuseToken.Span)) { PassesItOn = true };
+            if (!BeginsAValue(Current.Kind))
+            {
+                return new OnRefusedClause(null, Spanning(onRefusedToken.Span, refuseToken.Span)) { PassesItOn = true };
+            }
+
+            var refusal = ParseUnaryExpression(out fallbackHeight);
+            return new OnRefusedClause(null, Spanning(onRefusedToken.Span, refusal.Span)) { Refusal = refusal };
         }
 
         var fallback = ParseUnaryExpression(out fallbackHeight);
         return new OnRefusedClause(fallback, Spanning(onRefusedToken.Span, fallback.Span));
     }
+
+    /// <summary>Whether a token of <paramref name="kind"/> can begin a value: a name, a literal, a list, or a prefix operator.</summary>
+    /// <remarks>
+    /// What follows <c>on_refused refuse</c> where it passes a refusal on is what ends the clause's statement or the
+    /// expression around it, a semicolon, a parenthesis or a comma, none of which begins a value, so a value after
+    /// the word is the one it refuses with (spec 16.3.1).
+    /// </remarks>
+    private static bool BeginsAValue(TokenKind kind)
+        => kind is TokenKind.Identifier or TokenKind.IntegerLiteral or TokenKind.FloatLiteral or TokenKind.StringLiteral
+            or TokenKind.True or TokenKind.False or TokenKind.OpenParen or TokenKind.OpenBracket
+            or TokenKind.Minus or TokenKind.Bang or TokenKind.Not or TokenKind.Tilde or TokenKind.Has;
 
     /// <summary>
     /// Whether the bracket that is the current token, after a value, opens a key, <c>[k]</c>, rather

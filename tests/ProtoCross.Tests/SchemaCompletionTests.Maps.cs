@@ -53,16 +53,16 @@ public partial class SchemaCompletionTests
 
     /// <summary>
     /// In front of one of a map's methods, a name is offered only where it has that member and the call
-    /// binds: a map, or a message declaring a method of that name. A message without one would not bind
-    /// there, and nor would one whose field has the name, since a field is not called: <c>m.count()</c>
-    /// is <c>PC0044</c> (#162).
+    /// binds: a map, a list where a list has the method too, as it has <c>count</c>, or a message
+    /// declaring a method of that name. A message without one would not bind there, and nor would one
+    /// whose field has the name, since a field is not called: <c>m.count()</c> is <c>PC0044</c> (#162).
     /// </summary>
     [Fact]
     public async Task InFrontOfAMapsMethodOnlyWhatHasThatMemberIsOffered()
     {
         var applied = await AcceptedReceiverItemsAsync(MapReceiverBody, "return ta");
 
-        Assert.Equal(new[] { "tags" }, applied.Select(attempt => attempt.Item.Label));
+        Assert.Equal(new[] { "nested_values", "tags" }, applied.Select(attempt => attempt.Item.Label).Order());
     }
 
     /// <summary>Only a map is looked up by a key, so in front of one nothing else is offered.</summary>
