@@ -119,8 +119,8 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// <paramref name="value"/> as a method gives it to its caller, as its result or as a refusal's fallback: a list
-    /// the caller owns, and anything else as it is held.
+    /// <paramref name="value"/> as a method gives it to its caller, as its result, its refusal, or a refusal's
+    /// fallback: a list the caller owns, and anything else as it is held.
     /// </summary>
     /// <param name="localsAreCopies">
     /// Whether the method copies what it stores in a local (<see cref="Body.CopiesIntoLocals"/>), so a local's list
@@ -128,8 +128,8 @@ public sealed partial class CSharpBackend
     /// </param>
     /// <remarks>
     /// <para>
-    /// A list returned is the caller's own (spec 16.2, 14.1). C++ returns one by value, so a C++ caller holds a copy
-    /// of whatever the method returned. A C# list is a reference, and <c>return items;</c> would hand the caller the
+    /// A list returned is the caller's own (spec 16.2, 14.1), and so is one refused (spec 16.3.1). C++ returns one by
+    /// value, and assigns a refusal into the caller's reference, so a C++ caller holds a copy of either. A C# list is a reference, and <c>return items;</c> would hand the caller the
     /// receiver's own field: a change the caller made to the list, or to a message in it, would change the receiver.
     /// So C# gives a copy of any list the method does not own outright: a field, a parameter, or a local in a method
     /// that shares rather than copies into locals.

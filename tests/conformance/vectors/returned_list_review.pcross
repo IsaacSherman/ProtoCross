@@ -10,6 +10,11 @@ extend ReturnedListReview {
         return items;
     }
 
+    // A list refused is the caller's own, as one returned is.
+    fn refused() -> int64 refuses repeated ReturnedListItem {
+        refuse items;
+    }
+
     mut fn sum_returned() -> int64 {
         var total: int64 = 0;
         for snapshot in returned() {

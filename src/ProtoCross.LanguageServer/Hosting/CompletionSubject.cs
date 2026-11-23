@@ -112,14 +112,19 @@ internal sealed record SchemaSubject(
     /// </remarks>
     public bool PrecededByNew { get; init; }
 
-    /// <summary>Whether the word before the name under the caret is <c>repeated</c>, with space between.</summary>
+    /// <summary>
+    /// Where the word <c>repeated</c> begins, when it is the token before the name under the caret; null where it is
+    /// not.
+    /// </summary>
     /// <remarks>
     /// The fact <see cref="PrecededByNew"/> is, for a list's type: a type is what makes <c>repeated</c> begin one
     /// (<see cref="ContextualKeywords.BeginsARepeatedType"/>), so before the element's first letter is typed the
-    /// parser reads <c>repeated</c> as a type of that name, and there is no element slot in the tree to find.
-    /// Init-only, as <see cref="PrecededByNew"/> is.
+    /// parser reads <c>repeated</c> as a type of that name, and there is no element slot in the tree to find. Taken
+    /// from the tokens, where a comment is trivia, so a comment between the word and the caret does not hide it. Its
+    /// offset rather than a flag, because completion asks the tree about that word: whether it is a type there, and
+    /// one a list may be. Init-only, as <see cref="PrecededByNew"/> is.
     /// </remarks>
-    public bool PrecededByRepeated { get; init; }
+    public int? RepeatedBefore { get; init; }
 
     /// <summary>Whether the name under the caret is followed by <c>.append</c>, and so is what an append adds to.</summary>
     /// <remarks>
@@ -185,7 +190,9 @@ internal sealed record SchemaSubject(
             FollowedByCall: following is TokenKind.OpenParen)
         {
             PrecededByNew = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.New },
-            PrecededByRepeated = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Repeated },
+            RepeatedBefore = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Repeated } repeated
+                ? repeated.Span.Start.Offset
+                : null,
             PrecededByFactory = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Factory },
             FollowedByAppend = BeginsAnAppend(tokens, end),
         };

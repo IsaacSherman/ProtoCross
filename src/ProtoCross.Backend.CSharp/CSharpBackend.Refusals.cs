@@ -129,14 +129,19 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>A method that may refuse ending with <paramref name="refusal"/>: <c>refuse</c>, or a clause's.</summary>
-    private static void EmitRefused(SourceWriter writer, IrExpression refusal, Outs outs, Placement placement)
+    /// <remarks>
+    /// The refusal is given as a result is (<see cref="Returned"/>): a list refused is the caller's own, as one
+    /// returned is, which C++ makes it by assigning it into the caller's reference (spec 16.3.1).
+    /// </remarks>
+    /// <param name="localsAreCopies">Whether the method copies into its locals, as <see cref="Returned"/> asks.</param>
+    private static void EmitRefused(SourceWriter writer, IrExpression refusal, Outs outs, Placement placement, bool localsAreCopies)
     {
         if (outs.Result is not null)
         {
             writer.WriteLine($"{outs.Result} = default;");
         }
 
-        writer.WriteLine($"{outs.Refusal} = {Held(refusal, placement)};");
+        writer.WriteLine($"{outs.Refusal} = {Returned(refusal, placement, localsAreCopies)};");
         writer.WriteLine("return false;");
     }
 
@@ -155,7 +160,7 @@ public sealed partial class CSharpBackend
     {
         var placement = body.Placement;
         using var refused = writer.Block($"if ({OrNull(operation, placement)} is not {{ }} {placement.Built[operation]})");
-        EmitRefused(writer, refusal, body.Outs!, placement);
+        EmitRefused(writer, refusal, body.Outs!, placement, body.CopiesIntoLocals);
     }
 
     /// <summary>What <paramref name="operation"/> gives, or null where its clause would answer instead.</summary>

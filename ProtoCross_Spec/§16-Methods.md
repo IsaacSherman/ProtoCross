@@ -222,6 +222,8 @@ Normative Requirements:
   and nothing beside the operation may have been evaluated. Anywhere else, a field's compound
   assignment included, it is `PC0142`. A `mut fn` that may refuse stands in the same places as one that
   cannot, its clause answered after it returns.
+- **A list a method refuses with is the caller's own**, as one it returns is ([16.2](#162-parameters-and-returns)): a change
+  the caller makes to it, or to a message in it, never reaches the receiver or the field it was read from.
 - **A change a method made before it refused stands.** A `mut fn` that changes its receiver and then
   refuses leaves the receiver changed, and a fallback that reads it reads it changed. Nothing is
   undone, as nothing is undone before `return`.

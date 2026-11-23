@@ -219,7 +219,7 @@ repeated enum is a `RepeatedField` of the enum, as protoc declares one.
 by value. A C# list is a reference, so `return items;` returns `items.Clone()`: a method returns a copy of
 any list it does not own outright, a field, a parameter, or a local in a method that shares rather than
 copies into locals. A list literal, a call's result and a local the method copied into are returned as
-they are. A method that may refuse gives its `result` the same way, and a refusal's fallback is copied
+they are. A method that may refuse gives its `result` and its `refusal` the same way, and a refusal's fallback is copied
 by the same rule, so a loop over what a call gives never traverses the receiver's own field.
 
 protoc declares a repeated field's property with no setter, so a whole list assigned to one is

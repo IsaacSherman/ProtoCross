@@ -75,7 +75,7 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrRefuse refused:
-                EmitRefused(writer, refused.Value, body.Outs!, placement);
+                EmitRefused(writer, refused.Value, body.Outs!, placement, body.CopiesIntoLocals);
                 break;
 
             case IrExpressionStatement { Expression: IrRefusableCall refusable }:

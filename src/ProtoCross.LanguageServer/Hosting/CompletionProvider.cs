@@ -1292,14 +1292,24 @@ public sealed class CompletionProvider
             && !NamesAValue(model, subject, ContextualKeywords.New);
 
         // A list's element type not yet begun: 'repeated' with nothing after it is a type of that name to the
-        // parser (SchemaSubject.PrecededByRepeated), and the caret after it is where the element's type goes.
+        // parser (SchemaSubject.RepeatedBefore), and the caret after it is where the element's type goes, where a
+        // list's type may be written at all.
         var beginningAListElement = reference is null
-            && subject.PrecededByRepeated
-            && NamesAnUnfinishedListType(model, subject, document.Text);
+            && subject.RepeatedBefore is { } word
+            && model.SyntaxAt(word) is { } named
+            && named.Enclosing<TypeReference>() is { IsRepeated: false, Name.Text: ContextualKeywords.Repeated } unfinished
+            && DeclaresAType(named, unfinished);
 
         if (reference is null && !beginningALiteral && !beginningAListElement)
         {
             return null;
+        }
+
+        // A list's type written where no list can be, a literal's or a conversion's, names nothing an element could
+        // complete (spec 8.1).
+        if (reference is { IsRepeated: true } && !DeclaresAType(at, reference))
+        {
+            return [];
         }
 
         // 'void' is a result's type, and not a list's element (spec 8.1).
@@ -1436,25 +1446,20 @@ public sealed class CompletionProvider
     };
 
     /// <summary>
-    /// Whether the word before the caret is a <c>repeated</c> the parser read as a type's name, because nothing
-    /// that begins a type follows it yet: <c>-&gt; repeated |</c>, <c>given: repeated |</c>, <c>var local: repeated | =</c>.
+    /// Whether <paramref name="reference"/> is a type a declaration names, which a list's may be: a parameter's, a
+    /// local's, a result's or a refusal's (spec 8.1).
     /// </summary>
     /// <remarks>
-    /// Asked of the tree, so the word counts only where a type is written: a field or a local named <c>repeated</c>
-    /// in an expression is no type reference, and a name being typed after it is not a list's element.
+    /// A literal's type and a conversion's are type references too, and neither may be a list: a literal builds a
+    /// message, and <c>as</c> converts to a scalar or an enum. Asked of the tree, so <c>new repeated |</c> and
+    /// <c>as repeated |</c> offer nothing an element could complete, and a local or a field named <c>repeated</c> in
+    /// an expression is no type at all.
     /// </remarks>
-    private static bool NamesAnUnfinishedListType(SemanticModel model, SchemaSubject subject, string text)
-    {
-        var end = subject.Start;
-        while (end > 0 && char.IsWhiteSpace(text[end - 1]))
-        {
-            end--;
-        }
-
-        return end > 0
-            && model.SyntaxAt(end - 1)?.Enclosing<TypeReference>() is { IsRepeated: false } named
-            && named.Name.Text == ContextualKeywords.Repeated;
-    }
+    private static bool DeclaresAType(SyntaxLocation at, TypeReference reference)
+        => ReferenceEquals(at.Enclosing<ParameterDeclaration>()?.Type, reference)
+            || ReferenceEquals(at.Enclosing<VariableDeclarationStatement>()?.DeclaredType, reference)
+            || ReferenceEquals(at.Method?.ReturnType, reference)
+            || ReferenceEquals(at.Method?.Refusal, reference);
 
     /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
     /// <remarks>
