@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+message ReturnedListReview {
+  repeated ReturnedListItem items = 1;
+}
+
+message ReturnedListItem {
+  int64 amount = 1;
+}

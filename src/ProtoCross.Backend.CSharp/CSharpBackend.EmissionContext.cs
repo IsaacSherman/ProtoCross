@@ -83,19 +83,40 @@ public sealed partial class CSharpBackend
 
         /// <summary>
         /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
-        /// changes a message, a field of a copy of the call's result it is read from.
+        /// changes a message, a copy of the list a call returns, or a field of a copy of the call's result
+        /// it is read from.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A call's result is a reference in C#, and may be part of the receiver the loop's body
         /// changes, where C++ keeps the result in a local of its own (spec 24.2). A loop over it would
         /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. So
         /// is what a lookup gives, which is the message the map holds. A literal is held by nothing
         /// else, and is traversed as it is.
+        /// </para>
+        /// <para>
+        /// A call that returns a list may return a field of the receiver itself, <c>return items;</c>,
+        /// and a list returned is the caller's own (spec 14.1): C++ traverses the temporary it returns by
+        /// value, and C# a <c>Clone</c> of it, messages and all, so a change the body makes to the field's
+        /// messages does not reach the ones the loop is given.
+        /// </para>
         /// </remarks>
         public string Collection(IrForEach loop)
-            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
+        {
+            if (!CopiesIntoLocals)
+            {
+                return Expression(loop.Collection, Placement);
+            }
+
+            if (loop.Collection is IrMethodCall or IrRefusableCall)
+            {
+                return Expression(loop.Collection, Placement) + ".Clone()";
+            }
+
+            return IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
+        }
     }
 
     /// <summary>

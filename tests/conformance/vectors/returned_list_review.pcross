@@ -1,0 +1,44 @@
+// A returned list is a value of its own, including when a loop traverses it directly.
+import proto "returned_list_review.proto";
+
+extend ReturnedListReview {
+    fn returned() -> repeated ReturnedListItem {
+        return items;
+    }
+
+    fn built() -> repeated ReturnedListItem refuses string {
+        return items;
+    }
+
+    mut fn sum_returned() -> int64 {
+        var total: int64 = 0;
+        for snapshot in returned() {
+            for original in items {
+                original.amount = 0;
+            }
+            total += snapshot.amount;
+        }
+        return total;
+    }
+
+    mut fn sum_built() -> int64 {
+        var total: int64 = 0;
+        for snapshot in built() on_refused fail {
+            for original in items {
+                original.amount = 0;
+            }
+            total += snapshot.amount;
+        }
+        return total;
+    }
+}
+
+test ReturnedListReview.sum_returned "a directly iterated returned list owns its messages" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return 12;
+}
+
+test ReturnedListReview.sum_built "a directly iterated refusing result owns its messages" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return 12;
+}

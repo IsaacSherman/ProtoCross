@@ -32,9 +32,9 @@ public sealed partial class Binder
     {
         if (expectedType is RepeatedType { ElementType: not ErrorType } expected)
         {
-            var elements = list.Elements.Select(element => BindExpression(element, scope, context, expected.ElementType)).ToList();
-            ReportElementMismatches(list, elements, expected.ElementType, expectedHere: true);
-            return new IrList(expected, elements, list.Span);
+            var expectedElements = list.Elements.Select(element => BindExpression(element, scope, context, expected.ElementType)).ToList();
+            ReportElementMismatches(list, expectedElements, expected.ElementType, expectedHere: true);
+            return new IrList(expected, expectedElements, list.Span);
         }
 
         if (list.Elements.Count == 0)
@@ -47,15 +47,20 @@ public sealed partial class Binder
             return Refusal([], list.Span);
         }
 
-        var bound = list.Elements.Select(element => BindExpression(element, scope, context, null)).ToList();
-        if (ElementTypeOf(list, bound) is not { } elementType)
+        // Every element but a numeric literal first, in the order written. A literal is bound once the list's
+        // type is known, so its range is checked in the type it takes and never in one it does not: the
+        // -9223372036854775809 of [-9223372036854775809, ratio] is a double, though no integer type holds it.
+        var typed = list.Elements.Select(element => IsNumericLiteral(element) ? null : BindExpression(element, scope, context, null)).ToList();
+        if (ElementTypeOf(list, typed) is not { } elementType)
         {
-            return Refusal(bound, list.Span);
+            return Refusal([.. typed.OfType<IrExpression>()], list.Span);
         }
 
-        var adopted = AdoptedBy(elementType, list, bound, scope, context);
-        ReportElementMismatches(list, adopted, elementType, expectedHere: false);
-        return new IrList(new RepeatedType(elementType), adopted, list.Span);
+        var elements = list.Elements
+            .Select((element, index) => typed[index] ?? BindExpression(element, scope, context, elementType))
+            .ToList();
+        ReportElementMismatches(list, elements, elementType, expectedHere: false);
+        return new IrList(new RepeatedType(elementType), elements, list.Span);
     }
 
     /// <summary>
@@ -63,20 +68,28 @@ public sealed partial class Binder
     /// numeric literal, or the type its literals agree on where every element is one. Null where that
     /// type cannot be a list's element, which is reported here.
     /// </summary>
+    /// <param name="typed">Each element bound, or null for a numeric literal, which is not bound yet.</param>
     /// <remarks>
+    /// <para>
     /// A literal takes the type of the typed elements beside it, as one takes the type of the other
     /// operand of an operator (spec 10.3), so <c>[1, ratio]</c> is a list of whatever <c>ratio</c> is.
-    /// A list of literals alone is of their natural type, and of <c>double</c> where any of them is a
-    /// floating-point literal, so <c>[1, 2.5]</c> is a list of doubles rather than an error about its
-    /// first element.
+    /// A list of literals alone is of <c>double</c> where any of them is a floating-point literal, so
+    /// <c>[1, 2.5]</c> is a list of doubles rather than an error about its first element.
+    /// </para>
+    /// <para>
+    /// A list of integer literals alone is of their natural type: <c>uint64</c> where one of them only
+    /// <c>uint64</c> can hold, and <c>int64</c> otherwise, as each literal's own natural type is
+    /// (<see cref="NaturalType"/>). So <c>[1, 0xFFFF_FFFF_FFFF_FFFF]</c> is a list of <c>uint64</c>, which
+    /// taking the first literal's type would have refused.
+    /// </para>
     /// </remarks>
-    private PlType? ElementTypeOf(ListExpression list, IReadOnlyList<IrExpression> bound)
+    private PlType? ElementTypeOf(ListExpression list, IReadOnlyList<IrExpression?> typed)
     {
-        var anchor = Enumerable.Range(0, bound.Count).FirstOrDefault(index => !IsNumericLiteral(list.Elements[index]), -1);
+        var anchor = Enumerable.Range(0, typed.Count).FirstOrDefault(index => typed[index] is not null, -1);
 
-        var elementType = anchor >= 0 ? bound[anchor].Type
+        var elementType = anchor >= 0 ? typed[anchor]!.Type
             : list.Elements.Any(IsFloatingPointLiteral) ? ScalarType.DoubleType
-            : bound[0].Type;
+            : NaturalTypeOfIntegers(list);
 
         switch (elementType)
         {
@@ -109,30 +122,11 @@ public sealed partial class Binder
             element,
             "To group values, declare a message for the group and make a list of it (spec 14.1).");
 
-    /// <summary>
-    /// <paramref name="bound"/>, with each numeric literal of another type bound again as a value of
-    /// <paramref name="elementType"/>, as a literal operand is (spec 10.3).
-    /// </summary>
-    /// <remarks>
-    /// A literal is bound twice where it took its natural type first, as an operator's left operand is:
-    /// a literal names nothing and records nothing, so binding it again changes nothing but its type. One
-    /// that failed to bind has said why, and is left as it is.
-    /// </remarks>
-    private List<IrExpression> AdoptedBy(
-        PlType elementType,
-        ListExpression list,
-        IReadOnlyList<IrExpression> bound,
-        Scope scope,
-        MethodContext context)
-        => [
-            .. bound.Select((element, index) =>
-                elementType is ScalarType
-                && IsNumericLiteral(list.Elements[index])
-                && element.Type is not ErrorType
-                && !TypesMatch(elementType, element.Type)
-                    ? BindExpression(list.Elements[index], scope, context, elementType)
-                    : element),
-        ];
+    /// <summary>The natural type of a list of integer literals alone (<see cref="ElementTypeOf"/>).</summary>
+    private static ScalarType NaturalTypeOfIntegers(ListExpression list)
+        => list.Elements.Any(element => IntegerLiteralOf(element) is { } written && NaturalType(written.Value) == ScalarType.UInt64Type)
+            ? ScalarType.UInt64Type
+            : ScalarType.Int64Type;
 
     /// <summary>Reports each element of <paramref name="elements"/> that does not have <paramref name="elementType"/>.</summary>
     private void ReportElementMismatches(

@@ -74,9 +74,12 @@ Normative Requirement:
     expected ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). An element of another type is `PC0148`.
   - Where nothing says what a list holds, its elements do. Every element has one type, which is that
     of the first element that is not a numeric literal; a literal takes it, as a literal operand takes
-    the other operand's ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)). A list of literals alone has their natural type, and `double` where
-    any of them is a floating-point literal, so `[1, 2.5]` is a `repeated double`. An element of another
-    type is `PC0148`.
+    the other operand's ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)), and its range is checked in that type alone, so
+    `[-9223372036854775809, ratio]` is a list of doubles though no integer type holds its first element.
+    A list of literals alone is `double` where any of them is a floating-point literal, so `[1, 2.5]` is
+    a `repeated double`. One of integer literals alone is `uint64` where one of them only `uint64` can
+    hold, and `int64` otherwise, as each literal's natural type is. An element of another type is
+    `PC0148`.
   - An empty list where nothing says what it holds is `PC0149`: write its type where it is declared,
     `var items: repeated double = [];`.
   - Lists do not nest: a list holding a list, or a repeated value, is `PC0147`, and so is

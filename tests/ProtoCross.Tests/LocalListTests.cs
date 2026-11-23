@@ -113,6 +113,8 @@ public class LocalListTests
     [InlineData("var values = [1, base, 3];", "repeated int32")]
     [InlineData("var values = [1, 2.5, 3];", "repeated double")]
     [InlineData("var values = [1, 2];", "repeated int64")]
+    [InlineData("var values = [1, 0xFFFF_FFFF_FFFF_FFFF];", "repeated uint64")]
+    [InlineData("var values = [-9223372036854775809, ratio];", "repeated double")]
     [InlineData("var values = [ratio, 1];", "repeated double")]
     [InlineData("var values = [Shade.SHADE_DARK];", "repeated protocross.conformance.Shade")]
     [InlineData("var values = [new Parcel { grams: 1 }];", "repeated protocross.conformance.Parcel")]

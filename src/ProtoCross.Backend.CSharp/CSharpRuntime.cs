@@ -199,6 +199,12 @@ public static class CSharpRuntime
     /// the field's membership or order (spec 18), and the loop stays a <c>foreach</c>, so a body that
     /// always returns or breaks leaves no step unreachable.
     /// </para>
+    /// <para>
+    /// A list parameter is an <c>IReadOnlyList</c> (spec 24.1), which nothing may change, so a loop over one
+    /// binds a <c>ReadOnlyElement</c>, read where it is, through an overload C# chooses only for a list that
+    /// is not a <c>RepeatedField</c>. Copying the parameter into a <c>RepeatedField</c> to bind an
+    /// <c>Element</c> would cost a copy of the list for every loop over it, for a setter nothing may call.
+    /// </para>
     /// </remarks>
     private static void EmitWrappers(SourceWriter writer)
     {
@@ -217,6 +223,34 @@ public static class CSharpRuntime
                 {
                     writer.WriteLine("yield return new Element<T>(list, index);");
                 }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Each element of a list the code was given and may not change, as a place it is read from.</summary>");
+            using (writer.Block("public static global::System.Collections.Generic.IEnumerable<ReadOnlyElement<T>> Elements<T>(global::System.Collections.Generic.IReadOnlyList<T> list)"))
+            {
+                using (writer.Block("for (var index = 0; index < list.Count; index++)"))
+                {
+                    writer.WriteLine("yield return new ReadOnlyElement<T>(list, index);");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>One element of a list the code may not change, read where it is.</summary>");
+            using (writer.Block("public sealed class ReadOnlyElement<T>"))
+            {
+                writer.WriteLine("private readonly global::System.Collections.Generic.IReadOnlyList<T> _list;");
+                writer.WriteLine("private readonly int _index;");
+                writer.WriteLine();
+                using (writer.Block("public ReadOnlyElement(global::System.Collections.Generic.IReadOnlyList<T> list, int index)"))
+                {
+                    writer.WriteLine("_list = list;");
+                    writer.WriteLine("_index = index;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>The element's value, as the list holds it now.</summary>");
+                writer.WriteLine("public T Value => _list[_index];");
             }
 
             writer.WriteLine();
