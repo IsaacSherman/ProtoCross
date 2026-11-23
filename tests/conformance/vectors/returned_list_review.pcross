@@ -15,6 +15,14 @@ extend ReturnedListReview {
         refuse items;
     }
 
+    fn refused_when_zero(divisor: int64) -> int64 refuses repeated ReturnedListItem {
+        return 12 / divisor on_zero refuse items;
+    }
+
+    fn forwarded(divisor: int64) -> int64 refuses repeated ReturnedListItem {
+        return refused_when_zero(divisor) on_refused refuse;
+    }
+
     mut fn sum_returned() -> int64 {
         var total: int64 = 0;
         for snapshot in returned() {

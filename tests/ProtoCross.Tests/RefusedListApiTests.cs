@@ -13,9 +13,10 @@ namespace ProtoCross.Tests;
 /// (spec 16.3.1, 16.2).
 /// </summary>
 /// <remarks>
-/// <c>returned_list_review</c>'s <c>refused</c> refuses with the receiver's own field. C++ assigns a refusal into
-/// the caller's reference, which copies it; C# hands back a reference, so without a copy a caller's change to the
-/// refusal would change the receiver. <see cref="ReturnedListApiReviewTests"/> holds a returned list to the same.
+/// <c>returned_list_review</c> refuses with the receiver's own field, directly and through a zero divisor clause
+/// whose refusal another method forwards. C++ assigns a refusal into the caller's reference, which copies it;
+/// C# hands back a reference, so without a copy a caller's change to the refusal would change the receiver.
+/// <see cref="ReturnedListApiReviewTests"/> holds a returned list to the same.
 /// </remarks>
 public class RefusedListApiTests
 {
@@ -43,19 +44,27 @@ public class RefusedListApiTests
         Assert.True(generated.ExitCode == 0, generated.Output);
         workspace.WriteProjectFiles();
         workspace.Write([new GeneratedFile("Consumer.cs", """
+            using Google.Protobuf.Collections;
             using Protocross.Conformance;
             using Xunit;
 
             public class Consumer
             {
-                [Fact]
-                public void EditingTheRefusalDoesNotEditTheReceiver()
+                [Theory]
+                [InlineData(false)]
+                [InlineData(true)]
+                public void EditingTheRefusalDoesNotEditTheReceiver(bool forwarded)
                 {
                     var receiver = new ReturnedListReview { Items = { new ReturnedListItem { Amount = 5 } } };
 
-                    Assert.False(receiver.Refused(out _, out var refusal));
-                    refusal[0].Amount = 9;
-                    refusal.Add(new ReturnedListItem { Amount = 7 });
+                    Assert.False(forwarded
+                        ? receiver.Forwarded(0, out _, out var refusal)
+                        : receiver.Refused(out _, out refusal));
+                    var received = Assert.IsType<RepeatedField<ReturnedListItem>>(refusal);
+                    var item = Assert.Single(received);
+                    Assert.Equal(5L, item.Amount);
+                    item.Amount = 9;
+                    received.Add(new ReturnedListItem { Amount = 7 });
 
                     Assert.Equal(5L, receiver.Items[0].Amount);
                     Assert.Single(receiver.Items);
@@ -64,7 +73,7 @@ public class RefusedListApiTests
             """)]);
 
         var run = workspace.RunTests(dotnet);
-        Assert.True(run.Executed.Count == 1, run.Process.Output);
+        Assert.True(run.Executed.Count == 2, run.Process.Output);
         Assert.All(run.Executed, test => Assert.True(test.Passed, test.Name + ": " + test.Detail));
         Assert.True(run.Process.ExitCode == 0, run.Process.Output);
     }
@@ -85,16 +94,22 @@ public class RefusedListApiTests
 
             int main() {
                 using namespace protocross::conformance;
-                ReturnedListReview receiver;
-                receiver.add_items()->set_amount(5);
-                std::int64_t result = 0;
-                google::protobuf::RepeatedPtrField<ReturnedListItem> refusal;
-                if (refused(receiver, result, refusal)) { return 2; }
-                refusal.Mutable(0)->set_amount(9);
-                refusal.Add()->set_amount(7);
-                if (receiver.items_size() != 1 || receiver.items(0).amount() != 5) {
-                    std::cerr << "Editing the refusal changed the receiver\n";
-                    return 1;
+                for (bool pass_on : {false, true}) {
+                    ReturnedListReview receiver;
+                    receiver.add_items()->set_amount(5);
+                    std::int64_t result = 0;
+                    google::protobuf::RepeatedPtrField<ReturnedListItem> refusal;
+                    const bool built = pass_on ? forwarded(receiver, 0, result, refusal) : refused(receiver, result, refusal);
+                    if (built || refusal.size() != 1 || refusal.Get(0).amount() != 5) {
+                        std::cerr << "Expected a refusal with one item of amount 5 (forwarded=" << pass_on << ")\n";
+                        return 2;
+                    }
+                    refusal.Mutable(0)->set_amount(9);
+                    refusal.Add()->set_amount(7);
+                    if (receiver.items_size() != 1 || receiver.items(0).amount() != 5) {
+                        std::cerr << "Editing the refusal changed the receiver (forwarded=" << pass_on << ")\n";
+                        return 1;
+                    }
                 }
                 return 0;
             }
