@@ -134,7 +134,10 @@ each with a form that takes a list of sources.
    signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
    implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
    block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
-   can be followed to it (`Binder.Factories.cs`). A method that may refuse, of a factory or an extend
+   can be followed to it (`Binder.Factories.cs`). A `helper fn` at the top level is a project's helper
+   (`IrMethodKind.Standalone`), whose signature has no receiver at all; it is declared in a table of
+   its own, and a bare call looks for one after the methods it reaches already (`Binder.Helpers.cs`).
+   A method that may refuse, of a factory or an extend
    block, carries the type it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is
    an `IrRefuse`, and every call to such a method, from anywhere, is held by an `IrRefusableCall` saying
    what a refusal makes of it, so a backend never meets one bare (`Binder.Refusals.cs`). A division, a
@@ -721,7 +724,9 @@ each backend groups them by message into a class of their own, after the extensi
 source with no factory is generated as it always was: a C# `public static class` with `private static`
 helpers, and a C++ struct of static members, declared with the functions and defined after them. The
 class's name is `NameConventions.GetFactoryClassName`, the one both backends and the binder's collision
-check use. A test whose expectation is a message literal compares the fields it sets, and one whose
+check use. A project's helper has no receiver (`IrMethodSignature.Receiver` is null), and each backend's
+`Placement.NamespaceOf` puts it in the helpers' namespace under the project's: a C# `public static
+partial class ProtoCrossHelpers`, and C++ free functions declared and defined as the header's others are. A test whose expectation is a message literal compares the fields it sets, and one whose
 expectation is a list of them compares the count and then each element's; which checks those are is
 [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer (`ChecksOf`), which each
 backend emits as field reads and element reads off the result.
@@ -767,7 +772,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `HelperTests`, `HelperEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
 `TerminationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,

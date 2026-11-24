@@ -243,6 +243,12 @@ Implemented:
   of static members, in the project's namespace or beside the message. A test targets one as
   `test Invoice.factory.create`, with no receiver, and may expect the message it builds as a literal,
   which is compared by the fields it sets. The spec has the rules in sections 16.3, 24 and 25.3.
+- Helpers. `helper fn clamp(level: double, low: double, high: double) -> double { ... }` written at the
+  top level of a source is a project's helper: it belongs to no message, and any method or test of the
+  project calls it by its bare name, `clamp(rate, 0.0, 1.0)`. Its body follows a factory's rules, and
+  it may refuse. Helpers need a `.pcproj`. C# generates them as static methods of `ProtoCrossHelpers`
+  in `<Project>.Helpers`, and C++ as free functions in `<project>::helpers`. A test targets one by its
+  name alone, `test clamp`. The spec has the rules in sections 16.4 and 24.
 - Refusals. Any method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
   InvoiceRefusal`, ending with `refuse value;` instead of its result, with a type of the author's
   choosing. Every call to one says what a refusal makes of it: `on_refused <fallback>`,
@@ -254,8 +260,8 @@ Implemented:
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow, what each enum's unnamed numbers become, and whether generated code may end the
   program at all
-- C# backend (extension methods, and a static class per factory) and C++ backend (header-only free
-  functions, and a struct per factory)
+- C# backend (extension methods, a static class per factory, and one for a project's helpers) and C++
+  backend (header-only free functions, a struct per factory, and a namespace for a project's helpers)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends

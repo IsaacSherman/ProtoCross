@@ -9,7 +9,7 @@
 | Deferred answers and staleness | [DeferredAnswers][defer]: `AnswerAsync`, `Require` | [Compile supervision][sup-t] |
 | Completion: context capture and imports | [CompletionProvider][comp]: `Read`, `Schemas` | [Import completion][imp-t] |
 | Completion: scope, dotted members, presence, factories | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members`, `FactoryMembers` | [Schema completion][comp-t] |
-| Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted` | [Type edits][type-t] |
+| Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted`; a project's helpers in `BareCallsAt` and, for a one-name target, `Methods` | [Type edits][type-t]; [HelperEditorTests](../tests/ProtoCross.Tests/HelperEditorTests.cs) |
 | Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t], [Refused parts][refused-t] |
 | Completion: statement keywords, switch arms, `refuse` | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t], [Refusal completion][ref-t] |
 | Hover and go-to-definition | [HoverProvider][hover], [DefinitionProvider][def]: `AnswerAsync` | [Hover][hover-t], [Definition][def-t] |
