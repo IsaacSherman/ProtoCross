@@ -1720,7 +1720,7 @@ public sealed class CompletionProvider
         // front of '.'.
         // Inside a factory a bare call reaches the factory's methods and helpers, and nothing of the
         // message's own, which is called on a message the factory does not have (spec 16.3).
-        var methods = BareCallsAt(scope, result.Module);
+        var methods = BareCallsAt(model, scope, subject.Start, result.Module);
 
         if (subject.FollowedByCall)
         {
@@ -1730,7 +1730,7 @@ public sealed class CompletionProvider
                     // Without parentheses: there are already some, and adding a second pair is the
                     // same class of mistake as offering the name of a method that must be called.
                     method.Name,
-                    method.Signature.Kind is IrMethodKind.Standalone ? CompletionItemKind.Function : CompletionItemKind.Method,
+                    CallKindOf(method),
                     method.Signature.DisplayName,
                     null,
                     "0",
@@ -1767,7 +1767,7 @@ public sealed class CompletionProvider
                 ? []
                 : methods.Select(method => Member(
                     method.Name + "()",
-                    CompletionItemKind.Method,
+                    CallKindOf(method),
                     method.Signature.DisplayName,
                     null,
                     rank: "2",
@@ -1779,16 +1779,23 @@ public sealed class CompletionProvider
     }
 
     /// <summary>
-    /// What a bare call may name where <paramref name="scope"/> is: the methods the body's own message offers,
-    /// and the project's helpers (spec 16.3, 16.4).
+    /// What a bare call at <paramref name="offset"/> may name: the methods the body's own message offers, and
+    /// the project's helpers (spec 16.3, 16.4), less any the code there may not call.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// A name a method and a helper share is offered as neither, because a bare call of it is <c>PC0157</c>:
     /// the binder refuses to choose between them, so either item would be accepted and then refused. A helper
     /// has no message, and a test calls its message's methods on the receiver it builds, so in either the
     /// helpers are all there is.
+    /// </para>
+    /// <para>
+    /// A method a production method may not call, because a test source declares it, is left out after
+    /// that, since it still meets a method of its name: such a call is <c>PC0157</c> before it is
+    /// <c>PC0088</c>.
+    /// </para>
     /// </remarks>
-    private static IReadOnlyList<IrMethod> BareCallsAt(ScopeAtPosition scope, IrModule? module)
+    private static IReadOnlyList<IrMethod> BareCallsAt(SemanticModel model, ScopeAtPosition scope, int offset, IrModule? module)
     {
         if (module is null)
         {
@@ -1802,10 +1809,15 @@ public sealed class CompletionProvider
 
         return
         [
-            .. own.Where(method => helpers.All(helper => helper.Name != method.Name)),
-            .. helpers.Where(helper => own.All(method => method.Name != helper.Name)),
+            .. own.Where(method => helpers.All(helper => helper.Name != method.Name))
+                .Concat(helpers.Where(helper => own.All(method => method.Name != helper.Name)))
+                .Where(method => model.MayCallAt(offset, method.Signature)),
         ];
     }
+
+    /// <summary>The icon a callable item is drawn with: a helper's a function's, since it belongs to no message.</summary>
+    private static CompletionItemKind CallKindOf(IrMethod method)
+        => method.Signature.Kind is IrMethodKind.Standalone ? CompletionItemKind.Function : CompletionItemKind.Method;
 
     /// <summary>The keywords that could legally begin what is being written here.</summary>
     /// <remarks>

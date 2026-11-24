@@ -30,8 +30,10 @@ the message, in the namespace protoc declares it in, as the message's extension 
 **A factory whose class would share a name in that namespace is `PC0126`.** In one project,
 `acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
 project's namespace. A project named after its schemas' package could also declare one beside a
-schema's message or enum of that name. Both are refused, and the help says how to separate them.
-Refusing is what C# does with two classes of one name.
+schema's message or enum of that name, or, in C++, beside an enum's value of that name: protoc's C++
+declares an enum's values unscoped, beside the enum, where its C# declares them inside it. Both are
+refused, and the help says how to separate them. Refusing is what C# does with two classes of one
+name.
 
 The class is compared as each backend declares it, by its namespace and name there, and a clash in
 either backend is refused whichever backends are run:
@@ -91,12 +93,13 @@ a factory's class is above, whichever backends are run:
 - **The C# class.** A schema's type or namespace named `ProtoCrossHelpers` in the helpers' C#
   namespace takes it.
 - **The namespace.** A schema's type named like it in the project's namespace, `Helpers` in C# or
-  `helpers` in C++, takes it, and so does an extend block's method named `helpers`, a function C++
-  declares in the project's namespace. A schema's own namespace may be the helpers': package
+  `helpers` in C++, takes it, and so do a C++ enum's value named `helpers` there and an extend block's
+  method named `helpers`, a function C++ declares in the project's namespace. A schema's own namespace may be the helpers': package
   `acme.billing.helpers` declares its messages beside them, since two namespaces of one name are one
   namespace in both languages.
-- **Each helper.** A schema's type or namespace named like a helper in the helpers' C++ namespace takes
-  that helper's name.
+- **Each helper.** A schema's type, namespace or enum value named like a helper in the helpers' C++
+  namespace takes that helper's name: package `acme.billing.helpers` with a value `READY` takes the
+  helper `READY`.
 
 `PC0126` is titled "generated name collides", since it covers more than a factory's class.
 

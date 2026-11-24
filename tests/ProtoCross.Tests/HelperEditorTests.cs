@@ -48,9 +48,12 @@ public class HelperEditorTests
         return card!.Contents.Value;
     }
 
-    private static async Task<IReadOnlyList<CompletionItem>> OfferedAsync(string text, string marker)
+    private static async Task<IReadOnlyList<CompletionItem>> OfferedAsync(
+        string text,
+        string marker,
+        (DocumentStore Documents, DocumentUri Uri)? project = null)
     {
-        var (documents, uri) = EditorFixture.OpenInProject(text, Project);
+        var (documents, uri) = project ?? EditorFixture.OpenInProject(text, Project);
         var provider = new CompletionProvider(documents, EditorFixture.Configuration(), EditorFixture.Loaders());
         var asked = provider.Read(new CompletionParams
         {
@@ -118,6 +121,39 @@ public class HelperEditorTests
 
         var helper = Assert.Single(offered, item => item.Label.StartsWith("doubled", StringComparison.Ordinal));
         Assert.Equal(CompletionItemKind.Function, helper.Kind);
+    }
+
+    [Fact]
+    public async Task AHelperIsOfferedAsAFunctionBeforeParenthesesAreWritten()
+    {
+        var text = Source.Replace("return doubled(count);", "return dou;", StringComparison.Ordinal);
+        var offered = await OfferedAsync(text, "return dou");
+
+        var helper = Assert.Single(offered, item => item.Label == "doubled()");
+        Assert.Equal(CompletionItemKind.Function, helper.Kind);
+    }
+
+    [Fact]
+    public async Task AProductionMethodIsOfferedOnlyHelpersItCanCall()
+    {
+        var text = Source.Replace("return doubled(count);", "return dou(count);", StringComparison.Ordinal);
+        var project = EditorFixture.OpenInProject(
+            text,
+            Project,
+            ("checks.pcross", "helper fn doubled_for_test(n: int64) -> int64 { return n * 2; }"));
+        var manifest = Path.Combine(Path.GetDirectoryName(project.Uri.Path!)!, $"{Project}.pcproj");
+        File.WriteAllText(manifest, """
+            <ProtoCrossProject>
+              <Sources Include="source.pcross" />
+              <Tests Include="checks.pcross" />
+            </ProtoCrossProject>
+            """);
+        File.SetLastWriteTimeUtc(manifest, DateTime.UtcNow.AddHours(-1));
+
+        var offered = await OfferedAsync(text, "return dou", project);
+
+        Assert.Equal(["doubled"], offered.Where(item => item.Label.StartsWith("doubled", StringComparison.Ordinal))
+            .Select(item => item.Label));
     }
 
     [Fact]

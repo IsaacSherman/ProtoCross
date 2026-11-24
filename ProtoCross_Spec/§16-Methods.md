@@ -146,7 +146,7 @@ Normative Requirements:
   `extend` block of one is `PC0077`: consumers have the type without the factory.
 - **A factory whose generated class would share a name in its namespace is refused** with
   `PC0126`, whether with another factory's class or with a schema's type or namespace, in either
-  backend ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
+  backend, or a C++ enum's value ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).
 - **A factory's method may refuse**, by declaring what it refuses with, as any method may ([16.3.1](#1631-refusals)).
 
 Factories offer no support for injection or mocking in 1.0. A factory method is pure: it does no I/O

@@ -384,8 +384,22 @@ public sealed class SemanticModel
     public Binding.SchemaTypes SchemaTypesAt(int offset)
         => IsProductionBehaviorAt(offset) ? _result.ProductionTypes : _result.Types;
 
+    /// <summary>
+    /// Whether a call written at <paramref name="offset"/> may reach <paramref name="target"/>: production
+    /// behavior may not call a method or helper a test source declares (<c>PC0088</c>, spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Asked of the facts the binder decides it by, as <see cref="SchemaTypesAt"/> is, so a host offering
+    /// calls offers none the compiler would accept and then refuse.
+    /// </remarks>
+    public bool MayCallAt(int offset, IrMethodSignature target)
+        => !IsProductionBehaviorAt(offset) || !IsATestSource(target.Declaration.Document);
+
     private bool IsProductionBehaviorAt(int offset)
         => _role is SourceRole.Production && SyntaxAt(offset)?.Enclosing<TestDeclaration>() is null;
+
+    private bool IsATestSource(SourceIdentity document)
+        => _result.SyntaxTrees.Any(tree => tree.Document == document && tree.Role is SourceRole.Test);
 
     /// <summary>
     /// What a bare identifier written at <paramref name="offset"/> could mean, or null when the

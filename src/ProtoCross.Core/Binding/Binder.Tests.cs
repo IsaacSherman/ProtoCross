@@ -48,27 +48,30 @@ public sealed partial class Binder
             signature.ReturnType,
             HasImplicitReceiver: false);
         _factsEnded.Clear();
-        var receiver = BindTestFixture(test, signature, context);
+        var (receiver, refused) = BindTestFixture(test, signature, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
 
         return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span)
         {
             Document = _document,
+            Refused = refused,
         };
     }
 
     /// <summary>
     /// The message a test calls its method on, built from its fixture (spec 25.3), or null for a test of a
-    /// helper, which belongs to no message.
+    /// helper, which belongs to no message; and what the test holds of a fixture it refused whole.
     /// </summary>
     /// <remarks>
     /// <para>
     /// A test of a factory's method calls it on nothing. It holds whatever fixture its test does, the
     /// stand-in for one never written or one written anyway, which is refused here; only the binder
     /// knows the target is a factory's. A test of a helper calls it on nothing too, and holds none,
-    /// since there is no message to build one as: one written anyway is refused here, and its fields
-    /// are not bound.
+    /// since there is no message to build one as. One written anyway is refused here, and its values
+    /// are still bound, as a literal's are where there is no message to read its fields against
+    /// (<see cref="BindMessageLiteral"/>): a call or a name in one is still what hover, navigation and
+    /// a rename are asked about.
     /// </para>
     /// <para>
     /// The parser reports a test of an extend method that writes no fixture, except where it read the
@@ -76,7 +79,8 @@ public sealed partial class Binder
     /// That one is reported here, which is the first place it is known.
     /// </para>
     /// </remarks>
-    private IrMessageLiteral? BindTestFixture(TestDeclaration test, IrMethodSignature signature, MethodContext context)
+    private (IrMessageLiteral? Receiver, IReadOnlyList<IrExpression> Refused) BindTestFixture(
+        TestDeclaration test, IrMethodSignature signature, MethodContext context)
     {
         var fixture = test.Receiver;
 
@@ -98,7 +102,12 @@ public sealed partial class Binder
                 + "its arguments with 'arg' (spec 25.3).");
         }
 
-        return signature.Receiver is { } message ? BindTestReceiver(fixture, message, context) : null;
+        return (signature.Receiver, fixture.IsWritten) switch
+        {
+            ({ } message, _) => (BindTestReceiver(fixture, message, context), []),
+            (null, true) => (null, [Refusal([.. fixture.Fields.Select(field => BindRefused(field.Value, NoNames(), context))], fixture.Span)]),
+            (null, false) => (null, []),
+        };
     }
 
     /// <remarks>

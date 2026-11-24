@@ -3,6 +3,7 @@ using ProtoCross.Backend.Cpp;
 using ProtoCross.Backend.CSharp;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Syntax;
 using Xunit;
 
@@ -196,6 +197,25 @@ public class HelperTests
         var refused = TheOnly(result, DiagnosticCodes.FactoryTestDeclaresAReceiver);
         Assert.Contains("'bounds' is a helper", refused.Message);
         Assert.Contains("give the helper its arguments", refused.Help);
+    }
+
+    [Fact]
+    public void ARefusedReceiverBlockKeepsItsExpressionsForEditorRequests()
+    {
+        var result = Compile("""
+            helper fn doubled(n: int64) -> int64 { return n * 2; }
+
+            test doubled "a receiver block written by mistake" {
+                receiver { count: doubled(2) }
+                arg n = 3;
+                expect return 6;
+            }
+            """);
+
+        TheOnly(result, DiagnosticCodes.FactoryTestDeclaresAReceiver);
+        Assert.NotNull(result.Module);
+        var test = Assert.Single(result.Module.Tests);
+        Assert.Contains(IrWalk.DescendantsAndSelf(test), node => node is IrMethodCall { Target.Name: "doubled" });
     }
 
     [Fact]
@@ -425,6 +445,23 @@ public class HelperTests
         var schema = $"syntax = \"proto3\";\n\npackage {package};\n\n{declaration}\n";
         var refused = TheOnly(Compile(Bounds, schema), DiagnosticCodes.FactoryClassNameCollides);
         Assert.Contains(taken, refused.Message);
+    }
+
+    [Theory]
+    [InlineData("acme.billing.helpers", "READY", "READY", "acme::billing::helpers::READY")]
+    [InlineData("acme.billing", "helpers", "start", "acme::billing::helpers")]
+    public void AHelperAndItsNamespaceCannotTakeAnEnumValuesCppName(
+        string package, string value, string helper, string taken)
+    {
+        var schema = $$"""
+            syntax = "proto3";
+            package {{package}};
+            enum Kind { {{value}} = 0; }
+            """;
+        var result = Compile($"helper fn {helper}(kind: Kind) -> int64 {{ return 1; }}", schema);
+
+        var refused = TheOnly(result, DiagnosticCodes.FactoryClassNameCollides);
+        Assert.Contains($"'{taken}' in C++", refused.Message, StringComparison.Ordinal);
     }
 
     [Fact]

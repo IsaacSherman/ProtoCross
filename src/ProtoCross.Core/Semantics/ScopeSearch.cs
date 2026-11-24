@@ -89,12 +89,17 @@ internal static class ScopeSearch
     /// is excluding. Every expression in all three binds against an empty scope with no implicit
     /// receiver fields, so the answer over this region is a receiver and no names -- which is a
     /// different statement from the null a header gets, and the true one.
-    /// <para>A test of a helper holds no fixture (<see cref="IrTest.Receiver"/>), so its region is the other two.</para>
+    /// <para>
+    /// A test of a helper holds no fixture (<see cref="IrTest.Receiver"/>). One written there anyway is
+    /// refused, and what it held is kept among what the test refused, which is in the region too.
+    /// </para>
     /// </remarks>
     private static SourceSpan ValuesOf(IrTest test)
-        => test.Arguments.Aggregate(
-            test.Receiver is { } fixture ? SourceSpan.Union(fixture.Span, test.Expectation.Span) : test.Expectation.Span,
-            (region, argument) => SourceSpan.Union(region, argument.Span));
+        => test.Arguments.Select(argument => argument.Span)
+            .Concat(test.Refused.Select(refused => refused.Span))
+            .Aggregate(
+                test.Receiver is { } fixture ? SourceSpan.Union(fixture.Span, test.Expectation.Span) : test.Expectation.Span,
+                SourceSpan.Union);
 
     /// <summary>Every name the binder declared that can be written at <paramref name="offset"/>.</summary>
     /// <remarks>

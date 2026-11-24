@@ -104,8 +104,8 @@ public sealed partial class Binder
             ];
 
     /// <summary>
-    /// Refuses a helper whose C++ function a schema's type would meet: one protoc declares in the
-    /// helpers' namespace under the helper's name (<c>PC0126</c>, spec 24.2).
+    /// Refuses a helper whose C++ function a schema's name would meet: a type, a namespace or an enum's
+    /// value protoc declares in the helpers' namespace under the helper's name (<c>PC0126</c>, spec 24.2).
     /// </summary>
     /// <remarks>
     /// C# declares a helper as a member of its class, where no schema's name can meet it; the class is
@@ -129,8 +129,8 @@ public sealed partial class Binder
     /// <summary>
     /// Refuses the project's helpers where what they are generated in would meet a name already declared
     /// there: a schema's type or namespace named like the C# class, a schema's type named like the
-    /// namespace in either language, or a method of the project named like the C++ namespace
-    /// (<c>PC0126</c>, spec 24).
+    /// namespace in either language or an enum's value named like it in C++, or a method of the project
+    /// named like the C++ namespace (<c>PC0126</c>, spec 24).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -193,7 +193,8 @@ public sealed partial class Binder
                 DiagnosticCodes.FactoryClassNameCollides,
                 $"The project's helpers would be generated in {what}.",
                 header,
-                "Rename the schema's type or the method, or build the helpers in a project of another name (spec 24).");
+                "Rename the schema's type or value, or the method, or build the helpers in a project of another name "
+                + "(spec 24).");
     }
 
     /// <summary>

@@ -246,12 +246,19 @@ public sealed partial class Binder
 
     /// <summary>
     /// The names protoc's generated code declares at namespace scope for the schemas, in each backend,
-    /// with what declares each: a message's or an enum's class, and each namespace a file's classes are
-    /// declared in, enclosing ones included. The first to declare a name keeps it.
+    /// with what declares each: a message's or an enum's class, an enum's values in C++, and each namespace
+    /// a file's classes are declared in, enclosing ones included. The first to declare a name keeps it.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Namespaces are taken from every file rather than from its types, because protoc's C# declares a
     /// file's reflection class in its namespace whatever else the file holds.
+    /// </para>
+    /// <para>
+    /// protoc's C++ declares an enum's values unscoped, beside the enum, so a function or namespace of a
+    /// value's name there is one a compiler refuses. Its C# declares them inside the enum, where nothing
+    /// generated here can meet them.
+    /// </para>
     /// </remarks>
     private Dictionary<DeclaredName, string> NamesProtocDeclares()
     {
@@ -265,6 +272,7 @@ public sealed partial class Binder
                     break;
                 case SchemaEnumName { Descriptor: var enumType }:
                     DeclareType(enumType, enumType.ContainingType, NameConventions.GetCppTypeName(enumType));
+                    DeclareCppValues(enumType);
                     break;
             }
         }
@@ -290,6 +298,16 @@ public sealed partial class Binder
             }
 
             names.TryAdd(DeclaredName.Cpp(NameConventions.GetCppNamespace(type.File), cppName), declaredBy);
+        }
+
+        void DeclareCppValues(EnumDescriptor enumType)
+        {
+            foreach (var value in enumType.Values)
+            {
+                names.TryAdd(
+                    DeclaredName.Cpp(NameConventions.GetCppNamespace(enumType.File), NameConventions.GetCppValueName(value)),
+                    $"the name protoc's C++ gives the value '{value.Name}' of '{enumType.FullName}'");
+            }
         }
     }
 
