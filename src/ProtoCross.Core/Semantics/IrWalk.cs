@@ -136,6 +136,7 @@ public static class IrWalk
             IrFieldAssignment assignment => [assignment.Target, assignment.Value],
             IrAppend append => [append.Collection, append.Value],
             IrElementAssignment assignment => [assignment.Target, assignment.Value],
+            IrListElementAssignment assignment => [assignment.Target, assignment.Value],
             IrMapUpdate update => [update.Map, .. update.Arguments],
             IrReturn { Value: { } returned } => [returned],
             IrRefuse refusal => [refusal.Value],
@@ -178,6 +179,7 @@ public static class IrWalk
             IrElementLookup lookup => lookup.Fallback is null ? [lookup.List, lookup.Index] : [lookup.List, lookup.Index, lookup.Fallback],
             IrElementRead read => [read.List, read.Index],
             IrMapElement element => [element.Map, element.Key],
+            IrListElement element => [element.List, element.Index],
             IrMapEntries entries => [.. entries.Entries],
             IrMapEntry entry => [entry.Key, entry.Value],
             IrNumberToEnum conversion => conversion.Fallback is { } fallback

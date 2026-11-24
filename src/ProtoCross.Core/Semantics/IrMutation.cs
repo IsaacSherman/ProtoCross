@@ -13,7 +13,7 @@ namespace ProtoCross.Semantics;
 /// </para>
 /// <para>
 /// A <em>place</em> is what a change can be made to: the receiver, a local, a parameter or a loop
-/// binding, or a chain of field accesses and map elements from one of those. Whether a place may be changed is the
+/// binding, or a chain of field accesses and elements of maps and lists from one of those. Whether a place may be changed is the
 /// binder's question, and it has answered it before any of these are asked.
 /// </para>
 /// </remarks>
@@ -21,8 +21,8 @@ public static class IrMutation
 {
     /// <summary>
     /// The place <paramref name="node"/> changes: the field an assignment writes, what an append adds
-    /// to, the element a store writes or the map a map's method changes, or the receiver of a call to a
-    /// <c>mut fn</c>. Null for anything that changes no message.
+    /// to, the element of a map or a list a store writes or the map a map's method changes, or the
+    /// receiver of a call to a <c>mut fn</c>. Null for anything that changes no message.
     /// </summary>
     /// <remarks>
     /// An assignment to a local is not here. It gives the name another value and changes no message,
@@ -37,6 +37,7 @@ public static class IrMutation
             IrFieldAssignment assignment => assignment.Target,
             IrAppend append => append.Collection,
             IrElementAssignment assignment => assignment.Target,
+            IrListElementAssignment assignment => assignment.Target,
             IrMapUpdate update => update.Map,
             IrMethodCall { Target.IsMutating: true } call => call.Receiver,
             _ => null,
@@ -63,12 +64,13 @@ public static class IrMutation
     };
 
     /// <summary>
-    /// What a chain of field accesses and map elements begins at, or <paramref name="place"/> itself
-    /// when it is not one.
+    /// What a chain of field accesses and elements of maps and lists begins at, or <paramref name="place"/>
+    /// itself when it is not one.
     /// </summary>
     /// <remarks>
     /// A lookup ends the chain rather than continuing it. What it gives is a value, the map's or the
-    /// fallback, and nothing done to it reaches the map (spec 14.2).
+    /// fallback, and nothing done to it reaches the map (spec 14.2). So does a list's element read, as
+    /// opposed to one written: it is a value too (spec 14.1).
     /// </remarks>
     public static IrExpression RootOf(IrExpression place)
     {
@@ -84,6 +86,10 @@ public static class IrMutation
 
                 case IrMapElement element:
                     place = element.Map;
+                    break;
+
+                case IrListElement element:
+                    place = element.List;
                     break;
 
                 default:
@@ -123,7 +129,8 @@ public static class IrMutation
     /// </summary>
     /// <remarks>
     /// A store to an element puts nothing there until it stores, which both targets do last. Reaching a
-    /// field of an element, or an element of a map inside one, puts the message there first.
+    /// field of an element, or an element of a map inside one, puts the message there first. A list's
+    /// element is always there, and puts nothing, but a map may be reached through one.
     /// </remarks>
     public static bool ReachesThroughAnElement(IrExpression place)
     {
@@ -140,11 +147,12 @@ public static class IrMutation
         return false;
     }
 
-    /// <summary>The link a place is reached through: a field's message, or an element's map; null at the root.</summary>
+    /// <summary>The link a place is reached through: a field's message, or an element's map or list; null at the root.</summary>
     private static IrExpression? Above(IrExpression place) => place switch
     {
         IrFieldAccess field => field.Receiver,
         IrMapElement element => element.Map,
+        IrListElement element => element.List,
         _ => null,
     };
 

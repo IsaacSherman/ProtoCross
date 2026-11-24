@@ -412,6 +412,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrListQuery query => EmitListQuery(query, placement),
         IrElementLookup lookup => EmitElementLookup(lookup, placement),
         IrElementRead read => EmitElementRead(read, placement),
+        IrListElement element => MutableListElement(element, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 

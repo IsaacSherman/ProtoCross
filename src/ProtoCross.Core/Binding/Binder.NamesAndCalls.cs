@@ -1,6 +1,7 @@
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
@@ -762,6 +763,13 @@ public sealed partial class Binder
                     + $"'{arguments[i].Type.DisplayName}'.",
                     invocation.Arguments[i].Span);
             }
+        }
+
+        // A mut fn changes what it is called on, so one called on a list's element changes the element, a place,
+        // rather than the value reading it gives (spec 14.1, 18). A map's lookup stays a value, and is refused.
+        if (signature.IsMutating && receiver is not null && IrMutation.IsReadFromAListsElement(receiver))
+        {
+            receiver = ListPlaceOf(receiver);
         }
 
         var call = new IrMethodCall(receiver, signature, arguments, invocation.Span);

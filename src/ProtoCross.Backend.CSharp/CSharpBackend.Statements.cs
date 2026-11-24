@@ -122,6 +122,10 @@ public sealed partial class CSharpBackend
                 EmitElementAssignment(writer, assignment, body);
                 break;
 
+            case IrListElementAssignment assignment:
+                EmitListElementAssignment(writer, assignment, body);
+                break;
+
             case IrMapUpdate update:
                 EmitMapUpdate(writer, update, placement);
                 break;

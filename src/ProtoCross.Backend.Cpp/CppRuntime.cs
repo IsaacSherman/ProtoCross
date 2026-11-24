@@ -792,8 +792,8 @@ public static class CppRuntime
     /// </para>
     /// <para>
     /// <c>from_end</c> checks nothing, because the compiler showed the index in range where it is written, and gives
-    /// what <c>Get</c> gives, as a forward read does. It is a function so that the list, which the count is taken
-    /// from, is evaluated once.
+    /// what <c>Get</c> gives, as a forward read does; <c>mutable_from_end</c> gives what <c>Mutable</c> gives, for a
+    /// store. Each is a function so that the list, which the count is taken from, is evaluated once.
     /// </para>
     /// </remarks>
     private static void EmitElementHelpers(SourceWriter writer)
@@ -885,6 +885,14 @@ public static class CppRuntime
         using (writer.Block("inline decltype(auto) from_end(const List& list, int index)"))
         {
             writer.WriteLine("return list.Get(list.size() - index);");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// The element 'index' from the end, as a pointer it is changed through, which the compiler showed the list holds.");
+        writer.WriteLine("template <typename List>");
+        using (writer.Block("inline auto* mutable_from_end(List& list, int index)"))
+        {
+            writer.WriteLine("return list.Mutable(list.size() - index);");
         }
     }
 

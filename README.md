@@ -220,7 +220,9 @@ Implemented:
   one, `values: products` in a literal or `values = products;`. A test expects a list element by
   element. A list has `count()` and `is_empty()`. `items[i]` and `items[^j]` read an element from
   the start or from the end, and compile only where a guard shows the index is in range:
-  `if i >= 0 and i < items.count() { return items[i]; }`. `items.try_get_index(i)` and
+  `if i >= 0 and i < items.count() { return items[i]; }`. An element at such an index is written
+  as a field is, `items[i] = v;` or `boxes[i].grams = 3;`, though not replaced inside a loop over its
+  list. `items.try_get_index(i)` and
   `items.try_get_backward_index(j)` read any index, with `on_refused` saying what an index out of
   range gives. The spec has the rules in section 14.1.
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may

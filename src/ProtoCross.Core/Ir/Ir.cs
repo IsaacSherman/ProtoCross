@@ -606,6 +606,29 @@ public sealed record IrElementAssignment(IrMapElement Target, IrExpression Value
 }
 
 /// <summary>
+/// A value stored at an index of a list the method may change, <c>counts[i] = 5;</c> (spec 14.1, 18), replacing the
+/// element there.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A node of its own beside <see cref="IrElementAssignment"/>, a map's, for the reason that one stands apart from
+/// <see cref="IrFieldAssignment"/>: each target writes a list its own way, through an indexer in C# and through
+/// protobuf's <c>Mutable</c> in C++, and neither puts anything at an index the way a map's store puts a key.
+/// </para>
+/// <para>
+/// Ordered as any store is (spec 9.3): the list is reached, setting every unset message on the way, then the value is
+/// evaluated, and the element is replaced last. The index is a literal or a name, whose evaluation nothing can see.
+/// The value is stored as a field's is (<see cref="IrExpression.IsCopiedWhenStored"/>).
+/// </para>
+/// </remarks>
+public sealed record IrListElementAssignment(IrListElement Target, IrExpression Value, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <inheritdoc cref="IrElementAssignment.ReadsItsTarget"/>
+    public bool ReadsItsTarget { get; init; }
+}
+
+/// <summary>
 /// A change made to a map the method may change through one of the methods the language gives a map:
 /// <c>prices.remove(sku);</c> (spec 14.2, 18).
 /// </summary>
@@ -1297,6 +1320,31 @@ public sealed record IrElementRead(IrExpression List, IrExpression Index, bool F
     : IrExpression(((RepeatedType)List.Type).ElementType, Span)
 {
     /// <summary>What showed the index to be in range, or null where nothing did, which the binder reported (<c>PC0152</c>).</summary>
+    public IrIndexProof? Proof { get; init; }
+}
+
+/// <summary>
+/// The element of a list at an index the compiler showed to be in range, as a place: what <c>counts[i] = 5;</c> stores
+/// to, and what <c>boxes[i].grams = 3;</c> writes through (spec 14.1, 18).
+/// </summary>
+/// <param name="List">The list, of a <see cref="RepeatedType"/>, reached as a place: a field of a message the method may change, or a local.</param>
+/// <param name="Index">The index, a literal or a name of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="FromEnd">Whether the index counts from the end, <c>items[^j]</c>.</param>
+/// <remarks>
+/// <para>
+/// Never a read, which is <see cref="IrElementRead"/>, as <see cref="IrMapElement"/> is never one. It stands where a
+/// place does: the target of an <see cref="IrListElementAssignment"/>, a link of a chain of places written through, or
+/// the receiver of a call to a <c>mut fn</c>.
+/// </para>
+/// <para>
+/// The element is always there, so reaching it sets nothing, unlike a map's element at a missing key: what showed the
+/// index in range is its <see cref="Proof"/>, which a backend relies on as it does a read's, checking nothing.
+/// </para>
+/// </remarks>
+public sealed record IrListElement(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span)
+    : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <inheritdoc cref="IrElementRead.Proof"/>
     public IrIndexProof? Proof { get; init; }
 }
 

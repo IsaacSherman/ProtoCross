@@ -59,8 +59,10 @@ public sealed partial class Binder
         IrFieldAccess field => StorageOf(field.Receiver) is { } receiver ? Through(receiver, field.Field) : null,
 
         // Every element of a map is keyed as one, as every element of a repeated field is: which key it
-        // is depends on a value the binder does not know.
+        // is depends on a value the binder does not know. So is an element of a list at an index, which
+        // may be the one a loop's binding is on.
         IrMapElement element => StorageOf(element.Map) is { } map ? map + ElementStep : null,
+        IrListElement element => StorageOf(element.List) is { } list ? list + ElementStep : null,
         _ => NamedRoot(place),
     };
 
@@ -101,6 +103,7 @@ public sealed partial class Binder
         IrLocalReference => null,
         IrFieldAccess field => ReadOnlyPartOf(field.Receiver, context),
         IrMapElement element => ReadOnlyPartOf(element.Map, context),
+        IrListElement element => ReadOnlyPartOf(element.List, context),
         _ => place,
     };
 
@@ -147,6 +150,7 @@ public sealed partial class Binder
         IrMapElement element => $"{Unquoted(element.Map)}[…]",
         IrMapLookup lookup => $"{Unquoted(lookup.Map)}[…]",
         IrElementRead read => $"{Unquoted(read.List)}[…]",
+        IrListElement element => $"{Unquoted(element.List)}[…]",
         IrElementLookup lookup => $"{Unquoted(lookup.List)}.{RepeatedMethods.NameOf(lookup.Method)}(…)",
         IrMessageLiteral literal => $"new {literal.MessageType.Descriptor.Name} {{ … }}",
         _ => "this",
@@ -313,13 +317,14 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The link a place is reached through: a field's message, or an element's map. Null at the root,
-    /// which nothing reaches.
+    /// The link a place is reached through: a field's message, or an element's map or list. Null at the
+    /// root, which nothing reaches.
     /// </summary>
     private static IrExpression? NextLinkOut(IrExpression link) => link switch
     {
         IrFieldAccess field => field.Receiver,
         IrMapElement element => element.Map,
+        IrListElement element => element.List,
         _ => null,
     };
 
@@ -709,16 +714,7 @@ public sealed partial class Binder
     /// field a loop is traversing.
     /// </summary>
     private void CheckAppend(IrExpression collection, SourceSpan span, MethodContext context)
-    {
-        var change = Appending(collection);
-
-        if (ReportIfReadOnly(collection, change, span, context))
-        {
-            return;
-        }
-
-        ReportIfTraversalChanges(collection is IrFieldAccess field ? FieldsReplacedBy(field) : [collection], change, span, context);
-    }
+        => CheckCollectionChange(collection, Appending(collection), span, context);
 
     /// <summary>
     /// Refuses an append that is not a statement of its own: one inside an expression, or one to a value
@@ -955,8 +951,11 @@ public sealed partial class Binder
         }
 
         var cause = new ChangeSite($"the assignment on line {target.Span.Start.Line}", target.Span);
-        var ended = SiblingsUnsetThrough(trace, trace.Links.Count - 1).Select(end => end with { Cause = cause }).ToList();
-        return context with { Present = Without(context.Present, ended) };
+        var reached = trace.Links.Count - 1;
+        IEnumerable<EndedFacts> ended = trace.ListElementAt is { } list && list < reached
+            ? [EndedFacts.Untraced, .. SiblingsUnsetThrough(trace, list)]
+            : SiblingsUnsetThrough(trace, reached);
+        return context with { Present = Without(context.Present, [.. ended.Select(end => end with { Cause = cause })]) };
     }
 
     private IEnumerable<EndedFacts> FactsEndedBy(SyntaxNode node, Scope scope, MethodContext context) => node switch
@@ -980,9 +979,19 @@ public sealed partial class Binder
             return [EndedFacts.Untraced];
         }
 
+        if (trace.IsReadOnly)
+        {
+            return [];
+        }
+
+        if (trace.ListElementAt is { } list)
+        {
+            return FactsEndedThroughAListElement(trace, list);
+        }
+
         // Only a parameter is traced to its root alone, since a local was settled above, and nothing
         // may change a parameter.
-        if (trace.IsReadOnly || trace.Links.Count == 0)
+        if (trace.Links.Count == 0)
         {
             return [];
         }
@@ -991,6 +1000,27 @@ public sealed partial class Binder
         // the other members of its oneof as surely as assigning the field does (FieldsReplacedBy).
         return [EndedFacts.Below(trace.Root, trace.Path), .. SiblingsUnsetThrough(trace, trace.Links.Count)];
     }
+
+    /// <summary>
+    /// The facts a change through <paramref name="trace"/>, which reaches an element of a list after its first
+    /// <paramref name="list"/> links, ends: what each message on the way to the list unsets, and, where the change is
+    /// made inside the element, what every loop's binding showed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An element at an index may be the one a binding is on, and which binding cannot be told from the syntax, so a
+    /// change inside one ends what any binding showed, as a change this cannot trace does (<see cref="EndedFacts.Untraced"/>).
+    /// Replacing the element itself ends nothing of a binding's: one that could be on it is refused, since replacing an
+    /// element changes what the loop traverses (spec 14.1).
+    /// </para>
+    /// <para>
+    /// Nothing ends what was shown about the list's count, since neither changes how many elements it holds.
+    /// </para>
+    /// </remarks>
+    private static IEnumerable<EndedFacts> FactsEndedThroughAListElement(PlaceTrace trace, int list)
+        => trace.Links.Count > list
+            ? [EndedFacts.Untraced, .. SiblingsUnsetThrough(trace, list)]
+            : SiblingsUnsetThrough(trace, list);
 
     /// <summary>
     /// The facts ended by setting the first <paramref name="count"/> links of <paramref name="trace"/>:
@@ -1018,7 +1048,9 @@ public sealed partial class Binder
                 // more: nothing a guard can show is reached through a map's element.
                 if (IsAppendTo(method, traced) || IsMapUpdateOf(method, traced))
                 {
-                    return traced.IsReadOnly ? [] : SiblingsUnsetThrough(traced, traced.Links.Count);
+                    return traced.IsReadOnly ? []
+                        : traced.ListElementAt is { } list ? [EndedFacts.Untraced, .. SiblingsUnsetThrough(traced, list)]
+                        : SiblingsUnsetThrough(traced, traced.Links.Count);
                 }
 
                 // A receiver this cannot trace may be a binding of a loop inside the statement, which is
@@ -1035,7 +1067,14 @@ public sealed partial class Binder
                             : [];
                 }
 
-                return !trace.IsReadOnly && IsMutating(message, method) ? [EndedFacts.Below(trace.Root, trace.Path)] : [];
+                if (trace.IsReadOnly || !IsMutating(message, method))
+                {
+                    return [];
+                }
+
+                return trace.ListElementAt is { } element
+                    ? [EndedFacts.Untraced, .. SiblingsUnsetThrough(trace, element)]
+                    : [EndedFacts.Below(trace.Root, trace.Path)];
             }
 
             default:
@@ -1070,7 +1109,7 @@ public sealed partial class Binder
                         [],
                         (local.Type as MessageType)?.Descriptor)
                     {
-                        HoldsARepeatedValue = local.Type is RepeatedType,
+                        HoldsAList = local.Type as RepeatedType,
                         HoldsAMap = local.Type as MapType,
                     },
                     { Parameter: { } parameter } => new PlaceTrace(
@@ -1078,7 +1117,7 @@ public sealed partial class Binder
                         [],
                         (parameter.Type as MessageType)?.Descriptor)
                     {
-                        HoldsARepeatedValue = parameter.Type is RepeatedType,
+                        HoldsAList = parameter.Type as RepeatedType,
                         HoldsAMap = parameter.Type as MapType,
                     },
                     { Field: { } field } => new PlaceTrace(ReceiverPresenceRoot, [], context.Receiver).Through(field),
@@ -1093,6 +1132,9 @@ public sealed partial class Binder
             case IndexExpression index when TracePlace(index.Collection, scope, context) is { HoldsAMap: not null } trace:
                 return trace.ThroughElement();
 
+            case IndexExpression index when TracePlace(index.Collection, scope, context) is { HoldsAList: not null } trace:
+                return trace.ThroughListElement();
+
             default:
                 return null;
         }
@@ -1106,7 +1148,16 @@ public sealed partial class Binder
         public bool IsReadOnly => Root.StartsWith(ParameterPresenceRootPrefix, StringComparison.Ordinal);
 
         /// <summary>Whether the place holds a repeated value, which an append may add to.</summary>
-        public bool HoldsARepeatedValue { get; init; }
+        public bool HoldsARepeatedValue => HoldsAList is not null;
+
+        /// <summary>The list the place holds, whose elements may be written by index, or null when it holds none.</summary>
+        public RepeatedType? HoldsAList { get; init; }
+
+        /// <summary>
+        /// How many of <see cref="Links"/> reach the list whose element the place is in, or null where it is in none.
+        /// The first such, since every link after it is inside an element (<see cref="FactsEndedThroughAListElement"/>).
+        /// </summary>
+        public int? ListElementAt { get; init; }
 
         /// <summary>The map the place holds, which its methods may change, or null when it holds none.</summary>
         public MapType? HoldsAMap { get; init; }
@@ -1121,8 +1172,9 @@ public sealed partial class Binder
         public PlaceTrace Through(FieldDescriptor field)
             => new(Root, [.. Links, field], IsSingularMessage(field) ? field.MessageType : null)
             {
-                HoldsARepeatedValue = field.IsRepeated && !field.IsMap,
+                HoldsAList = field.IsRepeated && !field.IsMap ? (RepeatedType)TypeFactory.FromField(field) : null,
                 HoldsAMap = field.IsMap ? (MapType)TypeFactory.FromField(field) : null,
+                ListElementAt = ListElementAt,
             };
 
         /// <summary>
@@ -1130,7 +1182,14 @@ public sealed partial class Binder
         /// ever about an element: one is reached only through a key, which no guard names.
         /// </summary>
         public PlaceTrace ThroughElement()
-            => new(Root, Links, (HoldsAMap?.ValueType as MessageType)?.Descriptor);
+            => new(Root, Links, (HoldsAMap?.ValueType as MessageType)?.Descriptor) { ListElementAt = ListElementAt };
+
+        /// <summary>
+        /// The element at an index of the list this place holds. It adds no link, as a map's element does not: no
+        /// guard shows anything about an element, which is reached only through an index.
+        /// </summary>
+        public PlaceTrace ThroughListElement()
+            => new(Root, Links, (HoldsAList?.ElementType as MessageType)?.Descriptor) { ListElementAt = ListElementAt ?? Links.Count };
     }
 
     /// <summary>The facts one change ends.</summary>

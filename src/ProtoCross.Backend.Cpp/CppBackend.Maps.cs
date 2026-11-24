@@ -67,9 +67,9 @@ public sealed partial class CppBackend
 
     /// <summary>
     /// The map <paramref name="map"/> names, as something that can be changed and indexed:
-    /// <c>(*self.mutable_prices())</c>, or a local.
+    /// <c>(*self.mutable_prices())</c>, or a local. A list is reached the same way, for a store to its element.
     /// </summary>
-    private static string MutableMap(IrExpression map, Placement placement) => map is IrFieldAccess field
+    private static string MutableCollection(IrExpression map, Placement placement) => map is IrFieldAccess field
         ? $"(*{MutablePointer(field, placement)})"
         : MutableMessage(map, placement);
 
@@ -78,7 +78,7 @@ public sealed partial class CppBackend
     /// <c>operator[]</c> does: <c>(*self.mutable_orders())[id]</c>.
     /// </summary>
     private static string MutableElement(IrMapElement element, Placement placement)
-        => $"{MutableMap(element.Map, placement)}[{Expression(element.Key, placement)}]";
+        => $"{MutableCollection(element.Map, placement)}[{Expression(element.Key, placement)}]";
 
     /// <summary>Whether reaching <paramref name="map"/> sets anything on the way: a message field, or an element, it is reached through.</summary>
     /// <remarks>
@@ -88,13 +88,13 @@ public sealed partial class CppBackend
     /// links before the value is evaluated, which the language says happens first (spec 9.3).
     /// </remarks>
     private static bool IsReachedThroughLinks(IrExpression map)
-        => map is IrFieldAccess { Receiver: IrFieldAccess or IrMapElement };
+        => map is IrFieldAccess { Receiver: IrFieldAccess or IrMapElement or IrListElement };
 
     /// <summary>
-    /// Writes <paramref name="change"/> to the map <paramref name="map"/> names, binding the map by
+    /// Writes <paramref name="change"/> to the map, or the list, <paramref name="map"/> names, binding it by
     /// reference first in a block of its own where reaching it sets anything.
     /// </summary>
-    private static void EmitOnMap(
+    private static void EmitOnCollection(
         SourceWriter writer,
         IrStatement statement,
         IrExpression map,
@@ -103,13 +103,13 @@ public sealed partial class CppBackend
     {
         if (!IsReachedThroughLinks(map))
         {
-            writer.WriteLine(change(MutableMap(map, placement)));
+            writer.WriteLine(change(MutableCollection(map, placement)));
             return;
         }
 
         var owner = NamesFor(statement).Next("map");
         using var scope = writer.Block(string.Empty);
-        writer.WriteLine($"auto& {owner} = {MutableMap(map, placement)};");
+        writer.WriteLine($"auto& {owner} = {MutableCollection(map, placement)};");
         writer.WriteLine(change(owner));
     }
 
@@ -134,7 +134,7 @@ public sealed partial class CppBackend
             assignment,
             valueFirst,
             StoredValue(assignment.Value, placement),
-            value => EmitOnMap(writer, assignment, assignment.Target.Map, placement, map => $"{map}[{key}] = {value};"));
+            value => EmitOnCollection(writer, assignment, assignment.Target.Map, placement, map => $"{map}[{key}] = {value};"));
     }
 
     /// <summary>
@@ -143,7 +143,7 @@ public sealed partial class CppBackend
     /// </summary>
     /// <remarks>
     /// C++17 evaluates the right side of <c>=</c> before its left, so the store as it is otherwise written evaluates
-    /// the value before the key. The map is bound before either, as <see cref="EmitOnMap"/> binds one reached
+    /// the value before the key. The map is bound before either, as <see cref="EmitOnCollection"/> binds one reached
     /// through links, because reaching it comes first.
     /// </remarks>
     private static void EmitKeyBeforeValue(
@@ -154,7 +154,7 @@ public sealed partial class CppBackend
         var held = names.Next("key");
 
         using var scope = writer.Block(string.Empty);
-        writer.WriteLine($"auto& {map} = {MutableMap(assignment.Target.Map, placement)};");
+        writer.WriteLine($"auto& {map} = {MutableCollection(assignment.Target.Map, placement)};");
         writer.WriteLine($"auto {held} = {key};");
         writer.WriteLine($"{map}[{held}] = {value};");
     }
@@ -195,7 +195,7 @@ public sealed partial class CppBackend
     {
         var arguments = update.Arguments.Select(argument => StoredValue(argument, placement)).ToList();
 
-        EmitOnMap(writer, update, update.Map, placement, map => update.Method switch
+        EmitOnCollection(writer, update, update.Map, placement, map => update.Method switch
         {
             MapMethod.Remove => $"{map}.erase({arguments[0]});",
             MapMethod.Clear => $"{map}.clear();",

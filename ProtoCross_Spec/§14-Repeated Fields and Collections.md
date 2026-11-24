@@ -13,7 +13,8 @@ Implemented operation set:
   ([18](./§18-Mutability.md#18-mutability)).
 - Count a list's elements, `items.count()`, and ask whether it holds none, `items.is_empty()`.
 - Read the element at an index the compiler shows is there, `items[i]` from the start or `items[^j]`
-  from the end.
+  from the end, and replace it, write through it, or call a `mut fn` on it, where the method may change
+  the list ([18](./§18-Mutability.md#18-mutability)).
 - Read the element at any index, from the start with `items.try_get_index(i)` or from the end with
   `items.try_get_backward_index(j)`, saying with `on_refused` what an index out of range gives.
 - Give a repeated field a whole list, in a message literal or by assignment, which it stores a copy of
@@ -24,7 +25,6 @@ Not implemented:
 - Clear, and removing an element. Decided against. A field is emptied only by assigning it a list,
   `items = [];`, which ends every fact shown about what it held, as assigning any field does
   ([13.1](./§13-Messages.md#131-field-access), [18](./§18-Mutability.md#18-mutability)).
-- Element assignment.
 
 Example syntax:
 
@@ -204,6 +204,26 @@ Normative Requirement:
     ([13.2](./§13-Messages.md#132-message-construction)), a `for` over a field of one traverses that value whatever the body changes,
     and a `mut fn` given one as an argument is given it as it was when the call began
     ([18](./§18-Mutability.md#18-mutability)).
+- **An element at an index shown in range is a place, where the method may change the list**
+  ([18](./§18-Mutability.md#18-mutability)): a list a local holds, or a repeated field of a message the method may change, at any
+  depth, or one a `for`'s binding holds.
+  - `items[i] = value;` replaces the element. The value has the element type (`PC0035`), with no
+    implicit conversion, and a message is stored as a copy, unless it is a literal
+    ([13.2](./§13-Messages.md#132-message-construction)). A compound assignment, `counts[i] += 1;`, reads the element and replaces it.
+  - `boxes[i].grams = 3;`, `boxes[i].parts.append(7);` and `boxes[i].marks[k] = 1;` write through the
+    element, and `boxes[i].weigh();`, a `mut fn`, changes it, as each does a field
+    ([18](./§18-Mutability.md#18-mutability)).
+  - The index is shown in range by the same facts as a read's, and an element written takes no
+    clause: `on_missing` there is `PC0154`. Neither replacing an element nor writing inside one ends
+    anything shown about the list's count.
+  - A store reaches the list first, setting every unset message on the way, then evaluates its value,
+    and replaces the element last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). The element is always there, so nothing is put at its index,
+    as a map's store puts a key.
+  - Writing to an element of a list the method may not change is `PC0094`: a list parameter's, one a
+    parameter holds, the receiver's in a method that is not `mut`, and a call's result's.
+  - A message field read through an element is a read, which no guard can show is set, since no fact
+    is about an element (`PC0078`), so it is read through a local: `var box = boxes[i];`. One written
+    through needs no guard.
 - **`place.append(value);` adds `value` to the end of a repeated value the method may change**: a
   repeated field of a message it may change, at any depth, or a local holding a repeated value, which
   is the method's own copy ([18](./§18-Mutability.md#18-mutability), [13.2](./§13-Messages.md#132-message-construction)).
@@ -224,14 +244,19 @@ Normative Requirement:
   not it would:
   - assigning the field or the local, the message holding it, or anything further out, which replaces
     it;
-  - appending to it, which adds to it;
+  - appending to it, which adds to it, or replacing one of its elements, `items[0] = item;`;
   - assigning, or writing through, another member of a `oneof` holding it, which unsets it;
   - calling a `mut fn` on the message holding it, or on anything further out, which may change it.
 
   What the called method does is not asked, because the answer would change whenever its body did,
   and break a loop in some other method. The names two loops bind over one field are taken to be one
-  element, since they may be. A loop over a parameter's field has nothing to protect: nothing may
-  change a parameter, and nothing the method may change is part of one.
+  element, since they may be, and so is an element at an index with any binding over its list. A loop
+  over a parameter's field has nothing to protect: nothing may change a parameter, and nothing the
+  method may change is part of one.
+
+  Writing inside an element of the list changes none of these, so `boxes[0].grams += 1;` is allowed
+  inside `for box in boxes`, as a change through `box` is. A `mut fn` called on that element is not
+  inside a loop over a list the element holds, since the element may be the binding's.
 
 **Decided: no collection helpers, and no index left to the target.** There is no filtering, mapping,
 sorting or aggregation: basics only. Nor is there `first()` or `last()`, which `items[0]` and
@@ -243,9 +268,9 @@ throws, and C++'s reads past the end.
 Open Questions:
 
 - ~~Should repeated field mutation ever be allowed?~~ Decided: an element may change through the name
-  a `for` binds, and a field, or a local holding a repeated value, may be appended to with
-  `place.append(value);`. A field may be assigned a whole list. Nothing may be cleared or removed
-  ([18](./§18-Mutability.md#18-mutability)).
+  a `for` binds, or at an index shown in range, and a field, or a local holding a repeated value, may be
+  appended to with `place.append(value);`. A field may be assigned a whole list. Nothing may be cleared
+  or removed ([18](./§18-Mutability.md#18-mutability)).
 - [List equality](./§30-Unresolved%20Questions%20Index.md#30146-list-equality), post-1.0
 - ~~[First and last](./§30-Unresolved%20Questions%20Index.md#30147-first-and-last)~~ Decided: neither.
 - [Induction over an index](./§30-Unresolved%20Questions%20Index.md#30148-induction-over-an-index), post-1.0

@@ -248,6 +248,150 @@ extend Shelf {
         boxes = [];
         return box.grams + boxes.count() as int64;
     }
+
+    // ---- elements written by an index the compiler shows in range
+
+    mut fn replace_count(index: int32, value: int32) -> int32 {
+        if index >= 0 and index < counts.count() {
+            counts[index] = value;
+            return counts[index] * 100 + counts.count();
+        }
+        return -1;
+    }
+
+    mut fn bump_last_count() -> int32 {
+        if counts.is_empty() {
+            return -1;
+        }
+        counts[^1] += 10;
+        return counts[^1];
+    }
+
+    mut fn replace_label_from_end(index: int64, value: string) -> string {
+        if index >= 1 and index <= labels.count() as int64 {
+            labels[^index] = value;
+        }
+        if labels.is_empty() {
+            return "none";
+        }
+        return labels[0];
+    }
+
+    mut fn replace_tone() -> Tone {
+        if tones.is_empty() {
+            return Tone.TONE_UNSPECIFIED;
+        }
+        tones[0] = Tone.TONE_DARK;
+        return tones[0];
+    }
+
+    mut fn double_first_weight() -> double {
+        if weights.count() < 1 {
+            return -1.0;
+        }
+        weights[0] = weights[0] * 2.0;
+        return weights[0];
+    }
+
+    // A message stored at an index is a copy of its own, as one appended is.
+    mut fn replace_box_then_change_the_original() -> int64 {
+        if boxes.count() < 2 {
+            return -1;
+        }
+        var replacement = new Box { grams: 5 };
+        boxes[1] = replacement;
+        replacement.grams = 9;
+        return boxes[1].grams * 10 + boxes[0].grams;
+    }
+
+    // An element replaced by another of the same list holds a copy of it.
+    mut fn copy_box_within() -> int64 {
+        if boxes.count() < 2 {
+            return -1;
+        }
+        boxes[0] = boxes[1];
+        boxes[1].grams = 1;
+        return boxes[0].grams * 10 + boxes[1].grams;
+    }
+
+    mut fn write_through_box(index: int32) -> int64 {
+        if index >= 0 and index < boxes.count() {
+            boxes[index].grams = 40;
+            boxes[index].tag = "written";
+            boxes[index].parts.append(7);
+            boxes[index].marks["seen"] = 1;
+            boxes[index].grams += 2;
+        }
+        var total: int64 = 0;
+        for box in boxes {
+            total += box.grams;
+            for part in box.parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    mut fn add_to_the_ends() -> int64 {
+        if boxes.is_empty() {
+            return -1;
+        }
+        boxes[0].add_grams(5);
+        boxes[^1].add_grams(100);
+        return boxes[0].grams * 1000 + boxes[^1].grams;
+    }
+
+    // A list a loop's binding holds is written through the binding, so each element of the field is changed.
+    mut fn first_part_of_each_box() -> int64 {
+        for box in boxes {
+            if not box.parts.is_empty() {
+                box.parts[0] = 9;
+            }
+        }
+        var total: int64 = 0;
+        for box in boxes {
+            for part in box.parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    // Writing inside an element of a list a loop traverses changes nothing it traverses.
+    mut fn write_inside_while_traversing() -> int64 {
+        var total: int64 = 0;
+        for box in boxes {
+            if boxes.count() > 0 {
+                boxes[0].grams += 1;
+            }
+            total += box.grams;
+        }
+        return total;
+    }
+
+    fn write_a_local_list() -> int32 {
+        var values: repeated int32 = [1, 2, 3];
+        values[0] = 10;
+        values[^1] *= 5;
+        values[1] -= 1;
+        return values[0] + values[1] + values[2];
+    }
+
+    mut fn replace_readings() -> int64 {
+        if readings.count() < 2 {
+            return -1;
+        }
+        readings[0] = new google.protobuf.Int64Value { value: 50 };
+        readings[^1].value = 60;
+        readings[0].value += 1;
+        return readings[0].value + readings[1].value;
+    }
+}
+
+extend Box {
+    mut fn add_grams(more: int64) {
+        grams += more;
+    }
 }
 
 test Shelf.count_of_counts "a field's count" {
@@ -592,4 +736,87 @@ test Shelf.parts_of_last_box "a loop over a field of an element" {
 test Shelf.weigh_first_box "an element passed to a mut fn is a copy the method's changes do not reach" {
     receiver { boxes: [new Box { grams: 3 }] }
     expect return 3;
+}
+
+test Shelf.replace_count "an element replaced at a guarded index" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    arg value = 50;
+    expect return 5003;
+}
+
+test Shelf.replace_count "an index outside the list replaces nothing" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    arg value = 50;
+    expect return -1;
+}
+
+test Shelf.bump_last_count "a compound store from the end" {
+    receiver { counts: [4, 5, 6] }
+    expect return 16;
+}
+
+test Shelf.replace_label_from_end "a string replaced from the end" {
+    receiver { labels: ["a", "b", "c"] }
+    arg index = 3;
+    arg value = "z";
+    expect return "z";
+}
+
+test Shelf.replace_tone "an enum element replaced" {
+    receiver { tones: [Tone.TONE_LIGHT] }
+    expect return Tone.TONE_DARK;
+}
+
+test Shelf.double_first_weight "a double element replaced by what it was read as" {
+    receiver { weights: [1.5] }
+    expect return 3.0;
+}
+
+test Shelf.replace_box_then_change_the_original "a message stored at an index is a copy" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 53;
+}
+
+test Shelf.copy_box_within "an element stored from the same list is a copy" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 71;
+}
+
+test Shelf.write_through_box "an element written through: a field, an append, a map's store and a compound" {
+    receiver { boxes: [new Box { grams: 3, parts: [1] }, new Box { grams: 7 }] }
+    arg index = 1;
+    expect return 53;
+}
+
+test Shelf.write_through_box "an index outside the list writes nothing" {
+    receiver { boxes: [new Box { grams: 3, parts: [1] }, new Box { grams: 7 }] }
+    arg index = 5;
+    expect return 11;
+}
+
+test Shelf.add_to_the_ends "a mut fn called on an element, from either end" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 8107;
+}
+
+test Shelf.first_part_of_each_box "a list a loop's binding holds, written by index" {
+    receiver { boxes: [new Box { parts: [1, 2] }, new Box { }, new Box { parts: [3] }] }
+    expect return 20;
+}
+
+test Shelf.write_inside_while_traversing "an element written inside while the list is traversed" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 11;
+}
+
+test Shelf.write_a_local_list "a local's list written by index" {
+    receiver { }
+    expect return 26;
+}
+
+test Shelf.replace_readings "a list of wrappers written by index and through its elements" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 111;
 }

@@ -87,6 +87,7 @@ public static class IrCopy
             },
             IrElementRead read => read with { List = Of(read.List), Index = Of(read.Index) },
             IrMapElement element => element with { Map = Of(element.Map), Key = Of(element.Key) },
+            IrListElement element => element with { List = Of(element.List), Index = Of(element.Index) },
             IrMissingMemberAccess awaiting => awaiting with { Receiver = Of(awaiting.Receiver) },
             IrUncallableInvocation call => call with
             {

@@ -58,7 +58,7 @@ public sealed partial class CSharpBackend
     /// </remarks>
     private static bool IsHeldAsItsValue(IrExpression expression)
         => WrappedScalar(expression.Type) is not null
-            && expression is IrFieldAccess or IrMapLookup or IrMapElement or IrElementLookup or IrElementRead
+            && expression is IrFieldAccess or IrMapLookup or IrMapElement or IrElementLookup or IrElementRead or IrListElement
                 or IrLocalReference { Local.Declaration.Kind: SymbolKind.LoopBinding };
 
     /// <summary>The value a wrapper held as its value holds, read from where it is held.</summary>
@@ -84,7 +84,8 @@ public sealed partial class CSharpBackend
             IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
             IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
             IrElementRead read => EmitElementRead(read, placement, receiverName),
-            _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "An element is a place, and is never read."),
+            IrListElement element => ListElementPlace(element, placement),
+            _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "A map's element is a place, and is never read."),
         };
 
         // A lookup's fallback is the value itself, so 'FindNullable(...) ?? 5L' is a value already, and so is what
@@ -145,8 +146,8 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// Where a wrapper held as its value is held, as the target of a store that gives it a new value:
-    /// the field, on a message set first where it is unset; the map's element; or the element a loop
-    /// binds.
+    /// the field, on a message set first where it is unset; the map's element; the list's element at an
+    /// index; or the element a loop binds.
     /// </summary>
     /// <remarks>
     /// The value is the whole of a wrapper, so writing <c>limit.value</c> stores <c>limit</c>, which also
@@ -156,6 +157,7 @@ public sealed partial class CSharpBackend
     {
         IrFieldAccess field => WritableField(field, placement),
         IrMapElement element => ElementPlace(element, placement),
+        IrListElement element => ListElementPlace(element, placement),
         IrLocalReference binding => ElementOf(binding),
         _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "Not a place a wrapper is held in."),
     };

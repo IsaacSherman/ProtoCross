@@ -1,4 +1,5 @@
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
@@ -53,13 +54,38 @@ public sealed partial class CSharpBackend
     /// index with the list evaluated once. Each takes an <c>int</c>, which an index shown in range always fits.
     /// </remarks>
     private static string EmitElementRead(IrElementRead read, Placement placement, string receiverName)
-    {
-        var index = read.Index.Type == ScalarType.Int32Type
-            ? Expression(read.Index, placement, receiverName)
-            : $"(int){Expression(read.Index, placement, receiverName)}";
+        => Indexed(Expression(read.List, placement, receiverName), read.Index, read.FromEnd, placement, receiverName);
 
-        return $"{Expression(read.List, placement, receiverName)}[{(read.FromEnd ? "^" : string.Empty)}{index}]";
+    /// <summary>
+    /// A list's element as a place, <c>self.Counts[i]</c>: what a store replaces, what a field is written through,
+    /// and what a <c>mut fn</c> is called on. The element is always there, so reaching it sets nothing.
+    /// </summary>
+    private static string ListElementPlace(IrListElement element, Placement placement)
+        => Indexed(WritableCollection(element.List, placement), element.Index, element.FromEnd, placement, ReceiverName);
+
+    /// <summary><paramref name="list"/>'s element at <paramref name="index"/>, from either end, as the <c>int</c> both indexers take.</summary>
+    private static string Indexed(string list, IrExpression index, bool fromEnd, Placement placement, string receiverName)
+    {
+        var at = index.Type == ScalarType.Int32Type
+            ? Expression(index, placement, receiverName)
+            : $"(int){Expression(index, placement, receiverName)}";
+
+        return $"{list}[{(fromEnd ? "^" : string.Empty)}{at}]";
     }
+
+    /// <summary><c>counts[i] = value;</c>, through the list's indexer, from either end.</summary>
+    /// <remarks>
+    /// C# evaluates what the indexer is called on, then the index, then the value, and stores last, which is the order
+    /// the language gives a store (spec 9.3); from the end, it takes the count from the list it evaluated once. A
+    /// compound's value is evaluated first only where it reads through a map's element, as a field's is.
+    /// </remarks>
+    private static void EmitListElementAssignment(SourceWriter writer, IrListElementAssignment assignment, Body body)
+        => EmitValueFirstWhereItReadsAnElement(
+            writer,
+            assignment.ReadsItsTarget && IrMutation.ReachesThroughAnElement(assignment.Target),
+            FieldValue(assignment.Value, body.Placement, ReceiverName),
+            body,
+            value => $"{ListElementPlace(assignment.Target, body.Placement)} = {value};");
 
     /// <summary>The element at the index, or null where there is none.</summary>
     private static string ElementFound(IrElementLookup lookup, Placement placement, string receiverName)

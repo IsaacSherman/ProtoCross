@@ -99,6 +99,10 @@ public sealed partial class CppBackend
                 EmitElementAssignment(writer, assignment, placement);
                 break;
 
+            case IrListElementAssignment assignment:
+                EmitListElementAssignment(writer, assignment, placement);
+                break;
+
             case IrMapUpdate update:
                 EmitMapUpdate(writer, update, placement);
                 break;
@@ -413,8 +417,9 @@ public sealed partial class CppBackend
             return;
         }
 
-        // An element is a link as a field is: reaching it puts a message at a missing key.
-        if (target.Receiver is not (IrFieldAccess or IrMapElement))
+        // An element is a link as a field is: reaching a map's puts a message at a missing key, and a list's is
+        // reached through what holds the list.
+        if (target.Receiver is not (IrFieldAccess or IrMapElement or IrListElement))
         {
             writer.WriteLine($"*{MutableMember(target.Receiver, placement)}{accessors.Mutator}() = {value};");
             return;
@@ -438,8 +443,8 @@ public sealed partial class CppBackend
     /// returns.
     /// </para>
     /// <para>
-    /// A string or bytes read from a field is copied too, <c>std::string(value)</c>. The getter returns a
-    /// reference into the message, and a setter that switches a <c>oneof</c>'s case destroys the member
+    /// A string or bytes read from a field, or from a list's element, is copied too, <c>std::string(value)</c>.
+    /// The getter, and <c>Get</c>, return a reference into the message, and a setter that switches a <c>oneof</c>'s case destroys the member
     /// it switches from before it copies, so <c>after = before;</c> between two members of one
     /// <c>oneof</c> would copy a string that is gone. Nothing else a string can be read from is changed
     /// by a setter: a local and a call's result are values, a parameter is the caller's, and a loop over
@@ -450,7 +455,8 @@ public sealed partial class CppBackend
     {
         var emitted = Expression(value, placement);
         var copied = value is { IsCopiedWhenStored: true }
-            or IrFieldAccess { Type: ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes } };
+            or IrFieldAccess { Type: ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes } }
+            or IrElementRead { Type: ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes } };
 
         return copied ? $"{TypeName(value.Type)}({emitted})" : emitted;
     }
@@ -468,6 +474,7 @@ public sealed partial class CppBackend
     {
         IrFieldAccess field => $"*{MutablePointer(field, placement)}",
         IrMapElement element => MutableElement(element, placement),
+        IrListElement element => MutableListElement(element, placement),
         _ => Expression(place, placement),
     };
 
@@ -479,6 +486,7 @@ public sealed partial class CppBackend
     {
         IrFieldAccess field => $"{MutablePointer(field, placement)}->",
         IrMapElement element => $"{MutableElement(element, placement)}.",
+        IrListElement element => $"{MutableListElement(element, placement)}.",
         _ => $"{Expression(place, placement)}.",
     };
 
