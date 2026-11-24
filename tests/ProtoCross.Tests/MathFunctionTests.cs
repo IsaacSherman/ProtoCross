@@ -261,9 +261,23 @@ public class MathFunctionTests
     }
 
     [Fact]
-    public void AnArgumentThatIsNoNumberIsRefused()
+    public void AnArgumentThatIsNoNumberIsRefusedWithWhatToPass()
     {
-        TheOnly(Returning("double", "_pCrossMath.floor(s)"), DiagnosticCodes.ArgumentTypeMismatch);
+        var refused = TheOnly(Returning("double", "_pCrossMath.floor(s)"), DiagnosticCodes.ArgumentTypeMismatch);
+
+        Assert.Equal("Pass a number: an integer, a 'float' or a 'double' (spec 10.5).", refused.Help);
+    }
+
+    /// <summary>
+    /// A literal is bound in the type of the argument beside it and never first in the type expected of the call,
+    /// which here it does not have: the call is an <c>int64</c>, and only returning it is wrong.
+    /// </summary>
+    [Fact]
+    public void ALiteralIsNeverReportedOutOfRangeOfATypeItDoesNotTake()
+    {
+        var refused = TheOnly(Returning("int32", "_pCrossMath.max(l, 3000000000)"), DiagnosticCodes.ReturnTypeMismatch);
+
+        Assert.Contains("'int64'", refused.Message);
     }
 
     [Fact]

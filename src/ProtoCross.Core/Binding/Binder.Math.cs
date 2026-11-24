@@ -33,15 +33,10 @@ public sealed partial class Binder
     /// </param>
     /// <remarks>
     /// <para>
-    /// The arguments are bound once each, in order, whatever is wrong with the call, and kept in an
-    /// <see cref="IrUncallableInvocation"/> where it is refused, as a call to a method no message declares keeps its
-    /// own: they are source the author wrote, and what is written inside the parentheses is what completion asks about.
-    /// </para>
-    /// <para>
-    /// A literal argument takes the type of the arguments that are not literals, as an operator's operand takes the
-    /// other's (spec 10.3), so <c>_pCrossMath.min(count, 10)</c> is two of <c>count</c>'s type. Where every argument
-    /// is a literal, a floating-point one makes them all a <c>double</c>. A literal is bound again only where that
-    /// moved it, which reports anything wrong with it once.
+    /// The arguments are bound once each, whatever is wrong with the call (<see cref="BindMathArguments"/>), and kept
+    /// in an <see cref="IrUncallableInvocation"/> where it is refused, as a call to a method no message declares keeps
+    /// its own: they are source the author wrote, and what is written inside the parentheses is what completion asks
+    /// about.
     /// </para>
     /// </remarks>
     private IrExpression BindMathCall(
@@ -53,7 +48,7 @@ public sealed partial class Binder
     {
         var function = MathFunctions.Named(callee.Name.Text);
         var hint = function is { } known ? ArgumentHint(known, expectedType) : null;
-        var arguments = invocation.Arguments.Select(argument => BindExpression(argument, scope, context, hint)).ToList();
+        var arguments = BindMathArguments(invocation.Arguments, hint, scope, context);
         var uncallable = new IrUncallableInvocation(null, arguments, invocation.Span);
 
         if (function is null)
@@ -67,23 +62,10 @@ public sealed partial class Binder
             return uncallable;
         }
 
-        if (SettledType(invocation.Arguments, arguments) is { } settled)
-        {
-            for (var index = 0; index < arguments.Count; index++)
-            {
-                if (IsNumericLiteral(invocation.Arguments[index])
-                    && arguments[index].Type is ScalarType
-                    && !TypesMatch(arguments[index].Type, settled))
-                {
-                    arguments[index] = BindExpression(invocation.Arguments[index], scope, context, settled);
-                }
-            }
-        }
-
         // An argument that failed to bind has said why, and saying the call failed too would say it twice.
         if (arguments.Any(argument => argument.Type is ErrorType) || !TakesItsArguments(function.Value, arguments))
         {
-            return uncallable with { Arguments = arguments };
+            return uncallable;
         }
 
         var call = new IrMathCall(
@@ -94,8 +76,9 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The type a literal argument of <paramref name="function"/> is bound in at first: the type the call is expected
-    /// to give, where the function takes it, or a <c>double</c> for <c>sqrt</c>, which takes no integer.
+    /// The type the arguments of <paramref name="function"/> are bound in where none beside them settles one: the type
+    /// the call is expected to give, where the function takes it, or a <c>double</c> for <c>sqrt</c>, which takes no
+    /// integer.
     /// </summary>
     /// <remarks>
     /// <c>_pCrossMath.sqrt(2)</c> is the square root of two, as a <c>double</c>. Every other function takes an
@@ -107,20 +90,34 @@ public sealed partial class Binder
             : null;
 
     /// <summary>
-    /// The type every argument is to have: the first that is not a literal's, or, where all of them are literals, the
-    /// first floating-point one's, or else the first's. Null where none has a numeric type to give.
+    /// Binds a math call's arguments, once each, a literal among them in the type of the arguments beside it, and
+    /// returns them in the order written.
     /// </summary>
-    private static ScalarType? SettledType(IReadOnlyList<Expression> written, IReadOnlyList<IrExpression> bound)
+    /// <param name="hint">The type an argument is bound in where nothing beside it settles one (<see cref="ArgumentHint"/>).</param>
+    /// <remarks>
+    /// <para>
+    /// A literal takes the type of the arguments that are not literals, as an operator's operand takes the other's
+    /// (spec 10.3), so <c>_pCrossMath.min(count, 10)</c> is two of <c>count</c>'s type. Where every argument is a
+    /// literal, they take <paramref name="hint"/>, and with none, a floating-point literal among them makes them all a
+    /// <c>double</c>.
+    /// </para>
+    /// <para>
+    /// So the arguments that are not literals are bound first and the literals after, each in the type it ends up
+    /// with. Binding a literal in the hint and again once the call's type is known would keep what the first bind
+    /// reported: <c>max(big, 3000000000)</c> where an <c>int32</c> is expected would say the literal is out of an
+    /// <c>int32</c>'s range, though it is an <c>int64</c>. The order binding visits them in is not the order the
+    /// IR holds them in, which is the order written.
+    /// </para>
+    /// </remarks>
+    private List<IrExpression> BindMathArguments(IReadOnlyList<Expression> written, ScalarType? hint, Scope scope, MethodContext context)
     {
-        var numeric = written.Zip(bound, (syntax, value) => (Syntax: syntax, Type: value.Type as ScalarType))
-            .Where(argument => argument.Type is { IsNumeric: true })
+        var bound = written.Select(argument => IsNumericLiteral(argument) ? null : BindExpression(argument, scope, context, hint))
             .ToList();
+        var settled = bound.Select(argument => argument?.Type).OfType<ScalarType>().FirstOrDefault(type => type.IsNumeric)
+            ?? hint
+            ?? (written.Any(IsFloatingPointLiteral) ? ScalarType.DoubleType : null);
 
-        return numeric.Where(argument => !IsNumericLiteral(argument.Syntax))
-            .Concat(numeric.Where(argument => IsFloatingPointLiteral(argument.Syntax)))
-            .Concat(numeric)
-            .Select(argument => argument.Type)
-            .FirstOrDefault();
+        return [.. written.Zip(bound, (argument, value) => value ?? BindExpression(argument, scope, context, settled))];
     }
 
     /// <summary>Whether <paramref name="invocation"/> passes as many arguments as <paramref name="function"/> takes, reporting where it does not.</summary>
@@ -172,7 +169,9 @@ public sealed partial class Binder
                     argument.Span,
                     argument.Type is ScalarType { IsInteger: true }
                         ? $"Convert it first: '{MathFunctions.Qualifier}.{name}(n as double)' (spec 10.5)."
-                        : null);
+                        : function is MathFunction.Sqrt
+                            ? "Pass a 'float' or a 'double' (spec 10.5)."
+                            : "Pass a number: an integer, a 'float' or a 'double' (spec 10.5).");
                 takesThem = false;
             }
             else if (!TypesMatch(argument.Type, first) && first is ScalarType firstScalar && MathFunctions.Takes(function, firstScalar))
