@@ -118,10 +118,13 @@ public partial class BackendTests
             entry.Namespace == NameConventions.GetCppNamespace(Owned),
             $"{entry.RelativePath} calls '{entry.Method}' in '{entry.Namespace}' rather than the project's namespace"));
 
+        // The runtime's own helpers are ProtoCross's and declare no project's method, so one that shares a method's
+        // name, as 'refused' does a vector's, is not a call to it.
         static IEnumerable<(string RelativePath, string Method, string Namespace)> CallsTo(Ir.IrModule module, IReadOnlyList<GeneratedFile> files)
             => from method in module.Methods.Select(Called).Distinct()
                from file in files
                from Match match in Regex.Matches(file.Contents, $@"::([\w:]+)::{Regex.Escape(method)}\(")
+               where match.Groups[1].Value != "protocross_runtime"
                select (file.RelativePath, method, match.Groups[1].Value);
 
         // A factory's method is called through its struct, which is declared in the namespace the call

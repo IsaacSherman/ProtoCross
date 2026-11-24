@@ -205,7 +205,7 @@ unnoticed, as it did before #107 caught it up.
 | `IrLiteral` | A literal's value in one stated representation |
 | `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node; a list written as a value |
 | `IrMapLookup`, `IrMapContains`, `IrMapQuery`, `IrMapElement`, `IrMapEntries`, `IrMapEntry` | A map's reads and writes |
-| `IrListQuery`, `IrElementLookup` | A list's count and whether it is empty; an element read by a try method, with what its clause does where there is none |
+| `IrListQuery`, `IrElementLookup`, `IrElementRead`, `IrIndexProof` | A list's count and whether it is empty; an element read by a try method, with what its clause does where there is none; an element read by an index the binder showed in range, with the facts that showed it |
 | `IrMissingMemberAccess`, `IrUncallableInvocation`, `IrValuelessCall` | Error placeholder nodes, and what was written in part |
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
@@ -229,6 +229,10 @@ is one the next change breaks silently.
   carries the identity of a declaration the compilation holds; a name that resolved to nothing binds to
   an error-typed node instead of a stand-in symbol, and is not recorded as a use. A consumer
   therefore never holds an identity that answers nothing.
+- **Every element read by an index rests on what showed it in range.** A backend reads one with the
+  target's own indexer and checks nothing ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), so a read the binder could not show is an error
+  and never reaches a backend, and each that does carries the facts it needed, as a condition would
+  write them.
 - **Every construct is reachable by one walk.** Each node the compiler can produce is yielded by the
   walk of the module that holds it, so a sweep over the IR -- an editor's, a backend's, a test's --
   sees all of it. A construct added to the language without being added to the walk leaves every

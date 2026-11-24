@@ -48,8 +48,8 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// Whether C# holds <paramref name="expression"/>, a wrapper, as the value it holds rather than as a
-    /// message: a field, a map's element or what a lookup gives, or the name a <c>for</c> binds to an
-    /// element of a repeated value.
+    /// message: a field, a map's element or what a lookup gives, a list's element however it is read, or
+    /// the name a <c>for</c> binds to an element of a repeated value.
     /// </summary>
     /// <remarks>
     /// Every repeated value C# holds is protoc's <c>RepeatedField</c> of values, a local's and a
@@ -58,7 +58,7 @@ public sealed partial class CSharpBackend
     /// </remarks>
     private static bool IsHeldAsItsValue(IrExpression expression)
         => WrappedScalar(expression.Type) is not null
-            && expression is IrFieldAccess or IrMapLookup or IrMapElement
+            && expression is IrFieldAccess or IrMapLookup or IrMapElement or IrElementLookup or IrElementRead
                 or IrLocalReference { Local.Declaration.Kind: SymbolKind.LoopBinding };
 
     /// <summary>The value a wrapper held as its value holds, read from where it is held.</summary>
@@ -82,15 +82,22 @@ public sealed partial class CSharpBackend
             IrFieldAccess field => PropertyRead(field, placement, receiverName),
             IrLocalReference binding => ElementOf(binding),
             IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
+            IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
+            IrElementRead read => EmitElementRead(read, placement, receiverName),
             _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "An element is a place, and is never read."),
         };
 
         // A lookup's fallback is the value itself, so 'FindNullable(...) ?? 5L' is a value already, and so is what
-        // a lookup whose clause refuses held once it found one.
-        return IsAStruct(scalar) && wrapper is not IrMapLookup { OnMissing: MissingKeyBehavior.Fallback or MissingKeyBehavior.Refuse }
+        // a lookup whose clause refuses held once it found one. A try method's is the same.
+        return IsAStruct(scalar) && !IsAValueAlready(wrapper)
             ? held + ".GetValueOrDefault()"
             : held;
     }
+
+    /// <summary>Whether a wrapper's value, as <see cref="HeldValue"/> reads it, is the value already rather than a nullable one.</summary>
+    private static bool IsAValueAlready(IrExpression wrapper) => wrapper
+        is IrMapLookup { OnMissing: MissingKeyBehavior.Fallback or MissingKeyBehavior.Refuse }
+        or IrElementLookup { OnRefused: OutOfRangeBehavior.Fallback or OutOfRangeBehavior.Refuse };
 
     /// <summary>A wrapper held as its value, as the message the language says it is.</summary>
     /// <remarks>

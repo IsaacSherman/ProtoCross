@@ -67,7 +67,7 @@ test_target       = qualified_name [ "." "factory" ] "." identifier;
 conversion        = expression "as" type_ref                       (* an expression *)
                     [ "on_unknown" ( postfix_expr | "fail" | "refuse" postfix_expr ) ];
 membership        = expression "in" ( postfix_expr | type_ref );    (* an expression *)
-lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
+lookup            = postfix_expr "[" [ "^" ] expression "]"        (* a postfix expression; "^" counts a list's index from the end *)
                     [ "on_missing" ( unary_expr | "fail" | "refuse" unary_expr ) ];
 answered_call     = call "on_refused"                              (* a postfix expression *)
                     ( unary_expr | "fail" | "refuse" [ unary_expr ] );

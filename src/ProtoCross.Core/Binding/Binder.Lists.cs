@@ -270,14 +270,7 @@ public sealed partial class Binder
         }
 
         var index = BindExpression(invocation.Arguments[0], scope, context, null);
-        if (index.Type is not (ErrorType or ScalarType { IsInteger: true }))
-        {
-            _diagnostics.Report(
-                DiagnosticCodes.ArgumentTypeMismatch,
-                $"An index is an integer, but this one is '{index.Type.DisplayName}'.",
-                invocation.Arguments[0].Span,
-                "An index may be of any integer type. Convert this one with 'as' (spec 14.1).");
-        }
+        _ = IsAnIndex(index, invocation.Arguments[0].Span, DiagnosticCodes.ArgumentTypeMismatch);
 
         return new IrElementLookup(method, list, index, OutOfRangeBehavior.Unstated, null, callee.Name.Span, invocation.Span);
 

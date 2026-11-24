@@ -65,7 +65,7 @@ public partial class SchemaCompletionTests
         Assert.Equal(new[] { "nested_values", "tags" }, applied.Select(attempt => attempt.Item.Label).Order());
     }
 
-    /// <summary>Only a map is looked up by a key, so in front of one nothing else is offered.</summary>
+    /// <summary>Only a map or a list is indexed, so in front of a key nothing else is offered.</summary>
     [Fact]
     public async Task InFrontOfAKeyOnlyAMapIsOffered()
     {

@@ -183,12 +183,11 @@ public sealed partial class CppBackend
         => element is MessageType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     /// <summary>Message-typed parameters are passed by const reference; scalars by value.</summary>
-    private static string ParameterTypeName(PlType type) => type switch
-    {
-        MessageType or RepeatedType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes }
-            => $"const {TypeName(type)}&",
-        _ => TypeName(type),
-    };
+    private static string ParameterTypeName(PlType type) => IsPassedByReference(type) ? $"const {TypeName(type)}&" : TypeName(type);
+
+    /// <summary>Whether a parameter of <paramref name="type"/> is passed by <c>const&amp;</c> rather than by value (spec 24.2).</summary>
+    private static bool IsPassedByReference(PlType type)
+        => type is MessageType or RepeatedType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     private static string Escape(string name) => NameConventions.EscapeCppKeyword(name);
 

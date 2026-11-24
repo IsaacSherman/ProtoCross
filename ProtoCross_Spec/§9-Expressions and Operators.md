@@ -51,7 +51,8 @@ the first and a map for the second, which is told apart as `Level.HIGH` is, and 
 relational operator does.
 
 `m[k]` reads the value a map holds at a key, with an `on_missing` clause saying what a missing key
-gives, and binds as a member access or a call does ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). It is the one indexing the language has.
+gives ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and `items[i]` the element a list holds at an index the compiler shows is there,
+`items[^j]` counting from the end ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Each binds as a member access or a call does.
 
 Normative Requirements:
 

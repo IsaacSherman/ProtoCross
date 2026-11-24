@@ -617,11 +617,17 @@ public static class DiagnosticCodes
 
     // ------------------------------------------------------- maps
 
-    /// <summary><c>x[k]</c> on a value that is not a map, which is the only thing looked up by a key (spec 14.2).</summary>
+    /// <summary>
+    /// <c>x[k]</c> on a value that is neither a map, which is looked up by a key, nor a list, which is read by an index
+    /// (spec 14.1, 14.2).
+    /// </summary>
     public static readonly DiagnosticDescriptor ValueCannotBeIndexed =
         new("PC0113", DiagnosticSeverity.Error, "value cannot be indexed");
 
-    /// <summary>A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2).</summary>
+    /// <summary>
+    /// A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2), or a list's index
+    /// that is not an integer (spec 14.1).
+    /// </summary>
     public static readonly DiagnosticDescriptor MapKeyTypeMismatch =
         new("PC0114", DiagnosticSeverity.Error, "key type mismatch");
 
@@ -813,6 +819,28 @@ public static class DiagnosticCodes
     /// </summary>
     public static readonly DiagnosticDescriptor RefusalCannotBeReplaced =
         new("PC0151", DiagnosticSeverity.Error, "refusal cannot be replaced");
+
+    /// <summary>
+    /// A list's index, <c>items[i]</c> or <c>items[^j]</c>, that the facts where it is written do not show to be in
+    /// range (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor IndexNotShownInRange =
+        new("PC0152", DiagnosticSeverity.Error, "index not shown to be in range");
+
+    /// <summary>A literal index no list has an element at: a negative one, or <c>^0</c> (spec 14.1).</summary>
+    public static readonly DiagnosticDescriptor IndexNeverInRange =
+        new("PC0153", DiagnosticSeverity.Error, "index is never in range");
+
+    /// <summary>
+    /// <c>on_missing</c> after a list's index, which is shown to be in range and has nothing missing to answer
+    /// (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnMissingAfterAListIndex =
+        new("PC0154", DiagnosticSeverity.Error, "list index takes no on_missing");
+
+    /// <summary><c>m[^k]</c> on a map, whose keys have no end to count from (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MapKeyFromTheEnd =
+        new("PC0155", DiagnosticSeverity.Error, "map key counted from the end");
 
     // ------------------------------------------------------- the configuration file
 

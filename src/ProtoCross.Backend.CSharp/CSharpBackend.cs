@@ -260,6 +260,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrMapQuery query => EmitMapQuery(query, placement, receiverName),
         IrListQuery query => EmitListQuery(query, placement, receiverName),
         IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
+        IrElementRead read => EmitElementRead(read, placement, receiverName),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 

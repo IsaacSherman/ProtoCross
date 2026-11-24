@@ -12,14 +12,15 @@ Implemented operation set:
 - Append an element to the end with `place.append(value);`, where the method may change the place
   ([18](./§18-Mutability.md#18-mutability)).
 - Count a list's elements, `items.count()`, and ask whether it holds none, `items.is_empty()`.
-- Read the element at an index, from the start with `items.try_get_index(i)` or from the end with
+- Read the element at an index the compiler shows is there, `items[i]` from the start or `items[^j]`
+  from the end.
+- Read the element at any index, from the start with `items.try_get_index(i)` or from the end with
   `items.try_get_backward_index(j)`, saying with `on_refused` what an index out of range gives.
 - Give a repeated field a whole list, in a message literal or by assignment, which it stores a copy of
   ([13.2](./§13-Messages.md#132-message-construction), [18](./§18-Mutability.md#18-mutability)).
 
 Not implemented:
 
-- Indexing a list directly, `items[i]`.
 - Clear, and removing an element. Decided against. A field is emptied only by assigning it a list,
   `items = [];`, which ends every fact shown about what it held, as assigning any field does
   ([13.1](./§13-Messages.md#131-field-access), [18](./§18-Mutability.md#18-mutability)).
@@ -41,6 +42,24 @@ return total;
 extend Invoice {
     mut fn add_item(item: InvoiceItem) {
         items.append(item);
+    }
+}
+```
+
+```protocross
+extend Reading {
+    fn spread() -> double {
+        if samples.count() < 2 {
+            return 0.0;
+        }
+        return samples[^1] - samples[0];
+    }
+
+    fn sample_or_zero(i: int32) -> double {
+        if i >= 0 and i < samples.count() {
+            return samples[i];
+        }
+        return samples.try_get_backward_index(1) on_refused 0.0;
     }
 }
 ```
@@ -134,6 +153,57 @@ Normative Requirement:
     ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)).
   - What a try method gives is a value, as what a map's lookup gives is ([14.2](#142-maps)): storing a
     message it gives stores a copy ([13.2](./§13-Messages.md#132-message-construction)).
+- **`items[i]` is the element at `i`, counting from 0, and `items[^j]` the element `j` from the end, 1
+  being the last and the count the first, where the facts at the read show the index in range.** Nothing
+  is checked as the program runs. A read the facts do not show is `PC0152`, whose help writes the guard
+  that would show what is missing, `if i >= 0 and i < items.count() { … }`, and names the try method
+  that answers an index out of range instead.
+  - Facts are shown and combined as a field's presence is ([13.1](./§13-Messages.md#131-field-access)): a condition shows what it
+    says inside the branch it guards, and its opposite inside the `else`, and after an `if` whose branch
+    cannot fall through, what its opposite says holds for the rest of the block. `and`, `or` and `not`
+    combine them, and the right operand of `and` is read with what the left shows when true, and of
+    `or` with what it shows when false. Exactly
+    these show a fact:
+    - `items.count()` compared with an integer literal, by `<`, `<=`, `>`, `>=`, `==` or `!=`, either
+      side of the other, shows the least the count can be: `items.count() > 2` shows it is at least 3,
+      and `items.count() != 0` that it is at least 1. `items.is_empty()` shows it is at least 1 where it
+      is false.
+    - A list written out and stored, by a local's declaration or by an assignment, shows as many
+      elements as it was written with: after `var xs: repeated int32 = [4, 5, 6];`, `xs[2]` is shown.
+      An append, standing as a statement of its own, shows one more than was shown before it.
+    - An index compared with an integer literal shows that it is at least 0, `i >= 0`, or at least 1,
+      `i > 0`.
+    - An index compared with a count shows how the two are related: `i < items.count()` that it is
+      below the count, and `i <= items.count()` or `i == items.count()` that it is at most the count.
+    - A comparison of two integer types needs a conversion ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)), and one that keeps every value of
+      what it converts is read through, so `i < items.count() as int64` shows `i`, an `int64`, below the
+      count. A count is never negative, and keeps its value in every integer type. A conversion of an
+      index that could change it, an `int64` to an `int32`, compares a different number, and shows
+      nothing.
+  - An index from the start needs to be at least 0, which an unsigned one always is, and below the
+    count. An index from the end needs to be at least 1 and at most the count. A literal needs the count
+    alone: `items[2]` needs it to be at least 3, `items.count() > 2`, and `items[^2]` at least 2.
+  - A fact is about a list a local, a parameter or a field holds, and about an index a literal is or an
+    integer local, parameter or `for` binding holds. Any other list or index is `PC0152`, whose help
+    says to store it in a local first, so a list read from an element is: `boxes[0].parts[0]` is read as
+    `var parts = boxes[0].parts;`, and the facts shown about `parts`.
+  - A fact ends where what it is about may change, as a presence fact does ([13.1](./§13-Messages.md#131-field-access), [18](./§18-Mutability.md#18-mutability)):
+    assigning the index, assigning the list or anything it is reached through, calling a `mut fn` that
+    may change it, or setting another member of a `oneof` on the way to it. In a loop, anything the body
+    may change ends what was shown about it for every pass, since a pass reads what the last one left.
+    An append ends nothing, since nothing removes an element. A fact about a parameter never ends.
+    Where a change ended a fact the read needed, `PC0152` says which change.
+  - A literal index no list has an element at, a negative one or a from-end `0`, is `PC0153`, which no
+    guard could show. A literal index is an `int32`, the count's type, so one past what an `int32`
+    holds is `PC0036`.
+  - The index may be of any integer type, and anything else is `PC0114`. Both targets read the element
+    with their own indexer, which the index always fits.
+  - `on_missing` after a list's index is `PC0154`: nothing is missing where an index is shown, and the
+    help names the try method that answers one out of range.
+  - What a read gives is a value, as what a try method gives is: storing a message stores a copy
+    ([13.2](./§13-Messages.md#132-message-construction)), a `for` over a field of one traverses that value whatever the body changes,
+    and a `mut fn` given one as an argument is given it as it was when the call began
+    ([18](./§18-Mutability.md#18-mutability)).
 - **`place.append(value);` adds `value` to the end of a repeated value the method may change**: a
   repeated field of a message it may change, at any depth, or a local holding a repeated value, which
   is the method's own copy ([18](./§18-Mutability.md#18-mutability), [13.2](./§13-Messages.md#132-message-construction)).
@@ -163,9 +233,12 @@ Normative Requirement:
   element, since they may be. A loop over a parameter's field has nothing to protect: nothing may
   change a parameter, and nothing the method may change is part of one.
 
-**Decided: no collection helpers, and no indexing without a bounds check.** There is no filtering,
-mapping, sorting or aggregation: basics only. A repeated value has no indexing ([14.2](#142-maps)), and if
-indexing is ever added, an index out of range is answered explicitly, as a missing key is.
+**Decided: no collection helpers, and no index left to the target.** There is no filtering, mapping,
+sorting or aggregation: basics only. Nor is there `first()` or `last()`, which `items[0]` and
+`items[^1]` already are, and which would need their own answer for an empty list. An index is checked
+by the compiler, where the facts at the read show it in range, or as the program runs, by a try method
+whose clause says what an index out of range gives. Neither leaves one to the target: C#'s indexer
+throws, and C++'s reads past the end.
 
 Open Questions:
 
@@ -174,6 +247,8 @@ Open Questions:
   `place.append(value);`. A field may be assigned a whole list. Nothing may be cleared or removed
   ([18](./§18-Mutability.md#18-mutability)).
 - [List equality](./§30-Unresolved%20Questions%20Index.md#30146-list-equality), post-1.0
+- ~~[First and last](./§30-Unresolved%20Questions%20Index.md#30147-first-and-last)~~ Decided: neither.
+- [Induction over an index](./§30-Unresolved%20Questions%20Index.md#30148-induction-over-an-index), post-1.0
 
 ### 14.2 Maps
 
@@ -225,8 +300,9 @@ Normative Requirements:
     through it cannot be guarded (`PC0078`), and nothing may change it (`PC0094`). Bind it to a local
     first.
 - A key has the map's key type (`PC0114`). A literal key takes that type, as a literal assigned to a
-  local does, so `counts[5]` is a key of a map of `int32` keys. Only a map is indexed (`PC0113`): a
-  repeated field has no indexing ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+  local does, so `counts[5]` is a key of a map of `int32` keys. Only a map and a list are indexed
+  (`PC0113`), a list by an index ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A map's keys have no end to count from, so
+  `m[^k]` is `PC0155`.
 - `k in m` is a `bool`: whether `m` holds `k`. It is the operator [12.2](./§12-Enums.md#122-whether-a-value-has-a-name) asks an enum with, and
   which question it asks is settled as `Level.HIGH` is read. A right side that is a dotted name whose
   first part names a value is that value, and has to be a map (`PC0118`); any other dotted name names a

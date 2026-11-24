@@ -47,6 +47,20 @@ public sealed partial class CSharpBackend
                 nameof(lookup), lookup.OnRefused, "A try method with no clause never reaches a backend."),
         };
 
+    /// <summary>An element read where the binder showed its index in range: the list's own indexer, checking nothing.</summary>
+    /// <remarks>
+    /// Both a <c>RepeatedField</c> and an <c>IReadOnlyList</c> take <c>^</c>, which C# reads as the count less the
+    /// index with the list evaluated once. Each takes an <c>int</c>, which an index shown in range always fits.
+    /// </remarks>
+    private static string EmitElementRead(IrElementRead read, Placement placement, string receiverName)
+    {
+        var index = read.Index.Type == ScalarType.Int32Type
+            ? Expression(read.Index, placement, receiverName)
+            : $"(int){Expression(read.Index, placement, receiverName)}";
+
+        return $"{Expression(read.List, placement, receiverName)}[{(read.FromEnd ? "^" : string.Empty)}{index}]";
+    }
+
     /// <summary>The element at the index, or null where there is none.</summary>
     private static string ElementFound(IrElementLookup lookup, Placement placement, string receiverName)
         => $"{CSharpRuntime.CollectionsTypeName}.Element{NullableShape(lookup.Type)}({ElementArguments(lookup, placement, receiverName)})";

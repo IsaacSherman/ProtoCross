@@ -85,6 +85,7 @@ public static class IrCopy
                 Index = Of(lookup.Index),
                 Fallback = OrNull(lookup.Fallback),
             },
+            IrElementRead read => read with { List = Of(read.List), Index = Of(read.Index) },
             IrMapElement element => element with { Map = Of(element.Map), Key = Of(element.Key) },
             IrMissingMemberAccess awaiting => awaiting with { Receiver = Of(awaiting.Receiver) },
             IrUncallableInvocation call => call with

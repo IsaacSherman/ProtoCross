@@ -595,6 +595,7 @@ public sealed partial class Binder
         {
             Method = signature,
         };
+        _factsEnded.Clear();
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !IrFlow.NeverFallsThrough(body))

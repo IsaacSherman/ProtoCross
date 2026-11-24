@@ -101,6 +101,153 @@ extend Shelf {
     fn tone_from_end_or_refuse(index: int64) -> Tone refuses BoundsRefusal {
         return tones.try_get_backward_index(index) on_refused refuse new BoundsRefusal { index: index };
     }
+
+    // A loop over a field of what a try method gives traverses a message of its own, which lasts as long as the loop.
+    fn parts_of_box_or(index: int64) -> int64 {
+        var total: int64 = 0;
+        for part in (boxes.try_get_index(index) on_refused new Box { parts: [100] }).parts {
+            total += part;
+        }
+        return total;
+    }
+
+    // ---- a list of wrappers, whose element is a message the target may hold as its value
+
+    fn reading_at_or(index: int64) -> int64 {
+        var found = readings.try_get_index(index) on_refused new google.protobuf.Int64Value { value: -1 };
+        return found.value;
+    }
+
+    fn reading_from_end_or_fail(index: int32) -> int64 {
+        return (readings.try_get_backward_index(index) on_refused fail).value;
+    }
+
+    // ---- indexes the compiler shows in range, from the start and from the end
+
+    fn first_count() -> int32 {
+        if counts.is_empty() {
+            return -1;
+        }
+        return counts[0];
+    }
+
+    fn last_label() -> string {
+        if labels.count() < 1 {
+            return "none";
+        }
+        return labels[^1];
+    }
+
+    fn second_weight_from_end() -> double {
+        if weights.count() >= 2 {
+            return weights[^2];
+        }
+        return -1.0;
+    }
+
+    fn last_tone() -> Tone {
+        if not tones.is_empty() {
+            return tones[^1];
+        }
+        return Tone.TONE_UNSPECIFIED;
+    }
+
+    fn grams_of_first_box() -> int64 {
+        if boxes.count() > 0 {
+            return boxes[0].grams;
+        }
+        return -1;
+    }
+
+    fn count_at(index: int64) -> int32 {
+        if index >= 0 and index < counts.count() as int64 {
+            return counts[index];
+        }
+        return -1;
+    }
+
+    fn count_at_unsigned(index: uint64) -> int32 {
+        if index < counts.count() as uint64 {
+            return counts[index];
+        }
+        return -1;
+    }
+
+    fn label_or_none(index: int32) -> string {
+        if index < 0 or index >= labels.count() {
+            return "none";
+        }
+        return labels[index];
+    }
+
+    fn count_from_end(index: int32) -> int32 {
+        if index >= 1 and index <= counts.count() {
+            return counts[^index];
+        }
+        return -1;
+    }
+
+    fn total_by_index() -> int32 {
+        var total: int32 = 0;
+        var index: uint32 = 0;
+        while index < counts.count() as uint32 {
+            total += counts[index];
+            index += 1;
+        }
+        return total;
+    }
+
+    fn after_appending() -> int32 {
+        var values: repeated int32 = [];
+        values.append(7);
+        values.append(8);
+        return values[0] * 10 + values[^1];
+    }
+
+    fn from_a_literal() -> int32 {
+        var values: repeated int32 = [3, 4, 5];
+        return values[2] - values[^3];
+    }
+
+    fn first_given(given: repeated int32) -> int32 {
+        if given.is_empty() {
+            return 0;
+        }
+        return given[0] * 10 + given[^1];
+    }
+
+    fn last_reading() -> int64 {
+        if readings.is_empty() {
+            return -1;
+        }
+        var kept = readings[^1];
+        return kept.value + readings[0].value;
+    }
+
+    // A loop over a field of an element traverses a copy of the element, as one over a lookup's does.
+    fn parts_of_last_box() -> int64 {
+        var total: int64 = 0;
+        if not boxes.is_empty() {
+            for part in boxes[^1].parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    // An element passed to a mut fn is the element as it was when the call began, whatever the method then does
+    // to the list.
+    mut fn weigh_first_box() -> int64 {
+        if boxes.is_empty() {
+            return -1;
+        }
+        return weigh_and_clear(boxes[0]);
+    }
+
+    mut fn weigh_and_clear(box: Box) -> int64 {
+        boxes = [];
+        return box.grams + boxes.count() as int64;
+    }
 }
 
 test Shelf.count_of_counts "a field's count" {
@@ -307,4 +454,142 @@ test Shelf.tone_from_end_or_refuse "no enum element from the end refuses" {
     receiver { tones: [Tone.TONE_LIGHT] }
     arg index = 2;
     expect refuse new BoundsRefusal { index: 2 };
+}
+
+test Shelf.parts_of_box_or "a loop over a field of a try method's element" {
+    receiver { boxes: [new Box { parts: [1, 2, 3] }] }
+    arg index = 0;
+    expect return 6;
+}
+
+test Shelf.parts_of_box_or "a loop over a field of a try method's fallback" {
+    receiver { }
+    arg index = 0;
+    expect return 100;
+}
+
+test Shelf.reading_at_or "a wrapper element" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    arg index = 1;
+    expect return 9;
+}
+
+test Shelf.reading_at_or "a wrapper list's fallback" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }] }
+    arg index = 1;
+    expect return -1;
+}
+
+test Shelf.reading_from_end_or_fail "a wrapper element from the end" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    arg index = 2;
+    expect return 4;
+}
+
+test Shelf.first_count "a literal index the count shows" {
+    receiver { counts: [4, 5, 6] }
+    expect return 4;
+}
+
+test Shelf.first_count "an empty list is not read" {
+    receiver { }
+    expect return -1;
+}
+
+test Shelf.last_label "a literal index from the end" {
+    receiver { labels: ["first", "last"] }
+    expect return "last";
+}
+
+test Shelf.second_weight_from_end "a literal index from the end, past the last" {
+    receiver { weights: [1.5, 2.5, 3.5] }
+    expect return 2.5;
+}
+
+test Shelf.last_tone "an enum element from the end" {
+    receiver { tones: [Tone.TONE_LIGHT, Tone.TONE_DARK] }
+    expect return Tone.TONE_DARK;
+}
+
+test Shelf.grams_of_first_box "a field of a message element" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 3;
+}
+
+test Shelf.count_at "a guarded index of another integer type" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 2;
+    expect return 6;
+}
+
+test Shelf.count_at "a guarded index outside the list is not read" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return -1;
+}
+
+test Shelf.count_at_unsigned "an unsigned index needs no lower bound" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    expect return 5;
+}
+
+test Shelf.label_or_none "an index shown by an early return" {
+    receiver { labels: ["first", "second"] }
+    arg index = 1;
+    expect return "second";
+}
+
+test Shelf.label_or_none "an index an early return keeps out" {
+    receiver { labels: ["first", "second"] }
+    arg index = -1;
+    expect return "none";
+}
+
+test Shelf.count_from_end "a guarded index from the end" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return 4;
+}
+
+test Shelf.count_from_end "a guarded index from the end, outside the list, is not read" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 0;
+    expect return -1;
+}
+
+test Shelf.total_by_index "every element, by a while loop's index" {
+    receiver { counts: [4, 5, 6] }
+    expect return 15;
+}
+
+test Shelf.after_appending "what was appended is there to read" {
+    receiver { }
+    expect return 78;
+}
+
+test Shelf.from_a_literal "a list written out holds what it was written with" {
+    receiver { }
+    expect return 2;
+}
+
+test Shelf.first_given "a list parameter's elements" {
+    receiver { }
+    arg given = [9, 8, 7];
+    expect return 97;
+}
+
+test Shelf.last_reading "a wrapper element read by its index" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 13;
+}
+
+test Shelf.parts_of_last_box "a loop over a field of an element" {
+    receiver { boxes: [new Box { parts: [1] }, new Box { parts: [2, 3] }] }
+    expect return 5;
+}
+
+test Shelf.weigh_first_box "an element passed to a mut fn is a copy the method's changes do not reach" {
+    receiver { boxes: [new Box { grams: 3 }] }
+    expect return 3;
 }

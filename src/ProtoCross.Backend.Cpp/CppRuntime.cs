@@ -773,40 +773,10 @@ public static class CppRuntime
         writer.WriteLine();
     }
 
-    /// <summary>The map operations whose ProtoCross semantics protobuf's <c>Map</c> does not already provide (spec 14.2).</summary>
-    /// <remarks>
-    /// <para>
-    /// Templates over the map, so this header names no protobuf type and needs no protobuf include:
-    /// whatever <c>Map</c> a call site passes is the one it reads.
-    /// </para>
-    /// <para>
-    /// A lookup with a fallback takes the fallback as something to call, which the call site writes as
-    /// a lambda, so it is evaluated only when the key is missing.
-    /// </para>
-    /// <para>
-    /// Both lookups return the value by value, because what a lookup gives is a value (spec 14.2). A
-    /// fallback is a temporary, and a reference to it would outlive it. A lookup that fails could give a
-    /// reference into the map instead and save a copy, and review found that wrong. A lookup passed to
-    /// a <c>mut fn</c> is then the map's own storage, and the method changing the map changes its
-    /// read-only argument: <c>observe(items[1] on_missing fail)</c> sees a store to <c>items[1]</c> the
-    /// method makes after it was called. A call passes an argument that is not a place as written,
-    /// because it is a temporary of its own (spec 18), and returning by value is what keeps a lookup
-    /// one. A copy at that call alone would have kept the reference everywhere else, and left every
-    /// future place a lookup can be held across a change to ask the question again.
-    /// </para>
-    /// <para>
-    /// Equality compares each value with its own <c>==</c>, as the C# runtime does, so a NaN equals
-    /// nothing in either.
-    /// </para>
-    /// <para>
-    /// A merge takes its source by value. The source may be inside the target -- a map held by one of
-    /// the target's own elements, <c>held.merge((held[1] on_missing fail).items)</c> -- and storing that
-    /// element replaces the message the source lives in while the merge is still reading it. A copy
-    /// taken before the first store is read instead. Merging a map into itself changes nothing either
-    /// way.
-    /// </para>
-    /// </remarks>
-    /// <summary>Emits what a list's try methods read with (spec 14.1): the element at an index, from either end.</summary>
+    /// <summary>
+    /// Emits what a list's elements are read with (spec 14.1): a try method's element at an index from either end,
+    /// and an element a proven index reads from the end.
+    /// </summary>
     /// <remarks>
     /// <para>
     /// An index of any integer type is compared with the count in its own signedness, widened, so nothing on the way
@@ -819,6 +789,11 @@ public static class CppRuntime
     /// list, the index, with a <c>^</c> where it counts from the end, and the count, as the C# runtime's does, word for
     /// word. A clause that refuses reads through <c>element_or</c> too, with a fallback that marks the element missing,
     /// as a map's lookup does.
+    /// </para>
+    /// <para>
+    /// <c>from_end</c> checks nothing, because the compiler showed the index in range where it is written, and gives
+    /// what <c>Get</c> gives, as a forward read does. It is a function so that the list, which the count is taken
+    /// from, is evaluated once.
     /// </para>
     /// </remarks>
     private static void EmitElementHelpers(SourceWriter writer)
@@ -903,8 +878,49 @@ public static class CppRuntime
             writer.WriteLine();
             writer.WriteLine("return list.Get(at);");
         }
+
+        writer.WriteLine();
+        writer.WriteLine("// The element 'index' from the end, 1 the last, which the compiler showed the list holds.");
+        writer.WriteLine("template <typename List>");
+        using (writer.Block("inline decltype(auto) from_end(const List& list, int index)"))
+        {
+            writer.WriteLine("return list.Get(list.size() - index);");
+        }
     }
 
+    /// <summary>The map operations whose ProtoCross semantics protobuf's <c>Map</c> does not already provide (spec 14.2).</summary>
+    /// <remarks>
+    /// <para>
+    /// Templates over the map, so this header names no protobuf type and needs no protobuf include:
+    /// whatever <c>Map</c> a call site passes is the one it reads.
+    /// </para>
+    /// <para>
+    /// A lookup with a fallback takes the fallback as something to call, which the call site writes as
+    /// a lambda, so it is evaluated only when the key is missing.
+    /// </para>
+    /// <para>
+    /// Both lookups return the value by value, because what a lookup gives is a value (spec 14.2). A
+    /// fallback is a temporary, and a reference to it would outlive it. A lookup that fails could give a
+    /// reference into the map instead and save a copy, and review found that wrong. A lookup passed to
+    /// a <c>mut fn</c> is then the map's own storage, and the method changing the map changes its
+    /// read-only argument: <c>observe(items[1] on_missing fail)</c> sees a store to <c>items[1]</c> the
+    /// method makes after it was called. A call passes an argument that is not a place as written,
+    /// because it is a temporary of its own (spec 18), and returning by value is what keeps a lookup
+    /// one. A copy at that call alone would have kept the reference everywhere else, and left every
+    /// future place a lookup can be held across a change to ask the question again.
+    /// </para>
+    /// <para>
+    /// Equality compares each value with its own <c>==</c>, as the C# runtime does, so a NaN equals
+    /// nothing in either.
+    /// </para>
+    /// <para>
+    /// A merge takes its source by value. The source may be inside the target -- a map held by one of
+    /// the target's own elements, <c>held.merge((held[1] on_missing fail).items)</c> -- and storing that
+    /// element replaces the message the source lives in while the merge is still reading it. A copy
+    /// taken before the first store is read instead. Merging a map into itself changes nothing either
+    /// way.
+    /// </para>
+    /// </remarks>
     private static void EmitMapHelpers(SourceWriter writer)
     {
         writer.WriteLine("// Reached from an 'on_missing fail' clause.");

@@ -411,8 +411,26 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrMapQuery query => EmitMapQuery(query, placement),
         IrListQuery query => EmitListQuery(query, placement),
         IrElementLookup lookup => EmitElementLookup(lookup, placement),
+        IrElementRead read => EmitElementRead(read, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
+
+    /// <summary>
+    /// An argument as <paramref name="call"/> passes it: as written, or as a copy where a <c>mut fn</c> is handed a
+    /// reference into a list's element.
+    /// </summary>
+    /// <remarks>
+    /// Only what C++ passes by <c>const&amp;</c> is copied (<see cref="IsPassedByReference"/>), and only for a
+    /// <c>mut fn</c>: a method that changes nothing cannot change its argument. The copy is made before the call
+    /// begins, as every argument is evaluated.
+    /// </remarks>
+    private static string PassedArgument(IrMethodCall call, IrExpression argument, Placement placement)
+    {
+        var written = Expression(argument, placement);
+        return call.Target.IsMutating && IrMutation.IsReadFromAListsElement(argument) && IsPassedByReference(argument.Type)
+            ? $"{TypeName(argument.Type)}({written})"
+            : written;
+    }
 
     /// <summary>A field read off the message <paramref name="receiver"/> names, through protoc's getter.</summary>
     private static string FieldRead(string receiver, FieldDescriptor field)
@@ -435,6 +453,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// are: a parameter is read-only whatever method it belongs to, and an argument that is not a place
     /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>). A map's lookup is
     /// one too, since the runtime gives what it finds by value rather than as a reference into the map.
+    /// A list's element read by its index is not: protobuf's <c>Get</c> gives a reference into the list,
+    /// which the method could change under its own argument, so a <c>mut fn</c> is passed a copy, as C#
+    /// passes it one (<see cref="PassedArgument"/>).
     /// </remarks>
     /// <param name="outs">
     /// What a call to a method that may refuse passes for the references it gives its result and refusal through.
@@ -449,7 +470,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
             { } read => new List<string> { Expression(read, placement) },
         };
 
-        written.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
+        written.AddRange(call.Arguments.Select(argument => PassedArgument(call, argument, placement)));
 
         return InOrder(
             call,

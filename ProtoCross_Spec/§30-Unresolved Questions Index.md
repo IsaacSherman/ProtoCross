@@ -359,11 +359,14 @@ Decided: maps are read and changed by key, and never iterated
 
 #### 30.14.3 ~~Collection helpers~~
 
-Decided: none; basics only ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+Decided: none; basics only, and no `first()` or `last()` ([30.14.7](#30147-first-and-last),
+[14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 
 #### 30.14.4 ~~Bounds-checked indexing~~
 
-Decided: yes, if indexing is ever added. An index out of range is answered explicitly, as a missing key is
+Decided: no index is left to the target (#221). `items[i]` and `items[^j]` compile only where the facts at
+the read show the index in range, and nothing is checked as the program runs; a try method,
+`items.try_get_index(i)`, checks it as the program runs and is answered with `on_refused`
 ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 
 #### 30.14.5 A map built from repeated entries
@@ -378,6 +381,36 @@ Asked in [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps).
 messages ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)). A test may still expect a list, which it compares element by element
 ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), and a list of messages would wait on what makes two messages equal
 ([30.13.3](#30133-message-equality)).
+
+#### 30.14.7 ~~First and last~~
+
+Decided: neither (#221). `items[0]` and `items[^1]` are the first and the last element, read where the
+count shows them, and `items.try_get_index(0)` and `items.try_get_backward_index(1)` where it may not. A
+method of its own for each would be a second spelling of one read, and would need an answer of its own for
+an empty list ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+
+#### 30.14.8 Induction over an index
+
+**Post-1.0.** Should a fact about an index be carried through a loop that changes the index in a way that
+keeps it? Every change ends every fact about what it changes
+([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), and a loop's body is
+read with only the facts no pass can end, so in
+
+```protocross
+var i: int32 = 0;
+while i < items.count() {
+    total += items[i];
+    i += 1;
+}
+```
+
+nothing shows `i >= 0`: not the literal it starts at, which a declaration shows nothing about, and not
+`i += 1`, which keeps it but ends it as any assignment does. Such a loop is written with an unsigned
+index, `var i: uint32 = 0; while i < items.count() as uint32 { … }`, or tests `i >= 0` in its condition.
+Carrying the fact means showing it holds after the body wherever it held before, which is induction, and
+each change the body may make would need a rule for what it keeps.
+
+Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
 
 Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
 

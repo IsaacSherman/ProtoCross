@@ -49,6 +49,24 @@ public sealed partial class CppBackend
         return lookup.Type is EnumPlType enumType ? $"static_cast<{QualifiedEnumName(enumType.Descriptor)}>({element})" : element;
     }
 
+    /// <summary>An element read where the binder showed its index in range: protobuf's <c>Get</c>, checking nothing.</summary>
+    /// <remarks>
+    /// <c>Get</c> takes an <c>int</c>, which an index shown in range always fits. One from the end is read through
+    /// the runtime's <c>from_end</c>, so the list is evaluated once for the count and the element both. protobuf
+    /// holds a repeated enum as <c>int</c>, so an element of a list of one is read back as the enum, as a try
+    /// method's is.
+    /// </remarks>
+    private static string EmitElementRead(IrElementRead read, Placement placement)
+    {
+        var list = Expression(read.List, placement);
+        var index = read.Index.Type == ScalarType.Int32Type
+            ? Expression(read.Index, placement)
+            : $"static_cast<int>({Expression(read.Index, placement)})";
+        var element = read.FromEnd ? $"{RuntimeNamespace}::from_end({list}, {index})" : $"{list}.Get({index})";
+
+        return read.Type is EnumPlType enumType ? $"static_cast<{QualifiedEnumName(enumType.Descriptor)}>({element})" : element;
+    }
+
     /// <summary>The element at the index, calling <paramref name="fallback"/>, a lambda, where there is none.</summary>
     private static string ElementOr(IrElementLookup lookup, string fallback, Placement placement)
         => InElementOrder(

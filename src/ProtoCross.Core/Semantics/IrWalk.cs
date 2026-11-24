@@ -176,6 +176,7 @@ public static class IrWalk
             IrMapQuery query => [query.Map],
             IrListQuery query => [query.List],
             IrElementLookup lookup => lookup.Fallback is null ? [lookup.List, lookup.Index] : [lookup.List, lookup.Index, lookup.Fallback],
+            IrElementRead read => [read.List, read.Index],
             IrMapElement element => [element.Map, element.Key],
             IrMapEntries entries => [.. entries.Entries],
             IrMapEntry entry => [entry.Key, entry.Value],

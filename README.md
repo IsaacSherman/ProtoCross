@@ -218,9 +218,11 @@ Implemented:
   value can be, takes its element type from what is expected of it or from its elements, and is
   iterated with `for`. A stored list is a copy, messages and all, and a repeated field takes a whole
   one, `values: products` in a literal or `values = products;`. A test expects a list element by
-  element. A list has `count()` and `is_empty()`, and `items.try_get_index(i)` and
-  `items.try_get_backward_index(j)` read an element, from the start or from the end, with
-  `on_refused` saying what an index out of range gives. The spec has the rules in section 14.1.
+  element. A list has `count()` and `is_empty()`. `items[i]` and `items[^j]` read an element from
+  the start or from the end, and compile only where a guard shows the index is in range:
+  `if i >= 0 and i < items.count() { return items[i]; }`. `items.try_get_index(i)` and
+  `items.try_get_backward_index(j)` read any index, with `on_refused` saying what an index out of
+  range gives. The spec has the rules in section 14.1.
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an

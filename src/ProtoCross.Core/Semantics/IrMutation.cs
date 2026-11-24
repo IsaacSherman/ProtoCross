@@ -94,14 +94,17 @@ public static class IrMutation
 
     /// <summary>
     /// The temporary message a chain of field reads begins at, when it begins at one: a literal, a
-    /// call's result, whether or not its method may refuse, or what a lookup gives.
+    /// call's result, whether or not its method may refuse, what a lookup gives, or a list's element read
+    /// by index or by a try method.
     /// </summary>
     /// <remarks>
     /// A loop over a field of one has to keep the message for as long as it runs, and keeps a message
     /// of its own. C++ keeps it in a local, since an accessor's reference into a temporary outlives
     /// the temporary. C# keeps a copy in a method that changes a message, since a call's result may be
     /// part of the receiver the loop changes (spec 24), and a lookup gives the message the map holds,
-    /// which the loop may change through the map.
+    /// which the loop may change through the map. An element read from a list is a value as a lookup's
+    /// is (spec 14.1), and C++ reads a try method's into a copy of its own, a temporary, which an accessor
+    /// into it would outlive.
     /// </remarks>
     public static IrExpression? TemporaryOwnerOf(IrExpression collection)
     {
@@ -109,6 +112,7 @@ public static class IrMutation
 
         var root = RootOf(collection);
         return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall or IrRefusableCall or IrMapLookup
+                or IrElementLookup or IrElementRead
             ? root
             : null;
     }
@@ -219,6 +223,22 @@ public static class IrMutation
         ArgumentNullException.ThrowIfNull(argument);
 
         return call.Target.IsMutating && argument.IsCopiedWhenStored && !IsPlace(argument);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is a list's element read by its index, or something read from one:
+    /// <c>items[0]</c>, <c>items[^1].customer</c>.
+    /// </summary>
+    /// <remarks>
+    /// Such a value is read where the list holds it, as the target's indexer reads it, though it is not a place the
+    /// language writes (spec 14.1). A backend that hands a reference to one where the list could change under it
+    /// copies it first (<see cref="IsPassedAsACopy"/>).
+    /// </remarks>
+    public static bool IsReadFromAListsElement(IrExpression value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        return RootOf(value) is IrElementRead;
     }
 
     private static bool IsBinding(IrExpression root, IrForEach loop)

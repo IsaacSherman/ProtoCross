@@ -117,14 +117,17 @@ public partial class MapTests
         Assert.Equal(DiagnosticCodes.MapKeyTypeMismatch.Code, SingleError(result).Code);
     }
 
-    /// <summary>A repeated field has no indexing, and the help says how one is read instead.</summary>
+    /// <summary>
+    /// A list is read by its index, not looked up by a key, so a clause saying what a missing key gives is refused, and
+    /// the help names the try method that answers an index out of range (spec 14.1).
+    /// </summary>
     [Fact]
-    public void OnlyAMapIsIndexed()
+    public void AListIsNotLookedUpByAKey()
     {
         var error = SingleError(CompileReturning("string", "words[0] on_missing \"\""));
 
-        Assert.Equal(DiagnosticCodes.ValueCannotBeIndexed.Code, error.Code);
-        Assert.Contains("for", error.Help, StringComparison.Ordinal);
+        Assert.Equal(DiagnosticCodes.OnMissingAfterAListIndex.Code, error.Code);
+        Assert.Contains("try_get_index", error.Help, StringComparison.Ordinal);
     }
 
     // ------- membership

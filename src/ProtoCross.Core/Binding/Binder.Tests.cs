@@ -46,6 +46,7 @@ public sealed partial class Binder
             signature.Receiver,
             signature.ReturnType,
             HasImplicitReceiver: false);
+        _factsEnded.Clear();
         var receiver = BindTestFixture(test, signature, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);

@@ -19,16 +19,25 @@ public sealed partial class Binder
 
     // ------- reading
 
-    /// <summary>Binds <c>prices[sku] on_missing 0</c>, a read of one value of a map (spec 14.2).</summary>
+    /// <summary>
+    /// Binds <c>prices[sku] on_missing 0</c>, a read of one value of a map (spec 14.2), or <c>items[i]</c>, a read of
+    /// one element of a list (spec 14.1).
+    /// </summary>
     private IrExpression BindLookup(IndexExpression index, Scope scope, MethodContext context)
     {
         var map = BindExpression(index.Collection, scope, context, null);
+
+        if (map.Type is RepeatedType)
+        {
+            return BindElementRead(map, index, scope, context);
+        }
 
         if (!IsAMap(map, index, out var mapType))
         {
             return RefusedIndex(map, index, scope, context);
         }
 
+        ReportIfCountedFromTheEnd(map, index);
         var key = BindKey(index.Key, map, mapType, scope, context);
         return LookUp(map, key, mapType, index, scope, context);
     }
@@ -116,6 +125,19 @@ public sealed partial class Binder
         return key;
     }
 
+    /// <summary>Reports <c>prices[^1]</c>: a map's keys are looked up, and have no end to count from.</summary>
+    private void ReportIfCountedFromTheEnd(IrExpression map, IndexExpression index)
+    {
+        if (index.FromEndMarker is { } marker)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MapKeyFromTheEnd,
+                $"{Capitalized(Spelled(map))} is a map, whose keys have no end to count from.",
+                marker,
+                "Delete the '^' to look up the key. '^' counts from the end of a list (spec 14.1, 14.2).");
+        }
+    }
+
     /// <summary>The help a mismatch of two numeric types gets, or null for any other mismatch.</summary>
     private static string? NumericOrNull(PlType expected, PlType written)
         => expected is ScalarType { IsNumeric: true } && written is ScalarType { IsNumeric: true }
@@ -126,6 +148,10 @@ public sealed partial class Binder
     /// Whether <paramref name="map"/> is a map, reporting <c>PC0113</c> when it is a value of another
     /// type. A value that failed to bind has said why.
     /// </summary>
+    /// <remarks>
+    /// A list reaches this only as a place, since a read of one is bound before (<see cref="BindLookup"/>), and its
+    /// elements are read and not written.
+    /// </remarks>
     private bool IsAMap(IrExpression map, IndexExpression index, [NotNullWhen(true)] out MapType? mapType)
     {
         mapType = map.Type as MapType;
@@ -134,11 +160,13 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.ValueCannotBeIndexed,
-                $"{Capitalized(Spelled(map))} is a '{map.Type.DisplayName}', and only a map is looked up by a key.",
+                map.Type is RepeatedType
+                    ? $"{Capitalized(Spelled(map))} is a list, whose elements are read and not written."
+                    : $"{Capitalized(Spelled(map))} is a '{map.Type.DisplayName}', and only a map or a list is indexed.",
                 index.Span,
                 map.Type is RepeatedType
-                    ? "A repeated field has no indexing. Iterate it with 'for' (spec 14.1)."
-                    : "'[…]' looks up a key in a map (spec 14.2).");
+                    ? "Append to the list, or assign the whole list (spec 14.1)."
+                    : "'[…]' looks up a key in a map, or reads an element of a list (spec 14.1, 14.2).");
         }
 
         return mapType is not null;
@@ -493,6 +521,7 @@ public sealed partial class Binder
             return RefusedIndex(map, index, scope, context);
         }
 
+        ReportIfCountedFromTheEnd(map, index);
         IReadOnlyList<IrExpression> refused = [];
         if (index.OnMissing is { } clause)
         {

@@ -2091,9 +2091,10 @@ public sealed class CompletionProvider
     /// <summary>
     /// Whether a value of <paramref name="type"/> may stand where <paramref name="links"/> follow it: a
     /// message in front of a member, which has fields and methods; a map in front of a key, whose values
-    /// are then asked about what follows; and, in front of a member the language gives a repetition or a
-    /// map, a value that has it -- a repeated value before <c>append</c> (spec 14.1), a map before one of
-    /// its methods (spec 14.2), or a message declaring a field or a method of that name.
+    /// are then asked about what follows, and a list in front of an index, whose elements are; and, in
+    /// front of a member the language gives a repetition or a map, a value that has it -- a repeated value
+    /// before one of its methods (spec 14.1), a map before one of its methods (spec 14.2), or a message
+    /// declaring a field or a method of that name.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -2135,6 +2136,7 @@ public sealed class CompletionProvider
         return (link.Kind, type) switch
         {
             (LinkKind.Index, MapType map) => Reaches(map.ValueType, links, index + 1, module),
+            (LinkKind.Index, RepeatedType list) => Reaches(list.ElementType, links, index + 1, module),
             (LinkKind.Member, RepeatedType) when link.Member is null => true,
             (LinkKind.Member, RepeatedType list) => RepeatedMethods.Named(link.Member!) is { } method
                 && Reaches(RepeatedMethods.ResultOf(method, list), links, AfterACall(links, index + 1), module),

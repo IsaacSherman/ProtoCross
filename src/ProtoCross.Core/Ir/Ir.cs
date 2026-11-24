@@ -1275,6 +1275,43 @@ public sealed record IrListQuery(RepeatedMethod Method, IrExpression List, Sourc
     : IrExpression(RepeatedMethods.ResultOf(Method, (RepeatedType)List.Type), Span);
 
 /// <summary>
+/// The element of a list at an index the compiler showed to be in range where it is written, <c>items[0]</c> or
+/// <c>items[^1]</c> (spec 14.1).
+/// </summary>
+/// <param name="List">The list read, of a <see cref="RepeatedType"/>: a local, a parameter or a field, which a fact can name.</param>
+/// <param name="Index">The index, a literal or a name of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="FromEnd">Whether the index counts from the end, <c>items[^j]</c>.</param>
+/// <remarks>
+/// <para>
+/// A read, and never a place, as <see cref="IrMapLookup"/> is a read beside <see cref="IrMapElement"/>: what it gives is
+/// a value, and a message is copied where it is stored. A chain of reads begun at one begins at a value of its own,
+/// so a loop over a field of it traverses a message nothing else changes (<see cref="Semantics.IrMutation.TemporaryOwnerOf"/>).
+/// </para>
+/// <para>
+/// A backend reads it with the target's plain indexer and checks nothing, because the binder checked it: a node it is
+/// handed always carries its <see cref="Proof"/>. The list and the index are each evaluated once, which a from-end
+/// index, written as the count less the index, needs a backend to see to.
+/// </para>
+/// </remarks>
+public sealed record IrElementRead(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span)
+    : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <summary>What showed the index to be in range, or null where nothing did, which the binder reported (<c>PC0152</c>).</summary>
+    public IrIndexProof? Proof { get; init; }
+}
+
+/// <summary>What showed an index to be in range where it is written: the facts it needed, each as the source would say it.</summary>
+/// <param name="Facts">
+/// Each fact the index needed, written as a condition that would show it: <c>items.count() &gt; 2</c>, <c>i &gt;= 0</c>,
+/// <c>i &lt; items.count()</c>. One established a stronger fact is still named by the one it needed.
+/// </param>
+/// <remarks>
+/// Kept on the node rather than only checked, so that a reader of the IR -- a test sweeping the corpus, an editor
+/// describing the read -- can see that every indexed read has one, and what it rests on (spec 22.2).
+/// </remarks>
+public sealed record IrIndexProof(IReadOnlyList<string> Facts);
+
+/// <summary>
 /// An element of a map as a place: what <c>prices[sku] = 5;</c> stores to, and what
 /// <c>orders[id].status = SHIPPED;</c> writes through (spec 14.2, 18).
 /// </summary>

@@ -146,6 +146,8 @@ public sealed partial class Binder
         IrMethodCall call => $"{call.Target.Name}(…)",
         IrMapElement element => $"{Unquoted(element.Map)}[…]",
         IrMapLookup lookup => $"{Unquoted(lookup.Map)}[…]",
+        IrElementRead read => $"{Unquoted(read.List)}[…]",
+        IrElementLookup lookup => $"{Unquoted(lookup.List)}.{RepeatedMethods.NameOf(lookup.Method)}(…)",
         IrMessageLiteral literal => $"new {literal.MessageType.Descriptor.Name} {{ … }}",
         _ => "this",
     };
@@ -870,17 +872,60 @@ public sealed partial class Binder
         }
 
         var ended = SyntaxWalk.DescendantsAndSelf(statement)
-            .SelectMany(node => FactsEndedBy(node, scope, context))
+            .SelectMany(node => FactsEndedBy(node, scope, context).Select(end => end with { Cause = ChangeAt(node) }))
             .ToList();
 
         return Without(facts, ended);
     }
 
-    /// <summary><paramref name="facts"/> without the ones <paramref name="ended"/> ends.</summary>
-    private static IReadOnlySet<string> Without(IReadOnlySet<string> facts, IReadOnlyCollection<EndedFacts> ended)
-        => ended.Count == 0
-            ? facts
-            : new HashSet<string>(facts.Where(fact => !ended.Any(end => end.Ends(fact))), StringComparer.Ordinal);
+    /// <summary><paramref name="facts"/> without the ones <paramref name="ended"/> ends, each recorded with what ended it.</summary>
+    private IReadOnlySet<string> Without(IReadOnlySet<string> facts, IReadOnlyCollection<EndedFacts> ended)
+    {
+        if (ended.Count == 0)
+        {
+            return facts;
+        }
+
+        var kept = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var fact in facts)
+        {
+            if (ended.FirstOrDefault(end => end.Ends(fact)) is { } end)
+            {
+                _factsEnded.Add(new EndedFact(fact, end.Cause));
+            }
+            else
+            {
+                kept.Add(fact);
+            }
+        }
+
+        return kept;
+    }
+
+    /// <summary>A fact a change ended, and the change, as a sentence's subject names it, which a diagnostic may cite.</summary>
+    private sealed record EndedFact(string Fact, ChangeSite? Cause);
+
+    /// <summary>A change that ended a fact: what it is, as a sentence's subject, and where it is.</summary>
+    private sealed record ChangeSite(string Described, SourceSpan Span);
+
+    /// <summary>
+    /// Every fact ended in the method or test being bound, in the order each ended, for a diagnostic that has to say
+    /// why a fact it needed is not there. Cleared as each body begins.
+    /// </summary>
+    /// <remarks>
+    /// Kept beside the facts rather than in <see cref="MethodContext"/>, because it answers nothing the analysis asks,
+    /// only what a diagnostic says, and threading it through every place facts flow would change each of them for a
+    /// sentence. A fact ended in a branch the read is not in is recorded too, which the diagnostic weighs by position.
+    /// </remarks>
+    private readonly List<EndedFact> _factsEnded = [];
+
+    /// <summary>The change <paramref name="node"/> is, as the subject of a sentence saying what it ended.</summary>
+    private static ChangeSite? ChangeAt(SyntaxNode node) => node switch
+    {
+        AssignmentStatement or CompoundAssignmentStatement => new($"the assignment on line {node.Span.Start.Line}", node.Span),
+        InvocationExpression => new($"the call on line {node.Span.Start.Line}", node.Span),
+        _ => null,
+    };
 
     /// <summary>
     /// <paramref name="context"/> as it stands once an assignment has reached <paramref name="target"/>,
@@ -909,7 +954,8 @@ public sealed partial class Binder
             return context;
         }
 
-        var ended = SiblingsUnsetThrough(trace, trace.Links.Count - 1).ToList();
+        var cause = new ChangeSite($"the assignment on line {target.Span.Start.Line}", target.Span);
+        var ended = SiblingsUnsetThrough(trace, trace.Links.Count - 1).Select(end => end with { Cause = cause }).ToList();
         return context with { Present = Without(context.Present, ended) };
     }
 
@@ -1099,6 +1145,9 @@ public sealed partial class Binder
     /// </param>
     private sealed record EndedFacts(string? Root, string Path, bool Itself)
     {
+        /// <summary>The change that ends them, where one is known, for a diagnostic to cite.</summary>
+        public ChangeSite? Cause { get; init; }
+
         /// <summary>Every fact a change this could not trace might end: anything about any loop binding.</summary>
         public static EndedFacts Untraced { get; } = new(null, string.Empty, false);
 

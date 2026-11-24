@@ -42,8 +42,8 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The presence facts a condition establishes, for the case where it is true and for the case
-    /// where it is false.
+    /// The facts a condition establishes, for the case where it is true and for the case where it is
+    /// false: a field's presence, and what <see cref="ListFacts"/> shows about a list and an index.
     /// </summary>
     /// <remarks>
     /// <c>and</c> proves both of its operands when true and neither when false; <c>or</c> is its
@@ -80,7 +80,7 @@ public sealed partial class Binder
             }
 
             default:
-                return (EmptyPresence, EmptyPresence);
+                return ListFacts(condition);
         }
     }
 
