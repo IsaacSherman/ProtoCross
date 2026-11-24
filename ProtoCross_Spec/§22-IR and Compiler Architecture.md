@@ -193,7 +193,7 @@ unnoticed, as it did before #107 caught it up.
 |---|---|
 | `IrModule`, `IrMethod`, `IrMethodSignature`, `IrParameter`, `IrLocal`, `IrFactory` | Declarations: each method's signature, with the block that declared it, whether it may change its receiver, and what it refuses with; parameters and locals by declaration site; and each factory block by the message it builds |
 | `IrTest`, `IrTestArgument` | A test: its target, its source, its receiver fixture and its named arguments |
-| `IrTestReturnExpectation`, `IrTestFailExpectation`, `IrTestRefusalExpectation`, `IrTestFieldsExpectation` | What a test expects |
+| `IrTestReturnExpectation`, `IrTestFailExpectation`, `IrTestRefusalExpectation`, `IrTestFieldsExpectation`, `IrTestElementsExpectation` | What a test expects |
 | `IrBlock`, `IrVariableDeclaration`, `IrExpressionStatement`, `IrReturn`, `IrIf`, `IrWhile`, `IrForEach`, `IrBreak`, `IrContinue` | Statements and control flow, as written |
 | `IrSwitch`, `IrSwitchArm` | A switch, as written |
 | `IrAssignment`, `IrFieldAssignment`, `IrAppend`, `IrElementAssignment`, `IrListElementAssignment`, `IrMapUpdate` | What changes |

@@ -1630,8 +1630,10 @@ public sealed record IrTestFailExpectation(SourceSpan Span) : IrTestExpectation(
 /// <summary><c>expect refuse value;</c>: met when the method refuses, with a refusal the inner expectation meets (spec 25.3).</summary>
 /// <param name="Expected">
 /// What the refusal is compared with, as an <c>expect return</c> of it would compare a result: an
-/// <see cref="IrTestReturnExpectation"/>, or an <see cref="IrTestFieldsExpectation"/> where the refusal
-/// is a message and the value a literal of one. It has this expectation's span, since it is the same text.
+/// <see cref="IrTestReturnExpectation"/>, an <see cref="IrTestFieldsExpectation"/> where the refusal
+/// is a message and the value a literal of one, or an <see cref="IrTestElementsExpectation"/> where it is
+/// a list of messages and the value a list of literals. It has this expectation's span, since it is the
+/// same text.
 /// </param>
 /// <remarks>
 /// Around an expectation rather than beside its kinds, because a refusal is compared exactly as a result
@@ -1660,3 +1662,17 @@ public sealed record IrTestRefusalExpectation(IrTestExpectation Expected, Source
 /// </para>
 /// </remarks>
 public sealed record IrTestFieldsExpectation(IrMessageLiteral Expected, SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary>
+/// <c>expect return [new T { ... }, ...];</c> on a method that returns a list of messages: met when the list returned
+/// has as many elements, and each meets the literal written at its index, as an
+/// <see cref="IrTestFieldsExpectation"/> is met (spec 25.3).
+/// </summary>
+/// <param name="Expected">The list written, each of whose elements is a literal of the list's message.</param>
+/// <remarks>
+/// A record of its own beside <see cref="IrTestFieldsExpectation"/>, for the reason that one stands beside
+/// <see cref="IrTestReturnExpectation"/>: nothing here is <c>==</c> on two lists, which the language refuses (spec 9.2),
+/// nor on two messages. The count is compared first, and then each element read by its index, which the count showed
+/// is there; <see cref="Semantics.IrExpectedFields.Of(IrTestElementsExpectation)"/> says which checks, in what order.
+/// </remarks>
+public sealed record IrTestElementsExpectation(IrList Expected, SourceSpan Span) : IrTestExpectation(Span);

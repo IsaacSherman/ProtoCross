@@ -68,21 +68,30 @@ Normative Requirements:
 - **An `expect return` of a list, on a method that returns one, is met when the result has as many
   elements, and each meets its own expectation** as an `expect return` of it alone would: under `==`,
   a NaN meeting a NaN. This needs no `==` on two lists, which the language refuses
-  ([30.14.6](./§30-Unresolved%20Questions%20Index.md#30146-list-equality)). A list of messages cannot be expected yet (`PC0092`).
+  ([30.14.6](./§30-Unresolved%20Questions%20Index.md#30146-list-equality)).
+- **An `expect return` of a list of message literals, on a method that returns a list of messages, is
+  met when the result has as many elements, and each meets the literal at its index** as an
+  `expect return` of that literal alone would, below. The count is compared first, so a list of
+  another length fails saying so before any element is read, and a failure names the element and the
+  field: `[1].grams`. An element that is a message but not a literal is `PC0092`, and so is a list of
+  messages that is not written out, since nothing else says what each element is compared with.
 - **An `expect return` of a message literal, on a method that returns a message, is met when every
   field the literal sets has that value in the message returned.** The fields it leaves out are not
   looked at. A field with presence ([8.4](./§8-Type%20System.md#84-nullability-and-presence)) -- a message, a member of a `oneof`, an `optional`
   scalar -- must be set, since the literal would set it, and then has its value compared; one without
   presence has its value compared alone. A message field given a literal is compared by the fields
-  that literal sets, at any depth. Each value is compared as an `expect return` of it alone would be,
+  that literal sets, at any depth. A repeated field given a list written out is compared as an expected
+  list is, by its count and then by each element at its index, a message element by its literal's
+  fields: `boxes[0].parts.count()`. Each value is compared as an `expect return` of it alone would be,
   a NaN meeting any NaN, and a failure names the field. This is not the language's `==`, which still
   refuses two messages ([13.3](./§13-Messages.md#133-equality)): the literal says which fields decide it.
-- **A field such a literal cannot compare is `PC0134`**: a repeated field, a map, or a message given
-  by anything but a literal. The language has no length or index to compare a repetition by
-  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), and only a literal says which of a message's fields matter.
+- **A field such a literal cannot compare is `PC0134`**: a map, a message given by anything but a
+  literal, a repeated field given anything but a list written out, and a message element of one that
+  is not a literal. The language has no way to list a map's keys
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and only a literal says which of a message's fields matter.
 - **`expect refuse value;` is met when the method refuses, with a refusal that meets `value`** as an
-  `expect return` of it would meet a result: under `==`, or, for a literal of a message, by the fields
-  it sets ([16.3.1](./§16-Methods.md#1631-refusals)). A method that builds its result instead fails the test. An `expect refuse` of a
+  `expect return` of it would meet a result: under `==`, for a literal of a message by the fields it
+  sets, and for a list of them element by element ([16.3.1](./§16-Methods.md#1631-refusals)). A method that builds its result instead fails the test. An `expect refuse` of a
   method that declares no refusal is `PC0143`. A refusal is a return: an `expect return` is not met where
   the method refuses, and an `expect fail` is not met where it refuses rather than ending the program.
 - **Any other `expect return` on a method that returns a message is `PC0092`**, until [13.3](./§13-Messages.md#133-equality)

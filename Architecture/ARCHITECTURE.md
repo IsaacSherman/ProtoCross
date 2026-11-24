@@ -721,9 +721,10 @@ each backend groups them by message into a class of their own, after the extensi
 source with no factory is generated as it always was: a C# `public static class` with `private static`
 helpers, and a C++ struct of static members, declared with the functions and defined after them. The
 class's name is `NameConventions.GetFactoryClassName`, the one both backends and the binder's collision
-check use. A test whose expectation is a message literal compares the fields it sets, and which those
-are is [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer, which each
-backend emits as field reads off the result.
+check use. A test whose expectation is a message literal compares the fields it sets, and one whose
+expectation is a list of them compares the count and then each element's; which checks those are is
+[`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer (`ChecksOf`), which each
+backend emits as field reads and element reads off the result.
 
 A method that may refuse is generated in a shape of its own in both backends: it returns `bool`, and
 gives what it built or refused through two parameters, `out` in C# and references in C++

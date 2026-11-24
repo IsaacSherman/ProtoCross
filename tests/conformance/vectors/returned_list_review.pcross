@@ -55,3 +55,23 @@ test ReturnedListReview.sum_built "a directly iterated refusing result owns its 
     receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
     expect return 12;
 }
+
+test ReturnedListReview.returned "a returned list of messages is expected by a literal at each index" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }];
+}
+
+test ReturnedListReview.returned "an empty list of messages is expected as one" {
+    receiver { }
+    expect return [];
+}
+
+test ReturnedListReview.refused "a refused list of messages is expected by a literal at each index" {
+    receiver { items: [new ReturnedListItem { amount: 3 }] }
+    expect refuse [new ReturnedListItem { amount: 3 }];
+}
+
+test ReturnedListReview.built "a list of messages a method that may refuse built" {
+    receiver { items: [new ReturnedListItem { }, new ReturnedListItem { amount: 2 }] }
+    expect return [new ReturnedListItem { }, new ReturnedListItem { amount: 2 }];
+}

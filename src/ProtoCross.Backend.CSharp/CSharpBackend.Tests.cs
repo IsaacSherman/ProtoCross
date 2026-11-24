@@ -56,7 +56,7 @@ public sealed partial class CSharpBackend
                 EmitFailTestDispatcher(writer, failTests, methodNames, sourceName, placement);
             }
 
-            if (module.Tests.Any(test => test.Expectation.Compared() is IrTestFieldsExpectation))
+            if (module.Tests.Any(test => IrExpectedFields.ChecksOf(test.Expectation.Compared()) is not null))
             {
                 writer.WriteLine();
                 EmitFieldExpectations(writer);
@@ -142,8 +142,8 @@ public sealed partial class CSharpBackend
                     + $"{Expression(returnExpectation.Value, placement, "receiver")}, {Invocation(test, placement)});");
                 break;
 
-            case IrTestFieldsExpectation fields:
-                EmitFieldChecks(writer, test, fields, placement);
+            case var compared when IrExpectedFields.ChecksOf(compared) is { } checks:
+                EmitFieldChecks(writer, test, checks, placement);
                 break;
 
             default:
@@ -152,17 +152,16 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// Emits what an expected message literal checks: the call, held in a local, and then each field the
-    /// literal sets, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
+    /// Emits what an expected message literal, or an expected list of them, checks: the call, held in a local, and
+    /// then each check, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
     /// </summary>
     /// <remarks>
     /// A field is checked by <c>ExpectSet</c> and <c>ExpectField</c> rather than by <c>Assert.Equal</c>,
     /// so a failure says which field it was: a test checking five fields that reported only two values
     /// would leave the reader to find which.
     /// </remarks>
-    private static void EmitFieldChecks(SourceWriter writer, IrTest test, IrTestFieldsExpectation fields, Placement placement)
+    private static void EmitFieldChecks(SourceWriter writer, IrTest test, IrExpectedChecks expected, Placement placement)
     {
-        var expected = IrExpectedFields.Of(fields);
         writer.WriteLine($"var {Escape(expected.Result.Name)} = {Invocation(test, placement)};");
         EmitChecks(writer, test, expected, placement);
     }
@@ -372,8 +371,8 @@ public sealed partial class CSharpBackend
                 writer.WriteLine($"global::Xunit.Assert.Equal({Expression(value.Value, placement, "receiver")}, {actual});");
                 break;
 
-            case IrTestFieldsExpectation fields:
-                EmitChecks(writer, test, IrExpectedFields.Of(fields), placement);
+            case var compared when IrExpectedFields.ChecksOf(compared) is { } checks:
+                EmitChecks(writer, test, checks, placement);
                 break;
 
             default:

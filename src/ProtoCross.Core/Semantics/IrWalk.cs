@@ -193,6 +193,7 @@ public static class IrWalk
             IrTestArgument argument => [argument.Value],
             IrTestReturnExpectation expectation => [expectation.Value],
             IrTestFieldsExpectation expectation => [expectation.Expected],
+            IrTestElementsExpectation expectation => [expectation.Expected],
             IrTestRefusalExpectation expectation => [expectation.Expected],
 
             _ => [],

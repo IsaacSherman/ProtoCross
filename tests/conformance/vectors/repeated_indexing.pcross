@@ -377,6 +377,20 @@ extend Shelf {
         return values[0] + values[1] + values[2];
     }
 
+    fn heavy_boxes(limit: int64) -> repeated Box {
+        var heavy: repeated Box = [];
+        for box in boxes {
+            if box.grams > limit {
+                heavy.append(box);
+            }
+        }
+        return heavy;
+    }
+
+    fn kept() -> Shelf {
+        return new Shelf { boxes: boxes, counts: counts, labels: labels, tones: tones, readings: readings };
+    }
+
     mut fn replace_readings() -> int64 {
         if readings.count() < 2 {
             return -1;
@@ -819,4 +833,33 @@ test Shelf.write_a_local_list "a local's list written by index" {
 test Shelf.replace_readings "a list of wrappers written by index and through its elements" {
     receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
     expect return 111;
+}
+
+test Shelf.heavy_boxes "a list of messages, each element expected by its own literal, a list it holds included" {
+    receiver { boxes: [new Box { grams: 3, tag: "a" }, new Box { grams: 9, tag: "b", parts: [1, 2] }, new Box { grams: 12 }] }
+    arg limit = 5;
+    expect return [new Box { grams: 9, tag: "b", parts: [1, 2] }, new Box { grams: 12, parts: [] }];
+}
+
+test Shelf.heavy_boxes "no element is expected of an empty list of messages" {
+    receiver { boxes: [new Box { grams: 3 }] }
+    arg limit = 5;
+    expect return [];
+}
+
+test Shelf.kept "a message's repeated fields are expected element by element" {
+    receiver {
+        boxes: [new Box { grams: 3, parts: [4] }],
+        counts: [1, 2],
+        labels: ["x"],
+        tones: [Tone.TONE_DARK],
+        readings: [new google.protobuf.Int64Value { value: 8 }],
+    }
+    expect return new Shelf {
+        boxes: [new Box { grams: 3, parts: [4] }],
+        counts: [1, 2],
+        labels: ["x"],
+        tones: [Tone.TONE_DARK],
+        readings: [new google.protobuf.Int64Value { value: 8 }],
+    };
 }

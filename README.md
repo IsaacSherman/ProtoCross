@@ -266,9 +266,9 @@ Implemented:
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
 Not implemented: `==` between two messages or two lists (a test compares an expected literal by the
-fields it sets, and an expected list element by element, instead), indexing a list directly,
-`items[i]`, expecting a list of messages in a test, asking which member of a `oneof` is set, and the
-Python backend, which is planned but not yet started. A `oneof`'s members
+fields it sets, and an expected list element by element, a list of messages by a literal at each
+index, instead), asking which member of a `oneof` is set, and the Python backend, which is planned
+but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather
 than emitting something whose semantics differ from the spec.

@@ -458,8 +458,8 @@ public sealed partial class CppBackend
 
                 break;
 
-            case IrTestFieldsExpectation fields:
-                EmitCppFieldChecks(writer, test, fields, placement);
+            case var expected when IrExpectedFields.ChecksOf(expected) is { } checks:
+                EmitCppFieldChecks(writer, test, checks, placement);
                 break;
 
             default:
@@ -498,17 +498,15 @@ public sealed partial class CppBackend
     }
 
     /// <summary>
-    /// Emits what an expected message literal checks: each field the literal sets, of the local the method's
+    /// Emits what an expected message literal, or an expected list of them, checks, of the local the method's
     /// result is held in, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
     /// </summary>
     /// <remarks>
     /// Each value is compared in a block of its own, as an <c>expect return</c> of it alone would be, so
     /// that every one is named <c>expected</c> and <c>found</c> and a failure prints both beside the field.
     /// </remarks>
-    private static void EmitCppFieldChecks(SourceWriter writer, IrTest test, IrTestFieldsExpectation fields, Placement placement)
+    private static void EmitCppFieldChecks(SourceWriter writer, IrTest test, IrExpectedChecks expected, Placement placement)
     {
-        var expected = IrExpectedFields.Of(fields);
-
         foreach (var check in expected.Checks)
         {
             var failed = $"::std::cout << \"[FAIL] {EscapeString(test.Identity)} ('{EscapeString(check.Path)}'";
@@ -538,7 +536,7 @@ public sealed partial class CppBackend
                     break;
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(fields), check, "Unhandled field check.");
+                    throw new ArgumentOutOfRangeException(nameof(expected), check, "Unhandled field check.");
             }
         }
     }
@@ -552,7 +550,8 @@ public sealed partial class CppBackend
     private static bool ExpectsFloatingPoint(IrTest test) => test.Expectation.Compared() switch
     {
         IrTestReturnExpectation returned => IsFloatingPoint(returned.Value.Type),
-        IrTestFieldsExpectation fields => IrExpectedFields.Of(fields).Checks.OfType<IrValueCheck>().Any(check => IsFloatingPoint(check.Actual.Type)),
+        var compared when IrExpectedFields.ChecksOf(compared) is { } checks
+            => checks.Checks.OfType<IrValueCheck>().Any(check => IsFloatingPoint(check.Actual.Type)),
         _ => false,
     };
 

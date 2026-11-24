@@ -290,15 +290,63 @@ public class LocalListTests
             "    fn f() -> repeated double { return [ratio]; }",
             "test Basket.f \"a list\" {\n    receiver { ratio: 1.0 }\n    expect return [1.0];\n}\n"));
 
+    /// <summary>
+    /// A list of messages is expected as a list of literals, each compared with the element at its index as one
+    /// expected alone would be: the count first, then each field each literal sets (spec 25.3).
+    /// </summary>
     [Fact]
-    public void ATestDoesNotExpectAListOfMessagesYet()
+    public void ATestExpectsAListOfMessagesByALiteralAtEachIndex()
+    {
+        var result = Compile(
+            "    fn f() -> repeated Parcel { return parcels; }",
+            "test Basket.f \"messages\" {\n    receiver { }\n"
+            + "    expect return [new Parcel { grams: 3 }, new Parcel { tag: \"t\" }];\n}\n");
+
+        AssertOk(result);
+        var expectation = Assert.IsType<IrTestElementsExpectation>(Assert.Single(result.Module!.Tests).Expectation);
+        Assert.Equal(
+            ["count()", "[0].grams", "[1].tag"],
+            IrExpectedFields.Of(expectation).Checks.Select(check => check.Path));
+    }
+
+    [Fact]
+    public void AnEmptyListOfMessagesIsExpectedByItsCount()
+    {
+        var result = Compile(
+            "    fn f() -> repeated Parcel { return parcels; }",
+            "test Basket.f \"none\" {\n    receiver { }\n    expect return [];\n}\n");
+
+        AssertOk(result);
+        var expectation = Assert.IsType<IrTestElementsExpectation>(Assert.Single(result.Module!.Tests).Expectation);
+        Assert.Equal(["count()"], IrExpectedFields.Of(expectation).Checks.Select(check => check.Path));
+    }
+
+    /// <summary>Only a literal says which of a message's fields to compare, in a list as anywhere else.</summary>
+    [Fact]
+    public void AnExpectedListsMessageIsALiteral()
     {
         var error = TheOnly(
             Compile(
                 "    fn f() -> repeated Parcel { return parcels; }",
-                "test Basket.f \"messages\" {\n    receiver { }\n    expect return [];\n}\n"),
+                "factory Parcel {\n    fn made() -> Parcel { return new Parcel { }; }\n}\n\n"
+                + "test Basket.f \"messages\" {\n    receiver { }\n    expect return [Parcel.factory.made()];\n}\n"),
             DiagnosticCodes.MessageReturnCannotBeExpected.Code);
 
-        Assert.Contains("list of messages", error.Message, StringComparison.Ordinal);
+        Assert.StartsWith("An element of the list expected is a 'protocross.conformance.Parcel' that is not a literal", error.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A list of messages is expected only as one written out, since nothing else says what each element is compared with.</summary>
+    [Fact]
+    public void AListOfMessagesIsExpectedOnlyWrittenOut()
+    {
+        var error = TheOnly(
+            Compile(
+                "    fn f() -> repeated Parcel { return parcels; }",
+                "factory Basket {\n    fn full() -> Basket { return new Basket { }; }\n}\n\n"
+                + "test Basket.f \"messages\" {\n    receiver { }\n    expect return Basket.factory.full().parcels;\n}\n"),
+            DiagnosticCodes.MessageReturnCannotBeExpected.Code);
+
+        Assert.Contains("only a list of literals of one can be expected", error.Message, StringComparison.Ordinal);
+        Assert.Contains("[new Parcel { … }, …]", error.Help, StringComparison.Ordinal);
     }
 }

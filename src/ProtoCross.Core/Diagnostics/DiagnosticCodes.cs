@@ -478,7 +478,8 @@ public static class DiagnosticCodes
         new("PC0091", DiagnosticSeverity.Error, "literal of a type that is not a message");
 
     /// <summary>
-    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal. A
+    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal, or on
+    /// one that returns a list of messages, with a value that is not a list of literals written out. A
     /// literal is compared by the fields it sets, and nothing else can be until spec 13.3 says what
     /// message equality is (spec 25.3).
     /// </summary>
@@ -725,8 +726,9 @@ public static class DiagnosticCodes
         new("PC0133", DiagnosticSeverity.Warning, "factory for a well-known type");
 
     /// <summary>
-    /// A field of an expected message literal that a test cannot compare: a repeated field, a map,
-    /// or a message given by anything but a literal (spec 25.3).
+    /// A field of an expected message literal that a test cannot compare: a map, a message given by
+    /// anything but a literal, or a repeated field given anything but a list written out, or a message
+    /// element of one that is not a literal (spec 25.3).
     /// </summary>
     public static readonly DiagnosticDescriptor ExpectedFieldCannotBeCompared =
         new("PC0134", DiagnosticSeverity.Error, "expected field cannot be compared");
