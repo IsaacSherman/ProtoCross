@@ -93,6 +93,70 @@ public partial class RepeatedIndexingTests
             error.Help);
     }
 
+    [Fact]
+    public void AnUnshownWriteInsideATraversedElementSuggestsAMutatingMethod()
+    {
+        var result = Compile("""
+                mut fn f() {
+                    for box in boxes {
+                        if boxes.count() > 0 {
+                            boxes[0].parts[0] = 7;
+                        }
+                    }
+                }
+            """);
+
+        var error = TheOnly(result, DiagnosticCodes.IndexNotShownInRange.Code);
+        Assert.DoesNotContain("store the local back", error.Help, StringComparison.Ordinal);
+        Assert.Contains("mut fn", error.Help, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Storing a copy back would replace an element of the list a loop traverses, which is <c>PC0096</c>, so the help
+    /// names the <c>mut fn</c> that writes the element in place, and the call it is made by.
+    /// </summary>
+    [Fact]
+    public void AWriteInsideATraversedListIsMadeByAMutFnOnTheElement()
+    {
+        var error = TheOnly(
+            Compile("    mut fn f() {\n        for box in boxes {\n            if boxes.count() > 0 { boxes[0].parts[1] = 7; }\n        }\n    }"),
+            DiagnosticCodes.IndexNotShownInRange.Code);
+
+        Assert.Equal(
+            "Only a list a local, a parameter or a field holds is shown to hold anything. Storing a copy of 'boxes[…]' back "
+            + "would change 'boxes', which a 'for' around it is traversing. Write it in a 'mut fn' on 'Box', where 'parts' "
+            + "is its own field and a guard can show the index, and call that on 'boxes[…]' (spec 14.1).",
+            error.Help);
+    }
+
+    /// <summary>What that help says to write compiles: the guard inside the method shows the index the loop could not.</summary>
+    [Fact]
+    public void AMutFnOnATraversedListsElementWritesItsOwnList()
+        => AssertOk(Compilation.Compile(
+            TestPaths.WriteTempScript(
+                Source("    mut fn f() {\n        for box in boxes {\n            if boxes.count() > 0 { boxes[0].set_part(1, 7); }\n        }\n    }")
+                + "\nextend Box {\n    mut fn set_part(at: int32, value: int64) {\n"
+                + "        if at >= 0 and at < parts.count() { parts[at] = value; }\n    }\n}\n"),
+            [ProtoDirectory]));
+
+    /// <summary>
+    /// A loop over a list inside the element refuses a <c>mut fn</c> on it as well as a copy stored back, since either
+    /// could change what it traverses, so the help leaves the write until the loop ends.
+    /// </summary>
+    [Fact]
+    public void AWriteInsideALoopOverTheElementsOwnListWaitsForTheLoop()
+    {
+        var result = Compile(
+            "    mut fn f() {\n        for box in boxes {\n            for part in box.parts {\n"
+            + "                if boxes.count() > 0 { boxes[0].parts[1] = part; }\n            }\n        }\n    }");
+
+        var error = Assert.Single(result.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.IndexNotShownInRange.Code);
+        Assert.EndsWith(
+            "which a 'for' around it is traversing, as calling a 'mut fn' on it would. Make the change after the loop (spec 14.1).",
+            error.Help,
+            StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// A write inside an element may change what a binding over its list showed, but never the integer a binding over
     /// another list holds, which nothing assigns (spec 14.1).

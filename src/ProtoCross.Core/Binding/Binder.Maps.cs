@@ -589,9 +589,13 @@ public sealed partial class Binder
             return true;
         }
 
-        ReportIfTraversalChanges(collection is IrFieldAccess field ? FieldsReplacedBy(field) : [collection], change, span, context);
+        ReportIfTraversalChanges(PlacesChangedIn(collection), change, span, context);
         return false;
     }
+
+    /// <summary>What a change to what <paramref name="collection"/> holds changes, as a loop around it is asked.</summary>
+    private static IEnumerable<IrExpression> PlacesChangedIn(IrExpression collection)
+        => collection is IrFieldAccess field ? FieldsReplacedBy(field) : [collection];
 
     // ------- literals
 

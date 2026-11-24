@@ -773,31 +773,43 @@ public sealed partial class Binder
         SourceSpan span,
         MethodContext context)
     {
-        foreach (var place in changed)
+        if (TraversalChangedBy(changed, context) is not { } traversal)
         {
-            if (StorageOf(place) is not { } storage)
-            {
-                continue;
-            }
-
-            foreach (var traversal in context.Traversing)
-            {
-                if (!Holds(storage, traversal.Storage))
-                {
-                    continue;
-                }
-
-                _diagnostics.Report(
-                    DiagnosticCodes.TraversedFieldChanged,
-                    $"{change}, and a 'for' around it is traversing {Spelled(traversal.Collection)}, which "
-                    + "that could change.",
-                    span,
-                    "A loop may change the element it is given, but nothing that could add to, remove from, "
-                    + "reorder or replace what it traverses. Make the change after the loop (spec 14.1).");
-                return;
-            }
+            return;
         }
+
+        _diagnostics.Report(
+            DiagnosticCodes.TraversedFieldChanged,
+            $"{change}, and a 'for' around it is traversing {Spelled(traversal.Collection)}, which "
+            + "that could change.",
+            span,
+            "A loop may change the element it is given, but nothing that could add to, remove from, "
+            + "reorder or replace what it traverses. Make the change after the loop (spec 14.1).");
     }
+
+    /// <summary>
+    /// The loop around here traversing something a change to one of <paramref name="changed"/> could change, or null
+    /// where none is: what <see cref="ReportIfTraversalChanges"/> refuses a change for.
+    /// </summary>
+    private Traversal? TraversalChangedBy(IEnumerable<IrExpression> changed, MethodContext context)
+        => changed
+            .Select(StorageOf)
+            .OfType<string>()
+            .SelectMany(storage => context.Traversing.Where(traversal => Holds(storage, traversal.Storage)))
+            .FirstOrDefault();
+
+    /// <summary>What a store into <paramref name="place"/> changes, as the store's own check asks a loop around it.</summary>
+    /// <remarks>
+    /// Replacing an element changes the list or map it is in, as <see cref="CheckCollectionChange"/> asks, and assigning a
+    /// field changes the field and what it unsets (<see cref="FieldsReplacedBy"/>).
+    /// </remarks>
+    private static IEnumerable<IrExpression> PlacesAStoreChanges(IrExpression place) => place switch
+    {
+        IrListElement element => PlacesChangedIn(element.List),
+        IrMapElement element => PlacesChangedIn(element.Map),
+        IrFieldAccess field => FieldsReplacedBy(field),
+        _ => [place],
+    };
 
     /// <summary>A repeated field a <c>for</c> is traversing, which nothing inside the loop may change.</summary>
     /// <param name="Storage">Its key (<see cref="StorageOf"/>).</param>

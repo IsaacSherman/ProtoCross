@@ -186,7 +186,7 @@ public sealed partial class Binder
         var needs = ListPath(at.List) is { } list ? NeedsOf(at, list, constant) : null;
         if (needs is null)
         {
-            ReportIndexNeverShown(at);
+            ReportIndexNeverShown(at, context);
             return null;
         }
 
@@ -289,18 +289,12 @@ public sealed partial class Binder
     // ------- saying why not
 
     /// <summary>Reports an index no fact can be about: an expression other than a literal or a name, or into a list nothing names.</summary>
-    /// <remarks>
-    /// A list nothing names is written through a copy of the message it is in, since a local holding the list itself
-    /// would be a copy of the list, and writing it would change nothing the author meant to.
-    /// </remarks>
-    private void ReportIndexNeverShown(IndexedElement at)
+    private void ReportIndexNeverShown(IndexedElement at, MethodContext context)
     {
         var help = (ListPath(at.List) is null, at.IsWritten) switch
         {
-            (true, false) => "Only a list a local, a parameter or a field holds is shown to hold anything. Store this one "
-                + "in a local and test its 'count()'",
-            (true, true) => "Only a list a local, a parameter or a field holds is shown to hold anything. Copy the message "
-                + "this one is in to a local, write the element there, and store the local back",
+            (true, false) => $"{OnlyANamedListIsShown} Store this one in a local and test its 'count()'",
+            (true, true) => WritingAListNothingNames(at.List, context),
             _ => "Only a literal index, or one a name holds, is shown to be in range. Store this one in a local and test it",
         };
 
@@ -312,6 +306,43 @@ public sealed partial class Binder
                 ? $"{help} (spec 14.1)."
                 : $"{help}, or read it with '{TryRead(at.List, at.FromEnd, "…")} on_refused …', which answers an index "
                     + "out of range (spec 14.1).");
+    }
+
+    private const string OnlyANamedListIsShown = "Only a list a local, a parameter or a field holds is shown to hold anything.";
+
+    /// <summary>
+    /// How to write an element of <paramref name="list"/>, which nothing names, where its index can be shown: the help's
+    /// sentence, without its reference.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Through a copy of the message the list is in, stored back, where that store is allowed. A local holding the list
+    /// itself would hold a copy of the list, and writing it would change nothing the author meant to.
+    /// </para>
+    /// <para>
+    /// Where a loop around the write traverses what storing the copy back would change, that store is <c>PC0096</c>: in
+    /// <c>for box in boxes</c>, storing <c>boxes[0]</c> back replaces an element of <c>boxes</c>. A <c>mut fn</c> on the
+    /// message makes the write instead, reaching the list as its own field, which a guard there shows, and changes the
+    /// element rather than replacing it. Where the loop traverses something that message holds, the call is
+    /// <c>PC0096</c> as well, since the method could change what is traversed, and the write waits for the loop to end.
+    /// </para>
+    /// </remarks>
+    private string WritingAListNothingNames(IrExpression list, MethodContext context)
+    {
+        if (list is not IrFieldAccess { Receiver: var holder, Field: var field }
+            || TraversalChangedBy(PlacesAStoreChanges(holder), context) is not { } traversal)
+        {
+            return $"{OnlyANamedListIsShown} Copy the message this one is in to a local, write the element there, and store "
+                + "the local back";
+        }
+
+        var refused = $"{OnlyANamedListIsShown} Storing a copy of {Spelled(holder)} back would change "
+            + $"{Spelled(traversal.Collection)}, which a 'for' around it is traversing";
+
+        return TraversalChangedBy([holder], context) is null && holder.Type is MessageType message
+            ? $"{refused}. Write it in a 'mut fn' on '{message.Descriptor.Name}', where '{field.Name}' is its own field and "
+                + $"a guard can show the index, and call that on {Spelled(holder)}"
+            : $"{refused}, as calling a 'mut fn' on it would. Make the change after the loop";
     }
 
     /// <summary>

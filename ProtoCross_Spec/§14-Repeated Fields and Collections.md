@@ -218,8 +218,14 @@ Normative Requirement:
     ([18](./§18-Mutability.md#18-mutability)).
   - The index is shown in range by the same facts as a read's, and an element written takes no
     clause: `on_missing` there is `PC0154`. `PC0152`'s help for one writes the guard alone, since a try
-    method only reads, and for a list nothing names, `boxes[0].parts[1] = 7;`, says to copy the message
-    it is in to a local, write the element there, and store the local back. Neither replacing an element nor writing inside one ends
+    method only reads. For a list nothing names, `boxes[0].parts[1] = 7;`, it says to copy the message
+    it is in to a local, write the element there, and store the local back, unless a loop around the
+    write traverses what that store would change: inside `for box in boxes`, storing `boxes[0]` back
+    replaces an element of `boxes`, which is `PC0096`. There it says to write the element in a `mut fn`
+    on the message, `Box`, where the list is its own field and a guard can show the index, and to call
+    that on `boxes[0]`, which changes the element without replacing it. Where the loop traverses a list
+    inside that message, `for part in box.parts`, the call is `PC0096` as well, and it says to make the
+    change after the loop. Neither replacing an element nor writing inside one ends
     anything shown about the list's count, or about an index, which no element holds.
   - A store reaches the list first, setting every unset message on the way, then evaluates its value,
     and replaces the element last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). The element is always there, so nothing is put at its index,
