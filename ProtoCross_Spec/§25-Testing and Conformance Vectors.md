@@ -58,9 +58,12 @@ Normative Requirements:
   from `"rounds up"`. Whitespace inside a name, or before it, is kept by every backend.
 - **A test of a factory's method names it through the factory, `test Invoice.factory.create`, and
   supplies no receiver**, because the method is called on nothing ([16.3](./§16-Methods.md#163-factories)). A `receiver` block
-  there is `PC0132`. A test may not target a helper, which is `PC0129`: a test reaches only what a
-  factory offers. A factory's method named as the message's own, `test Invoice.create`, is `PC0058`,
-  whose help spells the target through the factory.
+  there is `PC0132`. A test may not target a factory's helper, which is `PC0129`: a test reaches only
+  what a factory offers. A factory's method named as the message's own, `test Invoice.create`, is
+  `PC0058`, whose help spells the target through the factory.
+- **A test of a project's helper names it alone, `test clamp`, and supplies no receiver**, for the same
+  reason ([16.4](./§16-Methods.md#164-helpers)). A `receiver` block there is `PC0132`, and a name no helper has is `PC0057`,
+  whose help shows both forms of target.
 - An `expect return` is met when the returned value equals the expected one under `==`, with one
   exception: a NaN expectation is met by any NaN. A NaN is unequal to itself, so without the
   exception no test could say that a result is not a number; and which NaN it is cannot matter,
@@ -256,7 +259,7 @@ possible because 10.2.1 rules out crash primitives, whose exit codes the host ch
 ### 25.3.1 Test Sources and the Two Builds
 
 **Decided: a test source is a source a project names only in `<Tests>`
-([5.4](./§5-Source%20Organization.md#54-projects)). Its methods are helpers, generated with the
+([5.4](./§5-Source%20Organization.md#54-projects)). Its methods and helpers are generated with the
 tests. Every other source is a production source, and that is every source when there is no
 project.** There is no `.pcrosstest` extension: a project's `<Tests>` group already says which
 sources are there only to test with, and a second way to say it would be a second thing to keep in
@@ -277,9 +280,9 @@ agreement with the first.
 
   A test build is one build. It generates nothing unless all of it compiles, tests included: the
   behavior output alone, written beside a failed test build, would look like a finished one.
-- **A test source may declare methods.** Any test may target one, and one may call any method,
-  since it is generated beside everything it could call.
-- **A production source's method may not call a test source's method.** It is `PC0088`, an error,
+- **A test source may declare methods and helpers.** Any test may target one, and one may call any
+  method, since it is generated beside everything it could call.
+- **A production source's method may not call a test source's method or helper.** It is `PC0088`, an error,
   wherever the two are compiled together, which includes an editor. Such a method would be generated
   into the behavior output calling something generated only into the test output, and the
   production build would report it as a method that does not exist. The rule is what lets the test

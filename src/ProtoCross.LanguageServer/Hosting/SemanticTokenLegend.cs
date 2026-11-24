@@ -111,6 +111,7 @@ public static class SemanticTokenLegend
     private static readonly int PropertyIndex = IndexOf(Property);
     private static readonly int EnumMemberIndex = IndexOf(EnumMember);
     private static readonly int MethodIndex = IndexOf(Method);
+    private static readonly int FunctionIndex = IndexOf(Function);
     private static readonly int ClassIndex = IndexOf(Class);
     private static readonly int EnumIndex = IndexOf(Enum);
 
@@ -204,6 +205,7 @@ public static class SemanticTokenLegend
             SymbolKind.Field => PropertyIndex,
             SymbolKind.EnumValue => EnumMemberIndex,
             SymbolKind.Method => MethodIndex,
+            SymbolKind.Function => FunctionIndex,
             SymbolKind.MessageType => ClassIndex,
             SymbolKind.EnumType => EnumIndex,
 

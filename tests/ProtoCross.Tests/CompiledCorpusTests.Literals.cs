@@ -33,6 +33,6 @@ public partial class CompiledCorpusTests
         Assert.Contains(nodes, node => node is IrBinary { Operator: IrBinaryOperator.LogicalAnd, Right: var right }
             && IrWalk.DescendantsAndSelf(right).OfType<IrMessageLiteral>().Any());
         Assert.Contains(module.Tests, test => test.Arguments.Any(argument => argument.Value is IrMessageLiteral));
-        Assert.Contains(module.Tests, test => IrWalk.DescendantsAndSelf(test.Receiver).Any(node => node is IrFieldAccess { Receiver: IrMessageLiteral }));
+        Assert.Contains(module.Tests, test => IrWalk.DescendantsAndSelf(test.Receiver!).Any(node => node is IrFieldAccess { Receiver: IrMessageLiteral }));
     }
 }

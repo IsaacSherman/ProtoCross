@@ -189,7 +189,8 @@ public static class IrWalk
             IrFieldInitializer field => [field.Value],
             IrList list => [.. list.Elements],
 
-            IrTest test => [test.Receiver, .. test.Arguments, test.Expectation],
+            IrTest { Receiver: { } fixture } test => [fixture, .. test.Arguments, test.Expectation],
+            IrTest test => [.. test.Arguments, test.Expectation],
             IrTestArgument argument => [argument.Value],
             IrTestReturnExpectation expectation => [expectation.Value],
             IrTestFieldsExpectation expectation => [expectation.Expected],

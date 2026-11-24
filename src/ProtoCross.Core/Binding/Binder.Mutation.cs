@@ -123,7 +123,7 @@ public sealed partial class Binder
         {
             IrThis => (
                 $"'{context.Method?.Name}' is not declared '{MutKeyword}', so it cannot change its receiver",
-                $"Declare it '{MutKeyword} fn {context.Method?.Name}' to let it change '{context.Receiver.Name}' (spec 18)."),
+                $"Declare it '{MutKeyword} fn {context.Method?.Name}' to let it change '{context.Receiver?.Name}' (spec 18)."),
             IrParameterReference parameter => (
                 $"'{parameter.Parameter.Name}' is a parameter, and a method cannot change a message it was given",
                 $"Copy it into a local and change the copy: 'var copy: {parameter.Type.DisplayName} = {parameter.Parameter.Name};'."),
@@ -353,9 +353,10 @@ public sealed partial class Binder
     {
         switch (expression)
         {
-            case NameExpression name when Resolve(name.Name.Text, scope, context) is { Field: { } field }:
+            case NameExpression name when Resolve(name.Name.Text, scope, context) is { Field: { } field }
+                && context.ImplicitReceiver is { } receiver:
                 Use(SymbolId.ForField(field), name.Name.Span);
-                return PlaceField(new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span);
+                return PlaceField(new IrThis(new MessageType(receiver), name.Span), field, name.Span);
 
             case MemberAccessExpression { Name.IsMissing: false } member:
             {
@@ -1047,8 +1048,8 @@ public sealed partial class Binder
     {
         switch (invocation.Callee)
         {
-            case NameExpression name when context.HasImplicitReceiver:
-                return IsMutating(context.Receiver, name.Name.Text) ? [EndedFacts.Below(ReceiverPresenceRoot, string.Empty)] : [];
+            case NameExpression name when context.ImplicitReceiver is { } receiver:
+                return IsMutating(receiver, name.Name.Text) ? [EndedFacts.Below(ReceiverPresenceRoot, string.Empty)] : [];
 
             case MemberAccessExpression { Name.IsMissing: false } member:
             {

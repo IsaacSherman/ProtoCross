@@ -151,9 +151,9 @@ public class MultiSourceBindingTests
     // ------- each part knows its source
 
     /// <summary>
-    /// Every hand-written conformance vector, bound together with every other vector of its policy,
-    /// comes back out of the joint module exactly as it binds alone: the same generated code in both
-    /// backends, the same names written, the same names in scope, in each of its sources.
+    /// Every hand-written conformance vector, bound together with every other vector of its policy and
+    /// its project, comes back out of the joint module exactly as it binds alone: the same generated code
+    /// in both backends, the same names written, the same names in scope, in each of its sources.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -169,22 +169,27 @@ public class MultiSourceBindingTests
     /// across several is a program of several already, and none of its sources binds alone, so it is
     /// bound as the program it is and each source's part of that is what the joint module is held to.
     /// </para>
+    /// <para>
+    /// A vector that holds a project is bound only with others of that project, which is none. Two
+    /// projects' sources are never one program, and a helper (spec 16.4) is declared in its project's
+    /// namespace, so it binds under no other and without one is <c>PC0156</c>.
+    /// </para>
     /// </remarks>
     [Fact]
     public void ASourceBoundAlongsideOthersIsExactlyWhatItIsBoundAlone()
     {
-        var byPolicy = ConformanceVectors.HandWritten
-            .Select(vector => (Sources: ParseVector(vector), Config: PolicyOf(vector)))
-            .GroupBy(entry => entry.Config.Path ?? string.Empty);
+        var byProgram = ConformanceVectors.HandWritten
+            .Select(vector => (Sources: ParseVector(vector), Config: PolicyOf(vector), vector.ProjectNamespace))
+            .GroupBy(entry => (entry.Config.Path ?? string.Empty, entry.ProjectNamespace));
         var swept = 0;
 
-        foreach (var group in byPolicy)
+        foreach (var group in byProgram)
         {
-            var config = group.First().Config;
-            var vectors = group.Select(entry => BindAlone(entry.Sources, config)).ToList();
+            var (config, project) = (group.First().Config, group.First().ProjectNamespace);
+            var vectors = group.Select(entry => BindAlone(entry.Sources, config, project)).ToList();
 
             var jointDiagnostics = new DiagnosticBag();
-            var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config)
+            var joint = new Binder(LoadedSchemas.ExampleAndConformance, jointDiagnostics, config: config) { ProjectNamespace = project }
                 .Bind([.. group.SelectMany(entry => entry.Sources)]);
             Assert.Equal(
                 vectors.SelectMany(vector => vector.Diagnostics).Select(diagnostic => diagnostic.ToString()).Order(StringComparer.Ordinal),
@@ -192,7 +197,7 @@ public class MultiSourceBindingTests
 
             foreach (var (document, alone) in vectors.SelectMany(vector => vector.Parts))
             {
-                AssertSameModule(document, alone, joint.DeclaredIn(document), config);
+                AssertSameModule(document, alone, joint.DeclaredIn(document), config, project);
                 swept++;
             }
         }
@@ -225,24 +230,26 @@ public class MultiSourceBindingTests
     /// </summary>
     private static (IReadOnlyList<(SourceIdentity Document, IrModule Module)> Parts, DiagnosticBag Diagnostics) BindAlone(
         IReadOnlyList<SourceTree> sources,
-        ProjectConfig config)
+        ProjectConfig config,
+        ProjectNamespace? project)
     {
         var diagnostics = new DiagnosticBag();
 
         if (sources is [var only])
         {
-            var module = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config, document: only.Document)
+            var module = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config, document: only.Document) { ProjectNamespace = project }
                 .Bind(only.Unit);
             Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics));
             return ([(only.Document, module)], diagnostics);
         }
 
-        var program = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config).Bind(sources);
+        var program = new Binder(LoadedSchemas.ExampleAndConformance, diagnostics, config: config) { ProjectNamespace = project }.Bind(sources);
         Assert.False(diagnostics.HasErrors, string.Join("\n", diagnostics));
         return ([.. sources.Select(source => (source.Document, program.DeclaredIn(source.Document)))], diagnostics);
     }
 
-    private static void AssertSameModule(SourceIdentity document, IrModule expected, IrModule actual, ProjectConfig config)
+    private static void AssertSameModule(
+        SourceIdentity document, IrModule expected, IrModule actual, ProjectConfig config, ProjectNamespace? project)
     {
         var name = document.Name;
         Assert.True(expected.References.SequenceEqual(actual.References), $"{name}: the names written in it differ");
@@ -251,7 +258,7 @@ public class MultiSourceBindingTests
             expected.Tests.Select(test => test.Identity),
             actual.Tests.Select(test => test.Identity));
 
-        var options = BackendOptions.For(document, config);
+        var options = BackendOptions.For(document, config) with { ProjectNamespace = project };
         ITestBackend[] backends = [new CSharpBackend(), new CppBackend()];
         foreach (var backend in backends)
         {

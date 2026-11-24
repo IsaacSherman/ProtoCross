@@ -35,7 +35,7 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     public IReadOnlyList<IrMethod> MethodsOn(string receiverFullName)
         => [.. Methods.Where(method
             => method.Signature.HasReceiver
-                && string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+                && string.Equals(method.Receiver?.FullName, receiverFullName, StringComparison.Ordinal))];
 
     /// <summary>
     /// The methods and helpers of the factory that builds one message, in declaration order; empty when
@@ -44,8 +44,17 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// <remarks>Keyed as <see cref="MethodsOn"/> is, by the message's full name compared ordinally.</remarks>
     public IReadOnlyList<IrMethod> FactoryOf(string messageFullName)
         => [.. Methods.Where(method
-            => !method.Signature.HasReceiver
-                && string.Equals(method.Receiver.FullName, messageFullName, StringComparison.Ordinal))];
+            => method.Signature.Kind is IrMethodKind.Factory or IrMethodKind.Helper
+                && string.Equals(method.Receiver?.FullName, messageFullName, StringComparison.Ordinal))];
+
+    /// <summary>The top-level helpers the module declares, in declaration order (spec 16.4).</summary>
+    /// <remarks>
+    /// Apart from <see cref="MethodsOn"/> and <see cref="FactoryOf"/> because a helper belongs to no
+    /// message, and so is what a bare call reaches from anywhere in the project rather than from one
+    /// message's methods.
+    /// </remarks>
+    public IReadOnlyList<IrMethod> Helpers
+        => [.. Methods.Where(method => method.Signature.Kind is IrMethodKind.Standalone)];
 
     /// <summary>Every <c>factory</c> block the module declares, one per message (spec 16.3).</summary>
     /// <remarks>
@@ -228,8 +237,13 @@ public abstract record IrNode(SourceSpan Span)
 /// parameter, and asking it per parameter is what lets a missing-argument check still speak about
 /// the parameters that do have names.
 /// </param>
+/// <param name="Receiver">
+/// The message the method belongs to: the one an extend block's method is called on, or the one a
+/// factory's method builds. Null exactly for a top-level helper (<see cref="IrMethodKind.Standalone"/>),
+/// which belongs to no message (spec 16.4).
+/// </param>
 public sealed record IrMethodSignature(
-    MessageDescriptor Receiver,
+    MessageDescriptor? Receiver,
     DeclarationSite Declaration,
     PlType ReturnType,
     IReadOnlyList<IrParameter> Parameters)
@@ -263,6 +277,12 @@ public sealed record IrMethodSignature(
     /// message they belong to: they share its one set of member names (spec 16.1), and the backends
     /// declare them in a class named after it. What they lack is an instance to be called on, which is
     /// what this says, rather than a missing receiver.
+    /// </para>
+    /// <para>
+    /// A top-level helper belongs to no message, so its <see cref="Receiver"/> is null. One signature for
+    /// all four kinds, rather than a type of its own for a helper, because a call, a parameter, a refusal,
+    /// a body and a test each have one path through the binder and the backends, and a second signature
+    /// would bind and emit each of them twice.
     /// </para>
     /// <para>
     /// Init-only with a default of <see cref="IrMethodKind.Extend"/>, so every existing construction of
@@ -302,10 +322,11 @@ public sealed record IrMethodSignature(
     /// One spelling for every surface that names a method to someone reading a run rather than a source: a
     /// test's identity, and the line a call that ends the program writes. A factory's method is named
     /// through the factory, as code calls it. No method of the message can share its name (spec 16.1), so
-    /// the word distinguishes nothing; it says where the method is.
+    /// the word distinguishes nothing; it says where the method is. A top-level helper is named as it is
+    /// called and as its test targets it, by its name alone: a project has one set of them (spec 16.4).
     /// </remarks>
-    public string QualifiedName => HasReceiver
-        ? $"{Receiver.FullName}.{Name}"
+    public string QualifiedName => Receiver is null ? Name
+        : HasReceiver ? $"{Receiver.FullName}.{Name}"
         : $"{Receiver.FullName}.{ContextualKeywords.Factory}.{Name}";
 
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
@@ -365,7 +386,7 @@ public sealed record IrMethodSignature(
     }
 
     private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}("
-        : Kind is IrMethodKind.Helper ? $"{ContextualKeywords.Helper} fn {Name}("
+        : Kind is IrMethodKind.Helper or IrMethodKind.Standalone ? $"{ContextualKeywords.Helper} fn {Name}("
         : $"fn {Name}(";
 
     private const string Separator = ", ";
@@ -385,6 +406,12 @@ public enum IrMethodKind
 
     /// <summary>A <c>helper fn</c> of a <c>factory</c> block, which only that factory may call.</summary>
     Helper,
+
+    /// <summary>
+    /// A <c>helper fn</c> written at the top level, which belongs to no message and which anything in its
+    /// project may call (spec 16.4).
+    /// </summary>
+    Standalone,
 }
 
 /// <summary>A <c>factory</c> block: the message it builds, and where it is written (spec 16.3).</summary>
@@ -449,7 +476,8 @@ public sealed record IrLocal(DeclarationSite Declaration, PlType Type)
 public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body)
     : IrNode(Signature.Declaration.Extent)
 {
-    public MessageDescriptor Receiver => Signature.Receiver;
+    /// <inheritdoc cref="IrMethodSignature.Receiver"/>
+    public MessageDescriptor? Receiver => Signature.Receiver;
 
     public string Name => Signature.Name;
 
@@ -791,8 +819,9 @@ public sealed record IrFieldPresence(
     SourceSpan Span) : IrExpression(ScalarType.BoolType, Span);
 
 /// <param name="Receiver">
-/// The message the method is called on, or null for a call to a factory's method, which is called on
-/// nothing (spec 16.3). Null exactly where <see cref="IrMethodSignature.HasReceiver"/> is false.
+/// The message the method is called on, or null for a call to a factory's method or a top-level helper,
+/// which is called on nothing (spec 16.3, 16.4). Null exactly where
+/// <see cref="IrMethodSignature.HasReceiver"/> is false.
 /// </param>
 /// <remarks>
 /// One record for both, rather than a second for a factory's calls, because everything that asks about
@@ -1568,12 +1597,13 @@ public sealed record IrValuelessCall(IrMethodCall Call) : IrExpression(ErrorType
 /// and the binder builds as one. A test of a factory's method calls it on nothing, and holds the
 /// fixture its test does: the empty one standing where none was written, or one written anyway and
 /// refused. No backend builds it for such a test, since <see cref="IrMethodSignature.HasReceiver"/> on
-/// the target says there is nothing to call the method on.
+/// the target says there is nothing to call the method on. Null for a test of a top-level helper, which
+/// belongs to no message to build one as (spec 16.4).
 /// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
     string Name,
-    IrMessageLiteral Receiver,
+    IrMessageLiteral? Receiver,
     IReadOnlyList<IrTestArgument> Arguments,
     IrTestExpectation Expectation,
     SourceSpan Span) : IrNode(Span)

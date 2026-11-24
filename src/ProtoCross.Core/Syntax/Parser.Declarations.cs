@@ -5,14 +5,16 @@ namespace ProtoCross.Syntax;
 public sealed partial class Parser
 {
     /// <remarks>
-    /// A <c>factory</c> stops the skip only with a name after it, where the other three stop it alone.
-    /// They are keywords and cannot be anything else; the word is a name everywhere but the start of a
-    /// declaration, and what is being skipped is text that could hold one.
+    /// A <c>factory</c> stops the skip only with a name after it, and a <c>helper</c> only with <c>fn</c>
+    /// after it, where the other three stop it alone. They are keywords and cannot be anything else; the
+    /// two words are names everywhere but the start of a declaration, and what is being skipped is text
+    /// that could hold one.
     /// </remarks>
     private void SkipToNextTopLevelDeclaration()
     {
         while (Current.Kind is not (TokenKind.EndOfFile or TokenKind.Import or TokenKind.Extend or TokenKind.Test)
-            && !ContextualKeywords.BeginsAFactory(Current, Peek(1)))
+            && !ContextualKeywords.BeginsAFactory(Current, Peek(1))
+            && !ContextualKeywords.MarksAHelper(Current, Peek(1)))
         {
             Advance();
         }

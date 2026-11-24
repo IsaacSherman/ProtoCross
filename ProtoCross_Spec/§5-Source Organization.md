@@ -203,7 +203,8 @@ Normative Requirements:
   compilation of its own.
 - A project's name is its file's name without `.pcproj`, spelled as its directory lists the file
   rather than as whoever named it typed it, and it names the namespace the project's behavior is
-  declared in ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)). It is read as a
+  declared in ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)), and the one its helpers are declared in under it
+  ([16.4](./§16-Methods.md#164-helpers)). Sources compiled without a project declare no helpers. It is read as a
   protobuf package is: identifiers separated by periods, each an ASCII letter followed by ASCII
   letters, digits and underscores, so `acme.billing.pcproj` is the project `acme.billing`. A project
   whose name is anything else is `PC2013`, an error at the start of the project file, and is refused

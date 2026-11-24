@@ -67,7 +67,7 @@
           "match": "(?<![\\p{L}\\p{Nd}_])(new|factory)(?=[ \\t]+(?!(?:and|arg|as|bool|break|bytes|case|continue|default|double|else|expect|extend|fail|false|float|fn|for|has|if|import|in|int32|int64|not|on_missing|on_refused|on_zero|or|proto|receiver|refuse|return|string|switch|test|true|uint32|uint64|var|void|while)(?![\\p{L}\\p{Nd}_])|(?:__INF|__NAN)(?![\\p{L}\\p{Nd}_]))[\\p{L}_])"
         },
         {
-          "comment": "'mut' and 'helper' are keywords only where they mark a method, with 'fn' after them (spec 18, 16.3); anywhere else each is a name, and the identifier rule colours it. A grammar sees one line, so 'fn' on the next line leaves either coloured as a name until the server answers.",
+          "comment": "'mut' and 'helper' are keywords only where they mark a method, with 'fn' after them (spec 18), 'helper' a factory's (spec 16.3) or, at the top level, a project's (spec 16.4); anywhere else each is a name, and the identifier rule colours it. A grammar sees one line, so 'fn' on the next line leaves either coloured as a name until the server answers.",
           "name": "keyword.control.pcross",
           "match": "(?<![\\p{L}\\p{Nd}_])(mut|helper)(?=[ \\t]+fn(?![\\p{L}\\p{Nd}_]))"
         },

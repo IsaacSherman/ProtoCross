@@ -133,8 +133,8 @@ Contextual keywords:
   declaration, so the parser reads it there whatever follows, and a declaration whose message is not
   named yet is still one. After a message's name and a dot, `Invoice.factory`, it reaches that
   message's factory; that is a reading of a name, decided by the binder, and not a keyword.
-- `helper` is not reserved. It marks a factory's helper ([16.3](./§16-Methods.md#163-factories)) where `fn` follows it, and is an
-  identifier everywhere else, for the same reason.
+- `helper` is not reserved. It marks a helper where `fn` follows it, a factory's ([16.3](./§16-Methods.md#163-factories)) or, at the
+  top level, a project's ([16.4](./§16-Methods.md#164-helpers)), and is an identifier everywhere else, for the same reason.
 - `refuses` is not reserved. It begins a method's refusal ([16.3.1](./§16-Methods.md#1631-refusals)) where a name or a type keyword
   follows it, and is an identifier everywhere else, for the same reason. Nothing but the body's brace
   can follow a method's signature, so the parser reads it there whatever follows, and a refusal whose
@@ -206,7 +206,7 @@ Normative Requirements:
   coarse, because a wrong colour reads as a fact about the code.
 - **An identifier the binder resolved takes the category of what it resolved to**: a parameter is
   `parameter`, a field of a message is `property`, a constant of an enum is `enumMember`, a ProtoCross
-  method is `method`, a message type is `class`, an enum type is `enum`, a factory is `keyword`, as
+  method is `method`, a project's helper is `function` ([16.4](./§16-Methods.md#164-helpers)), a message type is `class`, an enum type is `enum`, a factory is `keyword`, as
   the word that names it everywhere it is written, `Invoice.factory` included, and both a local and the
   name a `for` binds are `variable`. It is the binder's own resolution that is published, not a
   second lookup of the same name, so what is coloured is what the program means -- a value in scope
@@ -235,7 +235,7 @@ Normative Requirements:
 Implementation Note:
 
 - The categories still reserved and not yet produced -- `namespace`, `interface`, `struct`,
-  `typeParameter`, `event`, `function`, `macro`, `modifier`, `regexp` and `decorator` -- are declared
+  `typeParameter`, `event`, `macro`, `modifier`, `regexp` and `decorator` -- are declared
   so that producing one later needs no renegotiation and repaints no open file. That is the same
   reason the seven unemitted modifiers are declared.
 - Scalar type names are keywords ([6.4](#64-keywords)) and stay `keyword`. They are declared nowhere

@@ -17,6 +17,17 @@ public sealed record CompilationUnit(
     /// every source was before #83.
     /// </remarks>
     public IReadOnlyList<FactoryDeclaration> Factories { get; init; } = [];
+
+    /// <summary>
+    /// The <c>helper fn</c> declarations written at the top level, in the order they are written: the
+    /// project's helpers, which belong to no message (spec 16.4).
+    /// </summary>
+    /// <remarks>
+    /// A method declaration like any other, because a helper is written exactly as a factory's is, and
+    /// where it is written is what makes it one or the other. Init-only for the reason
+    /// <see cref="Factories"/> gives, so every existing construction of a unit declares none.
+    /// </remarks>
+    public IReadOnlyList<MethodDeclaration> Helpers { get; init; } = [];
 }
 
 /// <summary>An <c>import proto "path.proto";</c> declaration (spec 5.2).</summary>
@@ -69,7 +80,10 @@ public sealed record MethodDeclaration(
     /// </remarks>
     public bool IsMutating { get; init; }
 
-    /// <summary>Whether the declaration begins <c>helper fn</c>, so only its factory may call it (spec 16.3).</summary>
+    /// <summary>
+    /// Whether the declaration begins <c>helper fn</c>: in a factory, a member only that factory may call
+    /// (spec 16.3), and at the top level, one of the project's helpers (spec 16.4).
+    /// </summary>
     /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
     public bool IsHelper { get; init; }
 
@@ -145,6 +159,15 @@ public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSp
     /// <para>Init-only, so every existing construction of a target stays valid and names an extend method.</para>
     /// </remarks>
     public SyntaxName? Factory { get; init; }
+
+    /// <summary>
+    /// Whether the target is one name, <c>test clamp</c>, which names a top-level helper (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// A helper belongs to no message, so its test has no receiver to declare, and the parser is what asks
+    /// for one. Whether a helper has the name is the binder's to say.
+    /// </remarks>
+    public bool IsOneName => Receiver.IsMissing && !Method.IsMissing;
 }
 
 /// <param name="Receiver">

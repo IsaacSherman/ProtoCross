@@ -264,11 +264,11 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return BindMemberAccess(member, scope, context);
 
-            case NameExpression bare when context.HasImplicitReceiver
+            case NameExpression bare when context.ImplicitReceiver is { } implicitReceiver
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
-                receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
-                field = MessageFields.Named(context.Receiver, bare.Name.Text);
+                receiver = new IrThis(new MessageType(implicitReceiver), bare.Span);
+                field = MessageFields.Named(implicitReceiver, bare.Name.Text);
                 name = bare.Name.Text;
                 fieldNameSpan = bare.Name.Span;
                 break;

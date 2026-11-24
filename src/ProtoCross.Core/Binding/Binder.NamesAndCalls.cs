@@ -179,22 +179,31 @@ public sealed partial class Binder
                 return new IrParameterReference(parameter, name.Span);
 
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            case { Field: { } field }:
+            case { Field: { } field } when context.ImplicitReceiver is { } receiver:
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
                 // receiver is a fact about the text and not about what was named.
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return BindFieldAccess(
-                    new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
+                    new IrThis(new MessageType(receiver), name.Span), field, name.Span, context);
         }
 
-        // A factory has no message of its own, so naming one whose fields it lacks would mislead.
+        // A factory and a helper have no message of their own, so naming one whose fields they lack would mislead.
         _diagnostics.Report(
             DiagnosticCodes.UnknownName,
-            context.Method is { HasReceiver: false }
-                ? $"'{name.Name}' is not a variable or parameter. A factory method has no "
-                    + $"'{context.Receiver.Name}' of its own, so it reads fields from one it holds."
-                : $"'{name.Name}' is not a variable, parameter, or field of "
-                    + $"'{context.Receiver.FullName}'.",
+            context switch
+            {
+                { Method: { HasReceiver: false, Receiver: { } built } }
+                    => $"'{name.Name}' is not a variable or parameter. A factory method has no "
+                        + $"'{built.Name}' of its own, so it reads fields from one it holds.",
+                { Receiver: { } receiver }
+                    => $"'{name.Name}' is not a variable, parameter, or field of '{receiver.FullName}'.",
+                { Method.Kind: IrMethodKind.Standalone }
+                    => $"'{name.Name}' is not a variable or parameter. A helper has no message of its own, so it "
+                        + "reads fields from one it holds.",
+
+                // A test of a helper, whose values are written against no message.
+                _ => $"'{name.Name}' is not a variable or parameter.",
+            },
             name.Span);
         return new IrLiteral(null, ErrorType.Instance, name.Span);
     }
@@ -414,7 +423,7 @@ public sealed partial class Binder
     private static BareName Resolve(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is { } local ? new BareName(local, null, null)
             : scope.LookupParameter(name) is { } parameter ? new BareName(null, parameter, null)
-            : new BareName(null, null, context.HasImplicitReceiver ? MessageFields.Named(context.Receiver, name) : null);
+            : new BareName(null, null, context.ImplicitReceiver is { } receiver ? MessageFields.Named(receiver, name) : null);
 
     /// <summary>What <see cref="Resolve"/> found a bare name to mean: at most one of the three.</summary>
     private readonly record struct BareName(IrLocal? Local, IrParameter? Parameter, FieldDescriptor? Field);
@@ -629,12 +638,33 @@ public sealed partial class Binder
                 break;
             }
 
+            // A project's helper, which a bare call reaches from anywhere, after what the body's own message
+            // offers. A name both have is refused, rather than either hiding the other (spec 16.4).
+            case NameExpression name when _helpers.TryGetValue(name.Name.Text, out var helper):
+                if (MethodABareCallReaches(name.Name.Text, context) is { } method)
+                {
+                    ReportCallNamesAMethodAndAHelper(method, helper, invocation.Span);
+                    return Uncallable(null);
+                }
+
+                return BindCall(null, helper, name.Name.Span, invocation, scope, context);
+
             // Inside a factory, a bare call is to the factory's own methods and helpers, as one in an
             // extend method is to its receiver's (spec 16.3).
-            case NameExpression name when context.Method is { HasReceiver: false } factoryMember:
-                return ResolveFactoryMethod(factoryMember.Receiver, name.Name, invocation.Span, context) is { } sibling
+            case NameExpression name when context.Method is { HasReceiver: false, Receiver: { } built }:
+                return ResolveFactoryMethod(built, name.Name, invocation.Span, context) is { } sibling
                     ? BindCall(null, sibling, name.Name.Span, invocation, scope, context)
                     : Uncallable(null);
+
+            // A helper belongs to no message, so a bare call in one reaches nothing but the helpers.
+            case NameExpression name when context.Method is { Kind: IrMethodKind.Standalone }:
+                _diagnostics.Report(
+                    DiagnosticCodes.UnknownMethod,
+                    $"No helper is named '{name.Name}'.",
+                    invocation.Span,
+                    $"A helper has no message of its own, so a bare call in one reaches only the project's helpers. Call "
+                    + $"a message's method on a message the helper holds: 'value.{name.Name}(…)' (spec 16.4).");
+                return Uncallable(null);
 
             // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
             // field name there names no field. Bound against the method's receiver it would read the
@@ -649,11 +679,11 @@ public sealed partial class Binder
                     + $"itself, or test '{name.Name}' in a test of its own (spec 25.3).");
                 return Uncallable(null);
 
-            case NameExpression name:
-                receiver = new IrThis(new MessageType(context.Receiver), name.Span);
+            case NameExpression name when context.ImplicitReceiver is { } implicitReceiver:
+                receiver = new IrThis(new MessageType(implicitReceiver), name.Span);
                 methodName = name.Name.Text;
                 methodNameSpan = name.Name.Span;
-                receiverDescriptor = context.Receiver;
+                receiverDescriptor = implicitReceiver;
                 break;
 
             default:

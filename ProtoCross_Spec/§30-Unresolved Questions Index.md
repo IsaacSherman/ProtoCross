@@ -70,12 +70,10 @@ Decided: neither is reserved, and a later syntax that uses one makes it contextu
 
 Decided: semicolons are mandatory for declarations/statements listed in 7.1.
 
-#### 30.7.2 Top-level functions
+#### 30.7.2 ~~Top-level functions~~
 
-**Post-1.0.** Should top-level helper functions be allowed in a later version?
-
-Asked in [7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), and
-[30.9.5](#3095-math-intrinsics) and [30.16.1](#30161-helper-functions) refer to it.
+Decided: a project's helpers, `helper fn` at the top level of a source, which any method or test of
+the project calls by its bare name ([16.4](./§16-Methods.md#164-helpers)).
 
 #### 30.7.3 An exact grammar
 
@@ -173,8 +171,9 @@ Decided: the C-family order, C#'s and C++'s ([9.2](./§9-Expressions%20and%20Ope
 #### 30.9.5 Math intrinsics
 
 Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
-comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)). How an intrinsic
-is named and found belongs with top-level functions ([30.7.2](#3072-top-level-functions)).
+comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)). An intrinsic is
+not a helper: helpers are a project's own functions, found by their bare names
+([16.4](./§16-Methods.md#164-helpers)), and how an intrinsic is named and found is its own question.
 
 #### 30.9.6 ~~Operand order~~
 
@@ -427,9 +426,10 @@ loop, and no switch is checked for exhaustiveness ([15.3](./§15-Control%20Flow.
 
 #### 30.16.1 ~~Helper functions~~
 
-Decided: a factory's `helper fn`, which only that factory may call, is the only helper, and there are
-no access modifiers ([16.3](./§16-Methods.md#163-factories)). Whether top-level functions belong in
-the language is post-1.0 ([30.7.2](#3072-top-level-functions)).
+Decided: `helper fn` in a factory is that factory's, which only it may call
+([16.3](./§16-Methods.md#163-factories)), and at the top level of a source is a project's, which any
+of its methods or tests may call ([16.4](./§16-Methods.md#164-helpers)). Where a helper is written
+says who may call it, and there are no access modifiers.
 
 #### 30.16.2 ~~Where a factory lives, and what it generates~~
 

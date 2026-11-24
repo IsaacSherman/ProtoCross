@@ -1,0 +1,81 @@
+// Conformance vectors for a project's helpers: the second of two sources, whose methods, factory and
+// helper call the helpers the first declares, and whose tests target them. See
+// helpers_project_pricing.pcross.
+
+import proto "helpers_project.proto";
+
+factory HelpedQuote {
+    // A factory's method calls a helper, passing its refusal on.
+    fn for_seats(code: string, seats: int64) -> HelpedQuote refuses HelpedRefusal {
+        var each = price_per_seat(seats) on_refused refuse;
+        return new HelpedQuote {
+            code: code,
+            seats: seats,
+            price_cents: each * seats,
+        };
+    }
+}
+
+// A helper that calls another, falling back from its refusal.
+helper fn price_or_zero(seats: int64) -> int64 {
+    return price_per_seat(seats) on_refused 0;
+}
+
+extend HelpedSpan {
+    // An extend method calls a helper that returns a list.
+    fn bounds() -> repeated double {
+        return find_bounds(left_upper, left_lower, right_upper, right_lower);
+    }
+}
+
+extend HelpedQuote {
+    // An extend method calls a helper that may refuse, and ends the program where it does.
+    fn checked_price_per_seat() -> int64 {
+        return price_per_seat(seats) on_refused fail;
+    }
+}
+
+test find_bounds "a helper that returns a list" {
+    arg left_upper = 2.0;
+    arg left_lower = -1.0;
+    arg right_upper = 3.0;
+    arg right_lower = 1.0;
+    expect return [-3.0, 6.0];
+}
+
+test price_per_seat "a helper that refuses" {
+    arg seats = 0;
+    expect refuse new HelpedRefusal { reason: "no seats" };
+}
+
+test price_per_seat "a helper that does not refuse" {
+    arg seats = 2;
+    expect return 1000;
+}
+
+test quote_for "a helper that calls a factory" {
+    arg code = "Q2";
+    arg seats = 5;
+    expect return new HelpedQuote { code: "Q2", seats: 5, price_cents: 4500 };
+}
+
+test quote_for "a helper passes on the factory's refusal" {
+    arg code = "Q0";
+    arg seats = 0;
+    expect refuse new HelpedRefusal { reason: "no seats" };
+}
+
+test HelpedQuote.factory.for_seats "a factory's method calls a helper" {
+    arg code = "Q1";
+    arg seats = 2;
+    expect return new HelpedQuote { code: "Q1", seats: 2, price_cents: 2000 };
+}
+
+test HelpedQuote.checked_price_per_seat "an extend method calls a helper" {
+    receiver {
+        code: "Q3",
+        seats: 3,
+    }
+
+    expect return 1000;
+}

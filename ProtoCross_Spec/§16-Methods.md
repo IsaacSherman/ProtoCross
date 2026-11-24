@@ -2,8 +2,9 @@
 
 ### 16.1 Method Attachment
 
-Methods are attached to protobuf message types using `extend`, and a message's factory declares the
-methods that build one ([16.3](#163-factories)).
+Methods are attached to protobuf message types using `extend`, a message's factory declares the
+methods that build one ([16.3](#163-factories)), and a project's helpers belong to no message
+([16.4](#164-helpers)).
 
 ```protocross
 extend DetectorReading {
@@ -15,8 +16,8 @@ extend DetectorReading {
 
 Normative Requirements:
 
-- All ProtoCross-defined methods are public, except a factory's helpers, which only that factory may
-  call ([16.3](#163-factories)).
+- All ProtoCross-defined methods are public, a project's helpers included ([16.4](#164-helpers)), except a
+  factory's helpers, which only that factory may call ([16.3](#163-factories)).
 - Method behavior must not depend on target-language inheritance.
 - Method names share a namespace with protobuf fields on the receiver. A method whose name collides
   with a field is `PC0023`. A factory's methods and helpers are in that namespace too, so no name
@@ -134,10 +135,11 @@ Normative Requirements:
   message or enum named `factory` is `PC0125`. A message with such a type and no factory keeps reaching
   it as `Message.factory`, as it always has.
 - **A helper is `helper fn`, and only its own factory may call it.** It need not return the message.
-  A call to one from anywhere else, and a `test` that targets one, is `PC0129`. A helper written in an
-  `extend` block is `PC0127` and is bound as an ordinary method: there are no helpers outside a factory
-  and no access modifiers. The rule is the binder's, so every backend behaves the same, including one
-  with no private members. It holds for now. Making helpers public later would break no caller.
+  A call to one from anywhere else, and a `test` that targets one, is `PC0129`. The same words at the
+  top level of a source declare a project's helper, which any method or test of the project may call
+  ([16.4](#164-helpers)): where a helper is written says who may call it, and there are no access
+  modifiers. A helper written in an `extend` block is `PC0127` and is bound as an ordinary method. The
+  rule is the binder's, so every backend behaves the same, including one with no private members.
 - **A test targets a factory's method as `Invoice.factory.create`, with no receiver**
   ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - **A factory for one of protobuf's well-known types is `PC0133`**, a warning, for the reason an
@@ -246,3 +248,83 @@ refusal by itself: a refusal's type is the author's, and only the author can say
 Open Questions:
 
 - [Replacing a method's refusal](./§30-Unresolved%20Questions%20Index.md#30164-replacing-a-methods-refusal), post-1.0
+
+### 16.4 Helpers
+
+**Decided: a project may declare helpers, methods that belong to no message.** A helper is written as
+a factory's is, `helper fn`, at the top level of any of the project's sources, and any method or test
+of the project calls it by its bare name.
+
+```protocross
+helper fn clamp(level: double, low: double, high: double) -> double {
+    if level < low {
+        return low;
+    }
+    if level > high {
+        return high;
+    }
+    return level;
+}
+
+extend DetectorReading {
+    fn bounded_rate() -> double {
+        return clamp(calculate_rate(), 0.0, 1.0);
+    }
+}
+
+test clamp "keeps a level in range" {
+    arg level = 1.5;
+    arg low = 0.0;
+    arg high = 1.0;
+    expect return 1.0;
+}
+```
+
+A helper is for what several messages' methods compute alike, and what a method would otherwise have
+to be declared on one message to compute for another. It is a function of the project, so it is
+written once and called from anywhere in it.
+
+Normative Requirements:
+
+- **A helper is `helper fn` at the top level of a source**, among its `extend`, `factory` and `test`
+  declarations ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar)). The same words inside a factory declare that factory's own helper, which only
+  the factory may call ([16.3](#163-factories)). Where a helper is written says who may call it, and
+  there are no access modifiers.
+- **A helper is public.** Any method of the project calls it by its bare name, `clamp(x, 0.0, 1.0)`,
+  whichever source declares it and wherever in that source it is written: a method of an `extend`
+  block, a factory's method or helper, and another helper. A test's expressions may call it too, and a
+  test may target it.
+- **A helper's body follows a factory body's rules**, since neither has a receiver
+  ([16.3](#163-factories)). A bare name reaches only its locals and parameters, and any other is
+  `PC0037`, whose message says a helper has no message of its own. A bare call reaches only helpers,
+  and one that names none is `PC0044`, whose help spells the call on a message the helper holds. A
+  message's method is called on a message the helper holds, and a factory's through its factory,
+  `Invoice.factory.create(…)`. A `mut fn` may be called on a message the helper built and holds in a
+  local, and not on a parameter ([18](./§18-Mutability.md#18-mutability)).
+- **A helper is a method in every other way.** It is pure ([20](./§20-I-O,%20Threading,%20and%20Side%20Effects.md#20-io-threading-and-side-effects)), it may refuse
+  ([16.3.1](#1631-refusals)), and it returns nothing, a value, a message or a list
+  ([16.2](#162-parameters-and-returns)). There is no `mut` helper, since there is no receiver to
+  change: a method is marked `mut` or `helper`, never both.
+- **A project has one set of helper names**, whichever sources declare them. A second helper of a
+  name is `PC0022`, since overloading is not supported, and so is a helper that would be generated
+  with another's name: `find_bounds` and `FindBounds` are one method in C#
+  ([24.1](./§24-Generated%20API%20Strategy.md#241-c)). The diagnostic stands on the later declaration, and when the earlier one is
+  in another source, the message says where it is. A helper may share a name with a message's method
+  or field, which belong to the message.
+- **A bare call looks where it did before helpers, then at the helpers.** In a method of an `extend`
+  block that is the receiver's methods, and in a factory, its own methods and helpers. A name found
+  in both is `PC0157`, at the call, and its help says to rename one. A bare call never chooses between
+  two functions of one name, so declaring a helper or a method may stop a build, and never changes
+  which function a call already reaches.
+- **A helper needs a project.** One in sources compiled without a project is `PC0156`, from its
+  `helper` to its name, and its help says to add a `.pcproj`. A helper is generated in its project's
+  namespace ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)), and sources without a project have none: two builds that
+  each declared a helper of one name would declare one C++ function twice, and the linker keeps one
+  body for both without a diagnostic. The helper is still bound, so a call to it is not reported
+  again.
+- **A test targets a helper by its name alone**, `test clamp`, and supplies no receiver, since a
+  helper is called on nothing ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)). A `receiver` block there is `PC0132`.
+- **A helper a test source declares is generated with the tests**
+  ([25.3.1](./§25-Testing%20and%20Conformance%20Vectors.md#2531-test-sources-and-the-two-builds)), so a production source's method that calls one is `PC0088`.
+- **A helper whose generated name would meet a name already declared there is refused** with
+  `PC0126`, as a factory's class is ([24](./§24-Generated%20API%20Strategy.md#24-generated-api-strategy)).

@@ -862,12 +862,12 @@ public sealed class CompletionProvider
     /// it is accepted.
     /// </para>
     /// <para>
-    /// <b>A target with no receiver is left alone.</b> Written without a dot, <c>test f</c> is a
+    /// <b>A target with no receiver is a helper's.</b> Written without a dot, <c>test f</c> is a
     /// method and no receiver -- the parser says so, and <see cref="TestTarget"/> explains why it
-    /// reads it that way -- and there is no single name that completes it, because what is missing is
-    /// a name <em>and</em> a dot. Offering a message there produces <c>test EnumCase</c>, which is
-    /// <c>PC0057</c>. Something could be offered that inserts both, and it would not be one of these:
-    /// every item here replaces one name with one name.
+    /// reads it that way -- and a target of one name is a project's helper (spec 25.3), so the
+    /// helpers are what complete it. A message is not offered there: it would produce
+    /// <c>test EnumCase</c>, which is <c>PC0057</c>, and completing it to a method's target would
+    /// insert a name <em>and</em> a dot, where every item here replaces one name with one name.
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem>? Targeted(
@@ -933,7 +933,10 @@ public sealed class CompletionProvider
         ]);
     }
 
-    /// <summary>The methods a test could target on the receiver its header already names.</summary>
+    /// <summary>
+    /// The methods a test could target on the receiver its header already names, or the project's helpers
+    /// where it names none.
+    /// </summary>
     /// <inheritdoc cref="Targeted" path="/remarks/para[2]"/>
     private static IReadOnlyList<CompletionItem> Methods(
         IrModule module,
@@ -942,7 +945,19 @@ public sealed class CompletionProvider
         QualifiedName written,
         OpenDocument document)
     {
-        if (target.Receiver.IsMissing || types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
+        if (target.Receiver.IsMissing)
+        {
+            return written.Writable([.. module.Helpers.Select(helper => Member(
+                helper.Name,
+                CompletionItemKind.Function,
+                helper.Signature.DisplayName,
+                null,
+                "0",
+                written.Subject,
+                document))]);
+        }
+
+        if (types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
         {
             return [];
         }
@@ -1705,9 +1720,7 @@ public sealed class CompletionProvider
         // front of '.'.
         // Inside a factory a bare call reaches the factory's methods and helpers, and nothing of the
         // message's own, which is called on a message the factory does not have (spec 16.3).
-        var methods = result.Module is not { } module ? []
-            : scope.InAFactory ? module.FactoryOf(scope.Receiver.Descriptor.FullName)
-            : module.MethodsOn(scope.Receiver.Descriptor.FullName);
+        var methods = BareCallsAt(scope, result.Module);
 
         if (subject.FollowedByCall)
         {
@@ -1717,7 +1730,7 @@ public sealed class CompletionProvider
                     // Without parentheses: there are already some, and adding a second pair is the
                     // same class of mistake as offering the name of a method that must be called.
                     method.Name,
-                    CompletionItemKind.Method,
+                    method.Signature.Kind is IrMethodKind.Standalone ? CompletionItemKind.Function : CompletionItemKind.Method,
                     method.Signature.DisplayName,
                     null,
                     "0",
@@ -1762,6 +1775,35 @@ public sealed class CompletionProvider
                     document)),
 
             .. writingAReceiver ? [] : Keywords(model, subject, document),
+        ];
+    }
+
+    /// <summary>
+    /// What a bare call may name where <paramref name="scope"/> is: the methods the body's own message offers,
+    /// and the project's helpers (spec 16.3, 16.4).
+    /// </summary>
+    /// <remarks>
+    /// A name a method and a helper share is offered as neither, because a bare call of it is <c>PC0157</c>:
+    /// the binder refuses to choose between them, so either item would be accepted and then refused. A helper
+    /// has no message, and a test calls its message's methods on the receiver it builds, so in either the
+    /// helpers are all there is.
+    /// </remarks>
+    private static IReadOnlyList<IrMethod> BareCallsAt(ScopeAtPosition scope, IrModule? module)
+    {
+        if (module is null)
+        {
+            return [];
+        }
+
+        var own = scope.InATest || scope.Receiver is not { } receiver ? []
+            : scope.InAFactory ? module.FactoryOf(receiver.Descriptor.FullName)
+            : module.MethodsOn(receiver.Descriptor.FullName);
+        var helpers = module.Helpers;
+
+        return
+        [
+            .. own.Where(method => helpers.All(helper => helper.Name != method.Name)),
+            .. helpers.Where(helper => own.All(method => method.Name != helper.Name)),
         ];
     }
 
@@ -2029,7 +2071,7 @@ public sealed class CompletionProvider
         }
 
         var inside = model.ScopeAt(subject.Start) is { InAFactory: true } scope
-            && scope.Receiver.Descriptor.FullName == reached.Message.FullName;
+            && scope.Receiver?.Descriptor.FullName == reached.Message.FullName;
 
         return presence || writingAReceiver
             ? []

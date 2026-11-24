@@ -272,8 +272,7 @@ public sealed partial class Binder
         foreach (var file in _files)
         {
             var declaredBy = $"a namespace protoc declares for '{file.Name}'";
-            foreach (var ns in DeclaredName.CSharpNamespaces(NameConventions.GetCSharpNamespace(file))
-                .Concat(DeclaredName.CppNamespaces(NameConventions.GetCppNamespace(file))))
+            foreach (var ns in NamespacesProtocDeclares(file))
             {
                 names.TryAdd(ns, declaredBy);
             }
@@ -293,6 +292,14 @@ public sealed partial class Binder
             names.TryAdd(DeclaredName.Cpp(NameConventions.GetCppNamespace(type.File), cppName), declaredBy);
         }
     }
+
+    /// <summary>
+    /// Each namespace protoc declares <paramref name="file"/>'s classes in, in each backend, enclosing ones
+    /// included.
+    /// </summary>
+    private static IEnumerable<DeclaredName> NamespacesProtocDeclares(FileDescriptor file)
+        => DeclaredName.CSharpNamespaces(NameConventions.GetCSharpNamespace(file))
+            .Concat(DeclaredName.CppNamespaces(NameConventions.GetCppNamespace(file)));
 
     /// <summary>A name one backend declares at namespace scope: the language, and the name fully qualified there.</summary>
     /// <remarks>
@@ -475,15 +482,15 @@ public sealed partial class Binder
 
     /// <summary>Whether what is being bound is a method of <paramref name="message"/>'s factory.</summary>
     private static bool IsInsideTheFactoryOf(MessageDescriptor message, MethodContext context)
-        => context.Method is { HasReceiver: false } method
-            && string.Equals(method.Receiver.FullName, message.FullName, StringComparison.Ordinal);
+        => context.Method is { HasReceiver: false, Receiver: { } built }
+            && string.Equals(built.FullName, message.FullName, StringComparison.Ordinal);
 
     /// <summary>Refuses a helper reached from outside its factory (<c>PC0129</c>).</summary>
     /// <param name="why">What the rule allows, completing a sentence about the helper.</param>
     private void ReportHelperUsedOutsideItsFactory(IrMethodSignature helper, SourceSpan span, string why)
         => _diagnostics.Report(
             DiagnosticCodes.HelperUsedOutsideItsFactory,
-            $"'{helper.Name}' is a helper of the factory of '{helper.Receiver.FullName}', and {why}.",
+            $"'{helper.Name}' is a helper of the factory of '{helper.Receiver?.FullName}', and {why}.",
             span,
             "Call one of the factory's other methods instead, or remove 'helper' from this one to make it one of "
             + "them (spec 16.3).");
@@ -492,9 +499,9 @@ public sealed partial class Binder
     private void ReportFactoryMethodCalledOnAValue(IrMethodSignature target, SourceSpan span)
         => _diagnostics.Report(
             DiagnosticCodes.FactoryMethodCalledOnAValue,
-            $"'{target.Name}' is a method of the factory of '{target.Receiver.FullName}', which is called on nothing.",
+            $"'{target.Name}' is a method of the factory of '{target.Receiver?.FullName}', which is called on nothing.",
             span,
-            $"Call it through the factory: '{target.Receiver.Name}.{ContextualKeywords.Factory}.{target.Name}(…)' "
+            $"Call it through the factory: '{target.Receiver?.Name}.{ContextualKeywords.Factory}.{target.Name}(…)' "
             + "(spec 16.3).");
 
     /// <summary>

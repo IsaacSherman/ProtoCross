@@ -257,6 +257,22 @@ public sealed partial class CSharpBackend
 
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 
+        /// <summary>
+        /// The namespace a method is declared in: its message's behavior's, or the project's helpers' for a
+        /// top-level helper (spec 24.1).
+        /// </summary>
+        public string NamespaceOf(IrMethodSignature method)
+            => method.Receiver is { } receiver ? NamespaceOf(receiver) : HelpersNamespace;
+
+        /// <summary>The namespace a project's helpers are declared in (spec 24.1).</summary>
+        /// <exception cref="InvalidOperationException">
+        /// The sources are no project's. The binder refuses a helper outside one (<c>PC0156</c>), and a module
+        /// with an error is never emitted, so a helper here is a defect in whatever built the module.
+        /// </exception>
+        private string HelpersNamespace => Project is { } project
+            ? NameConventions.GetCSharpHelpersNamespace(project)
+            : throw new InvalidOperationException("A helper is declared only in a project's sources (PC0156).");
+
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
 
@@ -267,27 +283,28 @@ public sealed partial class CSharpBackend
         /// </remarks>
         public string FactoryClassOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
 
-        /// <summary>The class a method is declared in: its receiver's extension class, or its message's factory.</summary>
-        public string ClassOf(IrMethodSignature method)
-            => method.HasReceiver ? ClassOf(method.Receiver) : FactoryClassOf(method.Receiver);
+        /// <summary>
+        /// The class a method is declared in: its receiver's extension class, its message's factory, or the
+        /// project's helpers' class.
+        /// </summary>
+        public string ClassOf(IrMethodSignature method) => method.Receiver switch
+        {
+            null => NameConventions.CSharpHelpersClassName,
+            { } receiver when method.HasReceiver => ClassOf(receiver),
+            { } message => FactoryClassOf(message),
+        };
 
         /// <summary>
         /// The name a method is declared and called by: its name PascalCased, with an underscore
         /// appended when that is the name of the class it is declared in.
         /// </summary>
         /// <remarks>
-        /// C# refuses a member named after its enclosing type (CS0542), and a method name is ordinary
-        /// ProtoCross however its target spells it: <c>proto_cross_extensions</c> is a method like any
-        /// other, and C++ declares it as it stands. The escape is protoc's own for a property named
-        /// after its message, <c>Probe_</c>, and it cannot meet another method's name, because a
-        /// PascalCased name never ends in an underscore. It applies wherever the class is: beside a
-        /// message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets the class too.
+        /// A method name is ordinary ProtoCross however its target spells it: <c>proto_cross_extensions</c>
+        /// is a method like any other, and C++ declares it as it stands. The escape applies wherever the
+        /// class is: beside a message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets
+        /// the class too. <see cref="NameConventions.GetCSharpMethodName"/> says why it is this escape.
         /// </remarks>
-        public string MethodNameOf(IrMethodSignature method)
-        {
-            var name = NameConventions.ToPascalCase(method.Name);
-            return name == ClassOf(method) ? name + "_" : name;
-        }
+        public string MethodNameOf(IrMethodSignature method) => NameConventions.GetCSharpMethodName(method.Name, ClassOf(method));
 
         /// <summary>
         /// What decides which of one file's parts of a class a receiver's methods are written in: one
@@ -300,16 +317,13 @@ public sealed partial class CSharpBackend
         public string PartOf(MessageDescriptor receiver)
             => Project is null ? receiver.FullName : ProjectClassName;
 
-        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(receiver, ClassOf(receiver));
+        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(NamespaceOf(receiver), ClassOf(receiver));
 
         /// <summary>The class a method is declared in, qualified from <c>global::</c>.</summary>
-        public string QualifiedClassOf(IrMethodSignature method) => Qualified(method.Receiver, ClassOf(method));
+        public string QualifiedClassOf(IrMethodSignature method) => Qualified(NamespaceOf(method), ClassOf(method));
 
-        private string Qualified(MessageDescriptor receiver, string className)
-        {
-            var ns = NamespaceOf(receiver);
-            return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
-        }
+        private static string Qualified(string ns, string className)
+            => string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
     }
 
     /// <summary>A named enum value, fully qualified, as protoc's C# generator names it (spec 12).</summary>

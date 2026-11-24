@@ -103,7 +103,10 @@ The IR preserves:
   message's or a list's -- is copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
   each backend asks rather than deciding what to copy.
 - **Which block declared each method, and so whether it has a receiver.** A method's signature says
-  whether it is an `extend` block's, a factory's, or a factory's helper ([16.3](./§16-Methods.md#163-factories)). A factory's
+  whether it is an `extend` block's, a factory's, a factory's helper ([16.3](./§16-Methods.md#163-factories)), or a project's
+  helper ([16.4](./§16-Methods.md#164-helpers)). A project's helper belongs to no message, and its signature names none,
+  so a backend asks the signature where to declare it rather than reading a stand-in. A test of one
+  holds no receiver fixture. A factory's
   method keeps the message it builds as its receiver type, because that is the message whose names it
   shares and whose class the backends generate it into, and a call to one has no receiver at all
   rather than a stand-in. A module lists each factory block, by the message it builds and where its

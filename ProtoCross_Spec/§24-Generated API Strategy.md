@@ -75,6 +75,31 @@ linker merges without a diagnostic, keeping one body for both. Protobuf's own ex
 the way a project's behavior is: an `extend` is declared in the package of the file that writes it,
 not the package of the message it extends.
 
+**Decided: a project's helpers are declared in a namespace of their own, inside the project's**
+([16.4](./§16-Methods.md#164-helpers)): `Acme.Billing.Helpers` in C# and `acme::billing::helpers` in C++, for
+`acme.billing.pcproj`. A helper and an extend block's method may share a name, and in the project's
+namespace the two could be one function: a helper `total` taking an `Invoice`, and a method `total`
+on `Invoice`, would declare one C++ function twice, and two C# methods of one signature in the
+extension class. A namespace of their own also keeps them out of the way of a consumer who imports
+the project's namespace for its behavior. One who wants a helper names it,
+`Acme.Billing.Helpers.ProtoCrossHelpers.Clamp(…)` or through `using static`, and
+`acme::billing::helpers::clamp(…)` in C++.
+
+**A helper whose generated name would meet a name already declared there is `PC0126`**, compared as
+a factory's class is above, whichever backends are run:
+
+- **The C# class.** A schema's type or namespace named `ProtoCrossHelpers` in the helpers' C#
+  namespace takes it.
+- **The namespace.** A schema's type named like it in the project's namespace, `Helpers` in C# or
+  `helpers` in C++, takes it, and so does an extend block's method named `helpers`, a function C++
+  declares in the project's namespace. A schema's own namespace may be the helpers': package
+  `acme.billing.helpers` declares its messages beside them, since two namespaces of one name are one
+  namespace in both languages.
+- **Each helper.** A schema's type or namespace named like a helper in the helpers' C++ namespace takes
+  that helper's name.
+
+`PC0126` is titled "generated name collides", since it covers more than a factory's class.
+
 ### 24.1 C#
 
 Potential strategies:
@@ -112,9 +137,18 @@ nothing a ProtoCross caller can do, since the binder already refuses a call to o
 factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
 qualified from `global::`, as a call to an extension method is.
 
+**A project's helpers are `public static` methods of one `public static partial class
+ProtoCrossHelpers`**, in the helpers' namespace ([24](#24-generated-api-strategy)). Each is named as an
+extension method is, PascalCased, with an underscore appended when that is `ProtoCrossHelpers`, and
+takes only its parameters. The class is `partial` for the reason the extension class is: it is the
+project's rather than a source's, and each source that declares helpers writes its part. A call to a
+helper from anywhere is qualified from `global::`,
+`global::Acme.Billing.Helpers.ProtoCrossHelpers.Clamp(…)`.
+
 **A method that may refuse returns `bool`, and gives what it built or refused through `out`
-parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method is a static method of
-its class, and a method of an extend block an extension method, whose parameters come after `this`:
+parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method or a project's
+helper is a static method of its class, and a method of an extend block an extension method, whose
+parameters come after `this`:
 
 ```csharp
 public static bool Create(
@@ -411,6 +445,13 @@ declared at all, since a struct cannot be continued in another header. A call to
 qualified with the namespace and the struct, `::acme::app::InvoiceFactory::create(options)`, and a
 struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
 take one.
+
+**A project's helpers are `inline` free functions in the helpers' namespace**
+([24](#24-generated-api-strategy)), named as written, with a keyword escaped as a method's name is,
+and taking only their parameters. A header declares them with its other functions, before any is
+defined, so a helper, a method and a factory may call one another in any order. A call to one is
+qualified from `::`, `::acme::billing::helpers::clamp(…)`, and a header that calls a helper another
+source declares includes that source's header, as it does for that source's methods.
 
 **A method that may refuse returns `bool`, and gives what it built or refused through references**,
 as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):

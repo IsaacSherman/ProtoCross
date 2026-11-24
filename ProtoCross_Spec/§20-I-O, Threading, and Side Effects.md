@@ -14,3 +14,5 @@ Normative Requirements:
 
 **Decided: a pure method is not marked.** Every method is pure except a `mut fn`, which is marked
 already ([18](./§18-Mutability.md#18-mutability)), so a marker would say of each other method what all of them are.
+A project's helper is one of them, and has no receiver to change, so there is no `mut` helper
+([16.4](./§16-Methods.md#164-helpers)).

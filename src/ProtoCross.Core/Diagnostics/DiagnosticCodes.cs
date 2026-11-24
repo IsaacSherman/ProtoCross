@@ -689,10 +689,11 @@ public static class DiagnosticCodes
 
     /// <summary>
     /// A factory whose generated class would have the name of another factory's, or of a schema's
-    /// message, in the namespace it is declared in (spec 24).
+    /// message, in the namespace it is declared in; or a project's helpers, whose class, namespace or
+    /// functions a schema's name or a method would meet (spec 24).
     /// </summary>
     public static readonly DiagnosticDescriptor FactoryClassNameCollides =
-        new("PC0126", DiagnosticSeverity.Error, "factory class name collides");
+        new("PC0126", DiagnosticSeverity.Error, "generated name collides");
 
     /// <summary>A method marked <c>helper</c> outside a factory block (spec 16.3).</summary>
     public static readonly DiagnosticDescriptor HelperOutsideAFactory =
@@ -714,9 +715,12 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor FactoryUsedAsAValue =
         new("PC0131", DiagnosticSeverity.Error, "factory used as a value");
 
-    /// <summary>A test of a factory method that declares a receiver fixture it has no use for (spec 25.3).</summary>
+    /// <summary>
+    /// A test of a factory method or a project's helper, either called on nothing, that declares a receiver
+    /// fixture it has no use for (spec 16.4, 25.3).
+    /// </summary>
     public static readonly DiagnosticDescriptor FactoryTestDeclaresAReceiver =
-        new("PC0132", DiagnosticSeverity.Error, "test of a factory method declares a receiver");
+        new("PC0132", DiagnosticSeverity.Error, "test of a method called on nothing declares a receiver");
 
     /// <summary>
     /// A factory for a message protobuf's runtime declares, whose generated class goes beside it
@@ -843,6 +847,19 @@ public static class DiagnosticCodes
     /// <summary><c>m[^k]</c> on a map, whose keys have no end to count from (spec 14.2).</summary>
     public static readonly DiagnosticDescriptor MapKeyFromTheEnd =
         new("PC0155", DiagnosticSeverity.Error, "map key counted from the end");
+
+    /// <summary>
+    /// A top-level <c>helper fn</c> in sources compiled without a project, which has no namespace to be
+    /// declared in (spec 16.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor HelperOutsideAProject =
+        new("PC0156", DiagnosticSeverity.Error, "helper outside a project");
+
+    /// <summary>
+    /// A bare call whose name is both a method the call could reach and a top-level helper (spec 16.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallNamesAMethodAndAHelper =
+        new("PC0157", DiagnosticSeverity.Error, "call names a method and a helper");
 
     // ------------------------------------------------------- the configuration file
 

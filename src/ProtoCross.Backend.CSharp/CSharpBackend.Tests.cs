@@ -123,9 +123,9 @@ public sealed partial class CSharpBackend
             return;
         }
 
-        if (test.Target.HasReceiver)
+        if (test is { Target.HasReceiver: true, Receiver: { } fixture })
         {
-            EmitReceiverCreation(writer, test.Receiver, placement);
+            EmitReceiverCreation(writer, fixture, placement);
         }
 
         if (test.Target.CanRefuse)
@@ -288,9 +288,9 @@ public sealed partial class CSharpBackend
                 writer.Indent();
 
                 var tested = PlacementFor(test, placement);
-                if (test.Target.HasReceiver)
+                if (test is { Target.HasReceiver: true, Receiver: { } fixture })
                 {
-                    EmitReceiverCreation(writer, test.Receiver, tested);
+                    EmitReceiverCreation(writer, fixture, tested);
                 }
 
                 // The call is expected not to return, so its result is deliberately unused. A refusal is a return.
@@ -420,10 +420,14 @@ public sealed partial class CSharpBackend
 
     private static string UniqueTestMethodName(IrTest test, HashSet<string> usedNames)
     {
-        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create'.
-        var target = test.Target.HasReceiver
-            ? $"{test.Target.Receiver.Name}_{test.Target.Name}"
-            : $"{test.Target.Receiver.Name}_{ContextualKeywords.Factory}_{test.Target.Name}";
+        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create',
+        // and a helper's by its name alone.
+        var target = test.Target.Receiver switch
+        {
+            null => test.Target.Name,
+            { } receiver when test.Target.HasReceiver => $"{receiver.Name}_{test.Target.Name}",
+            { } message => $"{message.Name}_{ContextualKeywords.Factory}_{test.Target.Name}",
+        };
         var baseName = ToIdentifier($"{target}_{test.Name}");
         var candidate = baseName;
         var suffix = 2;

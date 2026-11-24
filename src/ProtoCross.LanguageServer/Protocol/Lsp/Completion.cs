@@ -11,6 +11,9 @@ public enum CompletionItemKind
     /// <summary>A ProtoCross method declared on the receiver in an <c>extend</c> block.</summary>
     Method = 2,
 
+    /// <summary>A project's helper, which belongs to no message (spec 16.4).</summary>
+    Function = 3,
+
     /// <summary>A protobuf field of the receiver message.</summary>
     Field = 5,
 

@@ -156,7 +156,7 @@ public class ConformanceVectorTests
         ConformanceVectors.All.ToDictionary(
             vector => vector.Name,
             vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
-                .Select(method => $"{method.Receiver.FullName}.{NameConventions.ToPascalCase(method.Name)}")
+                .Select(method => $"{method.Receiver?.FullName}.{NameConventions.ToPascalCase(method.Name)}")
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
             StringComparer.Ordinal));

@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using Google.Protobuf.Reflection;
 using ProtoCross.Backend;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
@@ -46,7 +47,7 @@ public sealed partial class CppBackend
         // The schemas a test names beyond its target's are the ones a literal in it brings: no behavior
         // header has a reason to include those. They come first, as a header's own schemas do.
         var schemaHeaders = ProtoHeadersOf(
-            SchemasNamedBeyond(module.Tests.Select(test => test.Target.Receiver.File), module.Tests));
+            SchemasNamedBeyond(module.Tests.Select(test => test.Target.Receiver?.File).OfType<FileDescriptor>(), module.Tests));
         WriteTestHeader(
             writer,
             options,
@@ -624,13 +625,13 @@ public sealed partial class CppBackend
 
     /// <summary>
     /// Declares the local named <c>receiver</c> that a test calls its method on; nothing for a factory's
-    /// method, which is called on nothing.
+    /// method or a helper, which is called on nothing.
     /// </summary>
     private static void EmitCppReceiver(SourceWriter writer, IrTest test, Placement placement)
     {
-        if (test.Target.HasReceiver)
+        if (test is { Target.HasReceiver: true, Receiver: { } fixture })
         {
-            EmitConstruction(writer, test.Receiver, TestReceiverName, NamesFor(test.Receiver, TestReceiverName), placement);
+            EmitConstruction(writer, fixture, TestReceiverName, NamesFor(fixture, TestReceiverName), placement);
         }
     }
 
@@ -650,10 +651,14 @@ public sealed partial class CppBackend
 
     private static string UniqueTestFunctionName(IrTest test, HashSet<string> usedNames)
     {
-        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create'.
-        var target = test.Target.HasReceiver
-            ? $"{test.Target.Receiver.Name}_{test.Target.Name}"
-            : $"{test.Target.Receiver.Name}_{ContextualKeywords.Factory}_{test.Target.Name}";
+        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create',
+        // and a helper's by its name alone.
+        var target = test.Target.Receiver switch
+        {
+            null => test.Target.Name,
+            { } receiver when test.Target.HasReceiver => $"{receiver.Name}_{test.Target.Name}",
+            { } message => $"{message.Name}_{ContextualKeywords.Factory}_{test.Target.Name}",
+        };
         var baseName = ToIdentifier($"{target}_{test.Name}");
         var candidate = baseName;
         var suffix = 2;

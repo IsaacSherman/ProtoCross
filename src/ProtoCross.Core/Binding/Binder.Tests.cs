@@ -58,12 +58,17 @@ public sealed partial class Binder
         };
     }
 
-    /// <summary>The message a test calls its method on, built from its fixture (spec 25.3).</summary>
+    /// <summary>
+    /// The message a test calls its method on, built from its fixture (spec 25.3), or null for a test of a
+    /// helper, which belongs to no message.
+    /// </summary>
     /// <remarks>
     /// <para>
     /// A test of a factory's method calls it on nothing. It holds whatever fixture its test does, the
     /// stand-in for one never written or one written anyway, which is refused here; only the binder
-    /// knows the target is a factory's.
+    /// knows the target is a factory's. A test of a helper calls it on nothing too, and holds none,
+    /// since there is no message to build one as: one written anyway is refused here, and its fields
+    /// are not bound.
     /// </para>
     /// <para>
     /// The parser reports a test of an extend method that writes no fixture, except where it read the
@@ -71,7 +76,7 @@ public sealed partial class Binder
     /// That one is reported here, which is the first place it is known.
     /// </para>
     /// </remarks>
-    private IrMessageLiteral BindTestFixture(TestDeclaration test, IrMethodSignature signature, MethodContext context)
+    private IrMessageLiteral? BindTestFixture(TestDeclaration test, IrMethodSignature signature, MethodContext context)
     {
         var fixture = test.Receiver;
 
@@ -84,13 +89,16 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.FactoryTestDeclaresAReceiver,
-                $"'{signature.Name}' is a method of the factory of '{signature.Receiver.FullName}', which is called on "
-                + "nothing, so its test has no receiver to declare.",
+                signature.Receiver is { } built
+                    ? $"'{signature.Name}' is a method of the factory of '{built.FullName}', which is called on "
+                        + "nothing, so its test has no receiver to declare."
+                    : $"'{signature.Name}' is a helper, which is called on nothing, so its test has no receiver to declare.",
                 fixture.Span,
-                "Remove the 'receiver { … }' block, and give the method its arguments with 'arg' (spec 25.3).");
+                $"Remove the 'receiver {{ … }}' block, and give the {(signature.Receiver is null ? "helper" : "method")} "
+                + "its arguments with 'arg' (spec 25.3).");
         }
 
-        return BindTestReceiver(fixture, signature.Receiver, context);
+        return signature.Receiver is { } message ? BindTestReceiver(fixture, message, context) : null;
     }
 
     /// <remarks>
@@ -107,13 +115,22 @@ public sealed partial class Binder
             return null;
         }
 
+        // One name is a helper's, which belongs to no message (spec 16.4).
         if (target.Receiver.IsMissing)
         {
+            if (_helpers.TryGetValue(target.Method.Text, out var helper))
+            {
+                Use(helper.Id, target.Method.Span);
+                return helper;
+            }
+
             _diagnostics.Report(
                 DiagnosticCodes.InvalidTestTarget,
-                $"'{target.Method}' is not a method target.",
+                $"No helper is named '{target.Method}'. A test targets a helper by its name alone, and a method "
+                + "by its message and its name.",
                 span,
-                "Write tests against a receiver method, for example 'test Invoice.total_cents'.");
+                "Write tests against a helper or a receiver method, for example 'test clamp' or "
+                + "'test Invoice.total_cents'.");
             return null;
         }
 

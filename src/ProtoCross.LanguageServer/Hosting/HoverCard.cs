@@ -95,7 +95,7 @@ internal static class HoverCard
         {
             SymbolKind.Local or SymbolKind.Parameter or SymbolKind.LoopBinding
                 => AboutBinding(result, symbol),
-            SymbolKind.Method => AboutMethod(result, symbol),
+            SymbolKind.Method or SymbolKind.Function => AboutMethod(result, symbol),
             SymbolKind.Factory => AboutFactory(result, symbol),
             SymbolKind.Field => AboutField(model, symbol),
             SymbolKind.EnumValue => AboutEnumValue(model, symbol),
@@ -136,9 +136,10 @@ internal static class HoverCard
         yield return Signature(signature.DisplayName);
         yield return signature.Kind switch
         {
-            IrMethodKind.Factory => $"Method of the factory of `{signature.Receiver.FullName}`, called on nothing.",
-            IrMethodKind.Helper => $"Helper of the factory of `{signature.Receiver.FullName}`, which only that factory calls.",
-            _ => $"Method on `{signature.Receiver.FullName}`.",
+            IrMethodKind.Standalone => "Helper of the project, called on nothing, from anywhere in it.",
+            IrMethodKind.Factory => $"Method of the factory of `{signature.Receiver?.FullName}`, called on nothing.",
+            IrMethodKind.Helper => $"Helper of the factory of `{signature.Receiver?.FullName}`, which only that factory calls.",
+            _ => $"Method on `{signature.Receiver?.FullName}`.",
         };
     }
 
