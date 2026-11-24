@@ -400,6 +400,24 @@ extend Shelf {
         readings[0].value += 1;
         return readings[0].value + readings[1].value;
     }
+
+    mut fn change_reading_and_advance_index() -> int64 {
+        var index: int32 = 0;
+        if readings.count() >= 2 and index >= 0 and index < readings.count() {
+            index = readings[index].bump_and_next();
+            if index == 1 {
+                return readings[0].value;
+            }
+        }
+        return -1;
+    }
+}
+
+extend google.protobuf.Int64Value {
+    mut fn bump_and_next() -> int32 {
+        value += 3;
+        return 1;
+    }
 }
 
 extend Box {
@@ -833,6 +851,11 @@ test Shelf.write_a_local_list "a local's list written by index" {
 test Shelf.replace_readings "a list of wrappers written by index and through its elements" {
     receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
     expect return 111;
+}
+
+test Shelf.change_reading_and_advance_index "a mutating call keeps the indexed wrapper it reached" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 7;
 }
 
 test Shelf.heavy_boxes "a list of messages, each element expected by its own literal, a list it holds included" {

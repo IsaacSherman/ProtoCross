@@ -73,6 +73,50 @@ public partial class RepeatedIndexingTests
         var error = TheOnly(Compile("    mut fn f() { counts[2] = 1; }"), DiagnosticCodes.IndexNotShownInRange.Code);
 
         Assert.Equal("Cannot show that '2' is inside 'counts'.", error.Message);
+        Assert.Equal("Write it inside 'if counts.count() > 2 { … }' (spec 14.1).", error.Help);
+    }
+
+    /// <summary>
+    /// A list nothing names is written through a copy of the message it is in, since a local holding the list would
+    /// hold a copy of it, and no try method is offered, since one only reads.
+    /// </summary>
+    [Fact]
+    public void AWriteToAListNothingNamesIsWrittenThroughACopy()
+    {
+        var error = TheOnly(
+            Compile("    mut fn f() { if boxes.count() > 0 { boxes[0].parts[1] = 7; } }"),
+            DiagnosticCodes.IndexNotShownInRange.Code);
+
+        Assert.Equal(
+            "Only a list a local, a parameter or a field holds is shown to hold anything. Copy the message this one is in "
+            + "to a local, write the element there, and store the local back (spec 14.1).",
+            error.Help);
+    }
+
+    /// <summary>
+    /// A write inside an element may change what a binding over its list showed, but never the integer a binding over
+    /// another list holds, which nothing assigns (spec 14.1).
+    /// </summary>
+    [Theory]
+    [InlineData("boxes[n].grams = 1; boxes[n].tag = \"a\";")]
+    [InlineData("boxes[n].parts.append(1); boxes[n].grams = 2;")]
+    [InlineData("boxes[n].add_grams(1); boxes[n].grams = 2;")]
+    public void AWriteInsideAnElementLeavesAnIndexABindingHoldsShown(string writes)
+        => AssertOk(CompileWithABoxMethod(
+            $"    mut fn f() {{\n        for n in counts {{\n            if n >= 0 and n < boxes.count() {{\n"
+            + $"                {writes}\n            }}\n        }}\n    }}"));
+
+    [Fact]
+    public void AWriteInsideAnElementEndsWhatABindingOverItsListShowed()
+    {
+        var error = TheOnly(
+            Compile(
+                "    mut fn f() -> int64 {\n        var total: int64 = 0;\n        for box in boxes {\n"
+                + "            if box.parts.count() > 0 and boxes.count() > 0 {\n                boxes[0].parts = [];\n"
+                + "                total += box.parts[0];\n            }\n        }\n        return total;\n    }"),
+            DiagnosticCodes.IndexNotShownInRange.Code);
+
+        Assert.Contains("ended what was shown about 'box.parts'", error.Message, StringComparison.Ordinal);
     }
 
     [Fact]

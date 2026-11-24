@@ -167,8 +167,10 @@ public sealed partial class Binder
 
         if (clause.Refusal is { } replacement)
         {
-            ReportReplacedRefusal(call, replacement, scope, context);
-            return new IrRefusableCall(call, RefusalBehavior.Unstated, null, handled.Span);
+            return new IrRefusableCall(call, RefusalBehavior.Unstated, null, handled.Span)
+            {
+                Refused = [ReportReplacedRefusal(call, replacement, scope, context)],
+            };
         }
 
         if (clause.Fallback is not { } written)
@@ -181,18 +183,24 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Reports <c>on_refused refuse value</c> after a call to a method a source declares (<c>PC0151</c>), binding the value
-    /// for the names in it.
+    /// Reports <c>on_refused refuse value</c> after a call to a method a source declares (<c>PC0151</c>), and gives the
+    /// value bound, which the call keeps as a part it refused.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The value form refuses with a value of the caller's own, which a list's try method needs, since it refuses with
     /// none (spec 14.1). A method a source declares refuses with a value, which is passed on as it is: replacing it
     /// would be translating one refusal into another, which is not decided for 1.0 (spec 30). The help offers what a
     /// call can write instead.
+    /// </para>
+    /// <para>
+    /// The value is kept rather than dropped so that an editor's request inside it, a hover on a count or a completion
+    /// after a dot, finds what it asks about (<see cref="IrNode.Refused"/>).
+    /// </para>
     /// </remarks>
-    private void ReportReplacedRefusal(IrMethodCall call, Expression replacement, Scope scope, MethodContext context)
+    private IrExpression ReportReplacedRefusal(IrMethodCall call, Expression replacement, Scope scope, MethodContext context)
     {
-        _ = BindRefused(replacement, scope, context);
+        var value = BindRefused(replacement, scope, context);
         _diagnostics.Report(
             DiagnosticCodes.RefusalCannotBeReplaced,
             $"'{call.Target.Name}' refuses with a '{call.Target.Refusal!.DisplayName}' of its own, which is passed on as it "
@@ -200,6 +208,7 @@ public sealed partial class Binder
             replacement.Span,
             $"{Written(WaysToAnswer(call, context))}. A refusal with a value of the caller's own follows only a list's try "
             + "method, which has none to pass on (spec 16.3.1).");
+        return value;
     }
 
     /// <summary>The ways a call to <paramref name="call"/>'s method may answer a refusal from where it is, as help to write one.</summary>

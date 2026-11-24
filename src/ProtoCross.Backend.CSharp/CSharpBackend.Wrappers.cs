@@ -326,9 +326,13 @@ public sealed partial class CSharpBackend
                 writer.WriteLine(storeBack);
                 break;
 
+            // Stored back before the local is assigned, since the place it came from may be read through the local:
+            // in 'index = readings[index].next();', storing back after would store into the element the new index names.
             case IrAssignment assignment:
-                writer.WriteLine($"{Expression(assignment.Target, placement)} = {body.ForLocal(changed)};");
+                var assigned = body.Unused("result");
+                writer.WriteLine($"var {assigned} = {body.ForLocal(changed)};");
                 writer.WriteLine(storeBack);
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {assigned};");
                 break;
 
             // A method that may refuse returns its value through its parameter, and says it built it.

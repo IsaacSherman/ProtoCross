@@ -22,6 +22,8 @@ public sealed partial class Binder
     private const string CountFactMark = "#count>=";
     private const string NonNegativeFactMark = "#nonnegative";
     private const string PositiveFactMark = "#positive";
+    private const string BelowFactMark = "#below:";
+    private const string AtMostFactMark = "#atmost:";
 
     /// <summary>How an index is related to a list's count by a fact.</summary>
     private enum IndexRelation
@@ -59,9 +61,19 @@ public sealed partial class Binder
     /// <summary>The two keys of the fact relating <paramref name="index"/> to the list at <paramref name="list"/>'s count.</summary>
     private static string[] RelationFacts(string index, string list, IndexRelation relation)
     {
-        var mark = relation == IndexRelation.Below ? "#below:" : "#atmost:";
+        var mark = relation == IndexRelation.Below ? BelowFactMark : AtMostFactMark;
         return [$"{index}{PresencePathSeparator}{mark}{list}", $"{list}{PresencePathSeparator}{mark}{index}"];
     }
+
+    /// <summary>
+    /// Whether <paramref name="rest"/>, what follows a fact's root, says something of the integer the root holds, an
+    /// index's bound or its relation to a list's count, rather than of a field reached through it.
+    /// </summary>
+    private static bool IsAboutAnIndexItself(string rest)
+        => rest == $"{PresencePathSeparator}{NonNegativeFactMark}"
+            || rest == $"{PresencePathSeparator}{PositiveFactMark}"
+            || rest.StartsWith($"{PresencePathSeparator}{BelowFactMark}", StringComparison.Ordinal)
+            || rest.StartsWith($"{PresencePathSeparator}{AtMostFactMark}", StringComparison.Ordinal);
 
     /// <summary>Whether the facts relate <paramref name="index"/> to the list at <paramref name="list"/> so: both keys are there.</summary>
     private static bool Relates(IReadOnlySet<string> facts, string index, string list, IndexRelation relation)

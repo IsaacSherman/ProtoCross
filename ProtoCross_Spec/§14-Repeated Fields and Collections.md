@@ -173,6 +173,9 @@ Normative Requirement:
       An append, standing as a statement of its own, shows one more than was shown before it.
     - An index compared with an integer literal shows that it is at least 0, `i >= 0`, or at least 1,
       `i > 0`.
+    - A literal is one written, or one negated whose value its type holds. `-(-2147483648)` is an
+      `int32` its type cannot hold, whose value depends on the overflow policy
+      ([10.1](./§10-Numeric%20Semantics.md#101-integer-overflow)), so it shows nothing, and as an index it is never shown.
     - An index compared with a count shows how the two are related: `i < items.count()` that it is
       below the count, and `i <= items.count()` or `i == items.count()` that it is at most the count.
     - A comparison of two integer types needs a conversion ([10.3](./§10-Numeric%20Semantics.md#103-numeric-conversions)), and one that keeps every value of
@@ -214,8 +217,10 @@ Normative Requirement:
     element, and `boxes[i].weigh();`, a `mut fn`, changes it, as each does a field
     ([18](./§18-Mutability.md#18-mutability)).
   - The index is shown in range by the same facts as a read's, and an element written takes no
-    clause: `on_missing` there is `PC0154`. Neither replacing an element nor writing inside one ends
-    anything shown about the list's count.
+    clause: `on_missing` there is `PC0154`. `PC0152`'s help for one writes the guard alone, since a try
+    method only reads, and for a list nothing names, `boxes[0].parts[1] = 7;`, says to copy the message
+    it is in to a local, write the element there, and store the local back. Neither replacing an element nor writing inside one ends
+    anything shown about the list's count, or about an index, which no element holds.
   - A store reaches the list first, setting every unset message on the way, then evaluates its value,
     and replaces the element last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). The element is always there, so nothing is put at its index,
     as a map's store puts a key.

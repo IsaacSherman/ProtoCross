@@ -42,12 +42,13 @@ public sealed partial class Binder
         var read = new IrElementRead(list, position, index.IsFromEnd, index.Span);
 
         return IsAnIndex(position, index.Key.Span, DiagnosticCodes.MapKeyTypeMismatch)
-            ? read with { Proof = Prove(new(list, position, index.IsFromEnd, index.Span), context) }
+            ? read with { Proof = Prove(new(list, position, index.IsFromEnd, index.Span, IsWritten: false), context) }
             : read;
     }
 
     /// <summary>A list's element at an index, read or written, as what shows the index in range is asked of it.</summary>
-    private sealed record IndexedElement(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span);
+    /// <param name="IsWritten">Whether the element is written, where no try method is offered, since one only reads.</param>
+    private sealed record IndexedElement(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span, bool IsWritten);
 
     /// <summary>
     /// Binds <c>items[i]</c> as a place: the target of a store, or a link written through (spec 14.1, 18). Nothing is
@@ -74,7 +75,7 @@ public sealed partial class Binder
         var element = new IrListElement(list, position, index.IsFromEnd, index.Span);
 
         return IsAnIndex(position, index.Key.Span, DiagnosticCodes.MapKeyTypeMismatch) && ReadOnlyPartOf(list, context) is null
-            ? element with { Proof = Prove(new(list, position, index.IsFromEnd, index.Span), reached) }
+            ? element with { Proof = Prove(new(list, position, index.IsFromEnd, index.Span, IsWritten: true), reached) }
             : element;
     }
 
@@ -269,30 +270,48 @@ public sealed partial class Binder
             : "An index counts from 0, the first element. To count from the end, write '^1' for the last";
 
     /// <summary>The value of a literal integer, negated or not, or null for anything else.</summary>
+    /// <remarks>
+    /// A negation whose value its type cannot hold is not a constant here. <c>-(-2147483648)</c> is an <c>int32</c>,
+    /// which wraps to its minimum by default and saturates or fails under the other policies (spec 10.1), so the value a
+    /// guard compares is not the one written, and one taken as written would show a count or an index it never
+    /// checked. Following each policy would put spec 10's arithmetic here for a guard nobody writes; giving none costs
+    /// only that guard.
+    /// </remarks>
     private static Int128? ConstantOf(IrExpression expression) => expression switch
     {
         IrLiteral { Value: long value } => value,
         IrLiteral { Value: ulong value } => value,
-        IrUnary { Operator: IrUnaryOperator.Negate, Operand: var operand } when ConstantOf(operand) is { } value => -value,
+        IrUnary { Operator: IrUnaryOperator.Negate, Operand: var operand, Type: ScalarType type }
+            when ConstantOf(operand) is { } value && FitsIn(-value, type) => -value,
         _ => null,
     };
 
     // ------- saying why not
 
     /// <summary>Reports an index no fact can be about: an expression other than a literal or a name, or into a list nothing names.</summary>
+    /// <remarks>
+    /// A list nothing names is written through a copy of the message it is in, since a local holding the list itself
+    /// would be a copy of the list, and writing it would change nothing the author meant to.
+    /// </remarks>
     private void ReportIndexNeverShown(IndexedElement at)
     {
-        var help = ListPath(at.List) is null
-            ? "Only a list a local, a parameter or a field holds is shown to hold anything. Store this one in a local and "
-                + "test its 'count()'"
-            : "Only a literal index, or one a name holds, is shown to be in range. Store this one in a local and test it";
+        var help = (ListPath(at.List) is null, at.IsWritten) switch
+        {
+            (true, false) => "Only a list a local, a parameter or a field holds is shown to hold anything. Store this one "
+                + "in a local and test its 'count()'",
+            (true, true) => "Only a list a local, a parameter or a field holds is shown to hold anything. Copy the message "
+                + "this one is in to a local, write the element there, and store the local back",
+            _ => "Only a literal index, or one a name holds, is shown to be in range. Store this one in a local and test it",
+        };
 
         _diagnostics.Report(
             DiagnosticCodes.IndexNotShownInRange,
             $"Cannot show that {IndexSpelled(at)} is inside {Spelled(at.List)}.",
             at.Span,
-            $"{help}, or read it with '{TryRead(at.List, at.FromEnd, "…")} on_refused …', which answers an index out "
-            + "of range (spec 14.1).");
+            at.IsWritten
+                ? $"{help} (spec 14.1)."
+                : $"{help}, or read it with '{TryRead(at.List, at.FromEnd, "…")} on_refused …', which answers an index "
+                    + "out of range (spec 14.1).");
     }
 
     /// <summary>
@@ -311,8 +330,10 @@ public sealed partial class Binder
             DiagnosticCodes.IndexNotShownInRange,
             $"Cannot show that {IndexSpelled(at)} is inside {Spelled(at.List)}{ended}.",
             at.Span,
-            $"Read it inside 'if {guard} {{ … }}', or with '{instead} on_refused …', which answers an index out of range "
-            + "(spec 14.1).");
+            at.IsWritten
+                ? $"Write it inside 'if {guard} {{ … }}' (spec 14.1)."
+                : $"Read it inside 'if {guard} {{ … }}', or with '{instead} on_refused …', which answers an index out of "
+                    + "range (spec 14.1).");
     }
 
     /// <summary>

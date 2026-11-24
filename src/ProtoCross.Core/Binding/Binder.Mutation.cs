@@ -1009,7 +1009,8 @@ public sealed partial class Binder
     /// <remarks>
     /// <para>
     /// An element at an index may be the one a binding is on, and which binding cannot be told from the syntax, so a
-    /// change inside one ends what any binding showed, as a change this cannot trace does (<see cref="EndedFacts.Untraced"/>).
+    /// change inside one ends what any binding showed, as a change this cannot trace does (<see cref="EndedFacts.Untraced"/>),
+    /// though not what is shown about an integer one holds, which an element may be read by but no change reaches.
     /// Replacing the element itself ends nothing of a binding's: one that could be on it is refused, since replacing an
     /// element changes what the loop traverses (spec 14.1).
     /// </para>
@@ -1207,7 +1208,10 @@ public sealed partial class Binder
         /// <summary>The change that ends them, where one is known, for a diagnostic to cite.</summary>
         public ChangeSite? Cause { get; init; }
 
-        /// <summary>Every fact a change this could not trace might end: anything about any loop binding.</summary>
+        /// <summary>
+        /// Every fact a change this could not trace might end: anything reached through any loop binding, though not
+        /// what is shown about an integer one holds, which no change reaches.
+        /// </summary>
         public static EndedFacts Untraced { get; } = new(null, string.Empty, false);
 
         public static EndedFacts Below(string root, string path) => new(AnyBindingFor(root), path, false);
@@ -1221,7 +1225,9 @@ public sealed partial class Binder
             var root = fact[..separator];
             var rest = fact[separator..];
 
-            var sameRoot = Root is null ? IsLoopPresenceRoot(root) : Root == root;
+            // A binding is never assigned (PC0034), so no change through any binding's message ends what is shown about
+            // the integer a binding holds: a write inside a list's element changes no index that element is read by.
+            var sameRoot = Root is null ? IsLoopPresenceRoot(root) && !IsAboutAnIndexItself(rest) : Root == root;
 
             return sameRoot
                 && (rest.StartsWith(Path + PresencePathSeparator, StringComparison.Ordinal) || (Itself && rest == Path));
