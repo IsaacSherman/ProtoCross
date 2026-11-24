@@ -16,11 +16,15 @@ The language currently includes:
 - Message literals, `new T { field: value, … }` ([13.2](./§13-Messages.md#132-message-construction)).
 - A map's value at a key, `prices[sku] on_missing 0`, whether it holds one, `sku in prices`, and
   `count()` and `is_empty()` ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- A list's element at an index the compiler shows in range, `items[i]` and `items[^j]`, any index
+  through `items.try_get_index(i) on_refused 0`, and `count()` and `is_empty()`
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - Parenthesized expressions.
 
 Not implemented:
 
-- Indexing anything but a map. A repeated field has none.
+- Indexing anything but a map or a list, such as a string. **Post-1.0**
+  ([30.11.1](./§30-Unresolved%20Questions%20Index.md#30111-string-indexing)).
 - Bytes literals.
 - Math functions beyond the eight [10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, such as
   `pow` and the trigonometric functions. **Post-1.0**
