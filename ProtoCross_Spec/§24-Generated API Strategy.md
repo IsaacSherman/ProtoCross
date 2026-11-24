@@ -35,8 +35,10 @@ protoc's C++ declares an enum's values unscoped, beside the enum, where its C# d
 it, and with them the enum's limits and the functions over it: for `Kind`, `Kind_MIN`, `Kind_MAX`,
 `Kind_ARRAYSIZE`, `Kind_IsValid`, `Kind_Name`, `Kind_Parse`, `Kind_descriptor`,
 `Kind_internal_data_`, and an open enum's two sentinels, `Kind_INT_MIN_SENTINEL_DO_NOT_USE_` and
-`Kind_INT_MAX_SENTINEL_DO_NOT_USE_`. The limits of a nested `Outer.Level` are `Outer_Level_Level_MIN`
-and so on, the rest `Outer_Level_IsValid` and so on. `_ARRAYSIZE` is left out where the largest value
+`Kind_INT_MAX_SENTINEL_DO_NOT_USE_`. For a nested `Outer.Level`, the limits use `Outer_Level_Level_`
+and the functions and data table use `Outer_Level_`. The sentinels repeat the flattened enum name:
+`Outer_Level_Outer_Level_INT_MIN_SENTINEL_DO_NOT_USE_` and
+`Outer_Level_Outer_Level_INT_MAX_SENTINEL_DO_NOT_USE_`. `_ARRAYSIZE` is left out where the largest value
 is 2,147,483,647, and `_descriptor` from a file built for the lite runtime. Both are refused, and the
 help says how to separate them. Refusing is what C# does with two classes of one name.
 
