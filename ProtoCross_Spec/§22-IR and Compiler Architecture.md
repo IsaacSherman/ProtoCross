@@ -133,7 +133,8 @@ The IR preserves:
   the one place two nodes share a span without one standing inside the other, and a position query
   there answers with the target, which comes first. A compound store to a map's element is the
   same, its target holding the element where its read looked the key up
-  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The one thing the IR says of a
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and so is one to a list's element, its target holding the element where
+  its read read it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The one thing the IR says of a
   compound is that its value reads its own target, because where that target is written through an
   element the read has to be evaluated before the target is reached. Which form was written is
   otherwise the syntax tree's to say.
