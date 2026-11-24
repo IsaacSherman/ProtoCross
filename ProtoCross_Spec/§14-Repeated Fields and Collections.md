@@ -223,9 +223,9 @@ Normative Requirement:
     write traverses what that store would change: inside `for box in boxes`, storing `boxes[0]` back
     replaces an element of `boxes`, which is `PC0096`. There it says to write the element in a `mut fn`
     on the message, `Box`, where the list is its own field and a guard can show the index, and to call
-    that on `boxes[0]`, which changes the element without replacing it. Where the loop traverses a list
-    inside that message, `for part in box.parts`, the call is `PC0096` as well, and it says to make the
-    change after the loop. Neither replacing an element nor writing inside one ends
+    that on `boxes[0]`, which changes the element without replacing it. Where a loop inside that one
+    traverses a list in that message, `for part in box.parts`, the call is `PC0096` as well, and it
+    names that loop, `box.parts`, and says to make the change after it, where the call is allowed. Neither replacing an element nor writing inside one ends
     anything shown about the list's count, or about an index, which no element holds.
   - A store reaches the list first, setting every unset message on the way, then evaluates its value,
     and replaces the element last ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). The element is always there, so nothing is put at its index,

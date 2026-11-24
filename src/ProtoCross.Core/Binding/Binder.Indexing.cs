@@ -323,23 +323,27 @@ public sealed partial class Binder
     /// Where a loop around the write traverses what storing the copy back would change, that store is <c>PC0096</c>: in
     /// <c>for box in boxes</c>, storing <c>boxes[0]</c> back replaces an element of <c>boxes</c>. A <c>mut fn</c> on the
     /// message makes the write instead, reaching the list as its own field, which a guard there shows, and changes the
-    /// element rather than replacing it. Where the loop traverses something that message holds, the call is
-    /// <c>PC0096</c> as well, since the method could change what is traversed, and the write waits for the loop to end.
+    /// element rather than replacing it. Where a loop traverses something that message holds, the call is
+    /// <c>PC0096</c> as well, since the method could change what is traversed, and the help names that loop, after
+    /// which the call can be made, rather than the one the store is refused for: in <c>for part in box.parts</c> inside
+    /// <c>for box in boxes</c>, the call waits for the loop over <c>box.parts</c>, not the one over <c>boxes</c>. Storing
+    /// the copy back would change what that loop traverses too, since it replaces the message holding it.
     /// </para>
     /// </remarks>
     private string WritingAListNothingNames(IrExpression list, MethodContext context)
     {
         if (list is not IrFieldAccess { Receiver: var holder, Field: var field }
-            || TraversalChangedBy(PlacesAStoreChanges(holder), context) is not { } traversal)
+            || TraversalChangedBy(PlacesAStoreChanges(holder), context) is not { } storeRefused)
         {
             return $"{OnlyANamedListIsShown} Copy the message this one is in to a local, write the element there, and store "
                 + "the local back";
         }
 
+        var callRefused = TraversalChangedBy([holder], context);
         var refused = $"{OnlyANamedListIsShown} Storing a copy of {Spelled(holder)} back would change "
-            + $"{Spelled(traversal.Collection)}, which a 'for' around it is traversing";
+            + $"{Spelled((callRefused ?? storeRefused).Collection)}, which a 'for' around it is traversing";
 
-        return TraversalChangedBy([holder], context) is null && holder.Type is MessageType message
+        return callRefused is null && holder.Type is MessageType message
             ? $"{refused}. Write it in a 'mut fn' on '{message.Descriptor.Name}', where '{field.Name}' is its own field and "
                 + $"a guard can show the index, and call that on {Spelled(holder)}"
             : $"{refused}, as calling a 'mut fn' on it would. Make the change after the loop";

@@ -151,6 +151,7 @@ public partial class RepeatedIndexingTests
             + "                if boxes.count() > 0 { boxes[0].parts[1] = part; }\n            }\n        }\n    }");
 
         var error = Assert.Single(result.Diagnostics, diagnostic => diagnostic.Code == DiagnosticCodes.IndexNotShownInRange.Code);
+        Assert.Contains("'box.parts'", error.Help, StringComparison.Ordinal);
         Assert.EndsWith(
             "which a 'for' around it is traversing, as calling a 'mut fn' on it would. Make the change after the loop (spec 14.1).",
             error.Help,
