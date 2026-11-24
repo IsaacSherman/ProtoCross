@@ -8,6 +8,7 @@ The language currently includes:
 - Local, loop-binding, parameter, and implicit receiver field references.
 - Field access through `.`.
 - Method calls on message receivers.
+- Calls to a project's helpers by their bare names, `clamp(rate, 0.0, 1.0)` ([16.4](./§16-Methods.md#164-helpers)).
 - Calls to the math functions, `_pCrossMath.min(a, b)` ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
@@ -19,7 +20,6 @@ The language currently includes:
 
 Not implemented:
 
-- Top-level function calls.
 - Indexing anything but a map. A repeated field has none.
 - Bytes literals.
 - Math functions beyond the eight [10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, such as
