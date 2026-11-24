@@ -22,6 +22,7 @@ to each group's actual home; central files hold dispatch and shared state rather
 | A list's element written at such an index: `items[i] = v;`, `items[i].f = v;`, a `mut fn` on one | [Language](Language.md) | `Binder.BindListElement`, `Binder.BindListElementStore`, `Binder.ListPlaceOf`, `Binder.FactsEndedThroughAListElement`, `IrListElement`, `IrListElementAssignment` |
 | Control flow, switches, method calls, language tests | [Language](Language.md) | `Binder.BindExpression`, `Binder.BindTest`, `Parser.ParseBlock` |
 | Factories, helpers, calls through `Message.factory` | [Language](Language.md) | `Binder` in `Binder.Factories.cs`, `Parser.ParseFactoryDeclaration`, `IrMethodKind` |
+| Math functions: `_pCrossMath.min(a, b)`, `abs`, `sqrt`, `floor`, `round`, … | [Language](Language.md) | `MathFunctions`, `Binder` in `Binder.Math.cs`, `IrMathCall`, `MathQualifierExpression` |
 | A project's helpers: top-level `helper fn`, bare calls to one, `test name` | [Language](Language.md) | `Binder` in `Binder.Helpers.cs`, `IrMethodKind.Standalone`, `IrModule.Helpers`, `NameConventions.GetCSharpHelpersNamespace` |
 | Refusals: `refuses`, `refuse`, `on_refused`, `on_zero refuse`, `expect refuse` | [Language](Language.md) | `Binder` in `Binder.Refusals.cs`, `IrRefusableCall`, `IrMethodSignature.Refusal`, `IrRefusals` |
 | Forbidding termination: `Failure/Termination` | [Language](Language.md) | `ProjectConfig.Termination`, `Binder` in `Binder.Termination.cs` |

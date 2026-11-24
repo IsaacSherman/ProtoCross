@@ -10,6 +10,7 @@
 | Statements and control flow | [Statements]: `EmitStatement`, `EmitIf`, `EmitSwitch`; [flow]: `IrFlow.NeverFallsThrough` decides section breaks. | [Backend tests]; [switches] |
 | Calls and placement | [Emitter]: `Expression`, `EmitCall`; [Context]: `Placement.NamespaceOf` (from `NameConventions.GetCSharpBehaviorNamespace`), `ClassOf`, `FactoryClassOf`, `MethodNameOf`; project namespace and partial class select call targets, a factory's static class its methods', and the helpers' namespace and class a helper's. | [project placement]; [multiple sources] |
 | Numeric operations and conversions | [Numeric]: `EmitBinary`, `EmitIntegerDivision`, `EmitUnary`, `EmitConversion`, `EmitNumberToEnum`; [Formatting]: `EmitLiteral`, `FormatFloatingPoint`, `FormatInteger`, `FormatString`. | [Backend tests]; [arithmetic sweep]; [conformance] |
+| Math functions | [Math]: `EmitMathCall`, a removed call as its argument alone, `Math`, or `MathF` for a `float`, otherwise, `Min` and `Max` nested from the left, and `Round` with `MidpointRounding.AwayFromZero`; [Runtime]: `EmitOverflowingOperations`, whose `*Abs` negates through the overflow mode's `*Negate`. | [MathFunctionTests](../tests/ProtoCross.Tests/MathFunctionTests.cs); [conformance] |
 | Message literals and fixtures | [Literals]: `MessageLiteral`, `FieldInitializer`, `StoredValue`; object initializers preserve field order and copies. | [literal emission]; [fixture order] |
 | Mutation, copies and append | [Context]: `Body.ForLocal`, `Body.Collection`, `NamesDeclaredIn`; [Statements]: `WritableMessage`, `WritableField`, `WritableCollection`; [mutation]: `IrMutation.ChangesAMessage`, `IsPassedAsACopy`. | [mutation emission]; [append emission] |
 | A list's count and elements | [Lists]: `EmitListQuery`, `EmitElementLookup`, which reads through the runtime's `ElementValue`, `ElementNullable` or `ElementReference` under a fallback, and `ElementOrFail` under `fail`; a refusing one is what its clause's test held (`EmitClauseRefusal`); `EmitElementRead`, a proven index read with the list's own indexer, `^` from the end, and `ListElementPlace` and `EmitListElementAssignment`, the same indexer written to; [Runtime]: `EmitElementHelpers`, whose `Position` compares an index of any integer type with the count exactly. | [conformance] |
@@ -32,6 +33,7 @@
 [mutation]: ../src/ProtoCross.Core/Semantics/IrMutation.cs
 [Literals]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.MessageLiterals.cs
 [Maps]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Maps.cs
+[Math]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Math.cs
 [Lists]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Lists.cs
 [Refusals]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Refusals.cs
 [Wrappers]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Wrappers.cs

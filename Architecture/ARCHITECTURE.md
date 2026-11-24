@@ -289,6 +289,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Whether control can reach the end of a statement | `IrFlow` | [Semantics/IrFlow.cs](../src/ProtoCross.Core/Semantics/IrFlow.cs) |
 | An expression built again, sharing no node | `IrCopy` | [Semantics/IrCopy.cs](../src/ProtoCross.Core/Semantics/IrCopy.cs) |
 | What a map's methods are called, take and give | `MapMethod`, `MapMethods` | [Ir/MapMethods.cs](../src/ProtoCross.Core/Ir/MapMethods.cs) |
+| What each math function is called, takes and gives | `MathFunction`, `MathFunctions` | [Ir/MathFunctions.cs](../src/ProtoCross.Core/Ir/MathFunctions.cs) |
 | Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](../src/ProtoCross.Core/Ir/NumericPolicy.cs) |
 | What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
 | Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](../src/ProtoCross.Core/Types/EnumOpenness.cs) |
@@ -706,7 +707,10 @@ a missing key gives, and written only through an element as a place, `IrMapEleme
 read: the binder keeps the two apart, so neither backend has to decide whether `map[key]` may put a
 default there. What neither target's map says the way the language does goes through each support
 file, `ProtoCrossMaps` in C# and `protocross_runtime.h`'s templates in C++
-(`*Backend.Maps.cs`). Each backend writes a message literal and a test's fixture with one writer
+(`*Backend.Maps.cs`). A call to a math function is an `IrMathCall`: one that gives its argument back
+(`IsIdentity`) is written as the argument alone, and the rest call the target's library, except where
+it does not answer as the language does, an integer `abs`, and `min` and `max` in C++, which go through
+each support file (`*Backend.Math.cs`). Each backend writes a message literal and a test's fixture with one writer
 (`*Backend.MessageLiterals.cs`), since a fixture is a literal aimed at the test's receiver. In C# that
 writer produces an object initializer, and in C++ a lambda called where the literal is written.
 
@@ -772,7 +776,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `HelperTests`, `HelperEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `HelperTests`, `HelperEditorTests`, `MathFunctionTests`, `MathFunctionEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
 `TerminationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,

@@ -249,6 +249,12 @@ Implemented:
   it may refuse. Helpers need a `.pcproj`. C# generates them as static methods of `ProtoCrossHelpers`
   in `<Project>.Helpers`, and C++ as free functions in `<project>::helpers`. A test targets one by its
   name alone, `test clamp`. The spec has the rules in sections 16.4 and 24.
+- Math functions. `_pCrossMath.min(low, high)`, `_pCrossMath.sqrt(a * a + b * b)` and
+  `_pCrossMath.round(ratio)` call one of eight functions, `abs`, `min`, `max`, `sqrt`, `floor`, `ceil`,
+  `trunc` and `round`, each with one correct answer that both targets give to the bit. `min` and `max`
+  give a NaN for a NaN, `round` takes a tie away from zero, and an integer `abs` of the minimum follows
+  the overflow policy. A call that gives its argument back, such as `abs` of a `uint32`, generates
+  nothing. `_pCrossMath` is reserved. The spec has the rules in section 10.5.
 - Refusals. Any method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
   InvoiceRefusal`, ending with `refuse value;` instead of its result, with a type of the author's
   choosing. Every call to one says what a refusal makes of it: `on_refused <fallback>`,

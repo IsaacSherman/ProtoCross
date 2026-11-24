@@ -8,11 +8,11 @@
 | Debounce, cancel, publish | [CompileScheduler][sched]: `Schedule`, `CompileAsync` | [Compile supervision][sup-t] |
 | Deferred answers and staleness | [DeferredAnswers][defer]: `AnswerAsync`, `Require` | [Compile supervision][sup-t] |
 | Completion: context capture and imports | [CompletionProvider][comp]: `Read`, `Schemas` | [Import completion][imp-t] |
-| Completion: scope, dotted members, presence, factories | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members`, `FactoryMembers` | [Schema completion][comp-t] |
+| Completion: scope, dotted members, presence, factories | [CompletionProvider][comp]: `Symbols`, `InScope`, `Members`, `FactoryMembers`; the math functions after `_pCrossMath.` in `MathFunctionsAfter` | [Schema completion][comp-t]; [MathFunctionEditorTests](../tests/ProtoCross.Tests/MathFunctionEditorTests.cs) |
 | Completion: types, extends, test targets | [CompletionProvider][comp]: `TypesAt`, `ExtendedAt`, `Targeted`; a project's helpers in `BareCallsAt` and, for a one-name target, `Methods` | [Type edits][type-t]; [HelperEditorTests](../tests/ProtoCross.Tests/HelperEditorTests.cs) |
 | Completion: arguments, literals, map entries | [CompletionProvider][comp]: `Arguments`, `LiteralFields`, `EntryFields` | [Calls][comp-t], [Literals][lit-t], [Map entries][entry-t], [Refused parts][refused-t] |
 | Completion: statement keywords, switch arms, `refuse` | [CompletionProvider][comp]: `Keywords`, `ArmsThatCanBeginAt` | [Switch completion][sw-t], [Refusal completion][ref-t] |
-| Hover and go-to-definition | [HoverProvider][hover], [DefinitionProvider][def]: `AnswerAsync` | [Hover][hover-t], [Definition][def-t] |
+| Hover and go-to-definition | [HoverProvider][hover], [DefinitionProvider][def]: `AnswerAsync`; a math function's card in [HoverCard](../src/ProtoCross.LanguageServer/Hosting/HoverCard.cs)'s `AboutMathFunction` | [Hover][hover-t], [Definition][def-t] |
 | References, highlights, signature help | [Host][host]: `FindReferences`, `AtPosition` | [References][refs-t], [Signatures][sig-t] |
 | Document outline | [Host][host]: `Outline` | [Document symbols][out-t] |
 | Semantic tokens and deltas | [ClassificationProvider][classify]: `AnswerAsync`, `Publish`; [SemanticTokenEncoder][encode]: `Encode` | [Semantic tokens][tok-t] |
