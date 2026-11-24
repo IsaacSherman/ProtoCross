@@ -168,12 +168,12 @@ policy governing any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-o
 
 Decided: the C-family order, C#'s and C++'s ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 
-#### 30.9.5 Math intrinsics
+#### 30.9.5 ~~Math intrinsics~~
 
-Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
-comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)). An intrinsic is
-not a helper: helpers are a project's own functions, found by their bare names
-([16.4](./§16-Methods.md#164-helpers)), and how an intrinsic is named and found is its own question.
+Decided: `abs`, `min`, `max`, `sqrt`, `floor`, `ceil`, `trunc` and `round`, called through the
+reserved word `_pCrossMath`, so none is found by a bare name and none can meet a helper
+([10.5](./§10-Numeric%20Semantics.md#105-math-functions)). The functions left for later are
+[30.10.13](#301013-further-math-functions).
 
 #### 30.9.6 ~~Operand order~~
 
@@ -261,6 +261,24 @@ colliding with the language's.
 
 Asked in [10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy). Third-party backends are
 [30.22.2](#30222-third-party-backends).
+
+#### 30.10.13 Further math functions
+
+**Post-1.0.** Which math functions follow the eight
+[10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, and how each is made to give one answer
+in every target:
+
+- `pow`, `hypot`, `exp`, `log`, `log10` and `log2`, and the trigonometric functions. None has a result
+  that is the same in every target: C# and C++ each call their platform's math library, and those
+  differ in the last bit between targets and platforms, which conformance compares. They come back
+  when a shared, correctly rounded implementation exists in every runtime.
+- An integer `pow`, which needs an overflow rule of its own.
+- `clamp`, `sign` and `round_even`, a tie going to the even neighbour. Each is exact, and waits only on
+  its shape: what `clamp` does with bounds given the wrong way round, and what `sign` gives a NaN or a
+  zero.
+- `min` and `max` over a list, which need an answer for an empty one.
+
+Asked in [10.5](./§10-Numeric%20Semantics.md#105-math-functions), which decides [30.9.5](#3095-math-intrinsics).
 
 ### 30.11 Strings
 

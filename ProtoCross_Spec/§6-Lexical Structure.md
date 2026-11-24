@@ -75,6 +75,7 @@ neither one names anything. Nothing that merely resembles them is reserved: `__i
 Reserved keywords:
 
 ```text
+_pCrossMath
 and
 as
 arg
@@ -118,6 +119,12 @@ var
 void
 while
 ```
+
+`_pCrossMath` is reserved. It qualifies a call to a math function, `_pCrossMath.min(a, b)`
+([10.5](./§10-Numeric%20Semantics.md#105-math-functions)), and reserving it lets the parser, the server's
+colouring and the editor grammar each read `_pCrossMath.` as the math functions without looking
+further. A schema name spelled `_pCrossMath` can no longer be written, the cost `default` accepted;
+the spelling was chosen so that no schema is likely to have one.
 
 Contextual keywords:
 

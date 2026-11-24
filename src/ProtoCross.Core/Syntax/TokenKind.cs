@@ -56,6 +56,9 @@ public enum TokenKind
     Void,
     While,
 
+    // The math functions' qualifier, '_pCrossMath' (spec 10.5).
+    PCrossMath,
+
     // Punctuation and operators.
     OpenBrace,
     CloseBrace,

@@ -79,7 +79,11 @@ internal static class HoverCard
             ? Card(AboutSymbol(model, result, symbol), symbol.Span)
             : null;
 
-        return card ?? AboutListMethod(model, offset) ?? AboutMapMethod(model, offset) ?? AboutExpression(model, offset);
+        return card
+            ?? AboutListMethod(model, offset)
+            ?? AboutMapMethod(model, offset)
+            ?? AboutMathFunction(model, offset)
+            ?? AboutExpression(model, offset);
     }
 
     // ------------------------------------------------------- what the caret is on
@@ -266,6 +270,30 @@ internal static class HoverCard
             + "there is none, which `on_refused` answers. The index may be of any integer type (spec 14.1).",
         _ => throw new ArgumentOutOfRangeException(nameof(method), method, "Not a list's method."),
     };
+
+    /// <summary>The card for a math function, on its name: its signature at the call's type, and its contract (spec 10.5).</summary>
+    /// <remarks>
+    /// For the reason <see cref="AboutListMethod"/> gives: no function is a symbol, so the card is read from the one
+    /// table of them (<see cref="MathFunctions"/>). A call the compiler removes says so, since nothing is generated
+    /// for it, and a reader looking at the generated code would otherwise look for it there.
+    /// </remarks>
+    private static Hover? AboutMathFunction(SemanticModel model, int offset)
+    {
+        if (model.IrAt(offset)?.Node is not IrMathCall call || !EditorPositions.Covers(call.NameSpan, offset))
+        {
+            return null;
+        }
+
+        return Card(
+            [
+                Signature(MathFunctions.DisplayNameFor(call.Function, call.ResultType)),
+                MathFunctions.SummaryOf(call.Function),
+                .. call.IsIdentity
+                    ? [$"On a `{call.ResultType.DisplayName}` it is the value itself, so no call is generated."]
+                    : Array.Empty<string>(),
+            ],
+            call.NameSpan);
+    }
 
     /// <summary>The card for one of a map's methods, written as the method it reads as (spec 14.2).</summary>
     /// <remarks>

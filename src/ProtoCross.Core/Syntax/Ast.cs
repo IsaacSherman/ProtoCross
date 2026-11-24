@@ -421,6 +421,21 @@ public sealed record NameExpression(SyntaxName Name, SourceSpan Span) : Expressi
 /// </remarks>
 public sealed record MemberAccessExpression(Expression Receiver, SyntaxName Name, SourceSpan Span) : Expression(Span);
 
+/// <summary>The word <c>_pCrossMath</c>, which qualifies a call to one of the math functions (spec 10.5).</summary>
+/// <remarks>
+/// <para>
+/// A node of its own rather than a name, because it is a reserved word and names nothing a scope could hold. The
+/// parser reads it wherever a value may begin and leaves the dot and the call after it to the postfix rules every
+/// other receiver goes through, so <c>_pCrossMath.</c> with its name still being typed is the member access with a
+/// missing name that completion already asks about after any other dot.
+/// </para>
+/// <para>
+/// Only a call through it means anything. The binder reads <c>_pCrossMath.name(…)</c> as a math call, and refuses
+/// the word anywhere else, alone or with a name it does not call.
+/// </para>
+/// </remarks>
+public sealed record MathQualifierExpression(SourceSpan Span) : Expression(Span);
+
 public sealed record InvocationExpression(
     Expression Callee,
     IReadOnlyList<Expression> Arguments,

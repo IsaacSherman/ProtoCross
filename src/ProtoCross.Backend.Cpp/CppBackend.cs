@@ -285,7 +285,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine($"#define {guard}");
         writer.WriteLine();
 
-        if (UsesFloatingRemainder(module))
+        if (UsesFloatingRemainder(module) || UsesCmathFunctions(module))
         {
             writer.WriteLine("#include <cmath>");
         }
@@ -407,6 +407,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrBinary binary => EmitBinary(binary, placement),
         IrIntegerDivision division => EmitIntegerDivision(division, placement),
         IrUnary unary => EmitUnary(unary, placement),
+        IrMathCall call => EmitMathCall(call, placement),
         IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumToNumber number => $"static_cast<::std::int32_t>({Expression(number.Operand, placement)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement),

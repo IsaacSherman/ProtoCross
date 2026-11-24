@@ -141,6 +141,10 @@ Normative Requirement:
   instead, which only a list's try method takes ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The clause's statement, or
   the expression around it, ends with a token that begins no value, so `refuse` alone passes the
   refusal on.
+- `_pCrossMath` is reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). It is a primary expression,
+  which the binder accepts only as the receiver of a call: `_pCrossMath.name(…)` calls a math function
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)). While the name after its dot is being
+  typed, `_pCrossMath.` is a member access awaiting a name, as any other is.
 - Braces in a list are an entry of a map field, `{ key: k, value: v }`, with fields written as a
   literal's are ([13.2](./§13-Messages.md#132-message-construction)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
@@ -158,7 +162,9 @@ Normative Requirement:
   is refused rather than dropped, because it is not always free of effects: `count / divisor;` can end
   the program under `on_zero fail` ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). An expression that failed to bind has already said why,
   and a statement whose semicolon is missing is one still being typed, which the parser has
-  reported. Neither is told as well that it is not a call.
+  reported. Neither is told as well that it is not a call. A call to a math function only gives a
+  value, so one standing as a statement is `PC0099` too, a call the compiler removes included
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order
   [9.2](./§9-Expressions%20and%20Operators.md#92-operators) gives.

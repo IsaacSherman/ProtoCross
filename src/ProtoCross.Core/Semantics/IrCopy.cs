@@ -50,6 +50,7 @@ public static class IrCopy
                 OnZero = OrNull(division.OnZero),
             },
             IrUnary unary => unary with { Operand = Of(unary.Operand) },
+            IrMathCall call => call with { Arguments = [.. call.Arguments.Select(Of)] },
             IrConversion conversion => conversion with { Operand = Of(conversion.Operand) },
             IrEnumToNumber number => number with { Operand = Of(number.Operand) },
             IrNumberToEnum conversion => conversion with

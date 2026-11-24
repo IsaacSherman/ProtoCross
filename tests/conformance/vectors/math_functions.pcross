@@ -1,0 +1,1135 @@
+// Conformance vectors for the math functions (spec 10.5).
+//
+// Each function has one correct IEEE 754 result, so C# and C++ agree to the bit. An expectation meets a value with
+// ==, where -0.0 meets 0.0 and a NaN meets any NaN (spec 25.3), so a signed zero is shown through its reciprocal: one
+// over -0.0 is -__INF, and one over +0.0 is __INF. A function that gives an integer back unchanged is removed by the
+// compiler, and each such call here is shown at its type's limits.
+//
+// The last two cases are about order (spec 9.3). Each argument there is a lookup that ends the program, of a map of
+// its own that every fixture leaves empty, and the failure names the map, so the conformance tests read which
+// argument ran first.
+
+import proto "math_functions.proto";
+
+extend MathCase {
+    // --- abs ---
+
+    fn abs_double() -> double {
+        return _pCrossMath.abs(d);
+    }
+
+    fn abs_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.abs(d);
+    }
+
+    fn abs_float() -> float {
+        return _pCrossMath.abs(f);
+    }
+
+    fn abs_i32() -> int32 {
+        return _pCrossMath.abs(i32);
+    }
+
+    fn abs_i64() -> int64 {
+        return _pCrossMath.abs(i64);
+    }
+
+    // The value itself: no call is generated.
+    fn abs_u32() -> uint32 {
+        return _pCrossMath.abs(u32);
+    }
+
+    fn abs_u64() -> uint64 {
+        return _pCrossMath.abs(u64);
+    }
+
+    // --- min and max ---
+
+    fn min_double() -> double {
+        return _pCrossMath.min(d, d2);
+    }
+
+    fn max_double() -> double {
+        return _pCrossMath.max(d, d2);
+    }
+
+    fn min_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.min(d, d2);
+    }
+
+    fn max_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.max(d, d2);
+    }
+
+    fn min_of_three() -> double {
+        return _pCrossMath.min(d, d2, d3);
+    }
+
+    fn max_of_three() -> double {
+        return _pCrossMath.max(d, d2, d3);
+    }
+
+    fn min_float() -> float {
+        return _pCrossMath.min(f, f2);
+    }
+
+    fn max_float() -> float {
+        return _pCrossMath.max(f, f2);
+    }
+
+    fn min_float_reciprocal() -> float {
+        return 1.0 / _pCrossMath.min(f, f2);
+    }
+
+    fn max_float_reciprocal() -> float {
+        return 1.0 / _pCrossMath.max(f, f2);
+    }
+
+    fn min_i32() -> int32 {
+        return _pCrossMath.min(i32, i32b);
+    }
+
+    fn max_i32() -> int32 {
+        return _pCrossMath.max(i32, i32b);
+    }
+
+    fn min_i64() -> int64 {
+        return _pCrossMath.min(i64, i64b);
+    }
+
+    fn max_i64() -> int64 {
+        return _pCrossMath.max(i64, i64b);
+    }
+
+    fn min_u32() -> uint32 {
+        return _pCrossMath.min(u32, u32b);
+    }
+
+    fn max_u32() -> uint32 {
+        return _pCrossMath.max(u32, u32b);
+    }
+
+    fn min_u64() -> uint64 {
+        return _pCrossMath.min(u64, u64b);
+    }
+
+    fn max_u64() -> uint64 {
+        return _pCrossMath.max(u64, u64b);
+    }
+
+    // A literal takes the type of the argument beside it, written after it or before.
+    fn at_most_ten() -> int32 {
+        return _pCrossMath.min(i32, 10);
+    }
+
+    fn at_least_half() -> float {
+        return _pCrossMath.max(0.5, f);
+    }
+
+    // --- sqrt ---
+
+    fn sqrt_double() -> double {
+        return _pCrossMath.sqrt(d);
+    }
+
+    fn sqrt_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.sqrt(d);
+    }
+
+    fn sqrt_float() -> float {
+        return _pCrossMath.sqrt(f);
+    }
+
+    // A literal alone takes double.
+    fn sqrt_two() -> double {
+        return _pCrossMath.sqrt(2);
+    }
+
+    fn root_sum_of_squares() -> double {
+        return _pCrossMath.sqrt(d * d + d2 * d2);
+    }
+
+    fn sqrt_of_count() -> double {
+        return _pCrossMath.sqrt(i32 as double);
+    }
+
+    // --- floor, ceil, trunc and round ---
+
+    fn floor_double() -> double {
+        return _pCrossMath.floor(d);
+    }
+
+    fn ceil_double() -> double {
+        return _pCrossMath.ceil(d);
+    }
+
+    fn trunc_double() -> double {
+        return _pCrossMath.trunc(d);
+    }
+
+    fn round_double() -> double {
+        return _pCrossMath.round(d);
+    }
+
+    fn floor_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.floor(d);
+    }
+
+    fn ceil_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.ceil(d);
+    }
+
+    fn trunc_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.trunc(d);
+    }
+
+    fn round_double_reciprocal() -> double {
+        return 1.0 / _pCrossMath.round(d);
+    }
+
+    fn floor_float() -> float {
+        return _pCrossMath.floor(f);
+    }
+
+    fn ceil_float() -> float {
+        return _pCrossMath.ceil(f);
+    }
+
+    fn trunc_float() -> float {
+        return _pCrossMath.trunc(f);
+    }
+
+    fn round_float() -> float {
+        return _pCrossMath.round(f);
+    }
+
+    fn ceil_float_reciprocal() -> float {
+        return 1.0 / _pCrossMath.ceil(f);
+    }
+
+    fn round_float_reciprocal() -> float {
+        return 1.0 / _pCrossMath.round(f);
+    }
+
+    // Each of the four is the value itself on an integer: no call is generated.
+    fn rounded_i32() -> int32 {
+        return _pCrossMath.round(_pCrossMath.trunc(_pCrossMath.ceil(_pCrossMath.floor(i32))));
+    }
+
+    fn rounded_i64() -> int64 {
+        return _pCrossMath.round(_pCrossMath.trunc(_pCrossMath.ceil(_pCrossMath.floor(i64))));
+    }
+
+    fn rounded_u32() -> uint32 {
+        return _pCrossMath.round(_pCrossMath.trunc(_pCrossMath.ceil(_pCrossMath.floor(u32))));
+    }
+
+    fn rounded_u64() -> uint64 {
+        return _pCrossMath.round(_pCrossMath.trunc(_pCrossMath.ceil(_pCrossMath.floor(u64))));
+    }
+
+    // --- order ---
+
+    fn min_in_order() -> double {
+        return _pCrossMath.min(min_first[1] on_missing fail, min_second[1] on_missing fail);
+    }
+
+    fn max_in_order() -> double {
+        return _pCrossMath.max(max_first[1] on_missing fail, max_second[1] on_missing fail, max_third[1] on_missing fail);
+    }
+}
+
+// --- abs ---
+
+test MathCase.abs_double "abs of a negative double is its magnitude" {
+    receiver {
+        d: -2.5,
+    }
+
+    expect return 2.5;
+}
+
+test MathCase.abs_double "abs of negative infinity is infinity" {
+    receiver {
+        d: -__INF,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.abs_double "abs of a NaN is a NaN" {
+    receiver {
+        d: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.abs_double_reciprocal "abs of -0.0 is +0.0" {
+    receiver {
+        d: -0.0,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.abs_float "abs of a negative float is its magnitude" {
+    receiver {
+        f: -1.5,
+    }
+
+    expect return 1.5;
+}
+
+test MathCase.abs_float "abs of a float's negative infinity is infinity" {
+    receiver {
+        f: -__INF,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.abs_i32 "abs of a negative int32 is its magnitude" {
+    receiver {
+        i32: -5,
+    }
+
+    expect return 5;
+}
+
+test MathCase.abs_i32 "abs of the int32 maximum is itself" {
+    receiver {
+        i32: 2147483647,
+    }
+
+    expect return 2147483647;
+}
+
+test MathCase.abs_i32 "abs of the int32 minimum wraps to the minimum" {
+    receiver {
+        i32: -2147483648,
+    }
+
+    expect return -2147483648;
+}
+
+test MathCase.abs_i64 "abs of a negative int64 is its magnitude" {
+    receiver {
+        i64: -9,
+    }
+
+    expect return 9;
+}
+
+test MathCase.abs_i64 "abs of the int64 minimum wraps to the minimum" {
+    receiver {
+        i64: -9223372036854775808,
+    }
+
+    expect return -9223372036854775808;
+}
+
+test MathCase.abs_u32 "abs of the uint32 maximum is itself" {
+    receiver {
+        u32: 4294967295,
+    }
+
+    expect return 4294967295;
+}
+
+test MathCase.abs_u64 "abs of the uint64 maximum is itself" {
+    receiver {
+        u64: 18446744073709551615,
+    }
+
+    expect return 18446744073709551615;
+}
+
+// --- min and max ---
+
+test MathCase.min_double "min of two doubles is the lesser" {
+    receiver {
+        d: 3.5,
+        d2: -1.25,
+    }
+
+    expect return -1.25;
+}
+
+test MathCase.max_double "max of two doubles is the greater" {
+    receiver {
+        d: 3.5,
+        d2: -1.25,
+    }
+
+    expect return 3.5;
+}
+
+test MathCase.min_double "min is a NaN where the first argument is" {
+    receiver {
+        d: __NAN,
+        d2: 1.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.min_double "min is a NaN where the second argument is" {
+    receiver {
+        d: 1.0,
+        d2: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.max_double "max is a NaN where the first argument is" {
+    receiver {
+        d: __NAN,
+        d2: 1.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.max_double "max is a NaN where the second argument is" {
+    receiver {
+        d: 1.0,
+        d2: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.min_of_three "min of three is a NaN where the third is" {
+    receiver {
+        d: 1.0,
+        d2: 2.0,
+        d3: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.max_of_three "max of three is a NaN where the second is" {
+    receiver {
+        d: 1.0,
+        d2: __NAN,
+        d3: 2.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.min_of_three "min of three is the least of them" {
+    receiver {
+        d: 2.0,
+        d2: -7.0,
+        d3: 5.0,
+    }
+
+    expect return -7.0;
+}
+
+test MathCase.max_of_three "max of three is the greatest of them" {
+    receiver {
+        d: 2.0,
+        d2: -7.0,
+        d3: 5.0,
+    }
+
+    expect return 5.0;
+}
+
+test MathCase.min_double "min of infinity and a number is the number" {
+    receiver {
+        d: __INF,
+        d2: 1.0,
+    }
+
+    expect return 1.0;
+}
+
+test MathCase.min_double "min of a number and negative infinity is negative infinity" {
+    receiver {
+        d: 1.0,
+        d2: -__INF,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.max_double "max of negative infinity and a number is the number" {
+    receiver {
+        d: -__INF,
+        d2: 1.0,
+    }
+
+    expect return 1.0;
+}
+
+test MathCase.max_double "max of a number and infinity is infinity" {
+    receiver {
+        d: 1.0,
+        d2: __INF,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.min_double_reciprocal "min of +0.0 and -0.0 is -0.0" {
+    receiver {
+        d: 0.0,
+        d2: -0.0,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.min_double_reciprocal "min of -0.0 and +0.0 is -0.0" {
+    receiver {
+        d: -0.0,
+        d2: 0.0,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.max_double_reciprocal "max of +0.0 and -0.0 is +0.0" {
+    receiver {
+        d: 0.0,
+        d2: -0.0,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.max_double_reciprocal "max of -0.0 and +0.0 is +0.0" {
+    receiver {
+        d: -0.0,
+        d2: 0.0,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.min_float "min of two floats is the lesser" {
+    receiver {
+        f: 0.75,
+        f2: -0.25,
+    }
+
+    expect return -0.25;
+}
+
+test MathCase.max_float "max of two floats is the greater" {
+    receiver {
+        f: 0.75,
+        f2: -0.25,
+    }
+
+    expect return 0.75;
+}
+
+test MathCase.min_float "min of floats is a NaN where the first is" {
+    receiver {
+        f: __NAN,
+        f2: 1.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.max_float "max of floats is a NaN where the second is" {
+    receiver {
+        f: 1.0,
+        f2: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.min_float_reciprocal "min of a float's +0.0 and -0.0 is -0.0" {
+    receiver {
+        f: 0.0,
+        f2: -0.0,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.max_float_reciprocal "max of a float's -0.0 and +0.0 is +0.0" {
+    receiver {
+        f: -0.0,
+        f2: 0.0,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.min_i32 "min of two int32s is the lesser" {
+    receiver {
+        i32: -3,
+        i32b: 7,
+    }
+
+    expect return -3;
+}
+
+test MathCase.max_i32 "max of two int32s is the greater" {
+    receiver {
+        i32: -3,
+        i32b: 7,
+    }
+
+    expect return 7;
+}
+
+test MathCase.min_i32 "min of the int32 limits is the minimum" {
+    receiver {
+        i32: 2147483647,
+        i32b: -2147483648,
+    }
+
+    expect return -2147483648;
+}
+
+test MathCase.max_i64 "max of the int64 limits is the maximum" {
+    receiver {
+        i64: -9223372036854775808,
+        i64b: 9223372036854775807,
+    }
+
+    expect return 9223372036854775807;
+}
+
+test MathCase.min_i64 "min of two int64s is the lesser" {
+    receiver {
+        i64: 12,
+        i64b: -40,
+    }
+
+    expect return -40;
+}
+
+test MathCase.min_u32 "min of uint32 zero and maximum is zero" {
+    receiver {
+        u32: 4294967295,
+        u32b: 0,
+    }
+
+    expect return 0;
+}
+
+test MathCase.max_u32 "max of uint32 zero and maximum is the maximum" {
+    receiver {
+        u32: 0,
+        u32b: 4294967295,
+    }
+
+    expect return 4294967295;
+}
+
+test MathCase.min_u64 "min of a uint64 and the maximum is the uint64" {
+    receiver {
+        u64: 5,
+        u64b: 18446744073709551615,
+    }
+
+    expect return 5;
+}
+
+test MathCase.max_u64 "max of the uint64 maximum and a uint64 is the maximum" {
+    receiver {
+        u64: 18446744073709551615,
+        u64b: 5,
+    }
+
+    expect return 18446744073709551615;
+}
+
+test MathCase.at_most_ten "a literal argument after a field takes its type" {
+    receiver {
+        i32: 25,
+    }
+
+    expect return 10;
+}
+
+test MathCase.at_most_ten "a field below the literal is the min" {
+    receiver {
+        i32: 3,
+    }
+
+    expect return 3;
+}
+
+test MathCase.at_least_half "a literal argument before a field takes its type" {
+    receiver {
+        f: 0.25,
+    }
+
+    expect return 0.5;
+}
+
+// --- sqrt ---
+
+test MathCase.sqrt_double "sqrt of two is correctly rounded" {
+    receiver {
+        d: 2.0,
+    }
+
+    expect return 1.4142135623730951;
+}
+
+test MathCase.sqrt_double "sqrt of a power of four is exact" {
+    receiver {
+        d: 0.25,
+    }
+
+    expect return 0.5;
+}
+
+test MathCase.sqrt_double "sqrt of a negative number is a NaN" {
+    receiver {
+        d: -1.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.sqrt_double "sqrt of infinity is infinity" {
+    receiver {
+        d: __INF,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.sqrt_double "sqrt of a NaN is a NaN" {
+    receiver {
+        d: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.sqrt_double "sqrt of the largest double" {
+    receiver {
+        d: 1.7976931348623157e308,
+    }
+
+    expect return 1.3407807929942596e154;
+}
+
+test MathCase.sqrt_double "sqrt of the least subnormal double" {
+    receiver {
+        d: 4.9406564584124654e-324,
+    }
+
+    expect return 2.2227587494850775e-162;
+}
+
+test MathCase.sqrt_double_reciprocal "sqrt of -0.0 is -0.0" {
+    receiver {
+        d: -0.0,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.sqrt_float "sqrt of a float two is correctly rounded as a float" {
+    receiver {
+        f: 2.0,
+    }
+
+    expect return 1.4142135381698608;
+}
+
+test MathCase.sqrt_float "sqrt of a negative float is a NaN" {
+    receiver {
+        f: -4.0,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.sqrt_two "sqrt of an integer literal takes it as a double" {
+    receiver {}
+    expect return 1.4142135623730951;
+}
+
+test MathCase.root_sum_of_squares "the root of a sum of squares" {
+    receiver {
+        d: 3.0,
+        d2: 4.0,
+    }
+
+    expect return 5.0;
+}
+
+test MathCase.sqrt_of_count "an integer converted first has a root" {
+    receiver {
+        i32: 16,
+    }
+
+    expect return 4.0;
+}
+
+// --- floor, ceil, trunc and round ---
+
+test MathCase.floor_double "floor rounds down" {
+    receiver {
+        d: 1.5,
+    }
+
+    expect return 1.0;
+}
+
+test MathCase.floor_double "floor of a negative rounds away from zero" {
+    receiver {
+        d: -1.5,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.floor_double "floor of the largest double is itself" {
+    receiver {
+        d: 1.7976931348623157e308,
+    }
+
+    expect return 1.7976931348623157e308;
+}
+
+test MathCase.floor_double "floor of negative infinity is itself" {
+    receiver {
+        d: -__INF,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.floor_double "floor of a NaN is a NaN" {
+    receiver {
+        d: __NAN,
+    }
+
+    expect return __NAN;
+}
+
+test MathCase.floor_double_reciprocal "floor of -0.0 is -0.0" {
+    receiver {
+        d: -0.0,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.ceil_double "ceil rounds up" {
+    receiver {
+        d: 1.5,
+    }
+
+    expect return 2.0;
+}
+
+test MathCase.ceil_double "ceil of a negative rounds toward zero" {
+    receiver {
+        d: -1.5,
+    }
+
+    expect return -1.0;
+}
+
+test MathCase.ceil_double "ceil of the largest double is itself" {
+    receiver {
+        d: 1.7976931348623157e308,
+    }
+
+    expect return 1.7976931348623157e308;
+}
+
+test MathCase.ceil_double_reciprocal "ceil of -0.5 is -0.0" {
+    receiver {
+        d: -0.5,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.trunc_double "trunc drops the fraction" {
+    receiver {
+        d: 2.7,
+    }
+
+    expect return 2.0;
+}
+
+test MathCase.trunc_double "trunc of a negative drops the fraction toward zero" {
+    receiver {
+        d: -2.7,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.trunc_double_reciprocal "trunc of -0.5 is -0.0" {
+    receiver {
+        d: -0.5,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.round_double "round of 0.5 is 1" {
+    receiver {
+        d: 0.5,
+    }
+
+    expect return 1.0;
+}
+
+test MathCase.round_double "round of -0.5 is -1" {
+    receiver {
+        d: -0.5,
+    }
+
+    expect return -1.0;
+}
+
+test MathCase.round_double "round of 1.5 is 2" {
+    receiver {
+        d: 1.5,
+    }
+
+    expect return 2.0;
+}
+
+test MathCase.round_double "round of -1.5 is -2" {
+    receiver {
+        d: -1.5,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.round_double "round of 2.5 is 3, away from zero and not to even" {
+    receiver {
+        d: 2.5,
+    }
+
+    expect return 3.0;
+}
+
+test MathCase.round_double "round of -2.5 is -3, away from zero and not to even" {
+    receiver {
+        d: -2.5,
+    }
+
+    expect return -3.0;
+}
+
+test MathCase.round_double "the double just below 0.5 rounds to 0" {
+    receiver {
+        d: 0.49999999999999994,
+    }
+
+    expect return 0.0;
+}
+
+test MathCase.round_double "the double just below 2.5 rounds to 2" {
+    receiver {
+        d: 2.4999999999999996,
+    }
+
+    expect return 2.0;
+}
+
+test MathCase.round_double "the double just above -2.5 rounds to -2" {
+    receiver {
+        d: -2.4999999999999996,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.round_double "the last tie below 2^52 rounds away from zero" {
+    receiver {
+        d: 4503599627370495.5,
+    }
+
+    expect return 4503599627370496.0;
+}
+
+test MathCase.round_double "the last negative tie above -2^52 rounds away from zero" {
+    receiver {
+        d: -4503599627370495.5,
+    }
+
+    expect return -4503599627370496.0;
+}
+
+test MathCase.round_double "round of the largest double is itself" {
+    receiver {
+        d: 1.7976931348623157e308,
+    }
+
+    expect return 1.7976931348623157e308;
+}
+
+test MathCase.round_double "round of infinity is itself" {
+    receiver {
+        d: __INF,
+    }
+
+    expect return __INF;
+}
+
+test MathCase.round_double_reciprocal "round of -0.4 is -0.0" {
+    receiver {
+        d: -0.4,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.floor_float "floor of a negative float rounds away from zero" {
+    receiver {
+        f: -1.5,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.ceil_float "ceil of a float rounds up" {
+    receiver {
+        f: 1.5,
+    }
+
+    expect return 2.0;
+}
+
+test MathCase.trunc_float "trunc of a negative float drops the fraction" {
+    receiver {
+        f: -2.75,
+    }
+
+    expect return -2.0;
+}
+
+test MathCase.round_float "round of a float 2.5 is 3" {
+    receiver {
+        f: 2.5,
+    }
+
+    expect return 3.0;
+}
+
+test MathCase.round_float "round of a float -2.5 is -3" {
+    receiver {
+        f: -2.5,
+    }
+
+    expect return -3.0;
+}
+
+test MathCase.round_float "the float just below 0.5 rounds to 0" {
+    receiver {
+        f: 0.49999997,
+    }
+
+    expect return 0.0;
+}
+
+test MathCase.ceil_float_reciprocal "ceil of a float -0.5 is -0.0" {
+    receiver {
+        f: -0.5,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.round_float_reciprocal "round of a float -0.4 is -0.0" {
+    receiver {
+        f: -0.4,
+    }
+
+    expect return -__INF;
+}
+
+test MathCase.rounded_i32 "rounding the int32 minimum gives it back" {
+    receiver {
+        i32: -2147483648,
+    }
+
+    expect return -2147483648;
+}
+
+test MathCase.rounded_i32 "rounding the int32 maximum gives it back" {
+    receiver {
+        i32: 2147483647,
+    }
+
+    expect return 2147483647;
+}
+
+test MathCase.rounded_i64 "rounding the int64 minimum gives it back" {
+    receiver {
+        i64: -9223372036854775808,
+    }
+
+    expect return -9223372036854775808;
+}
+
+test MathCase.rounded_i64 "rounding the int64 maximum gives it back" {
+    receiver {
+        i64: 9223372036854775807,
+    }
+
+    expect return 9223372036854775807;
+}
+
+test MathCase.rounded_u32 "rounding uint32 zero gives it back" {
+    receiver {
+        u32: 0,
+    }
+
+    expect return 0;
+}
+
+test MathCase.rounded_u32 "rounding the uint32 maximum gives it back" {
+    receiver {
+        u32: 4294967295,
+    }
+
+    expect return 4294967295;
+}
+
+test MathCase.rounded_u64 "rounding uint64 zero gives it back" {
+    receiver {
+        u64: 0,
+    }
+
+    expect return 0;
+}
+
+test MathCase.rounded_u64 "rounding the uint64 maximum gives it back" {
+    receiver {
+        u64: 18446744073709551615,
+    }
+
+    expect return 18446744073709551615;
+}
+
+// --- order ---
+
+test MathCase.min_in_order "min's arguments are evaluated left to right" {
+    receiver {}
+    expect fail;
+}
+
+test MathCase.max_in_order "max's arguments are evaluated left to right" {
+    receiver {}
+    expect fail;
+}

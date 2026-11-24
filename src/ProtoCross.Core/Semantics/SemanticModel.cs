@@ -304,7 +304,8 @@ public sealed class SemanticModel
 
     /// <summary>
     /// Where this document wrote a method the language defines rather than any source: the
-    /// <c>append</c> of each append (spec 14.1), and each of a map's methods (spec 14.2).
+    /// <c>append</c> of each append (spec 14.1), each of a map's methods (spec 14.2), and each math
+    /// function (spec 10.5).
     /// </summary>
     /// <remarks>
     /// Apart from <see cref="AllReferences"/>, because such a name refers to no symbol. Nothing declares
@@ -322,6 +323,7 @@ public sealed class SemanticModel
                         IrListQuery query => query.NameSpan,
                         IrElementLookup lookup => lookup.NameSpan,
                         IrMapUpdate update => update.NameSpan,
+                        IrMathCall call => call.NameSpan,
                         _ => (SourceSpan?)null,
                     })
                     .OfType<SourceSpan>(),

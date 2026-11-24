@@ -135,6 +135,14 @@ internal sealed record SchemaSubject(
     /// </remarks>
     public bool FollowedByAppend { get; init; }
 
+    /// <summary>Whether the name under the caret follows <c>_pCrossMath.</c>, and so names a math function (spec 10.5).</summary>
+    /// <remarks>
+    /// Read off the tokens, as <see cref="FollowedByAppend"/> is. The word is reserved and the binder holds no
+    /// receiver for it, so what may follow its dot is the table of functions and nothing a scope or a type answers.
+    /// Init-only, as <see cref="PrecededByNew"/> is.
+    /// </remarks>
+    public bool PrecededByMathQualifier { get; init; }
+
     /// <summary>Whether <paramref name="offset"/> is somewhere a schema name could be written.</summary>
     /// <remarks>
     /// False inside a comment and inside a string literal. Both are places where an identifier is not
@@ -195,6 +203,8 @@ internal sealed record SchemaSubject(
                 : null,
             PrecededByFactory = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Factory },
             FollowedByAppend = BeginsAnAppend(tokens, end),
+            PrecededByMathQualifier = preceding is { Kind: TokenKind.Dot } dot
+                && Preceding(tokens, dot.Span.Start.Offset) is { Kind: TokenKind.PCrossMath },
         };
 
         return true;

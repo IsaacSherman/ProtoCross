@@ -82,6 +82,7 @@ public sealed class Lexer
         ["var"] = TokenKind.Var,
         ["void"] = TokenKind.Void,
         ["while"] = TokenKind.While,
+        ["_pCrossMath"] = TokenKind.PCrossMath,
     };
 
     private readonly string _text;

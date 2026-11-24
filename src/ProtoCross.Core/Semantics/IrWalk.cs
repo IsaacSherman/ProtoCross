@@ -167,6 +167,7 @@ public static class IrWalk
                 ? [division.Left, division.Right, onZero]
                 : [division.Left, division.Right],
             IrUnary unary => [unary.Operand],
+            IrMathCall call => [.. call.Arguments],
             IrConversion conversion => [conversion.Operand],
             IrEnumToNumber conversion => [conversion.Operand],
             IrEnumMembership membership => [membership.Value],

@@ -171,6 +171,11 @@ The IR preserves:
   enum and a lookup whose clause refuses carry that as their behavior, with the refusal where a fallback
   would be, and the IR answers which operation's clause refuses and what with, and which expression of a
   statement stands on its own, once for the binder and both backends.
+- **A call to a math function**, holding which function it calls and its arguments, in the order
+  written, of the type it gives. An integer `abs` carries the overflow behavior unary `-` carries,
+  stamped where it was bound. A call the compiler removes is kept, and answers that it gives its
+  argument back, so an editor can still find and describe it and a backend writes the argument alone
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
   constants it lists, of the subject's type, and its block, and the default arm is the one listing
   none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the
@@ -205,6 +210,7 @@ unnoticed, as it did before #107 caught it up.
 | `IrThis`, `IrLocalReference`, `IrParameterReference`, `IrMethodCall` | References and calls, each to the identity it resolved to |
 | `IrFieldAccess`, `IrFieldPresence` | Field access, and presence checks |
 | `IrBinary`, `IrUnary`, `IrConversion`, `IrIntegerDivision` | Exact numeric operation kinds, how each operation behaves, and what a zero divisor does |
+| `IrMathCall` | A call to a math function, how an integer `abs` behaves, and whether the call gives its argument back |
 | `IrEnumValue`, `IrEnumToNumber`, `IrNumberToEnum`, `IrEnumMembership` | Descriptor identities for enum values, and an enum's number |
 | `IrLiteral` | A literal's value in one stated representation |
 | `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node; a list written as a value |

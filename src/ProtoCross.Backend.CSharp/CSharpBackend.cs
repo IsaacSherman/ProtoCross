@@ -282,6 +282,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrBinary binary => EmitBinary(binary, placement, receiverName),
         IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
         IrUnary unary => EmitUnary(unary, placement, receiverName),
+        IrMathCall call => EmitMathCall(call, placement, receiverName),
         IrConversion conversion => EmitConversion(conversion, placement, receiverName),
         IrEnumToNumber number => $"((int){Expression(number.Operand, placement, receiverName)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement, receiverName),

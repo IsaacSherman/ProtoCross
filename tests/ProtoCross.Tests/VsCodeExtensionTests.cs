@@ -311,8 +311,10 @@ public class VsCodeExtensionTests
 
         Assert.Equal(5, patterns.Count);
 
+        // A reserved word may hold a capital, as '_pCrossMath' does. The numbers spelled like names, '(?:__INF|__NAN)',
+        // are a list of their own and are not words.
         var lists = patterns
-            .SelectMany(pattern => Regex.Matches(pattern, @"\(\?:([a-z0-9_|]+)\)"))
+            .SelectMany(pattern => Regex.Matches(pattern, @"\(\?:((?!__)[A-Za-z0-9_|]+)\)"))
             .Select(list => list.Groups[1].Value.Split('|').Order(StringComparer.Ordinal).ToList())
             .ToList();
         var reserved = Lexer.Keywords.Keys.Order(StringComparer.Ordinal).ToList();

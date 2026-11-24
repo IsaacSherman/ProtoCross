@@ -861,6 +861,19 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor CallNamesAMethodAndAHelper =
         new("PC0157", DiagnosticSeverity.Error, "call names a method and a helper");
 
+    // ------------------------------------------------------- math functions
+
+    /// <summary>
+    /// <c>_pCrossMath</c>, or a math function through it, written anywhere but in a call,
+    /// <c>_pCrossMath.name(…)</c> (spec 10.5).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MathFunctionNotCalled =
+        new("PC0158", DiagnosticSeverity.Error, "math function not called");
+
+    /// <summary><c>_pCrossMath.name</c> where no math function has that name (spec 10.5).</summary>
+    public static readonly DiagnosticDescriptor UnknownMathFunction =
+        new("PC0159", DiagnosticSeverity.Error, "unknown math function");
+
     // ------------------------------------------------------- the configuration file
 
     /// <summary>An element <c>protocross.config.xml</c> has no setting for (spec 10.4).</summary>

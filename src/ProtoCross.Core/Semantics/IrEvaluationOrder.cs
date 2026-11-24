@@ -65,6 +65,7 @@ public static class IrEvaluationOrder
         IrElementLookup { OnRefused: OutOfRangeBehavior.Fail } => true,
         IrBinary { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
         IrUnary { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
+        IrMathCall { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
         _ => IrWalk.ChildrenOf(node).Any(MayNotComplete),
     };
 

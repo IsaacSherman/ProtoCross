@@ -361,6 +361,11 @@ public sealed class CompletionProvider
             return [];
         }
 
+        if (subject.PrecededByMathQualifier)
+        {
+            return MathFunctionsAfter(model, subject, asked.Document);
+        }
+
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
@@ -1965,7 +1970,33 @@ public sealed class CompletionProvider
         => arm.Span.Start.Offset < offset
             && (offset < arm.Span.End.Offset || (offset == arm.Span.End.Offset && !arm.Body.IsClosed));
 
-    private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false"];
+    private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false", MathFunctions.Qualifier];
+
+    /// <summary>The math functions, offered after <c>_pCrossMath.</c> with their signatures (spec 10.5).</summary>
+    /// <remarks>
+    /// Each gives a number, which has no member and is no field, so nothing is offered where a receiver goes or as
+    /// the operand of <c>has</c>, the floor a map's methods are held to in <see cref="Members"/>. A function is called,
+    /// so where no parenthesis follows, the item brings its own, as a map's method does.
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem> MathFunctionsAfter(SemanticModel model, SchemaSubject subject, OpenDocument document)
+    {
+        if (subject.FollowedByDot || NamesAPresenceField(model, subject))
+        {
+            return [];
+        }
+
+        return
+        [
+            .. MathFunctions.All.Select(function => Member(
+                subject.FollowedByCall ? MathFunctions.NameOf(function) : MathFunctions.NameOf(function) + "()",
+                CompletionItemKind.Function,
+                MathFunctions.DisplayNameFor(function),
+                MathFunctions.SummaryOf(function),
+                rank: "1",
+                subject,
+                document)),
+        ];
+    }
 
     /// <summary>The type whose members may be written after the caret's dot, or null when there is none.</summary>
     /// <remarks>

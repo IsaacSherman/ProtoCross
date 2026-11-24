@@ -437,6 +437,11 @@ public sealed partial class Binder
     /// </remarks>
     private IrExpression BindMemberAccess(MemberAccessExpression member, Scope scope, MethodContext context)
     {
+        if (member.Receiver is MathQualifierExpression)
+        {
+            return RefuseUncalledMathFunction(member);
+        }
+
         if (member.Name.IsMissing)
         {
             return new IrMissingMemberAccess(
@@ -590,6 +595,11 @@ public sealed partial class Binder
             // awaiting a member -- rather than looked up as a method called the empty string.
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return Uncallable(BindMemberAccess(member, scope, context));
+
+            // '_pCrossMath.abs(x)' bound as a call rather than a value: with 'on_refused' after it, or after 'return'
+            // in a method that returns nothing. What is wrong with either is said where each is bound.
+            case MemberAccessExpression { Receiver: MathQualifierExpression } member:
+                return BindMathCall(member, invocation, scope, context, null);
 
             // 'Invoice.factory.create()': settled before the receiver is bound, because 'Invoice.factory'
             // is no value, and binding it as one reports that it is not.

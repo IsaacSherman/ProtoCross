@@ -136,9 +136,12 @@ public sealed partial class Binder
             {
                 _diagnostics.Report(
                     DiagnosticCodes.UnnecessaryOnRefusedClause,
-                    bound is IrMethodCall plain
-                        ? $"'{plain.Target.Name}' cannot refuse, so this clause cannot run."
-                        : "This call cannot refuse, so this clause cannot run.",
+                    bound switch
+                    {
+                        IrMethodCall plain => $"'{plain.Target.Name}' cannot refuse, so this clause cannot run.",
+                        IrMathCall math => $"'{MathFunctions.NameOf(math.Function)}' cannot refuse, so this clause cannot run.",
+                        _ => "This call cannot refuse, so this clause cannot run.",
+                    },
                     handled.Clause.Span,
                     "Delete the clause. Only a call to a method that declares 'refuses' needs one (spec 16.3).");
             }

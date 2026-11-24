@@ -257,7 +257,7 @@ public sealed partial class CSharpBackend
     /// <remarks>Asked of what it is built from, so that anything not known to be inert is taken to see.</remarks>
     private static bool CouldSeeAReach(IrExpression value)
         => IrWalk.DescendantsAndSelf(value).Any(node => node is not (IrLiteral or IrParameterReference
-            or IrLocalReference or IrBinary or IrIntegerDivision or IrUnary or IrConversion
+            or IrLocalReference or IrBinary or IrIntegerDivision or IrUnary or IrMathCall or IrConversion
             or IrEnumValue or IrEnumToNumber or IrNumberToEnum or IrEnumMembership));
 
     /// <summary>

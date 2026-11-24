@@ -636,6 +636,8 @@ public sealed partial class Binder
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
+            InvocationExpression invocation when MathCalleeOf(invocation) is { } function
+                => BindMathCall(function, invocation, scope, context, expectedType),
             InvocationExpression invocation => BindCallValue(invocation, scope, context),
             OnRefusedExpression handled => BindOnRefused(handled, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
@@ -648,6 +650,7 @@ public sealed partial class Binder
             MapEntryExpression entry => BindStrayEntry(entry, scope, context),
             ListExpression list => BindListValue(list, scope, context, expectedType),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
+            MathQualifierExpression qualifier => RefuseMathQualifier(qualifier),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
         };

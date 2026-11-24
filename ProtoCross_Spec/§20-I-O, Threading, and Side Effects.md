@@ -10,7 +10,9 @@ Normative Requirements:
   error and terminates the process as specified in 10.2.1, and a conversion to an enum that fails on
   a number the enum does not name does the same ([12.1](./§12-Enums.md#121-an-enums-number)). A project that forbids ending the program
   has none ([10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy)), so nothing it generates writes to standard error or ends the process.
-- ProtoCross methods may call only ProtoCross methods resolved by the compiler.
+- ProtoCross methods may call only ProtoCross methods resolved by the compiler, and the math
+  functions ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)), each of which gives a value and
+  does nothing else.
 
 **Decided: a pure method is not marked.** Every method is pure except a `mut fn`, which is marked
 already ([18](./§18-Mutability.md#18-mutability)), so a marker would say of each other method what all of them are.

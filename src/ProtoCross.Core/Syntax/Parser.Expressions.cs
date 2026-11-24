@@ -609,7 +609,8 @@ public sealed partial class Parser
     private static bool BeginsAValue(TokenKind kind)
         => kind is TokenKind.Identifier or TokenKind.IntegerLiteral or TokenKind.FloatLiteral or TokenKind.StringLiteral
             or TokenKind.True or TokenKind.False or TokenKind.OpenParen or TokenKind.OpenBracket
-            or TokenKind.Minus or TokenKind.Bang or TokenKind.Not or TokenKind.Tilde or TokenKind.Has;
+            or TokenKind.Minus or TokenKind.Bang or TokenKind.Not or TokenKind.Tilde or TokenKind.Has
+            or TokenKind.PCrossMath;
 
     /// <summary>
     /// Whether the bracket that is the current token, after a value, opens a key, <c>[k]</c>, rather
@@ -755,6 +756,10 @@ public sealed partial class Parser
             case TokenKind.Identifier:
                 Advance();
                 return new NameExpression(new SyntaxName(token.Text, token.Span), token.Span);
+
+            case TokenKind.PCrossMath:
+                Advance();
+                return new MathQualifierExpression(token.Span);
 
             case TokenKind.OpenParen:
             {

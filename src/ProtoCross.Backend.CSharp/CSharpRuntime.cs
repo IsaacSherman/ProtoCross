@@ -712,7 +712,9 @@ public static class CSharpRuntime
     /// </para>
     /// <para>
     /// Negation is not emitted for the unsigned types: negating an unsigned value is PC0052, so no
-    /// call site can exist.
+    /// call site can exist. Nor is <c>Abs</c>, which is the value itself there and is never called
+    /// (spec 10.5). <c>Abs</c> is the negation of a negative value under the same policy, so the
+    /// minimum's magnitude is what negating the minimum gives, and the value is read once.
     /// </para>
     /// </remarks>
     private static void EmitOverflowingOperations(
@@ -771,6 +773,13 @@ public static class CSharpRuntime
                 default:
                     throw new ArgumentOutOfRangeException(nameof(behavior), behavior, "Unhandled behavior.");
             }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine($"/// <summary>Magnitude (spec 10.5), {Describe(behavior)}: a negative value is negated.</summary>");
+        using (writer.Block($"public static {type} {stem}Abs({type} value)"))
+        {
+            writer.WriteLine($"return value < 0 ? {stem}Negate(value) : value;");
         }
     }
 

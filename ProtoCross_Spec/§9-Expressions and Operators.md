@@ -8,6 +8,7 @@ The language currently includes:
 - Local, loop-binding, parameter, and implicit receiver field references.
 - Field access through `.`.
 - Method calls on message receivers.
+- Calls to the math functions, `_pCrossMath.min(a, b)` ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
@@ -21,9 +22,9 @@ Not implemented:
 - Top-level function calls.
 - Indexing anything but a map. A repeated field has none.
 - Bytes literals.
-- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0** ([30.9.5](./§30-Unresolved%20Questions%20Index.md#3095-math-intrinsics)).
-  Each can be written today with a comparison, and how an intrinsic is named and found belongs with
-  top-level functions, which are post-1.0 too ([30.7.2](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)).
+- Math functions beyond the eight [10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, such as
+  `pow` and the trigonometric functions. **Post-1.0**
+  ([30.10.13](./§30-Unresolved%20Questions%20Index.md#301013-further-math-functions)).
 
 ### 9.2 Operators
 

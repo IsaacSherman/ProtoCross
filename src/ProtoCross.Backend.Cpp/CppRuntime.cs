@@ -48,10 +48,12 @@ public static class CppRuntime
         writer.WriteLine("#ifndef PROTOCROSS_RUNTIME_H_");
         writer.WriteLine("#define PROTOCROSS_RUNTIME_H_");
         writer.WriteLine();
+        writer.WriteLine("#include <cmath>");
         writer.WriteLine("#include <cstdint>");
         writer.WriteLine("#include <cstdio>");
         writer.WriteLine("#include <cstdlib>");
         writer.WriteLine("#include <limits>");
+        writer.WriteLine("#include <type_traits>");
         writer.WriteLine();
         writer.WriteLine("// Requires C++20: the conversion from an unsigned type back to the corresponding");
         writer.WriteLine("// signed type is defined as two's complement (P0907R4). Earlier standards leave that");
@@ -77,6 +79,7 @@ public static class CppRuntime
                     EmitBinaryHelper(writer, behavior, "sub", "-", "subtraction", signed, unsigned, suffix);
                     EmitBinaryHelper(writer, behavior, "mul", "*", "multiplication", signed, unsigned, suffix);
                     EmitNegateHelper(writer, behavior, signed, unsigned, suffix);
+                    EmitAbsHelper(writer, behavior, signed, suffix);
                     EmitDivideHelper(writer, behavior, signed, unsigned, suffix);
                     EmitModuloHelper(writer, behavior, signed, suffix);
                     EmitDivideOrHelper(writer, behavior, signed, suffix);
@@ -116,6 +119,12 @@ public static class CppRuntime
             writer.WriteLine();
 
             EmitElementHelpers(writer);
+
+            writer.WriteLine();
+            writer.WriteLine("// --- math functions (10.5) ---");
+            writer.WriteLine();
+
+            EmitMathHelpers(writer);
         }
 
         writer.WriteLine();
@@ -460,6 +469,74 @@ public static class CppRuntime
         }
 
         writer.WriteLine();
+    }
+
+    /// <summary>Emits <c>abs</c> of a signed type under one policy: a negative value negated, under that policy (spec 10.5).</summary>
+    /// <remarks>
+    /// Through the negation helper, so the minimum's magnitude is what negating the minimum gives, and the value is
+    /// read once. None is emitted for an unsigned type, whose <c>abs</c> is the value itself and is never called.
+    /// </remarks>
+    private static void EmitAbsHelper(SourceWriter writer, ArithmeticBehavior behavior, string signed, string suffix)
+    {
+        if (!IsSigned(suffix))
+        {
+            return;
+        }
+
+        var stem = Stem(behavior);
+
+        writer.WriteLine($"// Magnitude, {Describe(behavior)}.");
+        using (writer.Block($"inline {signed} {stem}_abs_{suffix}({signed} a)"))
+        {
+            writer.WriteLine($"return a < 0 ? {stem}_neg_{suffix}(a) : a;");
+        }
+
+        writer.WriteLine();
+    }
+
+    /// <summary>Emits <c>math_min</c> and <c>math_max</c>, the least and the greatest of two values (spec 10.5).</summary>
+    /// <remarks>
+    /// <para>
+    /// As IEEE 754-2019 <c>minimum</c> and <c>maximum</c> give them, and as .NET's <c>Math.Min</c> and
+    /// <c>Math.Max</c> do, step for step: a NaN where either is one, the first where both are, and <c>-0.0</c> below
+    /// <c>+0.0</c>. <c>std::min</c> and <c>std::max</c> give a NaN or not by where it stands, and <c>fmin</c> and
+    /// <c>fmax</c> ignore one and order no zero by its sign, so none of them would do.
+    /// </para>
+    /// <para>
+    /// One template for every type. An integer has no NaN and no signed zero, so the floating-point steps are left
+    /// out for it at compile time.
+    /// </para>
+    /// </remarks>
+    private static void EmitMathHelpers(SourceWriter writer)
+    {
+        EmitMathExtreme(writer, "math_min", "The lesser of two values", "a < b", "a");
+        writer.WriteLine();
+        EmitMathExtreme(writer, "math_max", "The greater of two values", "b < a", "b");
+    }
+
+    private static void EmitMathExtreme(SourceWriter writer, string name, string what, string firstWins, string signed)
+    {
+        writer.WriteLine($"// {what}: a NaN if either is one, and -0.0 below +0.0.");
+        writer.WriteLine("template <typename T>");
+        using (writer.Block($"inline T {name}(T a, T b)"))
+        {
+            using (writer.Block("if constexpr (::std::is_floating_point_v<T>)"))
+            {
+                using (writer.Block("if (a == b)"))
+                {
+                    writer.WriteLine($"return ::std::signbit({signed}) ? a : b;");
+                }
+
+                writer.WriteLine();
+                using (writer.Block("if (::std::isnan(a))"))
+                {
+                    writer.WriteLine("return a;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine($"return {firstWins} ? a : b;");
+        }
     }
 
     /// <summary>

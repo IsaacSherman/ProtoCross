@@ -989,6 +989,53 @@ public sealed record IrUnary(
             : null;
 }
 
+/// <summary>A call to one of the math functions, <c>_pCrossMath.sqrt(x)</c> (spec 10.5).</summary>
+/// <param name="Function">Which function is called.</param>
+/// <param name="Arguments">What it is called on, in the order written: one, or two or more for <c>min</c> and <c>max</c>, each of <paramref name="ResultType"/>.</param>
+/// <param name="ResultType">The type of every argument, and of the result.</param>
+/// <param name="Behavior">
+/// What <c>abs</c> of a signed integer's minimum does, chosen by the project's overflow policy as unary <c>-</c>'s is
+/// (<see cref="OverflowingType"/>). Wrapping for every other call, where it governs nothing.
+/// </param>
+/// <param name="NameSpan">Where the function's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A call the compiler removes stays one of these, marked by <see cref="IsIdentity"/> rather than replaced by its
+/// argument. Hover still finds the function on its name, and the argument's names are still references, as they are
+/// in any other call; the backends write the argument alone.
+/// </para>
+/// <para>
+/// The arguments are evaluated left to right, each once, as a call's are (spec 9.3). <c>min</c> and <c>max</c> of
+/// more than two are one node with all their arguments, not a nest of pairs, so an argument is evaluated where it
+/// is written however a backend nests the calls it makes.
+/// </para>
+/// </remarks>
+public sealed record IrMathCall(
+    MathFunction Function,
+    IReadOnlyList<IrExpression> Arguments,
+    ScalarType ResultType,
+    ArithmeticBehavior Behavior,
+    SourceSpan NameSpan,
+    SourceSpan Span) : IrExpression(ResultType, Span)
+{
+    /// <summary>
+    /// Whether the call gives its argument back unchanged, and is written as the argument alone: <c>abs</c> of an
+    /// unsigned integer, or <c>floor</c>, <c>ceil</c>, <c>trunc</c> or <c>round</c> of an integer.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the node rather than recorded beside it, for <see cref="IrUnary.OverflowingType"/>'s reason: it follows
+    /// from the function and the type, and both backends and an editor ask it.
+    /// </remarks>
+    public bool IsIdentity => MathFunctions.IsIdentity(Function, ResultType);
+
+    /// <summary>
+    /// The integer type whose overflow <see cref="Behavior"/> governs here, or null where it governs nothing: an
+    /// <c>abs</c> of a signed integer, whose minimum has no magnitude of its type, as unary <c>-</c>'s has none.
+    /// </summary>
+    public ScalarType? OverflowingType
+        => Function is MathFunction.Abs && ResultType is { IsInteger: true, IsSigned: true } ? ResultType : null;
+}
+
 /// <summary>
 /// A named protobuf enum constant, such as <c>TopLevelStatus.TOP_LEVEL_STATUS_OK</c>.
 /// </summary>

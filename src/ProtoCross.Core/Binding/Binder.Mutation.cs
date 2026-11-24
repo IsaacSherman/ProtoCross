@@ -547,7 +547,8 @@ public sealed partial class Binder
     /// </summary>
     private IrStatement BindExpressionStatement(ExpressionStatement statement, Scope scope, MethodContext context)
     {
-        if (StandingCallOf(statement.Expression) is not var (invocation, handled))
+        // A math function only gives a value, so a call to one is refused as a statement as 'x;' is (spec 10.5).
+        if (StandingCallOf(statement.Expression) is not var (invocation, handled) || MathCalleeOf(invocation) is not null)
         {
             return RefuseExpressionStatement(statement, scope, context);
         }
@@ -611,7 +612,9 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.ExpressionStatementIsNotACall,
-                "Only a call can stand as a statement, and this computes a value nothing uses.",
+                value is IrMathCall call
+                    ? $"'{MathFunctions.NameOf(call.Function)}' only gives a value, and nothing uses this one."
+                    : "Only a call can stand as a statement, and this computes a value nothing uses.",
                 statement.Expression.Span,
                 "To change something, assign it: 'x = …;' or 'x += …;'. To keep the value, store it: "
                 + "'var x = …;'. Otherwise delete the statement (spec 7.1).");

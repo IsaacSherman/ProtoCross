@@ -258,6 +258,25 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
         Assert.DoesNotContain("Basket.order_second has no such key", output, StringComparison.Ordinal);
     }
 
+    /// <summary>C++ ends a math call at the argument written first (spec 10.5, 9.3).</summary>
+    /// <remarks>
+    /// Each argument of math_functions' min_in_order and max_in_order is a lookup of an empty map of its own that ends
+    /// the program, naming its map. C# is not asked, for <see cref="CppEndsTheProgramAtTheOperandWrittenFirst"/>'s reason.
+    /// </remarks>
+    [Theory]
+    [InlineData("min")]
+    [InlineData("max")]
+    public void CppEndsAMathCallAtTheArgumentWrittenFirst(string function)
+    {
+        SkipIfUnavailable(_fixture.Cpp);
+
+        var output = _fixture.Cpp.DriverOutputs["math_functions.tests.cc"];
+
+        Assert.Contains($"MathCase.{function}_first has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"MathCase.{function}_second has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"MathCase.{function}_third has no such key", output, StringComparison.Ordinal);
+    }
+
     private void AssertBackendAgrees(ConformanceRun run)
     {
         SkipIfUnavailable(run);
