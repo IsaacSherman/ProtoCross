@@ -246,8 +246,9 @@ public sealed partial class Binder
 
     /// <summary>
     /// The names protoc's generated code declares at namespace scope for the schemas, in each backend,
-    /// with what declares each: a message's or an enum's class, an enum's values in C++, and each namespace
-    /// a file's classes are declared in, enclosing ones included. The first to declare a name keeps it.
+    /// with what declares each: a message's or an enum's class, an enum's values and the names declared
+    /// beside them in C++, and each namespace a file's classes are declared in, enclosing ones included.
+    /// The first to declare a name keeps it.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -255,9 +256,10 @@ public sealed partial class Binder
     /// file's reflection class in its namespace whatever else the file holds.
     /// </para>
     /// <para>
-    /// protoc's C++ declares an enum's values unscoped, beside the enum, so a function or namespace of a
-    /// value's name there is one a compiler refuses. Its C# declares them inside the enum, where nothing
-    /// generated here can meet them.
+    /// protoc's C++ declares an enum's values unscoped, beside the enum, and with them its limits and the
+    /// functions over it (<see cref="NameConventions.GetCppEnumCompanionNames"/>), so a function or
+    /// namespace of one of those names there is one a compiler refuses. Its C# declares them inside the
+    /// enum, where nothing generated here can meet them.
     /// </para>
     /// </remarks>
     private Dictionary<DeclaredName, string> NamesProtocDeclares()
@@ -272,7 +274,7 @@ public sealed partial class Binder
                     break;
                 case SchemaEnumName { Descriptor: var enumType }:
                     DeclareType(enumType, enumType.ContainingType, NameConventions.GetCppTypeName(enumType));
-                    DeclareCppValues(enumType);
+                    DeclareCppNamesBeside(enumType);
                     break;
             }
         }
@@ -300,13 +302,19 @@ public sealed partial class Binder
             names.TryAdd(DeclaredName.Cpp(NameConventions.GetCppNamespace(type.File), cppName), declaredBy);
         }
 
-        void DeclareCppValues(EnumDescriptor enumType)
+        void DeclareCppNamesBeside(EnumDescriptor enumType)
         {
+            var ns = NameConventions.GetCppNamespace(enumType.File);
             foreach (var value in enumType.Values)
             {
                 names.TryAdd(
-                    DeclaredName.Cpp(NameConventions.GetCppNamespace(enumType.File), NameConventions.GetCppValueName(value)),
+                    DeclaredName.Cpp(ns, NameConventions.GetCppValueName(value)),
                     $"the name protoc's C++ gives the value '{value.Name}' of '{enumType.FullName}'");
+            }
+
+            foreach (var companion in NameConventions.GetCppEnumCompanionNames(enumType))
+            {
+                names.TryAdd(DeclaredName.Cpp(ns, companion), $"a name protoc's C++ declares beside '{enumType.FullName}'");
             }
         }
     }

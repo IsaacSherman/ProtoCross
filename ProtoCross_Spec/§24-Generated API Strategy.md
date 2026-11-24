@@ -30,10 +30,15 @@ the message, in the namespace protoc declares it in, as the message's extension 
 **A factory whose class would share a name in that namespace is `PC0126`.** In one project,
 `acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
 project's namespace. A project named after its schemas' package could also declare one beside a
-schema's message or enum of that name, or, in C++, beside an enum's value of that name: protoc's C++
-declares an enum's values unscoped, beside the enum, where its C# declares them inside it. Both are
-refused, and the help says how to separate them. Refusing is what C# does with two classes of one
-name.
+schema's message or enum of that name, or, in C++, beside another name protoc declares for an enum.
+protoc's C++ declares an enum's values unscoped, beside the enum, where its C# declares them inside
+it, and with them the enum's limits and the functions over it: for `Kind`, `Kind_MIN`, `Kind_MAX`,
+`Kind_ARRAYSIZE`, `Kind_IsValid`, `Kind_Name`, `Kind_Parse`, `Kind_descriptor`,
+`Kind_internal_data_`, and an open enum's two sentinels, `Kind_INT_MIN_SENTINEL_DO_NOT_USE_` and
+`Kind_INT_MAX_SENTINEL_DO_NOT_USE_`. The limits of a nested `Outer.Level` are `Outer_Level_Level_MIN`
+and so on, the rest `Outer_Level_IsValid` and so on. `_ARRAYSIZE` is left out where the largest value
+is 2,147,483,647, and `_descriptor` from a file built for the lite runtime. Both are refused, and the
+help says how to separate them. Refusing is what C# does with two classes of one name.
 
 The class is compared as each backend declares it, by its namespace and name there, and a clash in
 either backend is refused whichever backends are run:
@@ -97,9 +102,9 @@ a factory's class is above, whichever backends are run:
   method named `helpers`, a function C++ declares in the project's namespace. A schema's own namespace may be the helpers': package
   `acme.billing.helpers` declares its messages beside them, since two namespaces of one name are one
   namespace in both languages.
-- **Each helper.** A schema's type, namespace or enum value named like a helper in the helpers' C++
-  namespace takes that helper's name: package `acme.billing.helpers` with a value `READY` takes the
-  helper `READY`.
+- **Each helper.** A schema's type or namespace, or a name protoc declares for an enum, named like a
+  helper in the helpers' C++ namespace takes that helper's name: package `acme.billing.helpers` with an
+  enum `Kind` and its value `READY` takes the helpers `READY` and `Kind_MIN`.
 
 `PC0126` is titled "generated name collides", since it covers more than a factory's class.
 

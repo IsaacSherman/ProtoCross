@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using Google.Protobuf.Reflection;
+using ProtoCross.Types;
 
 namespace ProtoCross.Backend;
 
@@ -562,6 +563,61 @@ public static partial class NameConventions
         return value.EnumDescriptor.ContainingType is null
             ? name
             : GetCppTypeName(value.EnumDescriptor) + "_" + name;
+    }
+
+    /// <summary>
+    /// The C++ function protoc declares beside an enum to say whether it names a number, unqualified: its
+    /// class, then <c>_IsValid</c>, so <c>Outer_Level_IsValid</c>, and <c>Swap__IsValid</c> for a top-level
+    /// enum whose class is <c>Swap_</c>.
+    /// </summary>
+    public static string GetCppEnumValidatorName(EnumDescriptor enumType) => GetCppTypeName(enumType) + "_IsValid";
+
+    /// <summary>
+    /// Every name protoc's C++ declares at namespace scope for an enum besides its class and its values,
+    /// unqualified: the limits of its range, the functions over it, the table they read, and an open enum's
+    /// two sentinels.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reproduced from the headers protoc 31.1 and 33.4 generate, which agree, as
+    /// <see cref="GetCppValueName"/> is, since a name missing here is a header the C++ compiler refuses,
+    /// and one listed that protoc does not declare refuses a name that would have compiled. Two spellings
+    /// are in use. The limits, <c>_MIN</c>,
+    /// <c>_MAX</c> and <c>_ARRAYSIZE</c>, take the enum's own name, unescaped, after a nested enum's class:
+    /// <c>Kind_MIN</c>, <c>Outer_Level_Level_MIN</c>, and <c>Swap_MIN</c> for an enum whose class is
+    /// <c>Swap_</c>. Everything else takes the class, and a sentinel takes it after a nested enum's class
+    /// again: <c>Swap__IsValid</c>, <c>Outer_Level_Outer_Level_INT_MIN_SENTINEL_DO_NOT_USE_</c>.
+    /// </para>
+    /// <para>
+    /// Three are declared only sometimes, and listed only then. <c>_ARRAYSIZE</c>, the largest value plus
+    /// one, is left out where the largest value is <c>int.MaxValue</c> and the sum would overflow. The
+    /// sentinels, which widen the enum's C++ type to every <c>int32</c>, are an open enum's
+    /// (<see cref="EnumOpenness"/>). <c>_descriptor</c> is left out of a file built for the lite runtime,
+    /// which has no descriptors.
+    /// </para>
+    /// </remarks>
+    public static IReadOnlyList<string> GetCppEnumCompanionNames(EnumDescriptor enumType)
+    {
+        var type = GetCppTypeName(enumType);
+        var nested = enumType.ContainingType is null ? string.Empty : type + "_";
+        var limits = nested + enumType.Name;
+        var hasArraySize = enumType.Values.Max(value => value.Number) < int.MaxValue;
+        var hasDescriptor = enumType.File.GetOptions()?.OptimizeFor is not Google.Protobuf.Reflection.FileOptions.Types.OptimizeMode.LiteRuntime;
+
+        return
+        [
+            limits + "_MIN",
+            limits + "_MAX",
+            .. hasArraySize ? [limits + "_ARRAYSIZE"] : Array.Empty<string>(),
+            GetCppEnumValidatorName(enumType),
+            type + "_Name",
+            type + "_Parse",
+            type + "_internal_data_",
+            .. hasDescriptor ? [type + "_descriptor"] : Array.Empty<string>(),
+            .. EnumOpenness.IsClosed(enumType)
+                ? Array.Empty<string>()
+                : [nested + type + "_INT_MIN_SENTINEL_DO_NOT_USE_", nested + type + "_INT_MAX_SENTINEL_DO_NOT_USE_"],
+        ];
     }
 
     /// <summary>

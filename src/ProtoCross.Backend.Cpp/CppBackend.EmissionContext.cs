@@ -174,6 +174,14 @@ public sealed partial class CppBackend
         return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
     }
 
+    /// <summary>protoc's function saying whether an enum names a number, fully qualified.</summary>
+    private static string QualifiedEnumValidatorName(EnumDescriptor descriptor)
+    {
+        var ns = NameConventions.GetCppNamespace(descriptor.File);
+        var name = NameConventions.GetCppEnumValidatorName(descriptor);
+        return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
+    }
+
     /// <summary>
     /// An enum constant, fully qualified. protoc emits enum values at namespace scope rather than
     /// as members of the enum, so this qualifies the value name and not the type name.

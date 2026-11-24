@@ -465,6 +465,20 @@ public class HelperTests
     }
 
     [Fact]
+    public void AHelperCannotTakeTheNameOfAProtocEnumConstant()
+    {
+        const string schema = """
+            syntax = "proto3";
+            package acme.billing.helpers;
+            enum Kind { READY = 0; }
+            """;
+        var result = Compile("helper fn Kind_MIN(kind: Kind) -> int64 { return 1; }", schema);
+
+        var refused = TheOnly(result, DiagnosticCodes.FactoryClassNameCollides);
+        Assert.Contains("'acme::billing::helpers::Kind_MIN' in C++", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void AMethodNamedLikeTheHelpersNamespaceIsRefused()
     {
         var refused = TheOnly(
