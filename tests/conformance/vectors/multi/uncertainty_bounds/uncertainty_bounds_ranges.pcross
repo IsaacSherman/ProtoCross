@@ -66,6 +66,24 @@ test find_ranges "ranges of one point each give one product twice" {
     expect return [-5.0, -5.0];
 }
 
+// Ranges of opposite signs make the two mixed products the bounds, so these two fail if either
+// extreme leaves out a product the others never needed.
+test find_ranges "a positive range times a negative one takes the mixed products as both bounds" {
+    arg left_upper = 3.0;
+    arg left_lower = 1.0;
+    arg right_upper = -2.0;
+    arg right_lower = -4.0;
+    expect return [-12.0, -2.0];
+}
+
+test find_ranges "a negative range times a positive one takes the mixed products as both bounds" {
+    arg left_upper = -2.0;
+    arg left_lower = -4.0;
+    arg right_upper = 3.0;
+    arg right_lower = 1.0;
+    expect return [-12.0, -2.0];
+}
+
 test from_bounds "uneven bounds give an asymmetric value" {
     arg value = 6.0;
     arg lowest = 2.0;

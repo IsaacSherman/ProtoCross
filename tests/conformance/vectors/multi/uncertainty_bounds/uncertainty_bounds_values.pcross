@@ -204,3 +204,68 @@ test UncertainValue.multiply_checked "an exact value scales the other's range" {
         symmetric: true,
     };
 }
+
+// [1, 3] times [-4, -2], in both orders: the two mixed products are the bounds, -12 and -2.
+test UncertainValue.multiply "a positive value times a negative one takes its bounds from the mixed products" {
+    receiver {
+        value: 2.0,
+        positive_uncertainty: 1.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: -3.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: -6.0,
+        positive_uncertainty: 4.0,
+        negative_uncertainty: 6.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply_checked "a positive value times a negative one takes its bounds from the mixed products" {
+    receiver {
+        value: 2.0,
+        positive_uncertainty: 1.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: -3.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: -6.0,
+        positive_uncertainty: 4.0,
+        negative_uncertainty: 6.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply "a negative value times a positive one takes its bounds from the mixed products" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 2.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: -6.0,
+        positive_uncertainty: 4.0,
+        negative_uncertainty: 6.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply_checked "a negative value times a positive one takes its bounds from the mixed products" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 2.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: -6.0,
+        positive_uncertainty: 4.0,
+        negative_uncertainty: 6.0,
+        symmetric: false,
+    };
+}
