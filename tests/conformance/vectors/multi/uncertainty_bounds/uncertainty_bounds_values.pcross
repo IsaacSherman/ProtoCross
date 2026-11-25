@@ -1,0 +1,206 @@
+// Conformance vectors for the ValueWithUncertainty tutorial's multiplication: the second of two
+// sources, whose methods call the helpers the first declares and read back by position the bounds
+// find_ranges returns. See uncertainty_bounds_ranges.pcross.
+//
+// They read them both ways a list allows. multiply proves its indexes with a guard on the count, and
+// multiply_checked checks them as the program runs. Both multiply the same values to the same answer.
+
+import proto "uncertainty_bounds.proto";
+
+extend UncertainValue {
+    // The top of the range this value covers.
+    fn upper() -> double {
+        return value + positive_uncertainty;
+    }
+
+    // The bottom of the range, which a symmetric value measures with its positive uncertainty.
+    fn lower() -> double {
+        if symmetric {
+            return value - positive_uncertainty;
+        }
+
+        return value - negative_uncertainty;
+    }
+
+    // The product, covering every product of the two ranges, with its bounds read by proven indexes.
+    fn multiply(right: UncertainValue) -> UncertainValue {
+        var bounds = find_ranges(upper(), lower(), right.upper(), right.lower());
+
+        // What the compiler knows about a list does not cross a call, so the length of the list
+        // find_ranges wrote out is not known here, and the reads need this guard to prove them.
+        if bounds.count() == 2 {
+            return from_bounds(value * right.value, bounds[0], bounds[^1]);
+        }
+
+        // Never reached, since find_ranges always gives two bounds. A value with no range is NaN, as
+        // the tutorial's own min and max of an empty list are.
+        return new UncertainValue { value: __NAN };
+    }
+
+    // The same product, with its bounds read by indexes checked as the program runs.
+    fn multiply_checked(right: UncertainValue) -> UncertainValue {
+        var bounds = find_ranges(upper(), lower(), right.upper(), right.lower());
+        var lowest = bounds.try_get_index(0) on_refused fail;
+        var highest = bounds.try_get_backward_index(1) on_refused fail;
+        return from_bounds(value * right.value, lowest, highest);
+    }
+}
+
+test UncertainValue.upper "adds the positive uncertainty" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 0.5,
+    }
+
+    expect return -2.0;
+}
+
+test UncertainValue.lower "a symmetric value ignores its negative uncertainty" {
+    receiver {
+        value: 2.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 99.0,
+        symmetric: true,
+    }
+
+    expect return 1.0;
+}
+
+test UncertainValue.lower "an asymmetric value subtracts its negative uncertainty" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 0.5,
+    }
+
+    expect return -3.5;
+}
+
+test UncertainValue.multiply "positive symmetric values give an asymmetric product" {
+    receiver {
+        value: 2.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 99.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 3.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: 6.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 4.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply_checked "positive symmetric values give an asymmetric product" {
+    receiver {
+        value: 2.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 99.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 3.0, positive_uncertainty: 1.0, symmetric: true };
+    expect return new UncertainValue {
+        value: 6.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 4.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply "ranges that cross zero give a symmetric product" {
+    receiver {
+        value: 0.0,
+        positive_uncertainty: 2.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 1.0, positive_uncertainty: 2.0, negative_uncertainty: 3.0 };
+    expect return new UncertainValue {
+        value: 0.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 6.0,
+        symmetric: true,
+    };
+}
+
+test UncertainValue.multiply_checked "ranges that cross zero give a symmetric product" {
+    receiver {
+        value: 0.0,
+        positive_uncertainty: 2.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 1.0, positive_uncertainty: 2.0, negative_uncertainty: 3.0 };
+    expect return new UncertainValue {
+        value: 0.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 6.0,
+        symmetric: true,
+    };
+}
+
+test UncertainValue.multiply "negative values take the lower ends' product as the top" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 0.5,
+    }
+
+    arg right = new UncertainValue { value: -2.0, positive_uncertainty: 0.5, symmetric: true };
+    expect return new UncertainValue {
+        value: 6.0,
+        positive_uncertainty: 2.75,
+        negative_uncertainty: 3.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply_checked "negative values take the lower ends' product as the top" {
+    receiver {
+        value: -3.0,
+        positive_uncertainty: 1.0,
+        negative_uncertainty: 0.5,
+    }
+
+    arg right = new UncertainValue { value: -2.0, positive_uncertainty: 0.5, symmetric: true };
+    expect return new UncertainValue {
+        value: 6.0,
+        positive_uncertainty: 2.75,
+        negative_uncertainty: 3.0,
+        symmetric: false,
+    };
+}
+
+test UncertainValue.multiply "an exact value scales the other's range" {
+    receiver {
+        value: 4.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 2.0, positive_uncertainty: 0.5, symmetric: true };
+    expect return new UncertainValue {
+        value: 8.0,
+        positive_uncertainty: 2.0,
+        negative_uncertainty: 2.0,
+        symmetric: true,
+    };
+}
+
+test UncertainValue.multiply_checked "an exact value scales the other's range" {
+    receiver {
+        value: 4.0,
+        symmetric: true,
+    }
+
+    arg right = new UncertainValue { value: 2.0, positive_uncertainty: 0.5, symmetric: true };
+    expect return new UncertainValue {
+        value: 8.0,
+        positive_uncertainty: 2.0,
+        negative_uncertainty: 2.0,
+        symmetric: true,
+    };
+}

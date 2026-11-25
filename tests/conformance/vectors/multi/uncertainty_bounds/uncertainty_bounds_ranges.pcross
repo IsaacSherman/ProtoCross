@@ -1,0 +1,91 @@
+// Conformance vectors for the ValueWithUncertainty tutorial's multiplication: the first of two sources,
+// which declares the helpers the second calls. See uncertainty_bounds_values.pcross.
+//
+// Multiplying two ranges multiplies their ends. Which of the four products is the lowest and which
+// the highest depends on the ends' signs, so the tutorial collects all four and takes both extremes.
+// It used to hold them in a message with a repeated field and find each extreme with a loop; here a
+// helper holds them in a local list and asks _pCrossMath for each.
+
+import proto "uncertainty_bounds.proto";
+
+// The lowest and the highest of the four products of two ranges' ends, in that order.
+helper fn find_ranges(left_upper: double, left_lower: double, right_upper: double, right_lower: double) -> repeated double {
+    var products: repeated double = [
+        left_lower * right_lower,
+        left_lower * right_upper,
+        left_upper * right_lower,
+        left_upper * right_upper,
+    ];
+
+    // The list is written out where it is stored, so each index below is proven without a guard.
+    return [_pCrossMath.min(products[0], products[1], products[2], products[3]),
+            _pCrossMath.max(products[0], products[1], products[2], products[3])];
+}
+
+// The value that covers lowest through highest, and is symmetric where its two uncertainties agree.
+helper fn from_bounds(value: double, lowest: double, highest: double) -> UncertainValue {
+    var above = highest - value;
+    var below = value - lowest;
+    return new UncertainValue {
+        value: value,
+        positive_uncertainty: above,
+        negative_uncertainty: below,
+        symmetric: above == below,
+    };
+}
+
+test find_ranges "positive ranges take the ends' own products" {
+    arg left_upper = 3.0;
+    arg left_lower = 1.0;
+    arg right_upper = 4.0;
+    arg right_lower = 2.0;
+    expect return [2.0, 12.0];
+}
+
+test find_ranges "ranges that cross zero take a mixed product as the lowest" {
+    arg left_upper = 2.0;
+    arg left_lower = -2.0;
+    arg right_upper = 3.0;
+    arg right_lower = -2.0;
+    expect return [-6.0, 6.0];
+}
+
+test find_ranges "negative ranges take the lower ends' product as the highest" {
+    arg left_upper = -2.0;
+    arg left_lower = -3.5;
+    arg right_upper = -1.5;
+    arg right_lower = -2.5;
+    expect return [3.0, 8.75];
+}
+
+test find_ranges "ranges of one point each give one product twice" {
+    arg left_upper = 5.0;
+    arg left_lower = 5.0;
+    arg right_upper = -1.0;
+    arg right_lower = -1.0;
+    expect return [-5.0, -5.0];
+}
+
+test from_bounds "uneven bounds give an asymmetric value" {
+    arg value = 6.0;
+    arg lowest = 2.0;
+    arg highest = 12.0;
+    expect return new UncertainValue {
+        value: 6.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 4.0,
+        symmetric: false,
+    };
+}
+
+test from_bounds "even bounds give a symmetric value" {
+    arg value = 0.0;
+    arg lowest = -6.0;
+    arg highest = 6.0;
+    expect return new UncertainValue {
+        value: 0.0,
+        positive_uncertainty: 6.0,
+        negative_uncertainty: 6.0,
+        symmetric: true,
+    };
+}

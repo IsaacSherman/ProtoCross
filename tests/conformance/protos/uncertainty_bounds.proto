@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// multi/uncertainty_bounds -- the ValueWithUncertainty tutorial's multiplication, written with what
+// sprint 8 built: a helper that collects the four products of two ranges' ends in a local list and
+// returns the lowest and the highest as a list, and methods that read those bounds back by position.
+message UncertainValue {
+  double value = 1;
+  // Above the value, and below it too when the value is symmetric.
+  double positive_uncertainty = 2;
+  // Below the value, read only when it is not symmetric.
+  double negative_uncertainty = 3;
+  bool symmetric = 4;
+}
