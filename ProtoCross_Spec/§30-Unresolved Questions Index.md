@@ -429,8 +429,6 @@ each change the body may make would need a rule for what it keeps.
 
 Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
 
-Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
-
 ### 30.15 Control Flow
 
 #### 30.15.1 ~~Switch support~~
