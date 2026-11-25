@@ -29,9 +29,10 @@ Normative Requirements:
   - its receiver, if it is a `mut fn`;
   - a message held in a local, which is the method's own copy ([13.2](./§13-Messages.md#132-message-construction));
   - a singular field of either, at any depth, and an element of a repeated field of either, through
-    the name a `for` binds to it;
-  - a repeated field of either, at any depth, and a repeated value held in a local, by appending to
-    it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations));
+    the name a `for` binds to it, or at an index the compiler shows is there;
+  - a repeated field of either, at any depth, and a list held in a local, by appending to it,
+    assigning it a whole list, or replacing an element at an index
+    ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations));
   - a map field of either, at any depth, and a map held in a local, by storing to its elements,
     writing through them, or through its methods ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
 
@@ -41,18 +42,21 @@ Normative Requirements:
 - **A factory's method has no receiver** ([16.3](./§16-Methods.md#163-factories)), so what it may change is what it holds in
   locals, the messages it builds included, and one marked `mut` is `PC0128`.
 - **Assignment.** `place = value;` and `place op= value;` ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)) assign a local
-  declared with `var`, or a singular field of a message the method may change: `total = 5;`,
-  `customer.name = "x";`.
+  declared with `var`, or a field of a message the method may change: `total = 5;`,
+  `customer.name = "x";`, `weights = [1.0, 2.0];`.
   - A parameter and the name a `for` binds cannot be assigned, nor can anything that is neither a
     local nor a field. Each is `PC0034`, and the help for the first two is to copy the value into a
     local.
-  - A repeated field cannot be assigned (`PC0034`). A message literal gives one its elements
-    ([13.2](./§13-Messages.md#132-message-construction)).
+  - A repeated field is assigned a whole list, any list of its type, and stores a copy of it,
+    messages and all, in place of what it held
+    ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The copy is taken before the field is emptied, so `items = items;`
+    changes nothing. A map field cannot be assigned whole (`PC0034`)
+    ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
   - Writing through a message field that is unset sets it, as protobuf's mutable accessors do:
     `audit.flagged.cents = 1;` sets `audit` and `audit.flagged` when either is unset. So the links of
     a target are not reads, and need no guard ([13.1](./§13-Messages.md#131-field-access)). A compound assignment
     also reads its target, and that read is guarded like any other.
-  - A message assigned is stored as a copy, unless it is a literal
+  - A message or a list assigned is stored as a copy, unless it is a literal
     ([13.2](./§13-Messages.md#132-message-construction)).
   - Assigning one member of a `oneof`, or writing through one, unsets the others, as setting one
     does in protobuf.
@@ -63,6 +67,14 @@ Normative Requirements:
   (`PC0094`, `PC0096`), writes through an unset message as an assignment does, stores a message as a
   copy unless it is a literal, and is ordered as an assignment is: the target, then the value, then
   the element added. It has no value, so it is only ever a statement (`PC0095`).
+- **A list's elements.** `items[i] = v;` and a compound store to `items[i]` replace an element of a
+  list the method may change, at an index the facts there show is in range, and `items[i].f = v;`, an
+  append to a list inside one, a store to a map inside one, and a `mut fn` called on one write through
+  or change it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Each is refused where an assignment to the list would be (`PC0094`), and
+  replacing an element where a loop traverses the list (`PC0096`); writing inside one is not. Each
+  writes through an unset message on the way to the list as an assignment does, stores a message as a
+  copy unless it is a literal, and is ordered as an assignment is: the list, then the value, then the
+  change. The element is always there, so nothing is put at its index.
 - **Maps.** `m[k] = v;`, a compound store to `m[k]`, and `remove`, `clear`, `add_if_absent`,
   `replace_if_present` and `merge` change a map the method may change ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). Each is refused where
   an assignment to the map would be (`PC0094`, `PC0096`), writes through an unset message as an
@@ -71,7 +83,9 @@ Normative Requirements:
   value, then the change.
 - **Mutating calls.** A `mut fn` may be called only on a message the calling method may change
   (`PC0094`). Calling one on a message field of the receiver needs that field's guard, as any call on
-  a message field does ([13.1](./§13-Messages.md#131-field-access)).
+  a message field does ([13.1](./§13-Messages.md#131-field-access)). Called on a list's element read by its index, it changes the
+  element itself, which is a place; one called on what a map's lookup gives changes a value nothing
+  holds, and is `PC0094`.
   - A call to a `mut fn` stands on its own: it is a statement, a `var`'s initializer, a local's new
     value, or the value a `return` returns. Anywhere else -- an operand, an argument, a condition, a
     field's new value -- it is `PC0095`. Nothing else is evaluated beside it, so no other operand can
@@ -81,15 +95,20 @@ Normative Requirements:
     under the method that was promised it could not. Messages, repeated values, strings and bytes are
     checked, because a target may pass each by reference; a number is passed as a value. The names
     two `for` loops bind over one field are taken to share, since they may be one element.
-  - A message argument that is not a place -- a call's result, or something read from one -- is passed
-    as a copy, because it may be part of the receiver.
-- **Loops.** While a `for` traverses a repeated field, nothing inside it may change that field's
-  membership, order or identity ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+  - A message argument that is not a place -- a call's result, a list's element read by its index, or
+    something read from either -- is passed as a copy, because it may be part of the receiver. A
+    string or bytes read from a list's element is too, where a target would pass a reference into the
+    list.
+- **Loops.** While a `for` traverses a repeated field, or a local holding a list, nothing inside it
+  may change that list's membership, order or identity, assigning it included
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - **Locals.** A local holds a message of its own. Initializing or assigning one with a message, or
   with a repeated value, that is not a literal stores a copy
   ([13.2](./§13-Messages.md#132-message-construction)).
-- No field can be cleared, and no element can be removed from a repeated field. A map's keys can be
-  removed, and nothing a guard shows is ever about one. So nothing a guard has
+- No field can be cleared, and no element can be removed from a repeated field, except by assigning the
+  field a whole list, which ends every fact shown about what it held, as assigning any field does.
+  Replacing an element, or writing inside one, leaves the list's count as it was. A
+  map's keys can be removed, and nothing a guard shows is ever about one. So nothing a guard has
   shown to be set becomes unset, except by setting another member of its `oneof`, which an assignment
   or an append writing through it does, or by the message holding it being replaced
   ([13.1](./§13-Messages.md#131-field-access)).

@@ -53,10 +53,10 @@ public sealed partial class CppBackend : ITestProjectScaffold
         WriteHeader(writer, options, guard, module);
 
         var namespaces = module.Methods
-            .GroupBy(m => placement.NamespaceOf(m.Receiver))
+            .GroupBy(m => placement.NamespaceOf(m.Signature))
             .OrderBy(g => g.Key, StringComparer.Ordinal)
             .Select(g => (Namespace: g.Key, Methods: g.OrderBy(m => !m.Signature.HasReceiver)
-                .ThenBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+                .ThenBy(m => m.Receiver?.FullName, StringComparer.Ordinal)
                 .ThenBy(m => m.Signature.Kind)
                 .ThenBy(m => m.Name, StringComparer.Ordinal)
                 .ToList()))
@@ -166,14 +166,16 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine("// Declarations precede definitions so methods may call one another");
         writer.WriteLine("// regardless of the order they appear in the ProtoCross source.");
 
+        // A project's helpers are free functions, declared as an extend block's methods are; they are in a
+        // namespace of their own, so the two never share these lines.
         var wroteAny = false;
-        foreach (var method in methods.Where(method => method.Signature.HasReceiver))
+        foreach (var method in methods.Where(method => !IsAFactorysMember(method.Signature)))
         {
             writer.WriteLine(Signature(method, Outs.Of(method)) + ";");
             wroteAny = true;
         }
 
-        foreach (var factory in methods.Where(method => !method.Signature.HasReceiver).GroupBy(method => method.Receiver.FullName))
+        foreach (var factory in methods.Where(method => IsAFactorysMember(method.Signature)).GroupBy(method => method.Receiver!.FullName))
         {
             if (wroteAny)
             {
@@ -201,7 +203,8 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// </remarks>
     private static void WriteFactoryStruct(SourceWriter writer, IReadOnlyList<IrMethod> methods, Placement placement)
     {
-        var message = methods[0].Receiver;
+        // A factory's methods all belong to the message it builds.
+        var message = methods[0].Receiver!;
 
         writer.WriteLine($"// Builds {message.FullName}: its ProtoCross factory.");
         using var scope = writer.Block($"struct {placement.FactoryStructOf(message)}", "};");
@@ -282,7 +285,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine($"#define {guard}");
         writer.WriteLine();
 
-        if (UsesFloatingRemainder(module))
+        if (UsesFloatingRemainder(module) || UsesCmathFunctions(module))
         {
             writer.WriteLine("#include <cmath>");
         }
@@ -298,7 +301,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine("#include <string>");
         writer.WriteLine();
 
-        var receivers = module.Methods.Select(method => method.Receiver.File).ToList();
+        var receivers = module.Methods.Select(method => method.Receiver?.File).OfType<FileDescriptor>().ToList();
         foreach (var header in ProtoHeadersOf(receivers.Concat(SchemasNamedBeyond(receivers, module.Methods))))
         {
             writer.WriteLine($"#include \"{header}\"");
@@ -308,6 +311,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
         writer.WriteLine();
     }
 
+    /// <summary>A free function's signature: an extend block's method, or a project's helper, which takes no receiver.</summary>
     /// <remarks>
     /// The receiver is <c>const T&amp;</c> unless the method is a <c>mut fn</c>, which takes <c>T&amp;</c>
     /// because it may change it (spec 24.2). Every other method keeps the signature it always had, so
@@ -317,7 +321,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static string Signature(IrMethod method, Outs? outs)
     {
         var constness = method.Signature.IsMutating ? string.Empty : "const ";
-        var parameters = new List<string> { $"{constness}{QualifiedTypeName(method.Receiver)}& {ReceiverName}" };
+        var parameters = method is { Signature.HasReceiver: true, Receiver: { } receiver }
+            ? [$"{constness}{QualifiedTypeName(receiver)}& {ReceiverName}"]
+            : new List<string>();
         parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
         parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
@@ -332,7 +338,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
 
     /// <summary>A factory's method as it is defined, after its struct: <c>inline</c>, and named through the struct.</summary>
     private static string FactoryMemberDefinition(IrMethod method, Outs? outs, Placement placement)
-        => $"inline {ReturnTypeOf(method)} {placement.FactoryStructOf(method.Receiver)}::"
+        => $"inline {ReturnTypeOf(method)} {placement.FactoryStructOf(method.Receiver!)}::"
             + $"{placement.MemberNameOf(method.Signature)}({ParameterList(method, outs)})";
 
     /// <summary>
@@ -359,9 +365,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         var outs = Outs.Of(method);
-        using var scope = writer.Block(method.Signature.HasReceiver
-            ? Signature(method, outs)
-            : FactoryMemberDefinition(method, outs, placement));
+        using var scope = writer.Block(IsAFactorysMember(method.Signature)
+            ? FactoryMemberDefinition(method, outs, placement)
+            : Signature(method, outs));
 
         EmitStatements(writer, method.Body.Statements, placement with { Outs = outs });
 
@@ -371,6 +377,12 @@ public sealed partial class CppBackend : ITestProjectScaffold
             writer.WriteLine("return true;");
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="method"/> is a member of its factory's struct, rather than a free function as an
+    /// extend block's methods and a project's helpers are.
+    /// </summary>
+    private static bool IsAFactorysMember(IrMethodSignature method) => method.Kind is IrMethodKind.Factory or IrMethodKind.Helper;
 
     private static string Expression(IrExpression expression, Placement placement) => expression switch
     {
@@ -395,21 +407,44 @@ public sealed partial class CppBackend : ITestProjectScaffold
         IrBinary binary => EmitBinary(binary, placement),
         IrIntegerDivision division => EmitIntegerDivision(division, placement),
         IrUnary unary => EmitUnary(unary, placement),
+        IrMathCall call => EmitMathCall(call, placement),
         IrConversion conversion => EmitConversion(conversion, placement),
         IrEnumToNumber number => $"static_cast<::std::int32_t>({Expression(number.Operand, placement)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement),
 
         // protoc's _IsValid takes an int, which an enum declared over int converts to.
         IrEnumMembership membership
-            => $"{QualifiedEnumName(membership.EnumType.Descriptor)}_IsValid({Expression(membership.Value, placement)})",
+            => $"{QualifiedEnumValidatorName(membership.EnumType.Descriptor)}({Expression(membership.Value, placement)})",
         IrEnumValue enumValue => QualifiedEnumValueName(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement),
+        IrList list => ListLiteral(list, placement),
         IrMapLookup lookup => EmitMapLookup(lookup, placement),
         IrMapContains contains => $"{Expression(contains.Map, placement)}.contains({Expression(contains.Key, placement)})",
         IrMapQuery query => EmitMapQuery(query, placement),
+        IrListQuery query => EmitListQuery(query, placement),
+        IrElementLookup lookup => EmitElementLookup(lookup, placement),
+        IrElementRead read => EmitElementRead(read, placement),
+        IrListElement element => MutableListElement(element, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
+
+    /// <summary>
+    /// An argument as <paramref name="call"/> passes it: as written, or as a copy where a <c>mut fn</c> is handed a
+    /// reference into a list's element.
+    /// </summary>
+    /// <remarks>
+    /// Only what C++ passes by <c>const&amp;</c> is copied (<see cref="IsPassedByReference"/>), and only for a
+    /// <c>mut fn</c>: a method that changes nothing cannot change its argument. The copy is made before the call
+    /// begins, as every argument is evaluated.
+    /// </remarks>
+    private static string PassedArgument(IrMethodCall call, IrExpression argument, Placement placement)
+    {
+        var written = Expression(argument, placement);
+        return call.Target.IsMutating && IrMutation.IsReadFromAListsElement(argument) && IsPassedByReference(argument.Type)
+            ? $"{TypeName(argument.Type)}({written})"
+            : written;
+    }
 
     /// <summary>A field read off the message <paramref name="receiver"/> names, through protoc's getter.</summary>
     private static string FieldRead(string receiver, FieldDescriptor field)
@@ -432,6 +467,9 @@ public sealed partial class CppBackend : ITestProjectScaffold
     /// are: a parameter is read-only whatever method it belongs to, and an argument that is not a place
     /// is already a temporary of its own (<see cref="IrMutation.IsPassedAsACopy"/>). A map's lookup is
     /// one too, since the runtime gives what it finds by value rather than as a reference into the map.
+    /// A list's element read by its index is not: protobuf's <c>Get</c> gives a reference into the list,
+    /// which the method could change under its own argument, so a <c>mut fn</c> is passed a copy, as C#
+    /// passes it one (<see cref="PassedArgument"/>).
     /// </remarks>
     /// <param name="outs">
     /// What a call to a method that may refuse passes for the references it gives its result and refusal through.
@@ -446,7 +484,7 @@ public sealed partial class CppBackend : ITestProjectScaffold
             { } read => new List<string> { Expression(read, placement) },
         };
 
-        written.AddRange(call.Arguments.Select(argument => Expression(argument, placement)));
+        written.AddRange(call.Arguments.Select(argument => PassedArgument(call, argument, placement)));
 
         return InOrder(
             call,

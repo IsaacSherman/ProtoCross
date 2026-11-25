@@ -19,16 +19,25 @@ public sealed partial class Binder
 
     // ------- reading
 
-    /// <summary>Binds <c>prices[sku] on_missing 0</c>, a read of one value of a map (spec 14.2).</summary>
+    /// <summary>
+    /// Binds <c>prices[sku] on_missing 0</c>, a read of one value of a map (spec 14.2), or <c>items[i]</c>, a read of
+    /// one element of a list (spec 14.1).
+    /// </summary>
     private IrExpression BindLookup(IndexExpression index, Scope scope, MethodContext context)
     {
         var map = BindExpression(index.Collection, scope, context, null);
+
+        if (map.Type is RepeatedType)
+        {
+            return BindElementRead(map, index, scope, context);
+        }
 
         if (!IsAMap(map, index, out var mapType))
         {
             return RefusedIndex(map, index, scope, context);
         }
 
+        ReportIfCountedFromTheEnd(map, index);
         var key = BindKey(index.Key, map, mapType, scope, context);
         return LookUp(map, key, mapType, index, scope, context);
     }
@@ -116,6 +125,19 @@ public sealed partial class Binder
         return key;
     }
 
+    /// <summary>Reports <c>prices[^1]</c>: a map's keys are looked up, and have no end to count from.</summary>
+    private void ReportIfCountedFromTheEnd(IrExpression map, IndexExpression index)
+    {
+        if (index.FromEndMarker is { } marker)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MapKeyFromTheEnd,
+                $"{Capitalized(Spelled(map))} is a map, whose keys have no end to count from.",
+                marker,
+                "Delete the '^' to look up the key. '^' counts from the end of a list (spec 14.1, 14.2).");
+        }
+    }
+
     /// <summary>The help a mismatch of two numeric types gets, or null for any other mismatch.</summary>
     private static string? NumericOrNull(PlType expected, PlType written)
         => expected is ScalarType { IsNumeric: true } && written is ScalarType { IsNumeric: true }
@@ -126,6 +148,7 @@ public sealed partial class Binder
     /// Whether <paramref name="map"/> is a map, reporting <c>PC0113</c> when it is a value of another
     /// type. A value that failed to bind has said why.
     /// </summary>
+    /// <remarks>A list never reaches this: one is read or written by its index before (<see cref="BindLookup"/>, <see cref="BindElement"/>).</remarks>
     private bool IsAMap(IrExpression map, IndexExpression index, [NotNullWhen(true)] out MapType? mapType)
     {
         mapType = map.Type as MapType;
@@ -134,11 +157,9 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.ValueCannotBeIndexed,
-                $"{Capitalized(Spelled(map))} is a '{map.Type.DisplayName}', and only a map is looked up by a key.",
+                $"{Capitalized(Spelled(map))} is a '{map.Type.DisplayName}', and only a map or a list is indexed.",
                 index.Span,
-                map.Type is RepeatedType
-                    ? "A repeated field has no indexing. Iterate it with 'for' (spec 14.1)."
-                    : "'[…]' looks up a key in a map (spec 14.2).");
+                "'[…]' looks up a key in a map, or reads an element of a list (spec 14.1, 14.2).");
         }
 
         return mapType is not null;
@@ -386,7 +407,7 @@ public sealed partial class Binder
             }
         }
 
-        CheckMapChange(map, Changing(map, name), span, context);
+        CheckCollectionChange(map, Changing(map, name), span, context);
         return new IrMapUpdate(method, map, arguments, callee.Name.Span, span);
     }
 
@@ -402,6 +423,11 @@ public sealed partial class Binder
     {
         var place = BindPlace(statement.Target, scope, context);
         MarkWritten(AssignedNameOf(statement.Target));
+
+        if (place is IrListElement listElement)
+        {
+            return BindListElementStore(listElement, statement, scope, context);
+        }
 
         if (place is not IrMapElement element)
         {
@@ -420,18 +446,19 @@ public sealed partial class Binder
                 NumericOrNull(element.ValueType, value.Type));
         }
 
-        CheckMapChange(element.Map, $"This stores into {Spelled(element.Map)}", statement.Span, context);
+        CheckCollectionChange(element.Map, $"This stores into {Spelled(element.Map)}", statement.Span, context);
         return new IrElementAssignment(element, value, statement.Span);
     }
 
     /// <summary>
     /// Binds <c>counts[word] on_missing 0 += 1;</c>, which reads an element with its clause and stores the
-    /// result back (spec 14.2).
+    /// result back (spec 14.2), or <c>counts[i] += 1;</c>, which does the same at a list's index (spec 14.1).
     /// </summary>
     /// <remarks>
-    /// The long form is bound as any compound's is, so the read is a lookup and needs its clause. The
-    /// place is a copy of the read with the lookup made an element (<see cref="PlaceOf"/>), so the two
-    /// share no node, as a compound field assignment's do not.
+    /// The long form is bound as any compound's is, so the read is a lookup and needs its clause, or a
+    /// list's element read and needs its index shown in range. The place is a copy of the read with the
+    /// lookup made an element (<see cref="PlaceOf"/>), so the two share no node, as a compound field
+    /// assignment's do not.
     /// </remarks>
     private IrStatement BindCompoundElementAssignment(
         CompoundAssignmentStatement statement,
@@ -441,19 +468,29 @@ public sealed partial class Binder
         var operation = BindBinary(LongFormOf(statement), scope, context, null, OperatorForm.Compound);
         MarkWritten(AssignedNameOf(statement.Target));
 
-        if (ReadOf(operation) is not IrMapLookup lookup)
+        switch (ReadOf(operation))
         {
-            return new IrExpressionStatement(operation, statement.Span);
-        }
+            case IrMapLookup lookup:
+            {
+                var element = (IrMapElement)PlaceOf(lookup);
+                return !CheckCollectionChange(element.Map, $"This stores into {Spelled(element.Map)}", statement.Span, context)
+                    && IrMutation.IsPlace(element)
+                        ? new IrElementAssignment(element, operation, statement.Span) { ReadsItsTarget = true }
+                        : new IrExpressionStatement(operation, statement.Span);
+            }
 
-        var element = (IrMapElement)PlaceOf(lookup);
-        if (!CheckMapChange(element.Map, $"This stores into {Spelled(element.Map)}", statement.Span, context)
-            && IrMutation.IsPlace(element))
-        {
-            return new IrElementAssignment(element, operation, statement.Span) { ReadsItsTarget = true };
-        }
+            case IrElementRead read:
+            {
+                var element = (IrListElement)PlaceOf(read);
+                return !CheckCollectionChange(element.List, ReplacingAnElementOf(element), statement.Span, context)
+                    && IrMutation.IsPlace(element)
+                        ? new IrListElementAssignment(element, operation, statement.Span) { ReadsItsTarget = true }
+                        : new IrExpressionStatement(operation, statement.Span);
+            }
 
-        return new IrExpressionStatement(operation, statement.Span);
+            default:
+                return new IrExpressionStatement(operation, statement.Span);
+        }
     }
 
     /// <summary>What a compound assignment's long form reads: the left operand of its operation.</summary>
@@ -466,12 +503,33 @@ public sealed partial class Binder
 
     /// <summary>
     /// The place a compound assignment stores to, built from what it reads: a copy, sharing no node with
-    /// the read, in which each lookup is the element it looked up.
+    /// the read, in which each lookup is the element it looked up, and each list's element read is the
+    /// element, with what showed its index in range.
     /// </summary>
     private static IrExpression PlaceOf(IrExpression read) => read switch
     {
         IrFieldAccess field => field with { Receiver = PlaceOf(field.Receiver) },
         IrMapLookup lookup => new IrMapElement(PlaceOf(lookup.Map), IrCopy.Of(lookup.Key), lookup.ValueType, lookup.Span),
+        IrElementRead element => ListPlaceOf(element),
+        _ => IrCopy.Of(read),
+    };
+
+    /// <summary>
+    /// A list's element read, as the element it reads, and the chain of places it was read through: what a compound
+    /// stores to, and what a <c>mut fn</c> called on one changes.
+    /// </summary>
+    /// <remarks>
+    /// Only a list's elements are made places, not a map's lookups: a lookup's clause may give a fallback rather than
+    /// what the map holds, so a change to what it gives would not be a change to the map.
+    /// </remarks>
+    private static IrListElement ListPlaceOf(IrElementRead read)
+        => new(ListPlaceOf(read.List), IrCopy.Of(read.Index), read.FromEnd, read.Span) { Proof = read.Proof };
+
+    /// <summary>A chain of field reads that may begin at a list's element read, as the place it reads.</summary>
+    private static IrExpression ListPlaceOf(IrExpression read) => read switch
+    {
+        IrFieldAccess field => field with { Receiver = ListPlaceOf(field.Receiver) },
+        IrElementRead element => ListPlaceOf(element),
         _ => IrCopy.Of(read),
     };
 
@@ -488,11 +546,17 @@ public sealed partial class Binder
     {
         var map = BindPlace(index.Collection, scope, context);
 
+        if (map.Type is RepeatedType)
+        {
+            return BindListElement(map, index, scope, context);
+        }
+
         if (!IsAMap(map, index, out var mapType))
         {
             return RefusedIndex(map, index, scope, context);
         }
 
+        ReportIfCountedFromTheEnd(map, index);
         IReadOnlyList<IrExpression> refused = [];
         if (index.OnMissing is { } clause)
         {
@@ -510,19 +574,28 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// Everything that can refuse a change to <paramref name="map"/> here: a map the method may not
-    /// change, and one holding a field a loop is traversing. Says whether it refused.
+    /// Everything that can refuse a change to <paramref name="collection"/>, a map or a list, here: one the
+    /// method may not change, and one holding a field a loop is traversing. Says whether it refused.
     /// </summary>
-    private bool CheckMapChange(IrExpression map, string change, SourceSpan span, MethodContext context)
+    /// <remarks>
+    /// One check for a store into a map, a change a map's method makes, an append, and an element of a
+    /// list replaced, because each changes what the collection holds, which is what a loop over it, or
+    /// over anything holding it, must not see change.
+    /// </remarks>
+    private bool CheckCollectionChange(IrExpression collection, string change, SourceSpan span, MethodContext context)
     {
-        if (ReportIfReadOnly(map, change, span, context))
+        if (ReportIfReadOnly(collection, change, span, context))
         {
             return true;
         }
 
-        ReportIfTraversalChanges(map is IrFieldAccess field ? FieldsReplacedBy(field) : [map], change, span, context);
+        ReportIfTraversalChanges(PlacesChangedIn(collection), change, span, context);
         return false;
     }
+
+    /// <summary>What a change to what <paramref name="collection"/> holds changes, as a loop around it is asked.</summary>
+    private static IEnumerable<IrExpression> PlacesChangedIn(IrExpression collection)
+        => collection is IrFieldAccess field ? FieldsReplacedBy(field) : [collection];
 
     // ------- literals
 

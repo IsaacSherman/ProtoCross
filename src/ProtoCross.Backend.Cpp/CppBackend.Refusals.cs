@@ -145,6 +145,7 @@ public sealed partial class CppBackend
             IrIntegerDivision division => DividedOr(division, marked, placement),
             IrNumberToEnum conversion => NamedOr(conversion, marked, placement),
             IrMapLookup lookup => ValueOr(lookup, marked, placement),
+            IrElementLookup lookup => ElementOr(lookup, marked, placement),
             _ => throw new ArgumentOutOfRangeException(nameof(operation), operation, "Not an operation a clause may refuse from."),
         }};");
 

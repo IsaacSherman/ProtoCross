@@ -156,7 +156,7 @@ public class ConformanceVectorTests
         ConformanceVectors.All.ToDictionary(
             vector => vector.Name,
             vector => (IReadOnlyList<string>)ConformanceVectors.Compile(vector).Module!.Methods
-                .Select(method => $"{method.Receiver.FullName}.{NameConventions.ToPascalCase(method.Name)}")
+                .Select(method => $"{method.Receiver?.FullName}.{NameConventions.ToPascalCase(method.Name)}")
                 .Distinct(StringComparer.Ordinal)
                 .ToList(),
             StringComparer.Ordinal));
@@ -239,6 +239,42 @@ public class ConformanceTests : IClassFixture<ConformanceFixture>
 
         Assert.Contains($"OrderProbe.{scenario}_first has no such key", output, StringComparison.Ordinal);
         Assert.DoesNotContain($"OrderProbe.{scenario}_second has no such key", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>C++ ends the program at the element of a list written first (spec 14.1, 9.3).</summary>
+    /// <remarks>
+    /// Each element of local_lists' first_element_first is a lookup of an empty map of its own that ends the
+    /// program, naming its map, so the test passes whichever ends it; what the driver passed on says which did. C#
+    /// is not asked, for <see cref="CppEndsTheProgramAtTheOperandWrittenFirst"/>'s reason.
+    /// </remarks>
+    [Fact]
+    public void CppEndsAListAtTheElementWrittenFirst()
+    {
+        SkipIfUnavailable(_fixture.Cpp);
+
+        var output = _fixture.Cpp.DriverOutputs["local_lists.tests.cc"];
+
+        Assert.Contains("Basket.order_first has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Basket.order_second has no such key", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>C++ ends a math call at the argument written first (spec 10.5, 9.3).</summary>
+    /// <remarks>
+    /// Each argument of math_functions' min_in_order and max_in_order is a lookup of an empty map of its own that ends
+    /// the program, naming its map. C# is not asked, for <see cref="CppEndsTheProgramAtTheOperandWrittenFirst"/>'s reason.
+    /// </remarks>
+    [Theory]
+    [InlineData("min")]
+    [InlineData("max")]
+    public void CppEndsAMathCallAtTheArgumentWrittenFirst(string function)
+    {
+        SkipIfUnavailable(_fixture.Cpp);
+
+        var output = _fixture.Cpp.DriverOutputs["math_functions.tests.cc"];
+
+        Assert.Contains($"MathCase.{function}_first has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"MathCase.{function}_second has no such key", output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"MathCase.{function}_third has no such key", output, StringComparison.Ordinal);
     }
 
     private void AssertBackendAgrees(ConformanceRun run)

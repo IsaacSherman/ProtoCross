@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+import "google/protobuf/wrappers.proto";
+
+// repeated_indexing.pcross -- a list's count, whether it is empty, and its elements read and written by index,
+// from the start and from the end, checked by the compiler or as the program runs (spec 14.1).
+//
+// A shelf has a repeated field of each kind of element protobuf holds differently: numbers, strings, bytes, an
+// enum and messages. C++ keeps numbers and enums in a RepeatedField, enums as int, and the rest by pointer in a
+// RepeatedPtrField, so each kind is read and written on a path of its own. protoc's C# holds a list of wrappers as
+// a list of the values they hold, which is a path of its own there.
+message Shelf {
+  repeated int32 counts = 1;
+  repeated double weights = 2;
+  repeated string labels = 3;
+  repeated bytes stamps = 4;
+  repeated Tone tones = 5;
+  repeated Box boxes = 6;
+  int32 base = 7;
+
+  // Unset until a list is written through it, which sets it.
+  Shelf spare = 8;
+
+  repeated google.protobuf.Int64Value readings = 9;
+}
+
+message Box {
+  int64 grams = 1;
+  string tag = 2;
+  repeated int64 parts = 3;
+  map<string, int32> marks = 4;
+}
+
+message BoundsRefusal {
+  int64 index = 1;
+}
+
+enum Tone {
+  TONE_UNSPECIFIED = 0;
+  TONE_LIGHT = 1;
+  TONE_DARK = 2;
+}

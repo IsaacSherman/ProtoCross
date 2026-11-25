@@ -54,12 +54,19 @@ public sealed partial class CSharpBackend
     /// a <see cref="Nullable{T}"/>, <c>FindNullable</c> for a value C# holds as one already, which a
     /// wrapper of a value type is, and <c>FindReference</c> for anything else.
     /// </summary>
-    private static string FindHelper(PlType valueType) => valueType switch
+    private static string FindHelper(PlType valueType) => "Find" + NullableShape(valueType);
+
+    /// <summary>
+    /// How C# gives a value of <paramref name="type"/> or null: <c>Value</c> for a value type, which comes back as a
+    /// <see cref="Nullable{T}"/>, <c>Nullable</c> for a value C# holds as one already, which a wrapper of a value type
+    /// is, and <c>Reference</c> for anything else. A map's lookup and a list's try method choose their helper by it.
+    /// </summary>
+    private static string NullableShape(PlType type) => type switch
     {
-        _ when WrappedScalar(valueType) is { } wrapped => IsAStruct(wrapped) ? "FindNullable" : "FindReference",
-        EnumPlType => "FindValue",
-        ScalarType scalar when IsAStruct(scalar) => "FindValue",
-        _ => "FindReference",
+        _ when WrappedScalar(type) is { } wrapped => IsAStruct(wrapped) ? "Nullable" : "Reference",
+        EnumPlType => "Value",
+        ScalarType scalar when IsAStruct(scalar) => "Value",
+        _ => "Reference",
     };
 
     /// <summary><c>count()</c> or <c>is_empty()</c>.</summary>

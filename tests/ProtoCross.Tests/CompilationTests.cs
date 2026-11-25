@@ -30,11 +30,11 @@ public class CompilationTests
         Assert.Equal(12, module.Tests.Count);
 
         var lineTotal = module.Methods.Single(m => m.Name == "line_total_cents");
-        Assert.Equal("protocross.examples.InvoiceItem", lineTotal.Receiver.FullName);
+        Assert.Equal("protocross.examples.InvoiceItem", lineTotal.Receiver?.FullName);
         Assert.Equal(ScalarType.Int64Type, lineTotal.ReturnType);
 
         var totalCents = module.Methods.Single(m => m.Name == "total_cents");
-        Assert.Equal("protocross.examples.Invoice", totalCents.Receiver.FullName);
+        Assert.Equal("protocross.examples.Invoice", totalCents.Receiver?.FullName);
 
         var test = module.Tests.Single(t => t.Name == "sums line totals");
         Assert.Equal(totalCents.Signature, test.Target);

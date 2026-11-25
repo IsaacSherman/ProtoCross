@@ -1,0 +1,10 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+import "google/protobuf/wrappers.proto";
+
+message WrapperListParameterReview {
+  repeated google.protobuf.Int64Value numbers = 1;
+  repeated google.protobuf.StringValue labels = 2;
+}

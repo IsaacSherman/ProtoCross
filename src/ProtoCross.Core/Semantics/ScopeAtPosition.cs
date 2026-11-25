@@ -25,13 +25,14 @@ namespace ProtoCross.Semantics;
 /// The message whose fields a bare name may reach. Present even where none of them are visible --
 /// inside a <c>test</c>, where an unqualified name resolves to nothing -- because it is still what
 /// the code under the caret is written against, and it is what an editor labels the context with.
+/// Null inside a top-level helper and a test of one, which are written against no message (spec 16.4).
 /// </param>
 /// <param name="Names">
 /// Every name that resolves here, each exactly once, ordered by where it was declared and then by
 /// the schema's own field order. A name is in this list at most once even where two things bear it:
 /// see <see cref="VisibleName"/>.
 /// </param>
-public sealed record ScopeAtPosition(MessageType Receiver, IReadOnlyList<VisibleName> Names)
+public sealed record ScopeAtPosition(MessageType? Receiver, IReadOnlyList<VisibleName> Names)
 {
     /// <summary>
     /// Whether the position is inside a method of <see cref="Receiver"/>'s factory, where a bare call
@@ -46,6 +47,17 @@ public sealed record ScopeAtPosition(MessageType Receiver, IReadOnlyList<Visible
     /// <para>Init-only with a default of false, so every existing construction stays valid and means what it did.</para>
     /// </remarks>
     public bool InAFactory { get; init; }
+
+    /// <summary>
+    /// Whether the position is among a test's values, where a bare call reaches the project's helpers and
+    /// nothing of <see cref="Receiver"/>'s (spec 16.4, 25.3).
+    /// </summary>
+    /// <remarks>
+    /// The binder gives a test no implicit receiver, so a method of the message it targets is called on the
+    /// receiver the test builds, never by its bare name. <see cref="Names"/> already reflects that for
+    /// fields; a caller offering calls has to ask, as it does of <see cref="InAFactory"/>.
+    /// </remarks>
+    public bool InATest { get; init; }
 }
 
 /// <summary>One name that resolves at a position, and what it resolves to.</summary>

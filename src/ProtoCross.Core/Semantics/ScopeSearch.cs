@@ -59,20 +59,24 @@ internal static class ScopeSearch
         // offset in it is genuinely in it, and ordinary containment is right there instead.
         //
         // The arms differ in exactly what the binder's HasImplicitReceiver says: an extend
-        // method's body reaches its receiver's fields by bare name, and a factory's method and
-        // everything inside a test reach none. Reading it off the shape rather than restating the policy
-        // is what keeps the two from drifting apart.
+        // method's body reaches its receiver's fields by bare name, and a factory's method, a helper
+        // and everything inside a test reach none. Reading it off the shape rather than restating the
+        // policy is what keeps the two from drifting apart.
         return enclosing[0] switch
         {
-            IrMethod { Signature.HasReceiver: false } method when ScopeEntry.Inside(method.Body.Span, offset, method.Body.IsClosed)
-                => new ScopeAtPosition(new MessageType(method.Signature.Receiver), declared) { InAFactory = true },
+            IrMethod method when !ScopeEntry.Inside(method.Body.Span, offset, method.Body.IsClosed) => null,
 
-            IrMethod method when ScopeEntry.Inside(method.Body.Span, offset, method.Body.IsClosed) => new ScopeAtPosition(
-                new MessageType(method.Signature.Receiver),
-                [.. declared, .. ReachableFields(method.Signature.Receiver, declared)]),
+            IrMethod { Signature: { HasReceiver: true, Receiver: { } receiver } }
+                => new ScopeAtPosition(new MessageType(receiver), [.. declared, .. ReachableFields(receiver, declared)]),
 
-            IrTest test when PositionSearch.Contains(ValuesOf(test), offset)
-                => new ScopeAtPosition(new MessageType(test.Target.Receiver), declared),
+            IrMethod { Signature.Receiver: { } built } => new ScopeAtPosition(new MessageType(built), declared) { InAFactory = true },
+
+            // A helper belongs to no message (spec 16.4).
+            IrMethod => new ScopeAtPosition(null, declared),
+
+            IrTest test when PositionSearch.Contains(ValuesOf(test), offset) => new ScopeAtPosition(
+                test.Target.Receiver is { } receiver ? new MessageType(receiver) : null,
+                declared) { InATest = true },
 
             _ => null,
         };
@@ -85,11 +89,17 @@ internal static class ScopeSearch
     /// is excluding. Every expression in all three binds against an empty scope with no implicit
     /// receiver fields, so the answer over this region is a receiver and no names -- which is a
     /// different statement from the null a header gets, and the true one.
+    /// <para>
+    /// A test of a helper holds no fixture (<see cref="IrTest.Receiver"/>). One written there anyway is
+    /// refused, and what it held is kept among what the test refused, which is in the region too.
+    /// </para>
     /// </remarks>
     private static SourceSpan ValuesOf(IrTest test)
-        => test.Arguments.Aggregate(
-            SourceSpan.Union(test.Receiver.Span, test.Expectation.Span),
-            (region, argument) => SourceSpan.Union(region, argument.Span));
+        => test.Arguments.Select(argument => argument.Span)
+            .Concat(test.Refused.Select(refused => refused.Span))
+            .Aggregate(
+                test.Receiver is { } fixture ? SourceSpan.Union(fixture.Span, test.Expectation.Span) : test.Expectation.Span,
+                SourceSpan.Union);
 
     /// <summary>Every name the binder declared that can be written at <paramref name="offset"/>.</summary>
     /// <remarks>

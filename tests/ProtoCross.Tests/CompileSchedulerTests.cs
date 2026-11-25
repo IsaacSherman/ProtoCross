@@ -5,6 +5,7 @@ using ProtoCross.LanguageServer.Hosting;
 using ProtoCross.LanguageServer.Protocol;
 using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.LanguageServer.Workspace;
+using ProtoCross.Tests.Harness;
 using Xunit;
 using LspFolder = ProtoCross.LanguageServer.Protocol.Lsp.WorkspaceFolder;
 
@@ -55,7 +56,11 @@ public class CompileSchedulerTests
             concurrency: 1);
 
         scheduler.Schedule(blocker);
-        await blockerReachedPublisher.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
+
+        // Only a hang is worth failing on here. This is a fresh process's first compile, which pays
+        // for loading the whole pipeline, and beside a loaded run it outlasted the one second this
+        // wait once allowed, before the race below had begun.
+        await blockerReachedPublisher.Task.WaitAsync(Liveness.Patience, TestContext.Current.CancellationToken);
 
         // Keep earlier runs inside WaitAsync while their cancellation callbacks and Schedule race to
         // replace their entries. More workers make that otherwise microscopic interleaving reproducible.

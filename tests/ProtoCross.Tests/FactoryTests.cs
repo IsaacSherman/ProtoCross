@@ -524,7 +524,6 @@ public class FactoryTests
     // ------- an expected message
 
     [Theory]
-    [InlineData("tags: [1]")]
     [InlineData("notes: [{ key: \"a\", value: 1 }]")]
     [InlineData("holder: Holder.factory.none()")]
     public void AFieldAnExpectedLiteralCannotCompareIsRefused(string field)
@@ -548,6 +547,23 @@ public class FactoryTests
         Assert.Equal(
             ["value seats", "set discount", "value discount", "set holder", "value holder.name"],
             checks.Select(check => (check is ProtoCross.Semantics.IrPresenceCheck ? "set " : "value ") + check.Path));
+    }
+
+    /// <summary>
+    /// A repeated field an expected literal writes out is compared by its count and then by each element at its index,
+    /// now that a list has both (spec 14.1, 25.3).
+    /// </summary>
+    [Fact]
+    public void AnExpectedLiteralComparesARepeatedFieldItWritesOutElementByElement()
+    {
+        var result = Compile(TicketFactory + "\ntest Ticket.factory.empty \"x\" {\n    expect return new Ticket { tags: [1, 2] };\n}\n");
+
+        AssertOk(result);
+        var expectation = Assert.IsType<IrTestFieldsExpectation>(Assert.Single(result.Module!.Tests).Expectation);
+
+        Assert.Equal(
+            ["tags.count()", "tags[0]", "tags[1]"],
+            ProtoCross.Semantics.IrExpectedFields.Of(expectation).Checks.Select(check => check.Path));
     }
 
     // ------- what is generated

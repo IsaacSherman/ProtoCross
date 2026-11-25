@@ -1,3 +1,4 @@
+using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
@@ -46,22 +47,31 @@ public sealed partial class Binder
             signature.Receiver,
             signature.ReturnType,
             HasImplicitReceiver: false);
-        var receiver = BindTestFixture(test, signature, context);
+        _factsEnded.Clear();
+        var (receiver, refused) = BindTestFixture(test, signature, context);
         var arguments = BindTestArguments(test, signature, context);
         var expectation = BindTestExpectation(test.Expectation, signature, context);
 
         return new IrTest(signature, test.Name, receiver, arguments, expectation, test.Span)
         {
             Document = _document,
+            Refused = refused,
         };
     }
 
-    /// <summary>The message a test calls its method on, built from its fixture (spec 25.3).</summary>
+    /// <summary>
+    /// The message a test calls its method on, built from its fixture (spec 25.3), or null for a test of a
+    /// helper, which belongs to no message; and what the test holds of a fixture it refused whole.
+    /// </summary>
     /// <remarks>
     /// <para>
     /// A test of a factory's method calls it on nothing. It holds whatever fixture its test does, the
     /// stand-in for one never written or one written anyway, which is refused here; only the binder
-    /// knows the target is a factory's.
+    /// knows the target is a factory's. A test of a helper calls it on nothing too, and holds none,
+    /// since there is no message to build one as. One written anyway is refused here, and its values
+    /// are still bound, as a literal's are where there is no message to read its fields against
+    /// (<see cref="BindMessageLiteral"/>): a call or a name in one is still what hover, navigation and
+    /// a rename are asked about.
     /// </para>
     /// <para>
     /// The parser reports a test of an extend method that writes no fixture, except where it read the
@@ -69,7 +79,8 @@ public sealed partial class Binder
     /// That one is reported here, which is the first place it is known.
     /// </para>
     /// </remarks>
-    private IrMessageLiteral BindTestFixture(TestDeclaration test, IrMethodSignature signature, MethodContext context)
+    private (IrMessageLiteral? Receiver, IReadOnlyList<IrExpression> Refused) BindTestFixture(
+        TestDeclaration test, IrMethodSignature signature, MethodContext context)
     {
         var fixture = test.Receiver;
 
@@ -82,13 +93,21 @@ public sealed partial class Binder
         {
             _diagnostics.Report(
                 DiagnosticCodes.FactoryTestDeclaresAReceiver,
-                $"'{signature.Name}' is a method of the factory of '{signature.Receiver.FullName}', which is called on "
-                + "nothing, so its test has no receiver to declare.",
+                signature.Receiver is { } built
+                    ? $"'{signature.Name}' is a method of the factory of '{built.FullName}', which is called on "
+                        + "nothing, so its test has no receiver to declare."
+                    : $"'{signature.Name}' is a helper, which is called on nothing, so its test has no receiver to declare.",
                 fixture.Span,
-                "Remove the 'receiver { … }' block, and give the method its arguments with 'arg' (spec 25.3).");
+                $"Remove the 'receiver {{ … }}' block, and give the {(signature.Receiver is null ? "helper" : "method")} "
+                + "its arguments with 'arg' (spec 25.3).");
         }
 
-        return BindTestReceiver(fixture, signature.Receiver, context);
+        return (signature.Receiver, fixture.IsWritten) switch
+        {
+            ({ } message, _) => (BindTestReceiver(fixture, message, context), []),
+            (null, true) => (null, [Refusal([.. fixture.Fields.Select(field => BindRefused(field.Value, NoNames(), context))], fixture.Span)]),
+            (null, false) => (null, []),
+        };
     }
 
     /// <remarks>
@@ -105,13 +124,22 @@ public sealed partial class Binder
             return null;
         }
 
+        // One name is a helper's, which belongs to no message (spec 16.4).
         if (target.Receiver.IsMissing)
         {
+            if (_helpers.TryGetValue(target.Method.Text, out var helper))
+            {
+                Use(helper.Id, target.Method.Span);
+                return helper;
+            }
+
             _diagnostics.Report(
                 DiagnosticCodes.InvalidTestTarget,
-                $"'{target.Method}' is not a method target.",
+                $"No helper is named '{target.Method}'. A test targets a helper by its name alone, and a method "
+                + "by its message and its name.",
                 span,
-                "Write tests against a receiver method, for example 'test Invoice.total_cents'.");
+                "Write tests against a helper or a receiver method, for example 'test clamp' or "
+                + "'test Invoice.total_cents'.");
             return null;
         }
 
@@ -388,7 +416,8 @@ public sealed partial class Binder
     /// <remarks>
     /// One comparison for both, because a refusal is a value as a result is: a literal of a message says which
     /// of its fields to compare, which is the one comparison two messages have until spec 13.3 decides what
-    /// makes them equal, and any other value is compared under <c>==</c>.
+    /// makes them equal, a list is compared element by element, a list of messages as a list of literals, each
+    /// compared as one alone would be, and any other value is compared under <c>==</c>.
     /// </remarks>
     private IrTestExpectation BindExpectedValue(Expression written, SourceSpan span, Outcome outcome, MethodContext context)
     {
@@ -398,11 +427,26 @@ public sealed partial class Binder
             return BindExpectedFields(literal, span, outcome, context);
         }
 
+        if (written is ListExpression list && outcome.Type is RepeatedType { ElementType: MessageType })
+        {
+            return BindExpectedElements(list, span, outcome, context);
+        }
+
         // Refused whatever the value is, because what is missing is not a value but a meaning
         // for '=='. The value is still bound, for the names in it, and not checked against the
         // return type: a second diagnostic would be about a comparison that cannot be made.
-        var cannotCompare = !HasEquality(outcome.Type);
-        if (cannotCompare && outcome.Type is MessageType returned)
+        var cannotCompare = !CanBeExpected(outcome.Type);
+        if (cannotCompare && outcome.Type is RepeatedType { ElementType: MessageType element } messages)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.MessageReturnCannotBeExpected,
+                $"'{signature.Name}' {outcome.Verb} '{messages.DisplayName}', and only a list of literals of one can be "
+                + "expected, because what makes two messages equal is not decided yet.",
+                span,
+                $"Expect a list written out, 'expect {outcome.Keyword} [new {((MessageType)element).Descriptor.Name} {{ … }}, …];', "
+                + "each of whose literals compares the fields it sets (spec 25.3).");
+        }
+        else if (cannotCompare && outcome.Type is MessageType returned)
         {
             _diagnostics.Report(
                 DiagnosticCodes.MessageReturnCannotBeExpected,
@@ -438,6 +482,19 @@ public sealed partial class Binder
     }
 
     /// <summary>
+    /// Whether a test can compare a value of <paramref name="type"/> with the one it expects: one <c>==</c>
+    /// compares, or a list of them, element by element (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// A list is compared although <c>==</c> refuses two lists (spec 9.2), because a test compares what a
+    /// method gave with what its author wrote, and as many elements, each equal, is the one thing that can
+    /// mean. What <c>==</c> on two lists should mean in a program is left open. A list of messages is compared
+    /// only as a list of literals written out (<see cref="BindExpectedElements"/>), so it is not one of these.
+    /// </remarks>
+    private static bool CanBeExpected(PlType type)
+        => type is RepeatedType list ? HasEquality(list.ElementType) : HasEquality(type);
+
+    /// <summary>
     /// Binds <c>expect return new T { … };</c> on a method that returns a message: the fields the literal
     /// sets are what the test compares (spec 25.3).
     /// </summary>
@@ -471,12 +528,60 @@ public sealed partial class Binder
         return new IrTestFieldsExpectation(expected, span);
     }
 
+    /// <summary>
+    /// Binds <c>expect return [new T { … }, …];</c> on a method that returns a list of messages: the list returned
+    /// has as many elements, and each meets the literal at its index, as one expected alone would (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// The list is bound as one anywhere else is, against the list the method returns, so an element of another type
+    /// is the error it always is. An element that is a message but not a literal is refused as a message expected
+    /// whole is (<c>PC0092</c>), since nothing says which of its fields to compare, and each literal's fields are then
+    /// asked whether a test can compare them, as an expected literal's are.
+    /// </remarks>
+    private IrTestExpectation BindExpectedElements(ListExpression written, SourceSpan span, Outcome outcome, MethodContext context)
+    {
+        var value = BindExpression(written, NoNames(), context, outcome.Type);
+        if (value is not IrList list)
+        {
+            return new IrTestReturnExpectation(value, span);
+        }
+
+        foreach (var element in list.Elements)
+        {
+            if (element is IrMessageLiteral literal)
+            {
+                ReportFieldsThatCannotBeCompared(literal);
+            }
+            else if (element.Type is MessageType message)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.MessageReturnCannotBeExpected,
+                    $"An element of the list expected is a '{message.DisplayName}' that is not a literal, and only a "
+                    + "literal of a message can be expected, because what makes two messages equal is not decided yet.",
+                    element.Span,
+                    $"Write it as a literal, 'new {message.Descriptor.Name} {{ … }}', setting the fields that matter (spec 25.3).");
+            }
+        }
+
+        return new IrTestElementsExpectation(list, span);
+    }
+
     /// <summary>Refuses each field of an expected literal that a test cannot compare (<c>PC0134</c>).</summary>
+    /// <remarks>
+    /// A literal nested in one, or written as an element of a repeated field it sets, is asked in turn. An element that
+    /// is a message but not a literal is refused where it is written, since the list around it can be compared.
+    /// </remarks>
     private void ReportFieldsThatCannotBeCompared(IrMessageLiteral expected)
     {
         foreach (var initializer in expected.Fields)
         {
             var field = initializer.Field;
+            if (field is { IsRepeated: true, IsMap: false } && initializer.Value is IrList list)
+            {
+                ReportElementsThatCannotBeCompared(field, list);
+                continue;
+            }
+
             if (IrExpectedFields.CanCompare(field, initializer.Value))
             {
                 if (initializer.Value is IrMessageLiteral nested)
@@ -494,9 +599,9 @@ public sealed partial class Binder
                     + "map's keys (spec 14.2).",
                     "Leave it out of the expected literal, and test a method that returns what you want to check of it."),
                 { IsRepeated: true } => (
-                    $"'{field.Name}' is a repeated field, and a test cannot compare one yet: the language has no length "
-                    + "or index to compare it by (spec 14.1).",
-                    "Leave it out of the expected literal, and test a method that returns what you want to check of it."),
+                    $"'{field.Name}' is given a '{initializer.Value.Type.DisplayName}' that is not a list written out, and "
+                    + "only one written out says what each element is compared with (spec 25.3).",
+                    "Write the list out, '[…]', with the elements the field should hold."),
                 _ => (
                     $"'{field.Name}' is given a '{initializer.Value.Type.DisplayName}' that is not a literal, and only a "
                     + "literal says which of a message's fields to compare (spec 13.3).",
@@ -506,6 +611,27 @@ public sealed partial class Binder
             if (initializer.Value.Type is not ErrorType)
             {
                 _diagnostics.Report(DiagnosticCodes.ExpectedFieldCannotBeCompared, why, initializer.Span, help);
+            }
+        }
+    }
+
+    /// <summary>Refuses each element of a repeated field's expected list that a test cannot compare, and asks each literal's fields.</summary>
+    private void ReportElementsThatCannotBeCompared(FieldDescriptor field, IrList list)
+    {
+        foreach (var element in list.Elements)
+        {
+            if (element is IrMessageLiteral literal)
+            {
+                ReportFieldsThatCannotBeCompared(literal);
+            }
+            else if (!IrExpectedFields.CanCompareElement(element) && element.Type is not ErrorType)
+            {
+                _diagnostics.Report(
+                    DiagnosticCodes.ExpectedFieldCannotBeCompared,
+                    $"An element of '{field.Name}' is given a '{element.Type.DisplayName}' that is not a literal, and only a "
+                    + "literal says which of a message's fields to compare (spec 13.3).",
+                    element.Span,
+                    "Write it as a literal, 'new T { … }', setting the fields that matter.");
             }
         }
     }

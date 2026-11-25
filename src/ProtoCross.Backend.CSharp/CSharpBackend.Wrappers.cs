@@ -48,8 +48,8 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// Whether C# holds <paramref name="expression"/>, a wrapper, as the value it holds rather than as a
-    /// message: a field, a map's element or what a lookup gives, or the name a <c>for</c> binds to an
-    /// element of a repeated value.
+    /// message: a field, a map's element or what a lookup gives, a list's element however it is read, or
+    /// the name a <c>for</c> binds to an element of a repeated value.
     /// </summary>
     /// <remarks>
     /// Every repeated value C# holds is protoc's <c>RepeatedField</c> of values, a local's and a
@@ -58,7 +58,7 @@ public sealed partial class CSharpBackend
     /// </remarks>
     private static bool IsHeldAsItsValue(IrExpression expression)
         => WrappedScalar(expression.Type) is not null
-            && expression is IrFieldAccess or IrMapLookup or IrMapElement
+            && expression is IrFieldAccess or IrMapLookup or IrMapElement or IrElementLookup or IrElementRead or IrListElement
                 or IrLocalReference { Local.Declaration.Kind: SymbolKind.LoopBinding };
 
     /// <summary>The value a wrapper held as its value holds, read from where it is held.</summary>
@@ -82,15 +82,23 @@ public sealed partial class CSharpBackend
             IrFieldAccess field => PropertyRead(field, placement, receiverName),
             IrLocalReference binding => ElementOf(binding),
             IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
-            _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "An element is a place, and is never read."),
+            IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
+            IrElementRead read => EmitElementRead(read, placement, receiverName),
+            IrListElement element => ListElementPlace(element, placement),
+            _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "A map's element is a place, and is never read."),
         };
 
         // A lookup's fallback is the value itself, so 'FindNullable(...) ?? 5L' is a value already, and so is what
-        // a lookup whose clause refuses held once it found one.
-        return IsAStruct(scalar) && wrapper is not IrMapLookup { OnMissing: MissingKeyBehavior.Fallback or MissingKeyBehavior.Refuse }
+        // a lookup whose clause refuses held once it found one. A try method's is the same.
+        return IsAStruct(scalar) && !IsAValueAlready(wrapper)
             ? held + ".GetValueOrDefault()"
             : held;
     }
+
+    /// <summary>Whether a wrapper's value, as <see cref="HeldValue"/> reads it, is the value already rather than a nullable one.</summary>
+    private static bool IsAValueAlready(IrExpression wrapper) => wrapper
+        is IrMapLookup { OnMissing: MissingKeyBehavior.Fallback or MissingKeyBehavior.Refuse }
+        or IrElementLookup { OnRefused: OutOfRangeBehavior.Fallback or OutOfRangeBehavior.Refuse };
 
     /// <summary>A wrapper held as its value, as the message the language says it is.</summary>
     /// <remarks>
@@ -138,8 +146,8 @@ public sealed partial class CSharpBackend
 
     /// <summary>
     /// Where a wrapper held as its value is held, as the target of a store that gives it a new value:
-    /// the field, on a message set first where it is unset; the map's element; or the element a loop
-    /// binds.
+    /// the field, on a message set first where it is unset; the map's element; the list's element at an
+    /// index; or the element a loop binds.
     /// </summary>
     /// <remarks>
     /// The value is the whole of a wrapper, so writing <c>limit.value</c> stores <c>limit</c>, which also
@@ -149,6 +157,7 @@ public sealed partial class CSharpBackend
     {
         IrFieldAccess field => WritableField(field, placement),
         IrMapElement element => ElementPlace(element, placement),
+        IrListElement element => ListElementPlace(element, placement),
         IrLocalReference binding => ElementOf(binding),
         _ => throw new ArgumentOutOfRangeException(nameof(wrapper), wrapper, "Not a place a wrapper is held in."),
     };
@@ -248,7 +257,7 @@ public sealed partial class CSharpBackend
     /// <remarks>Asked of what it is built from, so that anything not known to be inert is taken to see.</remarks>
     private static bool CouldSeeAReach(IrExpression value)
         => IrWalk.DescendantsAndSelf(value).Any(node => node is not (IrLiteral or IrParameterReference
-            or IrLocalReference or IrBinary or IrIntegerDivision or IrUnary or IrConversion
+            or IrLocalReference or IrBinary or IrIntegerDivision or IrUnary or IrMathCall or IrConversion
             or IrEnumValue or IrEnumToNumber or IrNumberToEnum or IrEnumMembership));
 
     /// <summary>
@@ -317,9 +326,13 @@ public sealed partial class CSharpBackend
                 writer.WriteLine(storeBack);
                 break;
 
+            // Stored back before the local is assigned, since the place it came from may be read through the local:
+            // in 'index = readings[index].next();', storing back after would store into the element the new index names.
             case IrAssignment assignment:
-                writer.WriteLine($"{Expression(assignment.Target, placement)} = {body.ForLocal(changed)};");
+                var assigned = body.Unused("result");
+                writer.WriteLine($"var {assigned} = {body.ForLocal(changed)};");
                 writer.WriteLine(storeBack);
+                writer.WriteLine($"{Expression(assignment.Target, placement)} = {assigned};");
                 break;
 
             // A method that may refuse returns its value through its parameter, and says it built it.

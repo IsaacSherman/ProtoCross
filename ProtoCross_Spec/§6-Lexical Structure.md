@@ -75,6 +75,7 @@ neither one names anything. Nothing that merely resembles them is reserved: `__i
 Reserved keywords:
 
 ```text
+_pCrossMath
 and
 as
 arg
@@ -119,6 +120,12 @@ void
 while
 ```
 
+`_pCrossMath` is reserved. It qualifies a call to a math function, `_pCrossMath.min(a, b)`
+([10.5](./§10-Numeric%20Semantics.md#105-math-functions)), and reserving it lets the parser, the server's
+colouring and the editor grammar each read `_pCrossMath.` as the math functions without looking
+further. A schema name spelled `_pCrossMath` can no longer be written, the cost `default` accepted;
+the spelling was chosen so that no schema is likely to have one.
+
 Contextual keywords:
 
 - `new` is not reserved. It begins a message literal ([13.2](./§13-Messages.md#132-message-construction)) where an identifier follows it, and
@@ -133,12 +140,17 @@ Contextual keywords:
   declaration, so the parser reads it there whatever follows, and a declaration whose message is not
   named yet is still one. After a message's name and a dot, `Invoice.factory`, it reaches that
   message's factory; that is a reading of a name, decided by the binder, and not a keyword.
-- `helper` is not reserved. It marks a factory's helper ([16.3](./§16-Methods.md#163-factories)) where `fn` follows it, and is an
-  identifier everywhere else, for the same reason.
+- `helper` is not reserved. It marks a helper where `fn` follows it, a factory's ([16.3](./§16-Methods.md#163-factories)) or, at the
+  top level, a project's ([16.4](./§16-Methods.md#164-helpers)), and is an identifier everywhere else, for the same reason.
 - `refuses` is not reserved. It begins a method's refusal ([16.3.1](./§16-Methods.md#1631-refusals)) where a name or a type keyword
   follows it, and is an identifier everywhere else, for the same reason. Nothing but the body's brace
   can follow a method's signature, so the parser reads it there whatever follows, and a refusal whose
   type is not written yet is still one, as a factory whose message is not named yet is.
+- `repeated` is not reserved. It begins a list's type ([8.1](./§8-Type%20System.md#81-type-sources)) where a name or a type keyword follows it,
+  and is an identifier everywhere else, for the same reason: protobuf lets a message be named
+  `repeated`, and a schema field or a local may be too. Where a name follows a type, the two words
+  read as a list's type, as they do for `refuses`: a method returning a message named `repeated` that
+  also refuses, `-> repeated refuses Refusal`, is read as returning a list.
 
 `refuse` and `on_refused` are reserved ([16.3.1](./§16-Methods.md#1631-refusals)), for `on_missing`'s reason below. `refuse` begins a
 statement as `return` does, and its value may begin with a `-` or a parenthesis, so the word and the one
@@ -201,7 +213,7 @@ Normative Requirements:
   coarse, because a wrong colour reads as a fact about the code.
 - **An identifier the binder resolved takes the category of what it resolved to**: a parameter is
   `parameter`, a field of a message is `property`, a constant of an enum is `enumMember`, a ProtoCross
-  method is `method`, a message type is `class`, an enum type is `enum`, a factory is `keyword`, as
+  method is `method`, a project's helper is `function` ([16.4](./§16-Methods.md#164-helpers)), a message type is `class`, an enum type is `enum`, a factory is `keyword`, as
   the word that names it everywhere it is written, `Invoice.factory` included, and both a local and the
   name a `for` binds are `variable`. It is the binder's own resolution that is published, not a
   second lookup of the same name, so what is coloured is what the program means -- a value in scope
@@ -230,7 +242,7 @@ Normative Requirements:
 Implementation Note:
 
 - The categories still reserved and not yet produced -- `namespace`, `interface`, `struct`,
-  `typeParameter`, `event`, `function`, `macro`, `modifier`, `regexp` and `decorator` -- are declared
+  `typeParameter`, `event`, `macro`, `modifier`, `regexp` and `decorator` -- are declared
   so that producing one later needs no renegotiation and repaints no open file. That is the same
   reason the seven unemitted modifiers are declared.
 - Scalar type names are keywords ([6.4](#64-keywords)) and stay `keyword`. They are declared nowhere

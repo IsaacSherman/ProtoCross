@@ -71,9 +71,11 @@ public sealed partial class Binder
             // branch: 'if not has x { return 0; }' leaves x set for the rest of the block. What the
             // statement assigns is forgotten after that rather than before, because an assignment
             // inside it runs after its condition was tested, and so ends what the condition proved.
+            // What the statement itself shows about a list's count comes last, since storing a list
+            // ends what was shown about the one it replaces.
             context = context with
             {
-                Present = ForgetChangedIn(statement, scope, context, Advance(context.Present, bound)),
+                Present = EstablishedBy(bound, ForgetChangedIn(statement, scope, context, Advance(context.Present, bound))),
             };
         }
 

@@ -1,6 +1,7 @@
 using Google.Protobuf.Reflection;
 using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
+using ProtoCross.Semantics;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
 using ProtoCross.Types;
@@ -58,12 +59,44 @@ public sealed partial class Binder
             "Qualify the name with its protobuf package.");
     }
 
+    /// <summary>The type <paramref name="reference"/> names: a scalar, an enum, a message, or a list of one (spec 8.1).</summary>
+    /// <remarks>
+    /// A list's element is resolved as a reference written on its own would be, at its own name, so an
+    /// unknown element type is underlined without the <c>repeated</c> before it.
+    /// </remarks>
+    private PlType ResolveTypeReference(TypeReference reference)
+    {
+        if (!reference.IsRepeated)
+        {
+            return ResolveNamedType(reference);
+        }
+
+        var element = ResolveNamedType(reference with { RepeatedWord = null, Span = reference.Name.Span });
+        return ListOf(element, reference);
+    }
+
+    /// <summary>A list of <paramref name="element"/>, or an error where there can be no list of it.</summary>
+    private PlType ListOf(PlType element, TypeReference reference)
+    {
+        if (element is VoidType)
+        {
+            _diagnostics.Report(
+                DiagnosticCodes.VoidIsNotAValueType,
+                "A list cannot hold 'void'.",
+                reference.Span,
+                "void is a return marker only. A list holds scalars, enums or messages (spec 8.1).");
+            return ErrorType.Instance;
+        }
+
+        return element is ErrorType ? element : new RepeatedType(element);
+    }
+
     /// <remarks>
     /// A name the parser never saw resolves to <see cref="ErrorType"/> in silence. It has already
     /// been reported as a syntax error at the position it is missing from, and an unknown-type
     /// diagnostic on top of that says the same thing twice.
     /// </remarks>
-    private PlType ResolveTypeReference(TypeReference reference)
+    private PlType ResolveNamedType(TypeReference reference)
     {
         if (reference.Name.IsMissing)
         {
@@ -146,22 +179,31 @@ public sealed partial class Binder
                 return new IrParameterReference(parameter, name.Span);
 
             // A bare identifier may be a field of the implicit receiver, as in `quantity`.
-            case { Field: { } field }:
+            case { Field: { } field } when context.ImplicitReceiver is { } receiver:
                 // The same symbol an explicit `this.quantity` would reach. That the author wrote no
                 // receiver is a fact about the text and not about what was named.
                 Use(SymbolId.ForField(field), name.Name.Span);
                 return BindFieldAccess(
-                    new IrThis(new MessageType(context.Receiver), name.Span), field, name.Span, context);
+                    new IrThis(new MessageType(receiver), name.Span), field, name.Span, context);
         }
 
-        // A factory has no message of its own, so naming one whose fields it lacks would mislead.
+        // A factory and a helper have no message of their own, so naming one whose fields they lack would mislead.
         _diagnostics.Report(
             DiagnosticCodes.UnknownName,
-            context.Method is { HasReceiver: false }
-                ? $"'{name.Name}' is not a variable or parameter. A factory method has no "
-                    + $"'{context.Receiver.Name}' of its own, so it reads fields from one it holds."
-                : $"'{name.Name}' is not a variable, parameter, or field of "
-                    + $"'{context.Receiver.FullName}'.",
+            context switch
+            {
+                { Method: { HasReceiver: false, Receiver: { } built } }
+                    => $"'{name.Name}' is not a variable or parameter. A factory method has no "
+                        + $"'{built.Name}' of its own, so it reads fields from one it holds.",
+                { Receiver: { } receiver }
+                    => $"'{name.Name}' is not a variable, parameter, or field of '{receiver.FullName}'.",
+                { Method.Kind: IrMethodKind.Standalone }
+                    => $"'{name.Name}' is not a variable or parameter. A helper has no message of its own, so it "
+                        + "reads fields from one it holds.",
+
+                // A test of a helper, whose values are written against no message.
+                _ => $"'{name.Name}' is not a variable or parameter.",
+            },
             name.Span);
         return new IrLiteral(null, ErrorType.Instance, name.Span);
     }
@@ -381,7 +423,7 @@ public sealed partial class Binder
     private static BareName Resolve(string name, Scope scope, MethodContext context)
         => scope.LookupLocal(name) is { } local ? new BareName(local, null, null)
             : scope.LookupParameter(name) is { } parameter ? new BareName(null, parameter, null)
-            : new BareName(null, null, context.HasImplicitReceiver ? MessageFields.Named(context.Receiver, name) : null);
+            : new BareName(null, null, context.ImplicitReceiver is { } receiver ? MessageFields.Named(receiver, name) : null);
 
     /// <summary>What <see cref="Resolve"/> found a bare name to mean: at most one of the three.</summary>
     private readonly record struct BareName(IrLocal? Local, IrParameter? Parameter, FieldDescriptor? Field);
@@ -395,6 +437,11 @@ public sealed partial class Binder
     /// </remarks>
     private IrExpression BindMemberAccess(MemberAccessExpression member, Scope scope, MethodContext context)
     {
+        if (member.Receiver is MathQualifierExpression)
+        {
+            return RefuseUncalledMathFunction(member);
+        }
+
         if (member.Name.IsMissing)
         {
             return new IrMissingMemberAccess(
@@ -549,6 +596,11 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return Uncallable(BindMemberAccess(member, scope, context));
 
+            // '_pCrossMath.abs(x)' bound as a call rather than a value: with 'on_refused' after it, or after 'return'
+            // in a method that returns nothing. What is wrong with either is said where each is bound.
+            case MemberAccessExpression { Receiver: MathQualifierExpression } member:
+                return BindMathCall(member, invocation, scope, context, null);
+
             // 'Invoice.factory.create()': settled before the receiver is bound, because 'Invoice.factory'
             // is no value, and binding it as one reports that it is not.
             case MemberAccessExpression { Receiver: MemberAccessExpression reach } member
@@ -575,23 +627,9 @@ public sealed partial class Binder
                     return BindMapMethodValue(boundReceiver, map, member, invocation, scope, context);
                 }
 
-                // A statement of its own was bound as an append before it got here (spec 14.1), so
-                // this one is inside an expression, or adds to a value nothing holds.
-                if (boundReceiver.Type is RepeatedType && member.Name.Text == IrAppend.MethodName)
+                if (boundReceiver.Type is RepeatedType list)
                 {
-                    RefuseAppend(boundReceiver, invocation, context);
-                    return Uncallable(boundReceiver);
-                }
-
-                if (boundReceiver.Type is RepeatedType)
-                {
-                    _diagnostics.Report(
-                        DiagnosticCodes.MethodCallOnANonMessage,
-                        $"Type '{boundReceiver.Type.DisplayName}' has no method named '{member.Name}'.",
-                        invocation.Span,
-                        $"A repeated value has one method, '{IrAppend.MethodName}', which adds an element to its "
-                        + "end. Nothing can be removed from one (spec 14.1).");
-                    return Uncallable(boundReceiver);
+                    return BindListMethodValue(boundReceiver, list, member, invocation, scope, context);
                 }
 
                 if (boundReceiver.Type is not MessageType messageType)
@@ -610,12 +648,33 @@ public sealed partial class Binder
                 break;
             }
 
+            // A project's helper, which a bare call reaches from anywhere, after what the body's own message
+            // offers. A name both have is refused, rather than either hiding the other (spec 16.4).
+            case NameExpression name when _helpers.TryGetValue(name.Name.Text, out var helper):
+                if (MethodABareCallReaches(name.Name.Text, context) is { } method)
+                {
+                    ReportCallNamesAMethodAndAHelper(method, helper, invocation.Span);
+                    return Uncallable(null);
+                }
+
+                return BindCall(null, helper, name.Name.Span, invocation, scope, context);
+
             // Inside a factory, a bare call is to the factory's own methods and helpers, as one in an
             // extend method is to its receiver's (spec 16.3).
-            case NameExpression name when context.Method is { HasReceiver: false } factoryMember:
-                return ResolveFactoryMethod(factoryMember.Receiver, name.Name, invocation.Span, context) is { } sibling
+            case NameExpression name when context.Method is { HasReceiver: false, Receiver: { } built }:
+                return ResolveFactoryMethod(built, name.Name, invocation.Span, context) is { } sibling
                     ? BindCall(null, sibling, name.Name.Span, invocation, scope, context)
                     : Uncallable(null);
+
+            // A helper belongs to no message, so a bare call in one reaches nothing but the helpers.
+            case NameExpression name when context.Method is { Kind: IrMethodKind.Standalone }:
+                _diagnostics.Report(
+                    DiagnosticCodes.UnknownMethod,
+                    $"No helper is named '{name.Name}'.",
+                    invocation.Span,
+                    $"A helper has no message of its own, so a bare call in one reaches only the project's helpers. Call "
+                    + $"a message's method on a message the helper holds: 'value.{name.Name}(…)' (spec 16.4).");
+                return Uncallable(null);
 
             // A test has no implicit receiver (spec 25.3), so a bare call names no receiver, as a bare
             // field name there names no field. Bound against the method's receiver it would read the
@@ -630,11 +689,11 @@ public sealed partial class Binder
                     + $"itself, or test '{name.Name}' in a test of its own (spec 25.3).");
                 return Uncallable(null);
 
-            case NameExpression name:
-                receiver = new IrThis(new MessageType(context.Receiver), name.Span);
+            case NameExpression name when context.ImplicitReceiver is { } implicitReceiver:
+                receiver = new IrThis(new MessageType(implicitReceiver), name.Span);
                 methodName = name.Name.Text;
                 methodNameSpan = name.Name.Span;
-                receiverDescriptor = context.Receiver;
+                receiverDescriptor = implicitReceiver;
                 break;
 
             default:
@@ -744,6 +803,13 @@ public sealed partial class Binder
                     + $"'{arguments[i].Type.DisplayName}'.",
                     invocation.Arguments[i].Span);
             }
+        }
+
+        // A mut fn changes what it is called on, so one called on a list's element changes the element, a place,
+        // rather than the value reading it gives (spec 14.1, 18). A map's lookup stays a value, and is refused.
+        if (signature.IsMutating && receiver is not null && IrMutation.IsReadFromAListsElement(receiver))
+        {
+            receiver = ListPlaceOf(receiver);
         }
 
         var call = new IrMethodCall(receiver, signature, arguments, invocation.Span);

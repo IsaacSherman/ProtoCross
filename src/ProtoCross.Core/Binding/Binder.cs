@@ -211,6 +211,7 @@ public sealed partial class Binder
         _configuredFallbacks = ResolveConfiguredFallbacks();
 
         var declared = sources.Select(source => (Source: source, Blocks: Declare(source))).ToList();
+        ReportIfTheHelpersAreTaken();
 
         var methods = new List<IrMethod>();
         var tests = new List<IrTest>();
@@ -238,24 +239,26 @@ public sealed partial class Binder
 
     /// <summary>
     /// The first pass over one source: resolves what each <c>extend</c> and <c>factory</c> names, and
-    /// declares every method in them so that any source may call it.
+    /// declares every method in them, and every top-level helper, so that any source may call it.
     /// </summary>
     /// <returns>
-    /// The blocks whose message resolved, which are the ones with bodies to bind, each with that message.
+    /// The blocks whose message resolved, which are the ones with bodies to bind, each with that message,
+    /// and each helper on its own, with none.
     /// </returns>
     /// <remarks>
-    /// The two kinds of block are declared in the order they are written, interleaved, because which of
-    /// two methods of one name is the duplicate is decided by which was declared second, and a reader
-    /// expects the one further down to be it.
+    /// The three kinds of declaration are declared in the order they are written, interleaved, because
+    /// which of two methods of one name is the duplicate is decided by which was declared second, and a
+    /// reader expects the one further down to be it.
     /// </remarks>
-    private List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)> Declare(SourceTree source)
+    private List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor? Message)> Declare(SourceTree source)
     {
         _document = source.Document;
         _productionBehavior = source.Role is SourceRole.Production;
-        var resolved = new List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)>();
+        var resolved = new List<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor? Message)>();
 
         var blocks = source.Unit.Extends.Cast<SyntaxNode>()
             .Concat(source.Unit.Factories)
+            .Concat(source.Unit.Helpers)
             .OrderBy(block => block.Span.Start.Offset);
 
         foreach (var block in blocks)
@@ -268,6 +271,11 @@ public sealed partial class Binder
 
                 case FactoryDeclaration factory when DeclareFactory(factory) is { } message:
                     resolved.Add((factory.Methods, message));
+                    break;
+
+                case MethodDeclaration helper:
+                    DeclareHelper(helper);
+                    resolved.Add(([helper], null));
                     break;
             }
         }
@@ -296,17 +304,19 @@ public sealed partial class Binder
         foreach (var method in extend.Methods)
         {
             // Declared as the method it would be without the word, which is what the author has
-            // written apart from it: a helper is a factory's, and this block's methods are all public.
+            // written apart from it: a helper is a factory's or a project's, and this block's methods are
+            // all public.
             if (method.IsHelper)
             {
                 _diagnostics.Report(
                     DiagnosticCodes.HelperOutsideAFactory,
                     $"{Capitalized(Refer(method.Name, "method"))} is marked '{ContextualKeywords.Helper}', and only a "
-                    + "factory has helpers. Every method of an extend block is public.",
+                    + "factory or a project has helpers. Every method of an extend block is public.",
                     method.Span,
-                    $"Remove '{ContextualKeywords.Helper}', or move the method into "
+                    $"Remove '{ContextualKeywords.Helper}', move the method into "
                     + $"'{ContextualKeywords.Factory} {extend.MessageName} {{ … }}' if what it computes is part of "
-                    + "building one (spec 16.3).");
+                    + "building one (spec 16.3), or out of the block to the top level if it needs no "
+                    + $"'{extend.MessageName}' (spec 16.4).");
             }
 
             DeclareMethod(receiver, method, IrMethodKind.Extend);
@@ -316,7 +326,7 @@ public sealed partial class Binder
     }
 
     /// <summary>The second pass over one source's methods, now that every signature is visible.</summary>
-    private List<IrMethod> BindMethods(IEnumerable<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor Message)> blocks)
+    private List<IrMethod> BindMethods(IEnumerable<(IReadOnlyList<MethodDeclaration> Methods, MessageDescriptor? Message)> blocks)
     {
         var methods = new List<IrMethod>();
 
@@ -484,7 +494,8 @@ public sealed partial class Binder
         => first.Document == _document ? string.Empty : $", at {first.Name.Span}";
 
     /// <summary>Resolves what a method declares into the signature the IR carries.</summary>
-    private IrMethodSignature DescribeMethod(MessageDescriptor receiver, MethodDeclaration method, IrMethodKind kind)
+    /// <param name="receiver">The message the method belongs to, or null for a top-level helper, which belongs to none.</param>
+    private IrMethodSignature DescribeMethod(MessageDescriptor? receiver, MethodDeclaration method, IrMethodKind kind)
     {
         var returnType = method.ReturnType is null
             ? VoidType.Instance
@@ -513,12 +524,14 @@ public sealed partial class Binder
 
         return new IrMethodSignature(
             receiver,
-            new DeclarationSite(SymbolKind.Method, _document, method.Name, method.Span),
+            new DeclarationSite(
+                kind is IrMethodKind.Standalone ? SymbolKind.Function : SymbolKind.Method, _document, method.Name, method.Span),
             returnType,
             parameters)
         {
-            // A factory's method has no receiver to change. It is refused where it is declared, and
-            // bound as the method it would be without the word.
+            // A factory's method and a helper have no receiver to change. Neither can be written with
+            // the word, which is refused where it is declared, and bound as the method it would be
+            // without it.
             IsMutating = method.IsMutating && kind is IrMethodKind.Extend,
             Kind = kind,
             Refusal = DescribeRefusal(method),
@@ -553,7 +566,8 @@ public sealed partial class Binder
     private static string Capitalized(string text)
         => text.Length == 0 ? text : char.ToUpperInvariant(text[0]) + text[1..];
 
-    private IrMethod? BindMethod(MessageDescriptor receiver, MethodDeclaration method)
+    /// <param name="receiver">The message the method belongs to, or null for a top-level helper, which belongs to none.</param>
+    private IrMethod? BindMethod(MessageDescriptor? receiver, MethodDeclaration method)
     {
         if (!_signatures.TryGetValue(method, out var signature))
         {
@@ -589,12 +603,13 @@ public sealed partial class Binder
             Declare(scope, parameter.Declaration, parameter.Type, ScopeEntry.FirstOffsetInside(method.Body.Span));
         }
 
-        // A factory's method has no message of its own, so a bare name reaches none of its fields:
-        // the rule a test's expressions already bind under (spec 16.3).
+        // A factory's method and a helper have no message of their own, so a bare name reaches no
+        // field: the rule a test's expressions already bind under (spec 16.3, 16.4).
         var context = new MethodContext(receiver, signature.ReturnType, HasImplicitReceiver: signature.HasReceiver)
         {
             Method = signature,
         };
+        _factsEnded.Clear();
         var body = BindBlock(method.Body, scope, context);
 
         if (signature.ReturnType is not VoidType && !IrFlow.NeverFallsThrough(body))
@@ -621,6 +636,8 @@ public sealed partial class Binder
             StringLiteralExpression literal => new IrLiteral(literal.Value, ScalarType.StringType, literal.Span),
             NameExpression name => BindName(name, scope, context),
             MemberAccessExpression member => BindMemberAccess(member, scope, context),
+            InvocationExpression invocation when MathCalleeOf(invocation) is { } function
+                => BindMathCall(function, invocation, scope, context, expectedType),
             InvocationExpression invocation => BindCallValue(invocation, scope, context),
             OnRefusedExpression handled => BindOnRefused(handled, scope, context),
             BinaryExpression binary => BindBinary(binary, scope, context, expectedType),
@@ -631,7 +648,9 @@ public sealed partial class Binder
             MembershipExpression membership => BindMembership(membership, scope, context),
             IndexExpression index => BindLookup(index, scope, context),
             MapEntryExpression entry => BindStrayEntry(entry, scope, context),
+            ListExpression list => BindListValue(list, scope, context, expectedType),
             MessageLiteralExpression literal => BindMessageLiteral(literal, scope, context, expectedType),
+            MathQualifierExpression qualifier => RefuseMathQualifier(qualifier),
             ErrorExpression error => new IrLiteral(null, ErrorType.Instance, error.Span),
             _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
         };
@@ -642,12 +661,17 @@ public sealed partial class Binder
     /// How many enclosing loops the statement being bound sits inside. Zero means 'break' and
     /// 'continue' have nothing to bind to.
     /// </param>
+    /// <param name="Receiver">
+    /// The message the method or test is about: an extend method's receiver, the message a factory
+    /// builds, or the one a test's target belongs to. Null for a top-level helper and its test, which
+    /// are about no message (spec 16.4).
+    /// </param>
     /// <param name="HasImplicitReceiver">
     /// Whether a bare name may reach <paramref name="Receiver"/>: a field read as <c>count</c>, a
     /// method called as <c>helper()</c>. An extend method's body has one. A test does not (spec 25.3):
     /// the receiver it names is the message its fixture builds, which nothing in the test is inside.
     /// Nor does a factory's method (spec 16.3), which builds the message <paramref name="Receiver"/>
-    /// names and is called on none.
+    /// names and is called on none, or a top-level helper, which has none (spec 16.4).
     /// </param>
     /// <remarks>
     /// Carries no parameter list, deliberately. <see cref="Scope"/> is what answers a name, and it
@@ -657,11 +681,17 @@ public sealed partial class Binder
     /// resolve a name against.
     /// </remarks>
     private sealed record MethodContext(
-        MessageDescriptor Receiver,
+        MessageDescriptor? Receiver,
         PlType ReturnType,
         bool HasImplicitReceiver = true,
         int LoopDepth = 0)
     {
+        /// <summary>
+        /// The message a bare name reaches into, a field read as <c>count</c>, or null where a bare name
+        /// reaches no message.
+        /// </summary>
+        public MessageDescriptor? ImplicitReceiver => HasImplicitReceiver ? Receiver : null;
+
         /// <summary>
         /// Access paths whose presence has been established on every path reaching the statement
         /// being bound (spec 13.1).

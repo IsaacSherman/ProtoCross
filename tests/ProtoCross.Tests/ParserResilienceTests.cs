@@ -97,10 +97,13 @@ public class ParserResilienceTests(ITestOutputHelper logger)
     public void TruncationAtEveryOffsetTerminates(string path)
     {
         var source = new StringBuilder(File.ReadAllText(path)).Replace("  ", "").ToString();
-        
-        WithinBudget(
-            $"truncations of {Path.GetFileName(path)}",
-            stop => MutationSweep.For(0, source.Length + 1, stop, length => Parse(source[..length])), logger);
+
+        foreach (var (first, end) in MutationSweep.Batches(0, source.Length + 1))
+        {
+            WithinBudget(
+                $"truncations of {Path.GetFileName(path)} to lengths {first} through {end - 1}",
+                stop => MutationSweep.For(first, end, stop, length => Parse(source[..length])), logger);
+        }
     }
 
     /// <summary>
@@ -113,9 +116,12 @@ public class ParserResilienceTests(ITestOutputHelper logger)
     {
         var source = File.ReadAllText(path);
 
-        WithinBudget(
-            $"single-character deletions of {Path.GetFileName(path)}",
-            stop => MutationSweep.For(0, source.Length, stop, index => Parse(source.Remove(index, 1))), logger);
+        foreach (var (first, end) in MutationSweep.Batches(0, source.Length))
+        {
+            WithinBudget(
+                $"single-character deletions of {Path.GetFileName(path)}, offsets {first} through {end - 1}",
+                stop => MutationSweep.For(first, end, stop, index => Parse(source.Remove(index, 1))), logger);
+        }
     }
 
     /// <summary>

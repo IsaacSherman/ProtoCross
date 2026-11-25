@@ -5,7 +5,8 @@ using ProtoCross.LanguageServer.Protocol.Lsp;
 namespace ProtoCross.LanguageServer.Hosting;
 
 /// <summary>
-/// The shape of a file: its <c>extend</c> blocks, and the methods and tests inside them.
+/// The shape of a file: its <c>extend</c> and <c>factory</c> blocks, its helpers, and the methods and tests
+/// inside them.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -70,17 +71,27 @@ public static class DocumentOutline
             switch (declarations[index])
             {
                 case ExtendDeclaration extend:
-                    var beside = TestsBeside(declarations, index, extend.MessageName.Text, ofAFactory: false);
+                    var beside = TestsBeside(
+                        declarations, index, test => Targets(test, extend.MessageName.Text) && test.Target.Factory is null);
 
                     outline.Add(Block(extend, beside));
                     index += beside.Count;
                     break;
 
                 case FactoryDeclaration factory:
-                    var testedBeside = TestsBeside(declarations, index, factory.MessageName.Text, ofAFactory: true);
+                    var testedBeside = TestsBeside(
+                        declarations, index, test => Targets(test, factory.MessageName.Text) && test.Target.Factory is not null);
 
                     outline.Add(Block(factory, testedBeside));
                     index += testedBeside.Count;
+                    break;
+
+                // The only method written at the top level is a project's helper (spec 16.4).
+                case MethodDeclaration helper:
+                    var helperTests = TestsBeside(declarations, index, test => TargetsTheHelper(test, helper.Name.Text));
+
+                    outline.Add(Helper(helper, helperTests));
+                    index += helperTests.Count;
                     break;
 
                 // Whatever was not taken by the block above it: a test of a message extended
@@ -115,6 +126,7 @@ public static class DocumentOutline
         => [.. unit.Extends
             .Cast<SyntaxNode>()
             .Concat(unit.Factories)
+            .Concat(unit.Helpers)
             .Concat(unit.Tests)
             .OrderBy(declaration => declaration.Span.Start.Offset)];
 
@@ -146,6 +158,23 @@ public static class DocumentOutline
             factory.MessageName.IsMissing ? factory.Keyword.Span : factory.MessageName.Span,
             [.. factory.Methods.Select(Method), .. beside.Select(Test)]);
 
+    /// <summary>
+    /// A project's helper, named as it is called, with the tests written straight after it nested under it as
+    /// a block's are.
+    /// </summary>
+    /// <remarks>
+    /// A function rather than a method, because a helper belongs to no message, and the kind is what an
+    /// editor draws beside it.
+    /// </remarks>
+    private static DocumentSymbol Helper(MethodDeclaration helper, IReadOnlyList<TestDeclaration> beside)
+        => Entry(
+            Named(helper.Name, ContextualKeywords.Helper),
+            Signature(helper),
+            SymbolKind.Function,
+            Covering(helper.Span, beside),
+            helper.Name.Span,
+            beside.Count == 0 ? null : [.. beside.Select(Test)]);
+
     /// <summary>The run of tests written straight after a block, all of them naming it.</summary>
     /// <remarks>
     /// <para>
@@ -163,20 +192,19 @@ public static class DocumentOutline
     /// whose receiver names no block at all already gets.
     /// </para>
     /// </remarks>
-    /// <param name="ofAFactory">
-    /// Whether the block is a factory, whose tests target <c>Invoice.factory.create</c>, rather than an
-    /// extend block, whose tests target <c>Invoice.total</c>. A test of one is never nested under the other.
+    /// <param name="testsTheBlock">
+    /// Whether a test targets the block: an extend block's tests target <c>Invoice.total</c>, a factory's
+    /// <c>Invoice.factory.create</c>, and a helper's its name alone. A test of one is never nested under
+    /// another.
     /// </param>
     private static List<TestDeclaration> TestsBeside(
-        IReadOnlyList<SyntaxNode> declarations, int block, string receiver, bool ofAFactory)
+        IReadOnlyList<SyntaxNode> declarations, int block, Func<TestDeclaration, bool> testsTheBlock)
     {
         List<TestDeclaration> beside = [];
 
         for (var index = block + 1; index < declarations.Count; index++)
         {
-            if (declarations[index] is not TestDeclaration test
-                || !Targets(test, receiver)
-                || test.Target.Factory is not null != ofAFactory)
+            if (declarations[index] is not TestDeclaration test || !testsTheBlock(test))
             {
                 break;
             }
@@ -252,13 +280,16 @@ public static class DocumentOutline
     /// </remarks>
     private static DocumentSymbol Test(TestDeclaration test)
     {
-        var target = test.Target.Factory is { } factory
-            ? $"{test.Target.Receiver.Text}.{factory.Text}.{test.Target.Method.Text}"
-            : $"{test.Target.Receiver.Text}.{test.Target.Method.Text}";
+        var target = test.Target switch
+        {
+            { IsOneName: true } => test.Target.Method.Text,
+            { Factory: { } factory } => $"{test.Target.Receiver.Text}.{factory.Text}.{test.Target.Method.Text}",
+            _ => $"{test.Target.Receiver.Text}.{test.Target.Method.Text}",
+        };
 
         return Entry(
             test.Name.Length > 0 ? test.Name : Named(test.Target.Method, "test"),
-            target.Length > 1 ? target : null,
+            target.Trim('.').Length > 0 ? target : null,
             SymbolKind.Function,
             test.Span,
             test.Target.Span,
@@ -326,4 +357,9 @@ public static class DocumentOutline
     private static bool Targets(TestDeclaration test, string receiver)
         => receiver.Length > 0
             && string.Equals(test.Target.Receiver.Text, receiver, StringComparison.Ordinal);
+
+    private static bool TargetsTheHelper(TestDeclaration test, string helper)
+        => helper.Length > 0
+            && test.Target.IsOneName
+            && string.Equals(test.Target.Method.Text, helper, StringComparison.Ordinal);
 }

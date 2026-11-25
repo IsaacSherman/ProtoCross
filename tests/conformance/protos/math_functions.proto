@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// math_functions.pcross -- the math functions, over every type each takes (spec 10.5).
+message MathCase {
+  double d = 1;
+  double d2 = 2;
+  double d3 = 3;
+  float f = 4;
+  float f2 = 5;
+  int32 i32 = 6;
+  int32 i32b = 7;
+  int64 i64 = 8;
+  int64 i64b = 9;
+  uint32 u32 = 10;
+  uint32 u32b = 11;
+  uint64 u64 = 12;
+  uint64 u64b = 13;
+
+  // Each empty in every fixture, so a lookup of one ends the program and names it (spec 9.3).
+  map<int32, double> min_first = 14;
+  map<int32, double> min_second = 15;
+  map<int32, double> max_first = 16;
+  map<int32, double> max_second = 17;
+  map<int32, double> max_third = 18;
+}

@@ -58,10 +58,10 @@ public sealed partial class Parser
 
         if (receiver is null)
         {
-            // A factory's method is called on nothing, so its test declares nothing to call it on. A
-            // fixture that is there anyway is the binder's to refuse, once it knows the target is a
-            // factory's.
-            if (target.Factory is null)
+            // A factory's method and a helper are called on nothing, so their tests declare nothing to
+            // call them on. A fixture that is there anyway is the binder's to refuse, once it knows what
+            // the target is.
+            if (target.Factory is null && !target.IsOneName)
             {
                 ReportTestHasNoReceiver(_diagnostics, Spanning(start, end));
             }

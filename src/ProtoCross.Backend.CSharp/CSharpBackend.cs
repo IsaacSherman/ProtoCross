@@ -37,7 +37,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
         var placement = new Placement(options.ProjectNamespace);
         var byNamespace = module.Methods
-            .GroupBy(m => placement.NamespaceOf(m.Receiver))
+            .GroupBy(m => placement.NamespaceOf(m.Signature))
             .OrderBy(g => g.Key, StringComparer.Ordinal);
 
         foreach (var namespaceGroup in byNamespace)
@@ -45,9 +45,10 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
             var hasNamespace = !string.IsNullOrEmpty(namespaceGroup.Key);
             IDisposable? namespaceScope = hasNamespace ? writer.Block($"namespace {namespaceGroup.Key}") : null;
 
+            // Only an extend block's methods have a receiver, which each is grouped and ordered by.
             var byPart = namespaceGroup
                 .Where(m => m.Signature.HasReceiver)
-                .GroupBy(m => placement.PartOf(m.Receiver), StringComparer.Ordinal)
+                .GroupBy(m => placement.PartOf(m.Receiver!), StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 
             var firstClass = true;
@@ -62,14 +63,14 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
                 // Ordered by receiver and otherwise left in the order they were declared, so a
                 // project's one part lists each receiver's methods together.
-                var methods = part.OrderBy(m => m.Receiver.FullName, StringComparer.Ordinal).ToList();
-                EmitExtensionClass(writer, placement.ClassOf(methods[0].Receiver), methods, placement);
+                var methods = part.OrderBy(m => m.Receiver!.FullName, StringComparer.Ordinal).ToList();
+                EmitExtensionClass(writer, placement.ClassOf(methods[0].Signature), methods, placement);
             }
 
             // After the extension classes, so a source with no factory is generated as it always was.
             var factories = namespaceGroup
-                .Where(m => !m.Signature.HasReceiver)
-                .GroupBy(m => m.Receiver.FullName, StringComparer.Ordinal)
+                .Where(m => m.Signature.Kind is IrMethodKind.Factory or IrMethodKind.Helper)
+                .GroupBy(m => m.Receiver!.FullName, StringComparer.Ordinal)
                 .OrderBy(g => g.Key, StringComparer.Ordinal);
 
             foreach (var factory in factories)
@@ -81,6 +82,13 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
 
                 firstClass = false;
                 EmitFactoryClass(writer, [.. factory], placement);
+            }
+
+            // A project's helpers are in a namespace of their own, so they are the only class in it.
+            var helpers = namespaceGroup.Where(m => m.Signature.Kind is IrMethodKind.Standalone).ToList();
+            if (helpers.Count > 0)
+            {
+                EmitHelpersClass(writer, helpers, placement);
             }
 
             namespaceScope?.Dispose();
@@ -142,7 +150,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IReadOnlyList<IrMethod> methods,
         Placement placement)
     {
-        var receivers = methods.Select(method => $"<c>{method.Receiver.FullName}</c>").Distinct(StringComparer.Ordinal);
+        var receivers = methods.Select(method => $"<c>{method.Receiver!.FullName}</c>").Distinct(StringComparer.Ordinal);
 
         writer.WriteLine($"/// <summary>ProtoCross behavior for {string.Join(", ", receivers)}.</summary>");
         using var classScope = writer.Block($"public static partial class {className}");
@@ -175,7 +183,8 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     /// </remarks>
     private static void EmitFactoryClass(SourceWriter writer, IReadOnlyList<IrMethod> methods, Placement placement)
     {
-        var message = methods[0].Receiver;
+        // A factory's methods all belong to the message it builds.
+        var message = methods[0].Receiver!;
 
         writer.WriteLine($"/// <summary>Builds <c>{message.FullName}</c>: its ProtoCross factory.</summary>");
         using var classScope = writer.Block($"public static class {placement.FactoryClassOf(message)}");
@@ -193,6 +202,33 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         }
     }
 
+    /// <summary>
+    /// Emits this source's part of the class a project's helpers are generated into,
+    /// <c>ProtoCrossHelpers</c> (spec 24.1).
+    /// </summary>
+    /// <remarks>
+    /// <c>partial</c> for the reason a project's extension class is: the class is the project's rather than
+    /// one source's, and each source that declares helpers writes a part of it. The helpers keep the order
+    /// they are declared in.
+    /// </remarks>
+    private static void EmitHelpersClass(SourceWriter writer, IReadOnlyList<IrMethod> helpers, Placement placement)
+    {
+        writer.WriteLine($"/// <summary>The ProtoCross helpers of <c>{placement.Project?.Package}</c>.</summary>");
+        using var classScope = writer.Block($"public static partial class {NameConventions.CSharpHelpersClassName}");
+
+        var first = true;
+        foreach (var helper in helpers)
+        {
+            if (!first)
+            {
+                writer.WriteLine();
+            }
+
+            first = false;
+            EmitMethod(writer, helper, placement);
+        }
+    }
+
     /// <remarks>
     /// A method that may refuse returns whether it built its result, and gives the result or the refusal through
     /// an <c>out</c> parameter (spec 24.1): <c>Dictionary.TryGetValue</c>'s shape, which a C# caller already reads
@@ -201,14 +237,15 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
     private static void EmitMethod(SourceWriter writer, IrMethod method, Placement placement)
     {
         var methodName = placement.MethodNameOf(method.Signature);
-        var receiverType = "global::" + NameConventions.GetCSharpTypeName(method.Receiver);
         var taken = NamesDeclaredIn(method);
         var outs = Outs.Of(method.Signature, taken);
         var returnType = outs is null ? TypeName(method.ReturnType) : "bool";
 
-        // A factory's method is called on nothing, so it is a plain static method of its class.
-        var parameters = method.Signature.HasReceiver ? [$"this {receiverType} {ReceiverName}"] : new List<string>();
-        parameters.AddRange(method.Parameters.Select(p => $"{TypeName(p.Type)} {Escape(p.Name)}"));
+        // A factory's method and a helper are called on nothing, so each is a plain static method of its class.
+        var parameters = method is { Signature.HasReceiver: true, Receiver: { } receiver }
+            ? [$"this global::{NameConventions.GetCSharpTypeName(receiver)} {ReceiverName}"]
+            : new List<string>();
+        parameters.AddRange(method.Parameters.Select(p => $"{ParameterTypeName(p.Type)} {Escape(p.Name)}"));
         parameters.AddRange(outs?.Declared(method.Signature) ?? []);
 
         var access = method.Signature.Kind is IrMethodKind.Helper ? "private" : "public";
@@ -245,6 +282,7 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrBinary binary => EmitBinary(binary, placement, receiverName),
         IrIntegerDivision division => EmitIntegerDivision(division, placement, receiverName),
         IrUnary unary => EmitUnary(unary, placement, receiverName),
+        IrMathCall call => EmitMathCall(call, placement, receiverName),
         IrConversion conversion => EmitConversion(conversion, placement, receiverName),
         IrEnumToNumber number => $"((int){Expression(number.Operand, placement, receiverName)})",
         IrNumberToEnum conversion => EmitNumberToEnum(conversion, placement, receiverName),
@@ -253,10 +291,15 @@ public sealed partial class CSharpBackend : ITestProjectScaffold
         IrEnumValue enumValue => EnumValue(enumValue.Value),
         IrLiteral literal => EmitLiteral(literal),
         IrMessageLiteral literal => MessageLiteral(literal, placement, receiverName),
+        IrList list => ListLiteral(list, placement, receiverName),
         IrMapLookup lookup => EmitMapLookup(lookup, placement, receiverName),
         IrMapContains contains
             => $"{Expression(contains.Map, placement, receiverName)}.ContainsKey({Expression(contains.Key, placement, receiverName)})",
         IrMapQuery query => EmitMapQuery(query, placement, receiverName),
+        IrListQuery query => EmitListQuery(query, placement, receiverName),
+        IrElementLookup lookup => EmitElementLookup(lookup, placement, receiverName),
+        IrElementRead read => EmitElementRead(read, placement, receiverName),
+        IrListElement element => ListElementPlace(element, placement),
         _ => throw new ArgumentOutOfRangeException(nameof(expression), expression, "Unhandled expression."),
     };
 

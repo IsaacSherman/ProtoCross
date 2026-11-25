@@ -344,7 +344,7 @@ public class TestSourceTests
         {
             var sources = vector.SourcePaths.Select(SourceDocument.ReadFrom).ToList();
 
-            AssertSameBehavior(vector.Name, production: sources, test: sources);
+            AssertSameBehavior(vector, production: sources, test: sources);
         }
     }
 
@@ -361,15 +361,20 @@ public class TestSourceTests
         var testsOnly = sources.Single(source => source.Identity.Name == "cross_file_tests.pcross");
 
         AssertSameBehavior(
-            vector.Name,
+            vector,
             production: [.. sources.Where(source => source != testsOnly)],
             test: [.. sources.Select(source => source == testsOnly ? source with { Role = SourceRole.Test } : source)]);
     }
 
-    private static void AssertSameBehavior(string name, IReadOnlyList<SourceDocument> production, IReadOnlyList<SourceDocument> test)
+    /// <remarks>
+    /// Both builds are compiled in the project the vector's directory holds, if it holds one, as the CLI
+    /// compiles them: a helper is declared only in a project (spec 16.4).
+    /// </remarks>
+    private static void AssertSameBehavior(ConformanceVector vector, IReadOnlyList<SourceDocument> production, IReadOnlyList<SourceDocument> test)
     {
-        var productionBuild = CompileVector(production, skipTests: true);
-        var testBuild = CompileVector(test, skipTests: false);
+        var name = vector.Name;
+        var productionBuild = CompileVector(production, vector.ProjectNamespace, skipTests: true);
+        var testBuild = CompileVector(test, vector.ProjectNamespace, skipTests: false);
         Assert.True(productionBuild.Success, $"{name}: {Described(productionBuild)}");
         Assert.True(testBuild.Success, $"{name}: {Described(testBuild)}");
 
@@ -382,9 +387,9 @@ public class TestSourceTests
         }
     }
 
-    private static CompilationResult CompileVector(IReadOnlyList<SourceDocument> sources, bool skipTests)
+    private static CompilationResult CompileVector(IReadOnlyList<SourceDocument> sources, ProjectNamespace? project, bool skipTests)
         => new Compilation(
                 sources,
-                new CompilationOptions { IncludePaths = [ConformanceVectors.ProtoDirectory], SkipTests = skipTests })
+                new CompilationOptions { IncludePaths = [ConformanceVectors.ProtoDirectory], ProjectNamespace = project, SkipTests = skipTests })
             .Compile();
 }

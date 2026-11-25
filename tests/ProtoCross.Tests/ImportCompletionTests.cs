@@ -6,6 +6,7 @@ using ProtoCross.LanguageServer.Hosting;
 using ProtoCross.LanguageServer.Protocol;
 using ProtoCross.LanguageServer.Protocol.Lsp;
 using ProtoCross.LanguageServer.Workspace;
+using ProtoCross.Tests.Harness;
 using Xunit;
 using Range = ProtoCross.LanguageServer.Protocol.Lsp.Range;
 
@@ -697,10 +698,7 @@ public class ImportCompletionTests
         {
             superseded.Add(provider.AnswerAsync(provider.Read(at)!, CancellationToken.None));
 
-            // Short, because the way this fails is a walk that never starts: without supersession the
-            // earlier ones hold every slot, and waiting the full patience for each would turn one
-            // broken assumption into minutes.
-            await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+            await gate.EnteredAsync();
         }
 
         Assert.Equal(1, provider.Outstanding);
@@ -747,8 +745,8 @@ public class ImportCompletionTests
         }
 
         // Two get in; the rest are waiting for a slot rather than holding one.
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+        await gate.EnteredAsync();
+        await gate.EnteredAsync();
 
         Assert.Equal(2, provider.InFlight);
 
@@ -820,14 +818,12 @@ public class ImportCompletionTests
 
             // An ordered request behind the edits: its answer cannot come back until they have been
             // applied, so releasing the walk now means the walk is answering about text that moved.
-            // Capped at half the client's own patience, because a server that has stopped reading the
-            // wire should fail this sooner than in half a minute per repetition. Not lower: alone it
-            // answers in well under a second, but a loaded full run tripped a 5 second cap repeatedly.
-            await client
-                .RequestAsync(
-                    Methods.SemanticTokensFull,
-                    new SemanticTokensParams { TextDocument = new TextDocumentIdentifier { Uri = uri } })
-                .WaitAsync(TimeSpan.FromSeconds(15));
+            // No bound of its own, because only a hang is worth failing on, and the client's patience
+            // is that bound. Its timeout also says what the server was doing, where the five- and
+            // fifteen-second caps this wait once had said only that they had run out.
+            await client.RequestAsync(
+                Methods.SemanticTokensFull,
+                new SemanticTokensParams { TextDocument = new TextDocumentIdentifier { Uri = uri } });
 
             gate.Open();
 
@@ -862,9 +858,10 @@ public class ImportCompletionTests
             return SchemaCatalog.Enumerate(directory, roots, cancellationToken: cancellationToken);
         }
 
-        public async Task EnteredAsync(TimeSpan? patience = null)
+        /// <summary>That a walk begins, which only a hang can stop.</summary>
+        public async Task EnteredAsync()
             => Assert.True(
-                await _entered.WaitAsync(patience ?? LanguageServerClient.Patience),
+                await _entered.WaitAsync(Liveness.Patience),
                 "a walk that was expected to start never did");
 
         /// <summary>That no further walk begins, which is a bounded wait rather than a proof.</summary>
@@ -1029,7 +1026,7 @@ public class ImportCompletionTests
         var provider = Queueing(documents, gate);
 
         var holding = Ask(provider, documents, root, "holding");
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+        await gate.EnteredAsync();
 
         using var withdrawn = new CancellationTokenSource();
         var queued = Ask(provider, documents, root, "queued", withdrawn.Token);
@@ -1076,7 +1073,7 @@ public class ImportCompletionTests
                 Position = PositionOf(text, PathStart(text)),
             });
 
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+        await gate.EnteredAsync();
 
         client.Notify(
             Methods.DidClose,
@@ -1104,7 +1101,7 @@ public class ImportCompletionTests
         var provider = Queueing(documents, gate);
 
         var holding = Ask(provider, documents, root, "holding");
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+        await gate.EnteredAsync();
 
         var queued = Ask(provider, documents, root, "queued");
 
@@ -1140,7 +1137,7 @@ public class ImportCompletionTests
         var provider = Queueing(documents, gate);
 
         var holding = Ask(provider, documents, root, "holding");
-        await gate.EnteredAsync(TimeSpan.FromSeconds(5));
+        await gate.EnteredAsync();
 
         var queued = Ask(provider, documents, root, "queued");
 

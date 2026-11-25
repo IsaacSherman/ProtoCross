@@ -478,7 +478,8 @@ public static class DiagnosticCodes
         new("PC0091", DiagnosticSeverity.Error, "literal of a type that is not a message");
 
     /// <summary>
-    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal. A
+    /// <c>expect return</c> on a method that returns a message, with a value that is not a literal, or on
+    /// one that returns a list of messages, with a value that is not a list of literals written out. A
     /// literal is compared by the fields it sets, and nothing else can be until spec 13.3 says what
     /// message equality is (spec 25.3).
     /// </summary>
@@ -617,11 +618,17 @@ public static class DiagnosticCodes
 
     // ------------------------------------------------------- maps
 
-    /// <summary><c>x[k]</c> on a value that is not a map, which is the only thing looked up by a key (spec 14.2).</summary>
+    /// <summary>
+    /// <c>x[k]</c> on a value that is neither a map, which is looked up by a key, nor a list, which is read by an index
+    /// (spec 14.1, 14.2).
+    /// </summary>
     public static readonly DiagnosticDescriptor ValueCannotBeIndexed =
         new("PC0113", DiagnosticSeverity.Error, "value cannot be indexed");
 
-    /// <summary>A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2).</summary>
+    /// <summary>
+    /// A key of a type other than the map's keys, in a lookup, an element or <c>in</c> (spec 14.2), or a list's index
+    /// that is not an integer (spec 14.1).
+    /// </summary>
     public static readonly DiagnosticDescriptor MapKeyTypeMismatch =
         new("PC0114", DiagnosticSeverity.Error, "key type mismatch");
 
@@ -682,10 +689,11 @@ public static class DiagnosticCodes
 
     /// <summary>
     /// A factory whose generated class would have the name of another factory's, or of a schema's
-    /// message, in the namespace it is declared in (spec 24).
+    /// message, in the namespace it is declared in; or a project's helpers, whose class, namespace or
+    /// functions a schema's name or a method would meet (spec 24).
     /// </summary>
     public static readonly DiagnosticDescriptor FactoryClassNameCollides =
-        new("PC0126", DiagnosticSeverity.Error, "factory class name collides");
+        new("PC0126", DiagnosticSeverity.Error, "generated name collides");
 
     /// <summary>A method marked <c>helper</c> outside a factory block (spec 16.3).</summary>
     public static readonly DiagnosticDescriptor HelperOutsideAFactory =
@@ -707,9 +715,12 @@ public static class DiagnosticCodes
     public static readonly DiagnosticDescriptor FactoryUsedAsAValue =
         new("PC0131", DiagnosticSeverity.Error, "factory used as a value");
 
-    /// <summary>A test of a factory method that declares a receiver fixture it has no use for (spec 25.3).</summary>
+    /// <summary>
+    /// A test of a factory method or a project's helper, either called on nothing, that declares a receiver
+    /// fixture it has no use for (spec 16.4, 25.3).
+    /// </summary>
     public static readonly DiagnosticDescriptor FactoryTestDeclaresAReceiver =
-        new("PC0132", DiagnosticSeverity.Error, "test of a factory method declares a receiver");
+        new("PC0132", DiagnosticSeverity.Error, "test of a method called on nothing declares a receiver");
 
     /// <summary>
     /// A factory for a message protobuf's runtime declares, whose generated class goes beside it
@@ -719,8 +730,9 @@ public static class DiagnosticCodes
         new("PC0133", DiagnosticSeverity.Warning, "factory for a well-known type");
 
     /// <summary>
-    /// A field of an expected message literal that a test cannot compare: a repeated field, a map,
-    /// or a message given by anything but a literal (spec 25.3).
+    /// A field of an expected message literal that a test cannot compare: a map, a message given by
+    /// anything but a literal, or a repeated field given anything but a list written out, or a message
+    /// element of one that is not a literal (spec 25.3).
     /// </summary>
     public static readonly DiagnosticDescriptor ExpectedFieldCannotBeCompared =
         new("PC0134", DiagnosticSeverity.Error, "expected field cannot be compared");
@@ -779,6 +791,88 @@ public static class DiagnosticCodes
     /// <summary>A test's name that ends in whitespace (spec 25.3).</summary>
     public static readonly DiagnosticDescriptor TestNameEndsInWhitespace =
         new("PC0146", DiagnosticSeverity.Error, "test name ends in whitespace");
+
+    // ------------------------------------------------------- lists
+
+    /// <summary>
+    /// A list of lists: a type written <c>repeated repeated T</c>, or a list whose element is itself a
+    /// list (spec 8.1, 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor NestedList =
+        new("PC0147", DiagnosticSeverity.Error, "lists do not nest");
+
+    /// <summary>
+    /// An element of a list whose type is not the list's element type, whether the list's type was
+    /// expected where it is written or taken from its other elements (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor ListElementTypeMismatch =
+        new("PC0148", DiagnosticSeverity.Error, "list element has the wrong type");
+
+    /// <summary>An empty list written where nothing says what it would hold (spec 14.1).</summary>
+    public static readonly DiagnosticDescriptor EmptyListWithoutAType =
+        new("PC0149", DiagnosticSeverity.Error, "empty list has no type");
+
+    /// <summary>
+    /// <c>on_refused refuse</c> after a list's try method, which refuses with no value of its own, so there is none to
+    /// pass on (spec 14.1, 16.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor NothingToPassOn =
+        new("PC0150", DiagnosticSeverity.Error, "no refusal to pass on");
+
+    /// <summary>
+    /// <c>on_refused refuse value</c> after a call to a method a source declares, whose refusal is passed on as it is
+    /// rather than replaced (spec 16.3.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor RefusalCannotBeReplaced =
+        new("PC0151", DiagnosticSeverity.Error, "refusal cannot be replaced");
+
+    /// <summary>
+    /// A list's index, <c>items[i]</c> or <c>items[^j]</c>, that the facts where it is written do not show to be in
+    /// range (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor IndexNotShownInRange =
+        new("PC0152", DiagnosticSeverity.Error, "index not shown to be in range");
+
+    /// <summary>A literal index no list has an element at: a negative one, or <c>^0</c> (spec 14.1).</summary>
+    public static readonly DiagnosticDescriptor IndexNeverInRange =
+        new("PC0153", DiagnosticSeverity.Error, "index is never in range");
+
+    /// <summary>
+    /// <c>on_missing</c> after a list's index, which is shown to be in range and has nothing missing to answer
+    /// (spec 14.1).
+    /// </summary>
+    public static readonly DiagnosticDescriptor OnMissingAfterAListIndex =
+        new("PC0154", DiagnosticSeverity.Error, "list index takes no on_missing");
+
+    /// <summary><c>m[^k]</c> on a map, whose keys have no end to count from (spec 14.2).</summary>
+    public static readonly DiagnosticDescriptor MapKeyFromTheEnd =
+        new("PC0155", DiagnosticSeverity.Error, "map key counted from the end");
+
+    /// <summary>
+    /// A top-level <c>helper fn</c> in sources compiled without a project, which has no namespace to be
+    /// declared in (spec 16.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor HelperOutsideAProject =
+        new("PC0156", DiagnosticSeverity.Error, "helper outside a project");
+
+    /// <summary>
+    /// A bare call whose name is both a method the call could reach and a top-level helper (spec 16.4).
+    /// </summary>
+    public static readonly DiagnosticDescriptor CallNamesAMethodAndAHelper =
+        new("PC0157", DiagnosticSeverity.Error, "call names a method and a helper");
+
+    // ------------------------------------------------------- math functions
+
+    /// <summary>
+    /// <c>_pCrossMath</c>, or a math function through it, written anywhere but in a call,
+    /// <c>_pCrossMath.name(…)</c> (spec 10.5).
+    /// </summary>
+    public static readonly DiagnosticDescriptor MathFunctionNotCalled =
+        new("PC0158", DiagnosticSeverity.Error, "math function not called");
+
+    /// <summary><c>_pCrossMath.name</c> where no math function has that name (spec 10.5).</summary>
+    public static readonly DiagnosticDescriptor UnknownMathFunction =
+        new("PC0159", DiagnosticSeverity.Error, "unknown math function");
 
     // ------------------------------------------------------- the configuration file
 

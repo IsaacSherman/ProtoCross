@@ -78,12 +78,32 @@ public sealed partial class CppBackend
 
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCppBehaviorNamespace(receiver, Project);
 
+        /// <summary>
+        /// The namespace a method is declared in: its message's behavior's, or the project's helpers' for a
+        /// top-level helper (spec 24.2).
+        /// </summary>
+        public string NamespaceOf(IrMethodSignature method)
+            => method.Receiver is { } receiver ? NamespaceOf(receiver) : HelpersNamespace;
+
+        /// <summary>The namespace a project's helpers are declared in (spec 24.2).</summary>
+        /// <exception cref="InvalidOperationException">
+        /// The sources are no project's. The binder refuses a helper outside one (<c>PC0156</c>), and a module
+        /// with an error is never emitted, so a helper here is a defect in whatever built the module.
+        /// </exception>
+        private string HelpersNamespace => Project is { } project
+            ? NameConventions.GetCppHelpersNamespace(project)
+            : throw new InvalidOperationException("A helper is declared only in a project's sources (PC0156).");
+
+        /// <summary>
+        /// A method qualified from <c>::</c>, so that argument-dependent lookup cannot choose another function
+        /// of its name: a free function by its namespace, and a factory's member through its struct.
+        /// </summary>
         public string QualifiedFunctionOf(IrMethodSignature signature)
         {
-            var ns = NamespaceOf(signature.Receiver);
-            var name = signature.HasReceiver
-                ? Escape(signature.Name)
-                : $"{FactoryStructOf(signature.Receiver)}::{MemberNameOf(signature)}";
+            var ns = NamespaceOf(signature);
+            var name = IsAFactorysMember(signature)
+                ? $"{FactoryStructOf(signature.Receiver!)}::{MemberNameOf(signature)}"
+                : Escape(signature.Name);
             return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
         }
 
@@ -103,7 +123,7 @@ public sealed partial class CppBackend
         public string MemberNameOf(IrMethodSignature signature)
         {
             var name = Escape(signature.Name);
-            return name == FactoryStructOf(signature.Receiver) ? name + "_" : name;
+            return name == FactoryStructOf(signature.Receiver!) ? name + "_" : name;
         }
 
         /// <summary>The guard of the header named <paramref name="headerName"/>.</summary>
@@ -154,6 +174,14 @@ public sealed partial class CppBackend
         return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
     }
 
+    /// <summary>protoc's function saying whether an enum names a number, fully qualified.</summary>
+    private static string QualifiedEnumValidatorName(EnumDescriptor descriptor)
+    {
+        var ns = NameConventions.GetCppNamespace(descriptor.File);
+        var name = NameConventions.GetCppEnumValidatorName(descriptor);
+        return string.IsNullOrEmpty(ns) ? $"::{name}" : $"::{ns}::{name}";
+    }
+
     /// <summary>
     /// An enum constant, fully qualified. protoc emits enum values at namespace scope rather than
     /// as members of the enum, so this qualifies the value name and not the type name.
@@ -183,12 +211,11 @@ public sealed partial class CppBackend
         => element is MessageType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     /// <summary>Message-typed parameters are passed by const reference; scalars by value.</summary>
-    private static string ParameterTypeName(PlType type) => type switch
-    {
-        MessageType or RepeatedType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes }
-            => $"const {TypeName(type)}&",
-        _ => TypeName(type),
-    };
+    private static string ParameterTypeName(PlType type) => IsPassedByReference(type) ? $"const {TypeName(type)}&" : TypeName(type);
+
+    /// <summary>Whether a parameter of <paramref name="type"/> is passed by <c>const&amp;</c> rather than by value (spec 24.2).</summary>
+    private static bool IsPassedByReference(PlType type)
+        => type is MessageType or RepeatedType or ScalarType { Kind: ScalarKind.String or ScalarKind.Bytes };
 
     private static string Escape(string name) => NameConventions.EscapeCppKeyword(name);
 

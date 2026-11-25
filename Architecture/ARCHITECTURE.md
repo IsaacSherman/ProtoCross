@@ -134,7 +134,10 @@ each with a form that takes a list of sources.
    signature says which block declared it (`IrMethodKind`), a factory's method is bound with no
    implicit receiver, as a test's expressions are, and a call to one has no receiver at all. The
    block itself is published as an `IrFactory`, a symbol rather than a node, so `Invoice.factory`
-   can be followed to it (`Binder.Factories.cs`). A method that may refuse, of a factory or an extend
+   can be followed to it (`Binder.Factories.cs`). A `helper fn` at the top level is a project's helper
+   (`IrMethodKind.Standalone`), whose signature has no receiver at all; it is declared in a table of
+   its own, and a bare call looks for one after the methods it reaches already (`Binder.Helpers.cs`).
+   A method that may refuse, of a factory or an extend
    block, carries the type it refuses with on its signature (`IrMethodSignature.Refusal`), `refuse` is
    an `IrRefuse`, and every call to such a method, from anywhere, is held by an `IrRefusableCall` saying
    what a refusal makes of it, so a backend never meets one bare (`Binder.Refusals.cs`). A division, a
@@ -286,6 +289,7 @@ that binds is missing*, is what makes it safe for completion to accept an entry 
 | Whether control can reach the end of a statement | `IrFlow` | [Semantics/IrFlow.cs](../src/ProtoCross.Core/Semantics/IrFlow.cs) |
 | An expression built again, sharing no node | `IrCopy` | [Semantics/IrCopy.cs](../src/ProtoCross.Core/Semantics/IrCopy.cs) |
 | What a map's methods are called, take and give | `MapMethod`, `MapMethods` | [Ir/MapMethods.cs](../src/ProtoCross.Core/Ir/MapMethods.cs) |
+| What each math function is called, takes and gives | `MathFunction`, `MathFunctions` | [Ir/MathFunctions.cs](../src/ProtoCross.Core/Ir/MathFunctions.cs) |
 | Policy → behavior | `NumericPolicy` | [Ir/NumericPolicy.cs](../src/ProtoCross.Core/Ir/NumericPolicy.cs) |
 | What a number an enum does not name becomes, and who said so | `UnnamedNumberBehavior`, `UnnamedNumberSource` | [Ir/Ir.cs](../src/ProtoCross.Core/Ir/Ir.cs) |
 | Whether an enum is closed | `EnumOpenness` | [Types/EnumOpenness.cs](../src/ProtoCross.Core/Types/EnumOpenness.cs) |
@@ -703,7 +707,10 @@ a missing key gives, and written only through an element as a place, `IrMapEleme
 read: the binder keeps the two apart, so neither backend has to decide whether `map[key]` may put a
 default there. What neither target's map says the way the language does goes through each support
 file, `ProtoCrossMaps` in C# and `protocross_runtime.h`'s templates in C++
-(`*Backend.Maps.cs`). Each backend writes a message literal and a test's fixture with one writer
+(`*Backend.Maps.cs`). A call to a math function is an `IrMathCall`: one that gives its argument back
+(`IsIdentity`) is written as the argument alone, and the rest call the target's library, except where
+it does not answer as the language does, an integer `abs`, and `min` and `max` in C++, which go through
+each support file (`*Backend.Math.cs`). Each backend writes a message literal and a test's fixture with one writer
 (`*Backend.MessageLiterals.cs`), since a fixture is a literal aimed at the test's receiver. In C# that
 writer produces an object initializer, and in C++ a lambda called where the literal is written.
 
@@ -721,9 +728,12 @@ each backend groups them by message into a class of their own, after the extensi
 source with no factory is generated as it always was: a C# `public static class` with `private static`
 helpers, and a C++ struct of static members, declared with the functions and defined after them. The
 class's name is `NameConventions.GetFactoryClassName`, the one both backends and the binder's collision
-check use. A test whose expectation is a message literal compares the fields it sets, and which those
-are is [`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer, which each
-backend emits as field reads off the result.
+check use. A project's helper has no receiver (`IrMethodSignature.Receiver` is null), and each backend's
+`Placement.NamespaceOf` puts it in the helpers' namespace under the project's: a C# `public static
+partial class ProtoCrossHelpers`, and C++ free functions declared and defined as the header's others are. A test whose expectation is a message literal compares the fields it sets, and one whose
+expectation is a list of them compares the count and then each element's; which checks those are is
+[`IrExpectedFields`](../src/ProtoCross.Core/Semantics/IrExpectedFields.cs)'s answer (`ChecksOf`), which each
+backend emits as field reads and element reads off the result.
 
 A method that may refuse is generated in a shape of its own in both backends: it returns `bool`, and
 gives what it built or refused through two parameters, `out` in C# and references in C++
@@ -766,7 +776,7 @@ One project, [tests/ProtoCross.Tests](../tests/ProtoCross.Tests), roughly organi
 `WatchedFileTests`, `MissingProtocTests`, `LogLevelTests`, `VsCodeExtensionTests`, `SemanticTokenTests`,
 `SemanticRefinementTests`, `SchemaCatalogTests`, `ContextualKeywordTests`,
 `LiteralExpressionParsingTests`, `MessageLiteralTests`, `FixtureLiteralTests`, `PresenceTests`,
-`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
+`MutationTests`, `FactoryTests`, `FactoryEditorTests`, `HelperTests`, `HelperEditorTests`, `MathFunctionTests`, `MathFunctionEditorTests`, `RefusalTests`, `RefusalEditorTests`, `ClauseRefusalTests`,
 `TerminationTests`, `CompiledCorpusTests`,
 `ImportCompletionTests`, `SchemaCompletionTests`, `HoverTests`, `DefinitionTests`,
 `DocumentSymbolTests`, `ReferenceTests`, `SignatureHelpTests`,

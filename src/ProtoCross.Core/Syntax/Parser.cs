@@ -243,6 +243,7 @@ public sealed partial class Parser
         var imports = new List<ImportDeclaration>();
         var extends = new List<ExtendDeclaration>();
         var factories = new List<FactoryDeclaration>();
+        var helpers = new List<MethodDeclaration>();
         var tests = new List<TestDeclaration>();
 
         while (Current.Kind != TokenKind.EndOfFile)
@@ -268,12 +269,17 @@ public sealed partial class Parser
                     factories.Add(ParseFactoryDeclaration());
                     break;
 
+                // A project's helper, spelled as a factory's is (spec 16.4).
+                case TokenKind.Identifier when ContextualKeywords.MarksAHelper(Current, Peek(1)):
+                    helpers.Add(ParseMethodDeclaration());
+                    break;
+
                 default:
                     _diagnostics.Report(
                         DiagnosticCodes.UnexpectedTopLevelDeclaration,
-                        $"Expected 'import', 'extend', 'factory', or 'test' but found {Current.Kind.Describe()}.",
+                        $"Expected 'import', 'extend', 'factory', 'helper fn', or 'test' but found {Current.Kind.Describe()}.",
                         Current.Span,
-                        "A ProtoCross file contains proto imports, extend blocks, factory blocks, and test declarations.");
+                        "A ProtoCross file contains proto imports, extend blocks, factory blocks, helpers, and test declarations.");
                     SkipToNextTopLevelDeclaration();
                     break;
             }
@@ -282,6 +288,7 @@ public sealed partial class Parser
         return new CompilationUnit(imports, extends, tests, Spanning(start, Current.Span))
         {
             Factories = factories,
+            Helpers = helpers,
         };
     }
 

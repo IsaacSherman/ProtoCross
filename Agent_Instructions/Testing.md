@@ -32,6 +32,33 @@ unconditionally. The budgets, the corpus and the measured results are in
 the five budgeted operations have one to two orders of magnitude of headroom and the measurement is
 what says so.
 
+### Every full run keeps a record of its failures
+
+A full run's failures are kept whole, for the last three runs. A failure filtered down to its name
+cannot be told from a flake afterwards, and a flaky test is diagnosed by comparing the runs it failed
+in. Each run writes its own folder under `TestResults/full-suite/`, which git ignores, holding every
+test project's TRX, with each failure's message, stack trace and output, and the console output whole:
+
+```bash
+run="TestResults/full-suite/$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
+mkdir -p "$run"
+dotnet test ProtoCross.slnx --logger trx --results-directory "$run" 2>&1 | tee "$run/console.txt"
+```
+
+Then delete all but the three newest runs:
+
+```bash
+ls -d TestResults/full-suite/*/ | sort | head -n -3 | xargs -r rm -rf
+```
+
+- **Filter what you read, never what is kept.** Search `console.txt` for `[FAIL]` to find the
+  failures, and read each one's message in the TRX.
+- **Before calling a failure flaky, look for it in the other two runs.** A test that failed before is
+  not a one-off, and the earlier message says whether it failed the same way.
+- **Name the run's folder** when reporting its failures, so they can be read again.
+
+The same holds with `PROTOCROSS_SWEEP`, `PROTOCROSS_SOAK` or `-c Release` set: they are full runs too.
+
 ## Tests must have teeth
 
 A test that cannot fail is worse than no test: it costs a run and buys confidence it has not earned.

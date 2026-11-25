@@ -6,13 +6,15 @@ than mechanically exhaustive.
 ### 7.1 Implemented Grammar
 
 ```ebnf
-source_file       = { import_decl | extend_decl | factory_decl | test_decl };
+source_file       = { import_decl | extend_decl | factory_decl | helper_decl | test_decl };
 
 import_decl       = "import" "proto" string_literal ";";
 
 extend_decl       = "extend" qualified_name "{" { method_decl } "}";
 
 factory_decl      = "factory" qualified_name "{" { method_decl } "}";
+
+helper_decl       = method_decl;                                     (* one written "helper fn" *)
 
 method_decl       = [ "mut" | "helper" ] "fn" identifier
                     "(" [ parameter_list ] ")"
@@ -22,6 +24,7 @@ method_decl       = [ "mut" | "helper" ] "fn" identifier
 
 parameter_list    = parameter { "," parameter };
 parameter         = identifier ":" type_ref;
+type_ref          = [ "repeated" ] qualified_name;                  (* a type keyword, or a message's or enum's name *)
 
 block             = "{" { statement } "}";
 
@@ -61,20 +64,21 @@ test_decl         = "test" test_target string_literal
 receiver_fixture  = "receiver" "{" [ field_list ] "}";
 test_arg          = "arg" identifier "=" expression ";";
 test_expectation  = "expect" ( "return" expression | "refuse" expression | "fail" ) ";";
-test_target       = qualified_name [ "." "factory" ] "." identifier;
+test_target       = identifier                                      (* a project's helper *)
+                  | qualified_name [ "." "factory" ] "." identifier;
 
 conversion        = expression "as" type_ref                       (* an expression *)
                     [ "on_unknown" ( postfix_expr | "fail" | "refuse" postfix_expr ) ];
 membership        = expression "in" ( postfix_expr | type_ref );    (* an expression *)
-lookup            = postfix_expr "[" expression "]"                (* a postfix expression *)
+lookup            = postfix_expr "[" [ "^" ] expression "]"        (* a postfix expression; "^" counts a list's index from the end *)
                     [ "on_missing" ( unary_expr | "fail" | "refuse" unary_expr ) ];
 answered_call     = call "on_refused"                              (* a postfix expression *)
-                    ( unary_expr | "fail" | "refuse" );
+                    ( unary_expr | "fail" | "refuse" [ unary_expr ] );
 message_literal   = "new" qualified_name "{" [ field_list ] "}";   (* an expression *)
 field_list        = field_init { "," field_init } [ "," ];
 field_init        = identifier ":" field_value;
 field_value       = list_value | expression;
-list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";
+list_value        = "[" [ list_element { "," list_element } [ "," ] ] "]";   (* a primary expression too *)
 list_element      = map_entry | expression;
 map_entry         = "{" [ field_list ] "}";                         (* a map field's entry *)
 ```
@@ -92,18 +96,26 @@ Normative Requirement:
   identifier anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords)). A message literal is a primary expression, so it may appear
   wherever an expression may, an unparenthesized `if` or `while` condition included: the brace after
   `new` and a type name is the literal's, and the body's is the first one after it. A list is a
-  repeated field's value only.
+  primary expression too, so it may appear wherever an expression may
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+- `repeated` is not a keyword. It begins a list's type, `repeated double`, only where a type follows
+  it, a name or a type keyword, and is an identifier anywhere else
+  ([6.4](./§6-Lexical%20Structure.md#64-keywords), [8.1](./§8-Type%20System.md#81-type-sources)). A second `repeated` after the first, `repeated repeated
+  double`, is `PC0147`, because lists do not nest.
 - `mut` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
   anywhere else ([6.4](./§6-Lexical%20Structure.md#64-keywords), [18](./§18-Mutability.md#18-mutability)).
 - `factory` is not a keyword. At the start of a top-level declaration it begins a factory block,
   whatever follows it, and anywhere else it is an identifier ([6.4](./§6-Lexical%20Structure.md#64-keywords), [16.3](./§16-Methods.md#163-factories)). A factory
   block is read as an `extend` block is, and recovers as one does: a member that is not a method is
   `PC0122`, and is skipped with everything up to the next method. A top-level token that begins no
-  declaration is `PC0011`, and recovery skips to the next `import`, `extend` or `test`, or to a
-  `factory` with a name after it.
+  declaration is `PC0011`, and recovery skips to the next `import`, `extend` or `test`, to a
+  `factory` with a name after it, or to `helper fn`.
 - `helper` is not a keyword. It marks a method only when `fn` follows it, and is an identifier
-  anywhere else. It is read wherever a method is, and the binder refuses it outside a factory
+  anywhere else. It is read wherever a method is, and at the top level, where `helper fn` begins a
+  project's helper ([16.4](./§16-Methods.md#164-helpers)). The binder refuses it in an `extend` block
   ([16.3](./§16-Methods.md#163-factories)).
+- A test's target of one name, with no dot, names a project's helper
+  ([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)).
 - In a test's target, `factory` as the segment before the method's name says the method is the
   factory's, and the test then needs no receiver fixture. Whether the message has a factory is the
   binder's to say: a target whose message has none, but has a nested type named `factory`, names that
@@ -125,7 +137,14 @@ Normative Requirement:
   reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). An `on_refused` clause after a call's closing parenthesis belongs to that call.
   Its fallback is a unary expression, as `on_missing`'s is, and the clause ends the postfix chain, so
   `(Invoice.factory.create(o) on_refused fail).total` reads a member of what the call gives
-  ([16.3.1](./§16-Methods.md#1631-refusals)).
+  ([16.3.1](./§16-Methods.md#1631-refusals)). A value after `on_refused refuse` is the refusal to refuse with
+  instead, which only a list's try method takes ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The clause's statement, or
+  the expression around it, ends with a token that begins no value, so `refuse` alone passes the
+  refusal on.
+- `_pCrossMath` is reserved ([6.4](./§6-Lexical%20Structure.md#64-keywords)). It is a primary expression,
+  which the binder accepts only as the receiver of a call: `_pCrossMath.name(…)` calls a math function
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)). While the name after its dot is being
+  typed, `_pCrossMath.` is a member access awaiting a name, as any other is.
 - Braces in a list are an entry of a map field, `{ key: k, value: v }`, with fields written as a
   literal's are ([13.2](./§13-Messages.md#132-message-construction)).
 - `on_unknown` is not a keyword. It begins a conversion's clause only when `fail` or a name follows
@@ -143,9 +162,9 @@ Normative Requirement:
   is refused rather than dropped, because it is not always free of effects: `count / divisor;` can end
   the program under `on_zero fail` ([10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause)). An expression that failed to bind has already said why,
   and a statement whose semicolon is missing is one still being typed, which the parser has
-  reported. Neither is told as well that it is not a call.
-- Top-level helper functions are not implemented. A factory's helpers are the only helpers
-  ([16.3](./§16-Methods.md#163-factories)).
+  reported. Neither is told as well that it is not a call. A call to a math function only gives a
+  value, so one standing as a statement is `PC0099` too, a call the compiler removes included
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - Variable declarations may state an explicit type or infer from the initializer.
 - Every binary operator is left-associative, and operators bind in the order
   [9.2](./§9-Expressions%20and%20Operators.md#92-operators) gives.
@@ -153,7 +172,7 @@ Normative Requirement:
   `>` followed by `>=`. The right side of a compound assignment is a whole expression, and its
   `on_zero` clause binds as [10.2.1](./§10-Numeric%20Semantics.md#1021-the-on_zero-clause) says a division's does.
 - A test declaration must contain an expectation, and a receiver fixture unless it targets a
-  factory's method. The parser accepts `receiver`, `arg`, and `expect` members in any order and
+  factory's method or a project's helper. The parser accepts `receiver`, `arg`, and `expect` members in any order and
   reports missing required members after the block is parsed.
 - Parser recovery synthesizes missing tokens and missing names so later compiler stages can continue
   reporting useful diagnostics and editor tooling can still anchor completion points.
@@ -163,5 +182,4 @@ Normative Requirement:
 
 Open Questions:
 
-- [Top-level functions](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions), post-1.0
 - [An exact grammar](./§30-Unresolved%20Questions%20Index.md#3073-an-exact-grammar), post-1.0

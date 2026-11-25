@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// multi/helpers_project -- a project's helpers (spec 16.4): functions that belong to no message,
+// generated in the project's helpers namespace (spec 24), each declared in one source and called from
+// the other.
+message HelpedSpan {
+  double left_upper = 1;
+  double left_lower = 2;
+  double right_upper = 3;
+  double right_lower = 4;
+}
+
+message HelpedQuote {
+  string code = 1;
+  int64 seats = 2;
+  int64 price_cents = 3;
+}
+
+message HelpedRefusal {
+  string reason = 1;
+}

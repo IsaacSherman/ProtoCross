@@ -384,7 +384,9 @@ public class PositionQueryTests
     /// node for what was written, with the read the binder added after it. A field is reached through a
     /// chain, and the target and the read each have one, so each link of the target pairs with the
     /// same link of the read (spec 22.2). A map's element is such a link too: where the read looked a
-    /// key up, the target holds the element at that key (spec 14.2). Nothing else is excused.
+    /// key up, the target holds the element at that key (spec 14.2). So is a list's: where the read
+    /// read the element at an index, the target holds the element there (spec 14.1). Nothing else is
+    /// excused.
     /// </remarks>
     [Fact]
     public void IrNodesThatShareASpanAlwaysStandInsideOneAnother()
@@ -428,6 +430,7 @@ public class PositionQueryTests
                     IrAssignment assignment => ((IrExpression)assignment.Target, assignment.Value),
                     IrFieldAssignment assignment => (assignment.Target, assignment.Value),
                     IrElementAssignment assignment => (assignment.Target, assignment.Value),
+                    IrListElementAssignment assignment => (assignment.Target, assignment.Value),
                     _ => default((IrExpression Target, IrExpression Value)?),
                 })
                 .OfType<(IrExpression Target, IrExpression Value)>()
@@ -451,6 +454,8 @@ public class PositionQueryTests
             => written.Field == reading.Field && written.Span == reading.Span && IsThePlaceRead(written.Receiver, reading.Receiver),
         (IrMapElement written, IrMapLookup reading)
             => written.Span == reading.Span && IsThePlaceRead(written.Map, reading.Map),
+        (IrListElement written, IrElementRead reading)
+            => written.Span == reading.Span && written.FromEnd == reading.FromEnd && IsThePlaceRead(written.List, reading.List),
         _ => target == read,
     };
 

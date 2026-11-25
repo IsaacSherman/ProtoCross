@@ -8,22 +8,27 @@ The language currently includes:
 - Local, loop-binding, parameter, and implicit receiver field references.
 - Field access through `.`.
 - Method calls on message receivers.
+- Calls to a project's helpers by their bare names, `clamp(rate, 0.0, 1.0)` ([16.4](./§16-Methods.md#164-helpers)).
+- Calls to the math functions, `_pCrossMath.min(a, b)` ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - Arithmetic, boolean, comparison, and bitwise expressions.
 - Prefix field-presence checks with `has`.
 - Explicit numeric conversions with `as`.
 - Message literals, `new T { field: value, … }` ([13.2](./§13-Messages.md#132-message-construction)).
 - A map's value at a key, `prices[sku] on_missing 0`, whether it holds one, `sku in prices`, and
   `count()` and `is_empty()` ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)).
+- A list's element at an index the compiler shows in range, `items[i]` and `items[^j]`, any index
+  through `items.try_get_index(i) on_refused 0`, and `count()` and `is_empty()`
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 - Parenthesized expressions.
 
 Not implemented:
 
-- Top-level function calls.
-- Indexing anything but a map. A repeated field has none.
+- Indexing anything but a map or a list, such as a string. **Post-1.0**
+  ([30.11.1](./§30-Unresolved%20Questions%20Index.md#30111-string-indexing)).
 - Bytes literals.
-- Math intrinsics such as `abs`, `min` and `max`. **Post-1.0** ([30.9.5](./§30-Unresolved%20Questions%20Index.md#3095-math-intrinsics)).
-  Each can be written today with a comparison, and how an intrinsic is named and found belongs with
-  top-level functions, which are post-1.0 too ([30.7.2](./§30-Unresolved%20Questions%20Index.md#3072-top-level-functions)).
+- Math functions beyond the eight [10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, such as
+  `pow` and the trigonometric functions. **Post-1.0**
+  ([30.10.13](./§30-Unresolved%20Questions%20Index.md#301013-further-math-functions)).
 
 ### 9.2 Operators
 
@@ -51,7 +56,8 @@ the first and a map for the second, which is told apart as `Level.HIGH` is, and 
 relational operator does.
 
 `m[k]` reads the value a map holds at a key, with an `on_missing` clause saying what a missing key
-gives, and binds as a member access or a call does ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). It is the one indexing the language has.
+gives ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and `items[i]` the element a list holds at an index the compiler shows is there,
+`items[^j]` counting from the end ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Each binds as a member access or a call does.
 
 Normative Requirements:
 

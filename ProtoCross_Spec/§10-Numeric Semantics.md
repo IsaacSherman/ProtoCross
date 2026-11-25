@@ -641,3 +641,83 @@ Implementation Note:
   disagree about what was withheld.
 - An executable the *extension* reads, such as where the server lives, never reaches the server. It
   belongs in the extension manifest's own list of restricted settings, beside this one.
+
+### 10.5 Math Functions
+
+**Decided: eight math functions, each with one correct answer, are called through the reserved word
+`_pCrossMath`.**
+
+```protocross
+var lower = _pCrossMath.min(p1, p2, p3, p4);
+var length = _pCrossMath.sqrt(a * a + b * b);
+var whole = _pCrossMath.round(ratio) as int64;
+```
+
+| Function | Takes | Gives, of the arguments' type |
+|---|---|---|
+| `abs(x)` | any numeric type | The magnitude of `x`. A `float` or a `double` has its sign cleared: `abs(-0.0)` is `+0.0`, either infinity gives `+inf`, and a NaN stays a NaN. |
+| `min(a, b, …)` | two or more of one numeric type | The least, as IEEE 754-2019 `minimum` gives it: a NaN among them gives a NaN, and `-0.0` is less than `+0.0`. |
+| `max(a, b, …)` | two or more of one numeric type | The greatest, as IEEE 754-2019 `maximum` gives it: a NaN among them gives a NaN, and `+0.0` is greater than `-0.0`. |
+| `sqrt(x)` | a `float` or a `double` | The square root, correctly rounded: `sqrt(-0.0)` is `-0.0`, a negative number gives a NaN, and `+inf` gives `+inf`. |
+| `floor(x)` | any numeric type | The greatest whole number not above `x`. |
+| `ceil(x)` | any numeric type | The least whole number not below `x`: `ceil(-0.5)` is `-0.0`. |
+| `trunc(x)` | any numeric type | `x` with its fraction dropped, toward zero: `trunc(-0.5)` is `-0.0`. |
+| `round(x)` | any numeric type | The nearest whole number, a tie going away from zero: `round(2.5)` is `3.0`, `round(-2.5)` is `-3.0`, and `round(-0.4)` is `-0.0`. |
+
+Normative Requirements:
+
+- **A math function is called as `_pCrossMath.name(…)`, and only so.** `_pCrossMath` is reserved
+  ([6.4](./§6-Lexical%20Structure.md#64-keywords)) and is not a value: written alone, or with a
+  function's name that is not called, it is `PC0158`. A name no function has is `PC0159`, whose help
+  lists the functions. No function is found by its bare name, so none can meet a helper
+  ([16.4](./§16-Methods.md#164-helpers)), a method or a field, and a helper named `min` stays the project's.
+- **The arguments are of one numeric type, and the result is of that type.** `abs` and the rounding
+  functions take one argument, and `min` and `max` two or more. Another number of them is `PC0045`. No
+  implicit numeric conversion is applied ([10.3](#103-numeric-conversions)), so an argument of
+  another type than the first, or one that is not a number, is `PC0046`. So is an integer given to
+  `sqrt`, whose help says to convert it first: `_pCrossMath.sqrt(n as double)`.
+- **A literal argument takes the type of the arguments that are not literals**, as an operator's
+  operand takes the other's. Where every argument is a literal, they take the type the call is
+  expected to give, where the function takes it; otherwise a floating-point literal among them makes
+  them all a `double`, and a literal given to `sqrt` is a `double`, so `_pCrossMath.sqrt(2)` is the
+  square root of two.
+- **Each argument is evaluated once, left to right** ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)),
+  and `min` or `max` of more than two compares them in that order.
+- **A rounded result stays floating point.** `floor`, `ceil`, `trunc` and `round` give their argument's
+  type and keep a zero's sign. Making one an integer is an `as`, under 10.3's rules.
+- **An integer `abs` of the minimum follows the overflow mode**, exactly as unary `-` does
+  ([10.1](#101-integer-overflow)): `Wrapping` gives the minimum, `Checked` ends the program as 10.2.1
+  does, with exit code 70, and `Saturating` gives the maximum.
+- **A call that gives its argument back is removed, and nothing is reported.** `abs` of an unsigned
+  integer, and `floor`, `ceil`, `trunc` or `round` of an integer, is the argument itself, and no backend
+  generates a call for it: `if _pCrossMath.abs(count) > 2` on a `uint32` is generated as `if count > 2`.
+  Such a call is still correct, and stays correct if the argument's type changes, so refusing it would
+  have an author delete a call that may be needed again.
+- **A math function gives a value and does nothing else.** A call to one written as a statement of its
+  own, a removed one included, is `PC0099` ([7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar)).
+  It cannot refuse, so an `on_refused` clause after one is `PC0139`.
+
+The targets each have these functions, and disagree about the cases above, which is why each is
+stated rather than inherited:
+
+| Target | Native behavior | Why it is not enough |
+|---|---|---|
+| C# | `Math.Abs` of an integer's minimum throws. `Math.Round` takes a tie to the even neighbour. | Neither matches, so an integer `abs` goes through the overflow mode's negation, and the rounding mode is written out. |
+| C++ | `std::abs` of an integer's minimum is **undefined behavior**. `std::min` and `std::max` answer by argument order on a NaN or two zeros, and `std::fmin` and `std::fmax` ignore a NaN. | None of the four is IEEE 754-2019's `minimum` or `maximum`. |
+| Python | `round` takes a tie to the even neighbour, and `min` and `max` answer by argument order on a NaN. | The same as C#'s rounding, and C++'s `std::min`. |
+
+Backend obligations:
+
+- **C#** calls `Math` or, for a `float`, `MathF`: `Abs`, `Sqrt`, `Floor`, `Ceiling` and `Truncate`, and
+  `Round(x, MidpointRounding.AwayFromZero)`. `min` and `max` are `Math.Min` and `Math.Max`, nested
+  from the left for more than two arguments; they have followed IEEE 754-2019 since .NET Core 3.0. An
+  integer `abs` calls the overflow mode's negation helper, and never `Math.Abs`.
+- **C++** calls `std::fabs`, `std::sqrt`, `std::floor`, `std::ceil`, `std::trunc` and `std::round`,
+  which already takes a tie away from zero. `min` and `max` call runtime helpers that give a NaN for
+  a NaN and order the zeros, nested as C#'s are, and an integer `abs` calls the overflow mode's
+  helper. Arguments that may each end the program are evaluated into locals first, in order.
+- A removed call is written as its argument alone in every backend.
+
+Open Question:
+
+- [Further math functions](./§30-Unresolved%20Questions%20Index.md#301013-further-math-functions), post-1.0

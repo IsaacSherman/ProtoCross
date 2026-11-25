@@ -131,7 +131,7 @@ public sealed class SignatureHelpProvider
         // and describing a method to the author who is still writing its parameter list would be
         // showing them what they have typed so far as though it were settled.
         if (compiled.Semantics?.ReferenceAt(call.Callee.Start.Offset) is not { } reference
-            || reference.Symbol.Kind is not SymbolKind.Method
+            || reference.Symbol.Kind is not (SymbolKind.Method or SymbolKind.Function)
             || reference.Kind is ReferenceKind.Declaration
             || compiled.Result?.Module?.SignatureOf(reference.Symbol) is not { } signature)
         {

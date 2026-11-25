@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// local_lists.pcross -- lists as values: written in a method, held in a local, passed, returned and
+// iterated (spec 14.1), and a repeated field given a whole list as a copy (spec 13.2, 18).
+//
+// A basket has a repeated field of each kind of element protobuf holds differently: numbers, strings,
+// bytes, an enum and messages. C++ keeps numbers and enums in a RepeatedField and the rest by pointer
+// in a RepeatedPtrField, and C# takes a list parameter as an IReadOnlyList, so each kind is passed,
+// returned and copied on a path of its own.
+message Basket {
+  repeated double weights = 1;
+  repeated int32 counts = 2;
+  repeated string labels = 3;
+  repeated bytes stamps = 4;
+  repeated Shade shades = 5;
+  repeated Parcel parcels = 6;
+  double ratio = 7;
+  int32 base = 8;
+  string name = 9;
+
+  // Unset until a list is assigned through it, which sets it.
+  Basket spare = 10;
+
+  // Left empty, so a lookup of either ends the program and names its own map, which shows which element of a
+  // list was evaluated first.
+  map<int32, int32> order_first = 11;
+  map<int32, int32> order_second = 12;
+}
+
+message Parcel {
+  int64 grams = 1;
+  string tag = 2;
+}
+
+enum Shade {
+  SHADE_UNSPECIFIED = 0;
+  SHADE_LIGHT = 1;
+  SHADE_DARK = 2;
+}

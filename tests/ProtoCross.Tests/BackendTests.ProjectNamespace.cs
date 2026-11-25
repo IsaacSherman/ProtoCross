@@ -46,8 +46,8 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// A project's C# behavior declares every class in the project's namespace, whatever message
-    /// it extends and whichever namespace protoc declared that message in.
+    /// A project's C# behavior declares every class in the project's namespace, or its helpers' inside it,
+    /// whatever message it extends and whichever namespace protoc declared that message in.
     /// </summary>
     [Fact]
     public void AProjectsCSharpIsDeclaredInItsNamespaceAlone()
@@ -58,9 +58,11 @@ public partial class BackendTests
             .SelectMany(file => Regex.Matches(file.Contents, @"^namespace (\S+)", RegexOptions.Multiline).Select(match => (file.RelativePath, Namespace: match.Groups[1].Value)))
             .ToList();
 
+        string[] owned = [NameConventions.GetCSharpNamespace(Owned), NameConventions.GetCSharpHelpersNamespace(Owned)];
+
         Assert.NotEmpty(declared);
         Assert.All(declared, entry => Assert.True(
-            entry.Namespace == NameConventions.GetCSharpNamespace(Owned),
+            owned.Contains(entry.Namespace),
             $"{entry.RelativePath} declares behavior in '{entry.Namespace}', a namespace the project does not own"));
     }
 
@@ -84,8 +86,8 @@ public partial class BackendTests
     }
 
     /// <summary>
-    /// A project's C++ opens no namespace but the project's, whatever message it extends and whichever
-    /// namespace protoc declared that message in.
+    /// A project's C++ opens no namespace but the project's, or its helpers' inside it, whatever message it
+    /// extends and whichever namespace protoc declared that message in.
     /// </summary>
     [Fact]
     public void AProjectsCppIsDeclaredInItsNamespaceAlone()
@@ -95,16 +97,18 @@ public partial class BackendTests
             .SelectMany(file => Regex.Matches(file.Contents, @"^namespace (\S+)\r?$", RegexOptions.Multiline).Select(match => (file.RelativePath, Namespace: match.Groups[1].Value)))
             .ToList();
 
+        string[] owned = [NameConventions.GetCppNamespace(Owned), NameConventions.GetCppHelpersNamespace(Owned)];
+
         Assert.NotEmpty(opened);
         Assert.All(opened, entry => Assert.True(
-            entry.Namespace == NameConventions.GetCppNamespace(Owned),
+            owned.Contains(entry.Namespace),
             $"{entry.RelativePath} declares behavior in '{entry.Namespace}', a namespace the project does not own"));
     }
 
     /// <summary>
     /// Every call a project's C++ makes to one of its methods, from behavior or from a test driver,
-    /// is qualified by the project's namespace, so no argument-dependent lookup can find another
-    /// library's function of the same name.
+    /// is qualified by the project's namespace, or a helper's by its helpers' namespace inside it, so no
+    /// argument-dependent lookup can find another library's function of the same name.
     /// </summary>
     [Fact]
     public void EveryCppCallAProjectMakesIsQualifiedByItsNamespace()
@@ -115,21 +119,30 @@ public partial class BackendTests
 
         Assert.NotEmpty(calls);
         Assert.All(calls, entry => Assert.True(
-            entry.Namespace == NameConventions.GetCppNamespace(Owned),
-            $"{entry.RelativePath} calls '{entry.Method}' in '{entry.Namespace}' rather than the project's namespace"));
+            entry.Namespace == entry.Expected,
+            $"{entry.RelativePath} calls '{entry.Method}' in '{entry.Namespace}' rather than '{entry.Expected}'"));
 
-        static IEnumerable<(string RelativePath, string Method, string Namespace)> CallsTo(Ir.IrModule module, IReadOnlyList<GeneratedFile> files)
-            => from method in module.Methods.Select(Called).Distinct()
+        // The runtime's own helpers are ProtoCross's and declare no project's method, so one that shares a method's
+        // name, as 'refused' does a vector's, is not a call to it.
+        static IEnumerable<(string RelativePath, string Method, string Namespace, string Expected)> CallsTo(
+            Ir.IrModule module, IReadOnlyList<GeneratedFile> files)
+            => from called in module.Methods.Select(Called).Distinct()
                from file in files
-               from Match match in Regex.Matches(file.Contents, $@"::([\w:]+)::{Regex.Escape(method)}\(")
-               select (file.RelativePath, method, match.Groups[1].Value);
+               from Match match in Regex.Matches(file.Contents, $@"::([\w:]+)::{Regex.Escape(called.Method)}\(")
+               where match.Groups[1].Value != "protocross_runtime"
+               select (file.RelativePath, called.Method, match.Groups[1].Value, called.Expected);
 
         // A factory's method is called through its struct, which is declared in the namespace the call
-        // is qualified by (spec 24.2).
-        static string Called(Ir.IrMethod method)
-            => method.Signature.HasReceiver
-                ? NameConventions.EscapeCppKeyword(method.Name)
-                : $"{NameConventions.GetFactoryClassName(method.Receiver)}::{NameConventions.EscapeCppKeyword(method.Name)}";
+        // is qualified by, and a project's helper is declared in the helpers' namespace inside it (spec 24.2).
+        static (string Method, string Expected) Called(Ir.IrMethod method)
+            => method.Signature switch
+            {
+                { HasReceiver: true } => (NameConventions.EscapeCppKeyword(method.Name), NameConventions.GetCppNamespace(Owned)),
+                { Receiver: { } built } => (
+                    $"{NameConventions.GetFactoryClassName(built)}::{NameConventions.EscapeCppKeyword(method.Name)}",
+                    NameConventions.GetCppNamespace(Owned)),
+                _ => (NameConventions.EscapeCppKeyword(method.Name), NameConventions.GetCppHelpersNamespace(Owned)),
+            };
     }
 
     /// <summary>

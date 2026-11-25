@@ -30,8 +30,17 @@ the message, in the namespace protoc declares it in, as the message's extension 
 **A factory whose class would share a name in that namespace is `PC0126`.** In one project,
 `acme.billing.Invoice` and `acme.shipping.Invoice` would both declare `InvoiceFactory` in the
 project's namespace. A project named after its schemas' package could also declare one beside a
-schema's message or enum of that name. Both are refused, and the help says how to separate them.
-Refusing is what C# does with two classes of one name.
+schema's message or enum of that name, or, in C++, beside another name protoc declares for an enum.
+protoc's C++ declares an enum's values unscoped, beside the enum, where its C# declares them inside
+it, and with them the enum's limits and the functions over it: for `Kind`, `Kind_MIN`, `Kind_MAX`,
+`Kind_ARRAYSIZE`, `Kind_IsValid`, `Kind_Name`, `Kind_Parse`, `Kind_descriptor`,
+`Kind_internal_data_`, and an open enum's two sentinels, `Kind_INT_MIN_SENTINEL_DO_NOT_USE_` and
+`Kind_INT_MAX_SENTINEL_DO_NOT_USE_`. For a nested `Outer.Level`, the limits use `Outer_Level_Level_`
+and the functions and data table use `Outer_Level_`. The sentinels repeat the flattened enum name:
+`Outer_Level_Outer_Level_INT_MIN_SENTINEL_DO_NOT_USE_` and
+`Outer_Level_Outer_Level_INT_MAX_SENTINEL_DO_NOT_USE_`. `_ARRAYSIZE` is left out where the largest value
+is 2,147,483,647, and `_descriptor` from a file built for the lite runtime. Both are refused, and the
+help says how to separate them. Refusing is what C# does with two classes of one name.
 
 The class is compared as each backend declares it, by its namespace and name there, and a clash in
 either backend is refused whichever backends are run:
@@ -75,6 +84,32 @@ linker merges without a diagnostic, keeping one body for both. Protobuf's own ex
 the way a project's behavior is: an `extend` is declared in the package of the file that writes it,
 not the package of the message it extends.
 
+**Decided: a project's helpers are declared in a namespace of their own, inside the project's**
+([16.4](./§16-Methods.md#164-helpers)): `Acme.Billing.Helpers` in C# and `acme::billing::helpers` in C++, for
+`acme.billing.pcproj`. A helper and an extend block's method may share a name, and in the project's
+namespace the two could be one function: a helper `total` taking an `Invoice`, and a method `total`
+on `Invoice`, would declare one C++ function twice, and two C# methods of one signature in the
+extension class. A namespace of their own also keeps them out of the way of a consumer who imports
+the project's namespace for its behavior. One who wants a helper names it,
+`Acme.Billing.Helpers.ProtoCrossHelpers.Clamp(…)` or through `using static`, and
+`acme::billing::helpers::clamp(…)` in C++.
+
+**A helper whose generated name would meet a name already declared there is `PC0126`**, compared as
+a factory's class is above, whichever backends are run:
+
+- **The C# class.** A schema's type or namespace named `ProtoCrossHelpers` in the helpers' C#
+  namespace takes it.
+- **The namespace.** A schema's type named like it in the project's namespace, `Helpers` in C# or
+  `helpers` in C++, takes it, and so do a C++ enum's value named `helpers` there and an extend block's
+  method named `helpers`, a function C++ declares in the project's namespace. A schema's own namespace may be the helpers': package
+  `acme.billing.helpers` declares its messages beside them, since two namespaces of one name are one
+  namespace in both languages.
+- **Each helper.** A schema's type or namespace, or a name protoc declares for an enum, named like a
+  helper in the helpers' C++ namespace takes that helper's name: package `acme.billing.helpers` with an
+  enum `Kind` and its value `READY` takes the helpers `READY` and `Kind_MIN`.
+
+`PC0126` is titled "generated name collides", since it covers more than a factory's class.
+
 ### 24.1 C#
 
 Potential strategies:
@@ -112,9 +147,18 @@ nothing a ProtoCross caller can do, since the binder already refuses a call to o
 factory, and keeps a C# caller to the same methods. A call to a factory's method from anywhere is
 qualified from `global::`, as a call to an extension method is.
 
+**A project's helpers are `public static` methods of one `public static partial class
+ProtoCrossHelpers`**, in the helpers' namespace ([24](#24-generated-api-strategy)). Each is named as an
+extension method is, PascalCased, with an underscore appended when that is `ProtoCrossHelpers`, and
+takes only its parameters. The class is `partial` for the reason the extension class is: it is the
+project's rather than a source's, and each source that declares helpers writes its part. A call to a
+helper from anywhere is qualified from `global::`,
+`global::Acme.Billing.Helpers.ProtoCrossHelpers.Clamp(…)`.
+
 **A method that may refuse returns `bool`, and gives what it built or refused through `out`
-parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method is a static method of
-its class, and a method of an extend block an extension method, whose parameters come after `this`:
+parameters** ([16.3.1](./§16-Methods.md#1631-refusals)), the shape of `Dictionary.TryGetValue`. A factory's method or a project's
+helper is a static method of its class, and a method of an extend block an extension method, whose
+parameters come after `this`:
 
 ```csharp
 public static bool Create(
@@ -203,6 +247,32 @@ was. A message passed to a `mut fn` that is a call's result, or read from one, i
 because the call may have returned part of the very receiver being changed. For the same reason, in
 a method that changes a message, a loop over a field of a call's result traverses a `Clone` of the
 result, which is what C++ does by keeping the result in a local ([24.2](#242-c)).
+
+**A list is a `RepeatedField<T>` wherever it is held, and an `IReadOnlyList<T>` where it is a
+parameter** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A local, a result, a refusal and a field hold a `RepeatedField`, as protoc's
+fields do. A parameter is an `IReadOnlyList`, so that a consumer can pass a `List`, an array or a
+message's field without copying it, and the method could never change it anyway. Widening a
+`RepeatedField` parameter later would keep callers compiling but break them binarily, so the
+parameter is declared wide from the first. Where something holds a list parameter, it holds
+`ProtoCrossCollections.CopyOf(given)`, a `RepeatedField` of its own with each message cloned, since an
+`IReadOnlyList` has no `Clone`. A list written as a value is a collection initializer of a new
+`RepeatedField`, its elements stored as a field's are, and an empty one is `new RepeatedField<T>()`. A
+repeated enum is a `RepeatedField` of the enum, as protoc declares one.
+
+**A list a method returns is the caller's own** ([16.2](./§16-Methods.md#162-parameters-and-returns)), as it is in C++, which returns the container
+by value. A C# list is a reference, so `return items;` returns `items.Clone()`: a method returns a copy of
+any list it does not own outright, a field, a parameter, or a local in a method that shares rather than
+copies into locals. A list literal, a call's result and a local the method copied into are returned as
+they are. A method that may refuse gives its `result` and its `refusal` the same way, and a refusal's fallback is copied
+by the same rule, so a loop over what a call gives never traverses the receiver's own field.
+
+protoc declares a repeated field's property with no setter, so a whole list assigned to one is
+`ProtoCrossCollections.Replace(field, copy)`, which empties the field and adds what the copy holds. C#
+evaluates the arguments in order, so the field is reached, setting any unset message on the way, before
+the copy is taken, and the copy is taken before the field is emptied, so a field given itself keeps
+what it held. A message literal gives a repeated field a whole list as a collection initializer of
+the copy, `Weights = { other.Weights.Clone() }`, or `Weights = { ProtoCrossCollections.CopyOf(given) }` for a
+list parameter.
 
 **A map is protoc's `MapField`, and what it does not say as the language does goes through
 `ProtoCrossMaps` in the support file** ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). A lookup with a fallback is
@@ -386,6 +456,13 @@ qualified with the namespace and the struct, `::acme::app::InvoiceFactory::creat
 struct passes as a template's type argument, which is how C++ that wants a factory it can swap would
 take one.
 
+**A project's helpers are `inline` free functions in the helpers' namespace**
+([24](#24-generated-api-strategy)), named as written, with a keyword escaped as a method's name is,
+and taking only their parameters. A header declares them with its other functions, before any is
+defined, so a helper, a method and a factory may call one another in any order. A call to one is
+qualified from `::`, `::acme::billing::helpers::clamp(…)`, and a header that calls a helper another
+source declares includes that source's header, as it does for that source's methods.
+
 **A method that may refuse returns `bool`, and gives what it built or refused through references**,
 as C# gives them through `out` parameters ([16.3.1](./§16-Methods.md#1631-refusals)):
 `static bool create(const ::acme::InvoiceOptions& options, ::acme::Invoice& result,
@@ -457,6 +534,16 @@ field is: `*self.add_entries() = T(value);`, which evaluates the value first, an
 is reached through `auto& owner` in a block of its own first, in the same way. A local holds a
 `RepeatedField` or a `RepeatedPtrField` of its own, and is added to with `Add(value)`, or with
 `*Add() = value` for an element held by pointer.
+
+**A list is protobuf's own container, a `RepeatedField` for numbers and enums and a `RepeatedPtrField`
+for strings, bytes and messages** ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A parameter takes one by `const&`, and a result
+returns one by value. A list written as a value is a lambda that builds one, called where it is
+written, as a message literal is, adding each element as an append to a local adds one, and building a
+message literal among them in place, through the pointer `Add()` returns. An empty list is the
+container's value-initialized temporary. protobuf holds a repeated enum as `int`, so a list of an enum
+is a `RepeatedField<int>`, in a signature as anywhere else. A repeated field is assigned a whole list
+through `*mutable_x() = copy`, as a message field is, which evaluates the copy before the field is
+replaced.
 
 A loop whose body changes the element it is given, an append to it included, binds it as `auto&`,
 over the field's mutable accessor; every other loop binds `const auto&` as it always has. protobuf

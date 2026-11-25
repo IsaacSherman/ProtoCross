@@ -91,14 +91,22 @@ The IR preserves:
   field descriptor, which a presence guard must have established where the field is a message
   ([13.1](./§13-Messages.md#131-field-access)).
 - **A message literal, and a test's fixture, as one node.** A literal holds the fields written, in the
-  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)); a repeated field's
-  value is a list node holding its elements. A fixture is the same node, built for the message its
+  order written, which is the order their values are evaluated in ([9.3](./§9-Expressions%20and%20Operators.md#93-evaluation-order)). A repeated field's
+  value is any expression of the field's repeated type: a list node holding its elements where a list
+  is written in place, or a whole list the field stores a copy of, such as another message's field,
+  a parameter, a local or a call's result ([13.2](./§13-Messages.md#132-message-construction)). A fixture is the same node, built for the message its
   test's target extends, so no consumer handles a fixture and a literal differently.
-- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal is
-  copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
+- **A list written as a value**, `[first, second]`, as the same list node wherever it stands: its
+  elements in the order written, and its type, `repeated T`, which the binder takes from what is
+  expected of the list or from its elements ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+- **Whether storing a value copies it.** A message, or a repeated value, that is not a literal -- a
+  message's or a list's -- is copied wherever it is stored, in a field or in a local ([13.2](./§13-Messages.md#132-message-construction)). The value answers, so that
   each backend asks rather than deciding what to copy.
 - **Which block declared each method, and so whether it has a receiver.** A method's signature says
-  whether it is an `extend` block's, a factory's, or a factory's helper ([16.3](./§16-Methods.md#163-factories)). A factory's
+  whether it is an `extend` block's, a factory's, a factory's helper ([16.3](./§16-Methods.md#163-factories)), or a project's
+  helper ([16.4](./§16-Methods.md#164-helpers)). A project's helper belongs to no message, and its signature names none,
+  so a backend asks the signature where to declare it rather than reading a stand-in. A test of one
+  holds no receiver fixture. A factory's
   method keeps the message it builds as its receiver type, because that is the message whose names it
   shares and whose class the backends generate it into, and a call to one has no receiver at all
   rather than a stand-in. A module lists each factory block, by the message it builds and where its
@@ -128,7 +136,8 @@ The IR preserves:
   the one place two nodes share a span without one standing inside the other, and a position query
   there answers with the target, which comes first. A compound store to a map's element is the
   same, its target holding the element where its read looked the key up
-  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)). The one thing the IR says of a
+  ([14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps)), and so is one to a list's element, its target holding the element where
+  its read read it ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). The one thing the IR says of a
   compound is that its value reads its own target, because where that target is written through an
   element the read has to be evaluated before the target is reached. Which form was written is
   otherwise the syntax tree's to say.
@@ -162,6 +171,11 @@ The IR preserves:
   enum and a lookup whose clause refuses carry that as their behavior, with the refusal where a fallback
   would be, and the IR answers which operation's clause refuses and what with, and which expression of a
   statement stands on its own, once for the binder and both backends.
+- **A call to a math function**, holding which function it calls and its arguments, in the order
+  written, of the type it gives. An integer `abs` carries the overflow behavior unary `-` carries,
+  stamped where it was bound. A call the compiler removes is kept, and answers that it gives its
+  argument back, so an editor can still find and describe it and a backend writes the argument alone
+  ([10.5](./§10-Numeric%20Semantics.md#105-math-functions)).
 - **A switch, as written.** It holds its subject and its arms in the order written. Each arm holds the
   constants it lists, of the subject's type, and its block, and the default arm is the one listing
   none ([15.3](./§15-Control%20Flow.md#153-switch)). A `break` in an arm is the same node as one in a loop: which construct it leaves is the
@@ -188,18 +202,20 @@ unnoticed, as it did before #107 caught it up.
 |---|---|
 | `IrModule`, `IrMethod`, `IrMethodSignature`, `IrParameter`, `IrLocal`, `IrFactory` | Declarations: each method's signature, with the block that declared it, whether it may change its receiver, and what it refuses with; parameters and locals by declaration site; and each factory block by the message it builds |
 | `IrTest`, `IrTestArgument` | A test: its target, its source, its receiver fixture and its named arguments |
-| `IrTestReturnExpectation`, `IrTestFailExpectation`, `IrTestRefusalExpectation`, `IrTestFieldsExpectation` | What a test expects |
+| `IrTestReturnExpectation`, `IrTestFailExpectation`, `IrTestRefusalExpectation`, `IrTestFieldsExpectation`, `IrTestElementsExpectation` | What a test expects |
 | `IrBlock`, `IrVariableDeclaration`, `IrExpressionStatement`, `IrReturn`, `IrIf`, `IrWhile`, `IrForEach`, `IrBreak`, `IrContinue` | Statements and control flow, as written |
 | `IrSwitch`, `IrSwitchArm` | A switch, as written |
-| `IrAssignment`, `IrFieldAssignment`, `IrAppend`, `IrElementAssignment`, `IrMapUpdate` | What changes |
+| `IrAssignment`, `IrFieldAssignment`, `IrAppend`, `IrElementAssignment`, `IrListElementAssignment`, `IrMapUpdate` | What changes |
 | `IrRefuse`, `IrRefusableCall` | A refusal |
 | `IrThis`, `IrLocalReference`, `IrParameterReference`, `IrMethodCall` | References and calls, each to the identity it resolved to |
 | `IrFieldAccess`, `IrFieldPresence` | Field access, and presence checks |
 | `IrBinary`, `IrUnary`, `IrConversion`, `IrIntegerDivision` | Exact numeric operation kinds, how each operation behaves, and what a zero divisor does |
+| `IrMathCall` | A call to a math function, how an integer `abs` behaves, and whether the call gives its argument back |
 | `IrEnumValue`, `IrEnumToNumber`, `IrNumberToEnum`, `IrEnumMembership` | Descriptor identities for enum values, and an enum's number |
 | `IrLiteral` | A literal's value in one stated representation |
-| `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node |
+| `IrMessageLiteral`, `IrFieldInitializer`, `IrList` | A message literal, and a test's fixture, as one node; a list written as a value |
 | `IrMapLookup`, `IrMapContains`, `IrMapQuery`, `IrMapElement`, `IrMapEntries`, `IrMapEntry` | A map's reads and writes |
+| `IrListQuery`, `IrElementLookup`, `IrElementRead`, `IrListElement`, `IrIndexProof` | A list's count and whether it is empty; an element read by a try method, with what its clause does where there is none; an element read, or written as a place, by an index the binder showed in range, with the facts that showed it |
 | `IrMissingMemberAccess`, `IrUncallableInvocation`, `IrValuelessCall` | Error placeholder nodes, and what was written in part |
 
 **Invariants a consumer may rely on.** The list above says what is kept; these say what is true of
@@ -223,6 +239,10 @@ is one the next change breaks silently.
   carries the identity of a declaration the compilation holds; a name that resolved to nothing binds to
   an error-typed node instead of a stand-in symbol, and is not recorded as a use. A consumer
   therefore never holds an identity that answers nothing.
+- **Every element read or written by an index rests on what showed it in range.** A backend reads or
+  writes one with the target's own indexer and checks nothing ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), so one the binder could not
+  show is an error and never reaches a backend, and each that does carries the facts it needed, as a
+  condition would write them.
 - **Every construct is reachable by one walk.** Each node the compiler can produce is yielded by the
   walk of the module that holds it, so a sweep over the IR -- an editor's, a backend's, a test's --
   sees all of it. A construct added to the language without being added to the walk leaves every

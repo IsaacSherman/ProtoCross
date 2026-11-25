@@ -1,0 +1,77 @@
+// A returned list is a value of its own, including when a loop traverses it directly.
+import proto "returned_list_review.proto";
+
+extend ReturnedListReview {
+    fn returned() -> repeated ReturnedListItem {
+        return items;
+    }
+
+    fn built() -> repeated ReturnedListItem refuses string {
+        return items;
+    }
+
+    // A list refused is the caller's own, as one returned is.
+    fn refused() -> int64 refuses repeated ReturnedListItem {
+        refuse items;
+    }
+
+    fn refused_when_zero(divisor: int64) -> int64 refuses repeated ReturnedListItem {
+        return 12 / divisor on_zero refuse items;
+    }
+
+    fn forwarded(divisor: int64) -> int64 refuses repeated ReturnedListItem {
+        return refused_when_zero(divisor) on_refused refuse;
+    }
+
+    mut fn sum_returned() -> int64 {
+        var total: int64 = 0;
+        for snapshot in returned() {
+            for original in items {
+                original.amount = 0;
+            }
+            total += snapshot.amount;
+        }
+        return total;
+    }
+
+    mut fn sum_built() -> int64 {
+        var total: int64 = 0;
+        for snapshot in built() on_refused fail {
+            for original in items {
+                original.amount = 0;
+            }
+            total += snapshot.amount;
+        }
+        return total;
+    }
+}
+
+test ReturnedListReview.sum_returned "a directly iterated returned list owns its messages" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return 12;
+}
+
+test ReturnedListReview.sum_built "a directly iterated refusing result owns its messages" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return 12;
+}
+
+test ReturnedListReview.returned "a returned list of messages is expected by a literal at each index" {
+    receiver { items: [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }] }
+    expect return [new ReturnedListItem { amount: 5 }, new ReturnedListItem { amount: 7 }];
+}
+
+test ReturnedListReview.returned "an empty list of messages is expected as one" {
+    receiver { }
+    expect return [];
+}
+
+test ReturnedListReview.refused "a refused list of messages is expected by a literal at each index" {
+    receiver { items: [new ReturnedListItem { amount: 3 }] }
+    expect refuse [new ReturnedListItem { amount: 3 }];
+}
+
+test ReturnedListReview.built "a list of messages a method that may refuse built" {
+    receiver { items: [new ReturnedListItem { }, new ReturnedListItem { amount: 2 }] }
+    expect return [new ReturnedListItem { }, new ReturnedListItem { amount: 2 }];
+}

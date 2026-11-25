@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using ProtoCross.LanguageServer.Hosting;
 using ProtoCross.LanguageServer.Protocol;
 using ProtoCross.LanguageServer.Protocol.Lsp;
+using ProtoCross.Tests.Harness;
 
 namespace ProtoCross.Tests;
 
@@ -31,7 +32,7 @@ public sealed class LanguageServerClient : IAsyncDisposable
     /// Generous, because a compilation may start protoc on a cold cache. It is a failure bound rather
     /// than a timing assertion: nothing here asserts that anything happened <em>quickly</em>.
     /// </remarks>
-    public static TimeSpan Patience => TimeSpan.FromSeconds(30);
+    public static TimeSpan Patience => Liveness.Patience;
 
     private readonly ChannelStream _toServer = new();
     private readonly ChannelStream _fromServer = new();
@@ -249,8 +250,11 @@ public sealed class LanguageServerClient : IAsyncDisposable
         {
         }
 
+        // The pool's state, because a server whose every step waits for a pool thread looks hung
+        // when the suite around it has parked them all, and only these numbers tell the two apart.
         throw new TimeoutException(
             $"The server never sent {describe}. State {Host.State}, {Host.Compilations} compilations"
+                + $"; the thread pool has {ThreadPool.ThreadCount} threads and {ThreadPool.PendingWorkItemCount} queued items"
                 + (_fatal is null ? "." : $"; this client stopped reading because of {_fatal}.")
                 + Environment.NewLine + "The server said:" + Environment.NewLine + _log);
     }
