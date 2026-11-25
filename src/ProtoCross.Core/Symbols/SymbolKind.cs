@@ -12,9 +12,9 @@ namespace ProtoCross.Symbols;
 /// <para>
 /// The first four are declared in ProtoCross source. The four after them are declared in a
 /// <c>.proto</c> file this compiler does not own, which is why their identity comes from a
-/// descriptor rather than from a location; see <see cref="SymbolId"/>. <see cref="Factory"/> is
-/// declared in ProtoCross source too, and comes last only because it came last: a kind's number is
-/// not its meaning, and renumbering the others would gain nothing.
+/// descriptor rather than from a location; see <see cref="SymbolId"/>. <see cref="Factory"/> and
+/// <see cref="Function"/> are declared in ProtoCross source too, and come last only because they came
+/// last: a kind's number is not its meaning, and renumbering the others would gain nothing.
 /// </para>
 /// </remarks>
 public enum SymbolKind
@@ -48,4 +48,14 @@ public enum SymbolKind
     /// <c>Invoice.factory.create()</c> can be followed to it (spec 16.3).
     /// </summary>
     Factory,
+
+    /// <summary>
+    /// A project's helper: a ProtoCross method written at the top level, which belongs to no message
+    /// (spec 16.4).
+    /// </summary>
+    /// <remarks>
+    /// Not a <see cref="Method"/>, because an editor tells the two apart as C# and C++ do: a helper is
+    /// coloured and listed as a function, which nothing is called on.
+    /// </remarks>
+    Function,
 }

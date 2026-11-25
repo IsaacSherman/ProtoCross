@@ -62,8 +62,10 @@ public static class IrEvaluationOrder
         IrIntegerDivision { Behavior: ArithmeticBehavior.Check } division when MayOverflow(division) => true,
         IrNumberToEnum { OnUnnamed: UnnamedNumberBehavior.Fail } => true,
         IrMapLookup { OnMissing: MissingKeyBehavior.Fail } => true,
+        IrElementLookup { OnRefused: OutOfRangeBehavior.Fail } => true,
         IrBinary { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
         IrUnary { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
+        IrMathCall { OverflowingType: not null, Behavior: ArithmeticBehavior.Check } => true,
         _ => IrWalk.ChildrenOf(node).Any(MayNotComplete),
     };
 

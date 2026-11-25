@@ -1,0 +1,888 @@
+// Conformance vectors for a list's count, whether it is empty, and its elements read and written by index
+// (spec 14.1).
+//
+// An index is read two ways. A plain one, items[i] or items[^j], compiles only where the compiler can show it is
+// in range, and is the target's own indexer. A try method checks the index as the program runs and refuses where
+// there is no element, which the call answers with a fallback, by ending the program, or by refusing with a value of
+// the method's own. C# and C++ disagree about an index out of range -- C#'s indexer throws, and C++'s is undefined --
+// so these pin that the generated code never leaves it to them: the same element at every index that has one, and the
+// same answer at every index that has none, from either end and of every integer type.
+
+import proto "repeated_indexing.proto";
+
+extend Shelf {
+    // ---- count and is_empty
+
+    fn count_of_counts() -> int32 {
+        return counts.count();
+    }
+
+    fn counts_are_empty() -> bool {
+        return counts.is_empty();
+    }
+
+    fn count_after_appending() -> int32 {
+        var values: repeated double = [];
+        var before = values.count();
+        values.append(1.0);
+        values.append(2.0);
+        return before * 10 + values.count();
+    }
+
+    fn count_of_a_call() -> int32 {
+        return own_labels().count();
+    }
+
+    fn own_labels() -> repeated string {
+        return labels;
+    }
+
+    // ---- try methods, from the start
+
+    fn count_at_or(index: int64) -> int32 {
+        return counts.try_get_index(index) on_refused -1;
+    }
+
+    fn count_at_unsigned_or(index: uint64) -> int32 {
+        return counts.try_get_index(index) on_refused -1;
+    }
+
+    fn count_at_narrow_or(index: int32) -> int32 {
+        return counts.try_get_index(index) on_refused -1;
+    }
+
+    fn label_at_or(index: int64) -> string {
+        return labels.try_get_index(index) on_refused "none";
+    }
+
+    fn tone_at_or(index: int64) -> Tone {
+        return tones.try_get_index(index) on_refused Tone.TONE_UNSPECIFIED;
+    }
+
+    fn box_grams_at_or(index: int64) -> int64 {
+        return (boxes.try_get_index(index) on_refused new Box { grams: -1 }).grams;
+    }
+
+    // The fallback is evaluated only where there is no element, so one that would end the program does not end one
+    // whose index was there.
+    fn count_at_or_divide(index: int64) -> int32 {
+        return counts.try_get_index(index) on_refused (base / 0 on_zero fail);
+    }
+
+    // ---- try methods, from the end
+
+    fn count_from_end_or(index: int64) -> int32 {
+        return counts.try_get_backward_index(index) on_refused -1;
+    }
+
+    fn count_from_end_unsigned_or(index: uint64) -> int32 {
+        return counts.try_get_backward_index(index) on_refused -1;
+    }
+
+    fn weight_from_end_or(index: int32) -> double {
+        return weights.try_get_backward_index(index) on_refused -1.0;
+    }
+
+    // ---- answered by ending the program, and by refusing
+
+    fn count_at_or_fail(index: int64) -> int32 {
+        return counts.try_get_index(index) on_refused fail;
+    }
+
+    fn count_from_end_or_fail(index: uint64) -> int32 {
+        return counts.try_get_backward_index(index) on_refused fail;
+    }
+
+    fn count_at_or_refuse(index: int64) -> int32 refuses BoundsRefusal {
+        var found = counts.try_get_index(index) on_refused refuse new BoundsRefusal { index: index };
+        return found;
+    }
+
+    fn tone_from_end_or_refuse(index: int64) -> Tone refuses BoundsRefusal {
+        return tones.try_get_backward_index(index) on_refused refuse new BoundsRefusal { index: index };
+    }
+
+    // A loop over a field of what a try method gives traverses a message of its own, which lasts as long as the loop.
+    fn parts_of_box_or(index: int64) -> int64 {
+        var total: int64 = 0;
+        for part in (boxes.try_get_index(index) on_refused new Box { parts: [100] }).parts {
+            total += part;
+        }
+        return total;
+    }
+
+    // ---- a list of wrappers, whose element is a message the target may hold as its value
+
+    fn reading_at_or(index: int64) -> int64 {
+        var found = readings.try_get_index(index) on_refused new google.protobuf.Int64Value { value: -1 };
+        return found.value;
+    }
+
+    fn reading_from_end_or_fail(index: int32) -> int64 {
+        return (readings.try_get_backward_index(index) on_refused fail).value;
+    }
+
+    // ---- indexes the compiler shows in range, from the start and from the end
+
+    fn first_count() -> int32 {
+        if counts.is_empty() {
+            return -1;
+        }
+        return counts[0];
+    }
+
+    fn last_label() -> string {
+        if labels.count() < 1 {
+            return "none";
+        }
+        return labels[^1];
+    }
+
+    fn second_weight_from_end() -> double {
+        if weights.count() >= 2 {
+            return weights[^2];
+        }
+        return -1.0;
+    }
+
+    fn last_tone() -> Tone {
+        if not tones.is_empty() {
+            return tones[^1];
+        }
+        return Tone.TONE_UNSPECIFIED;
+    }
+
+    fn grams_of_first_box() -> int64 {
+        if boxes.count() > 0 {
+            return boxes[0].grams;
+        }
+        return -1;
+    }
+
+    fn count_at(index: int64) -> int32 {
+        if index >= 0 and index < counts.count() as int64 {
+            return counts[index];
+        }
+        return -1;
+    }
+
+    fn count_at_unsigned(index: uint64) -> int32 {
+        if index < counts.count() as uint64 {
+            return counts[index];
+        }
+        return -1;
+    }
+
+    fn label_or_none(index: int32) -> string {
+        if index < 0 or index >= labels.count() {
+            return "none";
+        }
+        return labels[index];
+    }
+
+    fn count_from_end(index: int32) -> int32 {
+        if index >= 1 and index <= counts.count() {
+            return counts[^index];
+        }
+        return -1;
+    }
+
+    fn total_by_index() -> int32 {
+        var total: int32 = 0;
+        var index: uint32 = 0;
+        while index < counts.count() as uint32 {
+            total += counts[index];
+            index += 1;
+        }
+        return total;
+    }
+
+    fn after_appending() -> int32 {
+        var values: repeated int32 = [];
+        values.append(7);
+        values.append(8);
+        return values[0] * 10 + values[^1];
+    }
+
+    fn from_a_literal() -> int32 {
+        var values: repeated int32 = [3, 4, 5];
+        return values[2] - values[^3];
+    }
+
+    fn first_given(given: repeated int32) -> int32 {
+        if given.is_empty() {
+            return 0;
+        }
+        return given[0] * 10 + given[^1];
+    }
+
+    fn last_reading() -> int64 {
+        if readings.is_empty() {
+            return -1;
+        }
+        var kept = readings[^1];
+        return kept.value + readings[0].value;
+    }
+
+    // A loop over a field of an element traverses a copy of the element, as one over a lookup's does.
+    fn parts_of_last_box() -> int64 {
+        var total: int64 = 0;
+        if not boxes.is_empty() {
+            for part in boxes[^1].parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    // An element passed to a mut fn is the element as it was when the call began, whatever the method then does
+    // to the list.
+    mut fn weigh_first_box() -> int64 {
+        if boxes.is_empty() {
+            return -1;
+        }
+        return weigh_and_clear(boxes[0]);
+    }
+
+    mut fn weigh_and_clear(box: Box) -> int64 {
+        boxes = [];
+        return box.grams + boxes.count() as int64;
+    }
+
+    // ---- elements written by an index the compiler shows in range
+
+    mut fn replace_count(index: int32, value: int32) -> int32 {
+        if index >= 0 and index < counts.count() {
+            counts[index] = value;
+            return counts[index] * 100 + counts.count();
+        }
+        return -1;
+    }
+
+    mut fn bump_last_count() -> int32 {
+        if counts.is_empty() {
+            return -1;
+        }
+        counts[^1] += 10;
+        return counts[^1];
+    }
+
+    mut fn replace_label_from_end(index: int64, value: string) -> string {
+        if index >= 1 and index <= labels.count() as int64 {
+            labels[^index] = value;
+        }
+        if labels.is_empty() {
+            return "none";
+        }
+        return labels[0];
+    }
+
+    mut fn replace_tone() -> Tone {
+        if tones.is_empty() {
+            return Tone.TONE_UNSPECIFIED;
+        }
+        tones[0] = Tone.TONE_DARK;
+        return tones[0];
+    }
+
+    mut fn double_first_weight() -> double {
+        if weights.count() < 1 {
+            return -1.0;
+        }
+        weights[0] = weights[0] * 2.0;
+        return weights[0];
+    }
+
+    // A message stored at an index is a copy of its own, as one appended is.
+    mut fn replace_box_then_change_the_original() -> int64 {
+        if boxes.count() < 2 {
+            return -1;
+        }
+        var replacement = new Box { grams: 5 };
+        boxes[1] = replacement;
+        replacement.grams = 9;
+        return boxes[1].grams * 10 + boxes[0].grams;
+    }
+
+    // An element replaced by another of the same list holds a copy of it.
+    mut fn copy_box_within() -> int64 {
+        if boxes.count() < 2 {
+            return -1;
+        }
+        boxes[0] = boxes[1];
+        boxes[1].grams = 1;
+        return boxes[0].grams * 10 + boxes[1].grams;
+    }
+
+    mut fn write_through_box(index: int32) -> int64 {
+        if index >= 0 and index < boxes.count() {
+            boxes[index].grams = 40;
+            boxes[index].tag = "written";
+            boxes[index].parts.append(7);
+            boxes[index].marks["seen"] = 1;
+            boxes[index].grams += 2;
+        }
+        var total: int64 = 0;
+        for box in boxes {
+            total += box.grams;
+            for part in box.parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    mut fn add_to_the_ends() -> int64 {
+        if boxes.is_empty() {
+            return -1;
+        }
+        boxes[0].add_grams(5);
+        boxes[^1].add_grams(100);
+        return boxes[0].grams * 1000 + boxes[^1].grams;
+    }
+
+    // A list a loop's binding holds is written through the binding, so each element of the field is changed.
+    mut fn first_part_of_each_box() -> int64 {
+        for box in boxes {
+            if not box.parts.is_empty() {
+                box.parts[0] = 9;
+            }
+        }
+        var total: int64 = 0;
+        for box in boxes {
+            for part in box.parts {
+                total += part;
+            }
+        }
+        return total;
+    }
+
+    // Writing inside an element of a list a loop traverses changes nothing it traverses.
+    mut fn write_inside_while_traversing() -> int64 {
+        var total: int64 = 0;
+        for box in boxes {
+            if boxes.count() > 0 {
+                boxes[0].grams += 1;
+            }
+            total += box.grams;
+        }
+        return total;
+    }
+
+    fn write_a_local_list() -> int32 {
+        var values: repeated int32 = [1, 2, 3];
+        values[0] = 10;
+        values[^1] *= 5;
+        values[1] -= 1;
+        return values[0] + values[1] + values[2];
+    }
+
+    fn heavy_boxes(limit: int64) -> repeated Box {
+        var heavy: repeated Box = [];
+        for box in boxes {
+            if box.grams > limit {
+                heavy.append(box);
+            }
+        }
+        return heavy;
+    }
+
+    fn kept() -> Shelf {
+        return new Shelf { boxes: boxes, counts: counts, labels: labels, tones: tones, readings: readings };
+    }
+
+    mut fn replace_readings() -> int64 {
+        if readings.count() < 2 {
+            return -1;
+        }
+        readings[0] = new google.protobuf.Int64Value { value: 50 };
+        readings[^1].value = 60;
+        readings[0].value += 1;
+        return readings[0].value + readings[1].value;
+    }
+
+    mut fn change_reading_and_advance_index() -> int64 {
+        var index: int32 = 0;
+        if readings.count() >= 2 and index >= 0 and index < readings.count() {
+            index = readings[index].bump_and_next();
+            if index == 1 {
+                return readings[0].value;
+            }
+        }
+        return -1;
+    }
+}
+
+extend google.protobuf.Int64Value {
+    mut fn bump_and_next() -> int32 {
+        value += 3;
+        return 1;
+    }
+}
+
+extend Box {
+    mut fn add_grams(more: int64) {
+        grams += more;
+    }
+}
+
+test Shelf.count_of_counts "a field's count" {
+    receiver { counts: [4, 5, 6] }
+    expect return 3;
+}
+
+test Shelf.counts_are_empty "an empty field is empty" {
+    receiver { }
+    expect return true;
+}
+
+test Shelf.count_after_appending "a count after appending counts what was appended" {
+    receiver { }
+    expect return 2;
+}
+
+test Shelf.count_of_a_call "a call's result has a count" {
+    receiver { labels: ["a", "b"] }
+    expect return 2;
+}
+
+test Shelf.count_at_or "the first element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 0;
+    expect return 4;
+}
+
+test Shelf.count_at_or "a middle element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    expect return 5;
+}
+
+test Shelf.count_at_or "the last element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 2;
+    expect return 6;
+}
+
+test Shelf.count_at_or "an index at the count has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return -1;
+}
+
+test Shelf.count_at_or "a negative index has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = -1;
+    expect return -1;
+}
+
+test Shelf.count_at_or "the largest int64 has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 9223372036854775807;
+    expect return -1;
+}
+
+test Shelf.count_at_or "an empty list has no first element" {
+    receiver { }
+    arg index = 0;
+    expect return -1;
+}
+
+test Shelf.count_at_unsigned_or "a uint64 past what a list holds has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 18446744073709551615;
+    expect return -1;
+}
+
+test Shelf.count_at_unsigned_or "a uint64 index reads an element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 2;
+    expect return 6;
+}
+
+test Shelf.count_at_narrow_or "an int32 index reads an element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    expect return 5;
+}
+
+test Shelf.label_at_or "a string element" {
+    receiver { labels: ["first", "second"] }
+    arg index = 1;
+    expect return "second";
+}
+
+test Shelf.label_at_or "a string list's fallback" {
+    receiver { labels: ["first"] }
+    arg index = 1;
+    expect return "none";
+}
+
+test Shelf.tone_at_or "an enum element" {
+    receiver { tones: [Tone.TONE_LIGHT, Tone.TONE_DARK] }
+    arg index = 1;
+    expect return Tone.TONE_DARK;
+}
+
+test Shelf.tone_at_or "an enum list's fallback" {
+    receiver { tones: [Tone.TONE_LIGHT] }
+    arg index = 5;
+    expect return Tone.TONE_UNSPECIFIED;
+}
+
+test Shelf.box_grams_at_or "a message element" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    arg index = 1;
+    expect return 7;
+}
+
+test Shelf.box_grams_at_or "a message list's fallback" {
+    receiver { boxes: [new Box { grams: 3 }] }
+    arg index = 1;
+    expect return -1;
+}
+
+test Shelf.count_at_or_divide "a fallback that would fail is not evaluated where there is an element" {
+    receiver { counts: [4] }
+    arg index = 0;
+    expect return 4;
+}
+
+test Shelf.count_from_end_or "from the end, 1 is the last element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    expect return 6;
+}
+
+test Shelf.count_from_end_or "from the end, the count is the first element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return 4;
+}
+
+test Shelf.count_from_end_or "from the end, 0 has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 0;
+    expect return -1;
+}
+
+test Shelf.count_from_end_or "from the end, one past the count has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 4;
+    expect return -1;
+}
+
+test Shelf.count_from_end_or "from the end, a negative index has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = -1;
+    expect return -1;
+}
+
+test Shelf.count_from_end_unsigned_or "from the end, a uint64 past what a list holds has no element" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 18446744073709551615;
+    expect return -1;
+}
+
+test Shelf.weight_from_end_or "from the end, a double element" {
+    receiver { weights: [1.5, 2.5] }
+    arg index = 2;
+    expect return 1.5;
+}
+
+test Shelf.count_at_or_fail "an element answered by ending the program, where there is one" {
+    receiver { counts: [4, 5] }
+    arg index = 1;
+    expect return 5;
+}
+
+test Shelf.count_at_or_fail "no element ends the program" {
+    receiver { counts: [4, 5] }
+    arg index = 2;
+    expect fail;
+}
+
+test Shelf.count_from_end_or_fail "no element from the end ends the program" {
+    receiver { counts: [4, 5] }
+    arg index = 0;
+    expect fail;
+}
+
+test Shelf.count_at_or_refuse "an element answered by refusing, where there is one" {
+    receiver { counts: [4, 5] }
+    arg index = 0;
+    expect return 4;
+}
+
+test Shelf.count_at_or_refuse "no element refuses with the method's own refusal" {
+    receiver { counts: [4, 5] }
+    arg index = 9;
+    expect refuse new BoundsRefusal { index: 9 };
+}
+
+test Shelf.tone_from_end_or_refuse "an enum element from the end, answered by refusing" {
+    receiver { tones: [Tone.TONE_LIGHT, Tone.TONE_DARK] }
+    arg index = 2;
+    expect return Tone.TONE_LIGHT;
+}
+
+test Shelf.tone_from_end_or_refuse "no enum element from the end refuses" {
+    receiver { tones: [Tone.TONE_LIGHT] }
+    arg index = 2;
+    expect refuse new BoundsRefusal { index: 2 };
+}
+
+test Shelf.parts_of_box_or "a loop over a field of a try method's element" {
+    receiver { boxes: [new Box { parts: [1, 2, 3] }] }
+    arg index = 0;
+    expect return 6;
+}
+
+test Shelf.parts_of_box_or "a loop over a field of a try method's fallback" {
+    receiver { }
+    arg index = 0;
+    expect return 100;
+}
+
+test Shelf.reading_at_or "a wrapper element" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    arg index = 1;
+    expect return 9;
+}
+
+test Shelf.reading_at_or "a wrapper list's fallback" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }] }
+    arg index = 1;
+    expect return -1;
+}
+
+test Shelf.reading_from_end_or_fail "a wrapper element from the end" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    arg index = 2;
+    expect return 4;
+}
+
+test Shelf.first_count "a literal index the count shows" {
+    receiver { counts: [4, 5, 6] }
+    expect return 4;
+}
+
+test Shelf.first_count "an empty list is not read" {
+    receiver { }
+    expect return -1;
+}
+
+test Shelf.last_label "a literal index from the end" {
+    receiver { labels: ["first", "last"] }
+    expect return "last";
+}
+
+test Shelf.second_weight_from_end "a literal index from the end, past the last" {
+    receiver { weights: [1.5, 2.5, 3.5] }
+    expect return 2.5;
+}
+
+test Shelf.last_tone "an enum element from the end" {
+    receiver { tones: [Tone.TONE_LIGHT, Tone.TONE_DARK] }
+    expect return Tone.TONE_DARK;
+}
+
+test Shelf.grams_of_first_box "a field of a message element" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 3;
+}
+
+test Shelf.count_at "a guarded index of another integer type" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 2;
+    expect return 6;
+}
+
+test Shelf.count_at "a guarded index outside the list is not read" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return -1;
+}
+
+test Shelf.count_at_unsigned "an unsigned index needs no lower bound" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    expect return 5;
+}
+
+test Shelf.label_or_none "an index shown by an early return" {
+    receiver { labels: ["first", "second"] }
+    arg index = 1;
+    expect return "second";
+}
+
+test Shelf.label_or_none "an index an early return keeps out" {
+    receiver { labels: ["first", "second"] }
+    arg index = -1;
+    expect return "none";
+}
+
+test Shelf.count_from_end "a guarded index from the end" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    expect return 4;
+}
+
+test Shelf.count_from_end "a guarded index from the end, outside the list, is not read" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 0;
+    expect return -1;
+}
+
+test Shelf.total_by_index "every element, by a while loop's index" {
+    receiver { counts: [4, 5, 6] }
+    expect return 15;
+}
+
+test Shelf.after_appending "what was appended is there to read" {
+    receiver { }
+    expect return 78;
+}
+
+test Shelf.from_a_literal "a list written out holds what it was written with" {
+    receiver { }
+    expect return 2;
+}
+
+test Shelf.first_given "a list parameter's elements" {
+    receiver { }
+    arg given = [9, 8, 7];
+    expect return 97;
+}
+
+test Shelf.last_reading "a wrapper element read by its index" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 13;
+}
+
+test Shelf.parts_of_last_box "a loop over a field of an element" {
+    receiver { boxes: [new Box { parts: [1] }, new Box { parts: [2, 3] }] }
+    expect return 5;
+}
+
+test Shelf.weigh_first_box "an element passed to a mut fn is a copy the method's changes do not reach" {
+    receiver { boxes: [new Box { grams: 3 }] }
+    expect return 3;
+}
+
+test Shelf.replace_count "an element replaced at a guarded index" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 1;
+    arg value = 50;
+    expect return 5003;
+}
+
+test Shelf.replace_count "an index outside the list replaces nothing" {
+    receiver { counts: [4, 5, 6] }
+    arg index = 3;
+    arg value = 50;
+    expect return -1;
+}
+
+test Shelf.bump_last_count "a compound store from the end" {
+    receiver { counts: [4, 5, 6] }
+    expect return 16;
+}
+
+test Shelf.replace_label_from_end "a string replaced from the end" {
+    receiver { labels: ["a", "b", "c"] }
+    arg index = 3;
+    arg value = "z";
+    expect return "z";
+}
+
+test Shelf.replace_tone "an enum element replaced" {
+    receiver { tones: [Tone.TONE_LIGHT] }
+    expect return Tone.TONE_DARK;
+}
+
+test Shelf.double_first_weight "a double element replaced by what it was read as" {
+    receiver { weights: [1.5] }
+    expect return 3.0;
+}
+
+test Shelf.replace_box_then_change_the_original "a message stored at an index is a copy" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 53;
+}
+
+test Shelf.copy_box_within "an element stored from the same list is a copy" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 71;
+}
+
+test Shelf.write_through_box "an element written through: a field, an append, a map's store and a compound" {
+    receiver { boxes: [new Box { grams: 3, parts: [1] }, new Box { grams: 7 }] }
+    arg index = 1;
+    expect return 53;
+}
+
+test Shelf.write_through_box "an index outside the list writes nothing" {
+    receiver { boxes: [new Box { grams: 3, parts: [1] }, new Box { grams: 7 }] }
+    arg index = 5;
+    expect return 11;
+}
+
+test Shelf.add_to_the_ends "a mut fn called on an element, from either end" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 8107;
+}
+
+test Shelf.first_part_of_each_box "a list a loop's binding holds, written by index" {
+    receiver { boxes: [new Box { parts: [1, 2] }, new Box { }, new Box { parts: [3] }] }
+    expect return 20;
+}
+
+test Shelf.write_inside_while_traversing "an element written inside while the list is traversed" {
+    receiver { boxes: [new Box { grams: 3 }, new Box { grams: 7 }] }
+    expect return 11;
+}
+
+test Shelf.write_a_local_list "a local's list written by index" {
+    receiver { }
+    expect return 26;
+}
+
+test Shelf.replace_readings "a list of wrappers written by index and through its elements" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 111;
+}
+
+test Shelf.change_reading_and_advance_index "a mutating call keeps the indexed wrapper it reached" {
+    receiver { readings: [new google.protobuf.Int64Value { value: 4 }, new google.protobuf.Int64Value { value: 9 }] }
+    expect return 7;
+}
+
+test Shelf.heavy_boxes "a list of messages, each element expected by its own literal, a list it holds included" {
+    receiver { boxes: [new Box { grams: 3, tag: "a" }, new Box { grams: 9, tag: "b", parts: [1, 2] }, new Box { grams: 12 }] }
+    arg limit = 5;
+    expect return [new Box { grams: 9, tag: "b", parts: [1, 2] }, new Box { grams: 12, parts: [] }];
+}
+
+test Shelf.heavy_boxes "no element is expected of an empty list of messages" {
+    receiver { boxes: [new Box { grams: 3 }] }
+    arg limit = 5;
+    expect return [];
+}
+
+test Shelf.kept "a message's repeated fields are expected element by element" {
+    receiver {
+        boxes: [new Box { grams: 3, parts: [4] }],
+        counts: [1, 2],
+        labels: ["x"],
+        tones: [Tone.TONE_DARK],
+        readings: [new google.protobuf.Int64Value { value: 8 }],
+    }
+    expect return new Shelf {
+        boxes: [new Box { grams: 3, parts: [4] }],
+        counts: [1, 2],
+        labels: ["x"],
+        tones: [Tone.TONE_DARK],
+        readings: [new google.protobuf.Int64Value { value: 8 }],
+    };
+}

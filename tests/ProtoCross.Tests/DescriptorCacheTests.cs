@@ -1,5 +1,6 @@
 using Google.Protobuf.Reflection;
 using ProtoCross.Binding;
+using ProtoCross.Tests.Harness;
 using Xunit;
 
 namespace ProtoCross.Tests;
@@ -25,19 +26,6 @@ namespace ProtoCross.Tests;
 /// </remarks>
 public class DescriptorCacheTests
 {
-    /// <summary>How long a wait between two threads of one test may go unanswered before it is a hang.</summary>
-    /// <remarks>
-    /// A liveness backstop rather than a latency assertion, and the same thirty seconds
-    /// <see cref="LanguageServerClient.Patience"/> and <c>ProcessSupervisionTests.Generous</c>
-    /// already use rather than a new number picked to make a run go green. What is asserted is that
-    /// the second thread got there at all; the deadline only has to outlast the worst scheduling
-    /// delay this suite can impose, and under <c>PROTOCROSS_SWEEP</c> and <c>PROTOCROSS_SOAK</c>
-    /// together that is considerably more than the five seconds this test used to allow -- it failed
-    /// on a full gated run and passed every time it ran alone. A generous deadline costs nothing on a
-    /// run that passes and still turns a hang into a failure rather than a suite that never finishes.
-    /// </remarks>
-    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
-
     private const string LeafSchema =
         """
         syntax = "proto3";
@@ -444,14 +432,14 @@ public class DescriptorCacheTests
                     Interlocked.Increment(ref firstLoadCount);
                     firstLoadStarted.Set();
                     Assert.True(
-                        firstLoadMayFinish.Wait(Patience, TestContext.Current.CancellationToken),
+                        firstLoadMayFinish.Wait(Liveness.Patience, TestContext.Current.CancellationToken),
                         "the test thread must reach the second request while this load is in flight");
                     return EmptyBundle();
                 }),
             TestContext.Current.CancellationToken);
 
         Assert.True(
-            firstLoadStarted.Wait(Patience, TestContext.Current.CancellationToken),
+            firstLoadStarted.Wait(Liveness.Patience, TestContext.Current.CancellationToken),
             "the first load must be in flight before the second request evicts its entry");
 
         cache.GetOrLoad(secondRequest, EmptyBundle);

@@ -304,7 +304,8 @@ public sealed class SemanticModel
 
     /// <summary>
     /// Where this document wrote a method the language defines rather than any source: the
-    /// <c>append</c> of each append (spec 14.1), and each of a map's methods (spec 14.2).
+    /// <c>append</c> of each append (spec 14.1), each of a map's methods (spec 14.2), and each math
+    /// function (spec 10.5).
     /// </summary>
     /// <remarks>
     /// Apart from <see cref="AllReferences"/>, because such a name refers to no symbol. Nothing declares
@@ -319,7 +320,10 @@ public sealed class SemanticModel
                     {
                         IrAppend append => append.NameSpan,
                         IrMapQuery query => query.NameSpan,
+                        IrListQuery query => query.NameSpan,
+                        IrElementLookup lookup => lookup.NameSpan,
                         IrMapUpdate update => update.NameSpan,
+                        IrMathCall call => call.NameSpan,
                         _ => (SourceSpan?)null,
                     })
                     .OfType<SourceSpan>(),
@@ -382,8 +386,22 @@ public sealed class SemanticModel
     public Binding.SchemaTypes SchemaTypesAt(int offset)
         => IsProductionBehaviorAt(offset) ? _result.ProductionTypes : _result.Types;
 
+    /// <summary>
+    /// Whether a call written at <paramref name="offset"/> may reach <paramref name="target"/>: production
+    /// behavior may not call a method or helper a test source declares (<c>PC0088</c>, spec 25.3.1).
+    /// </summary>
+    /// <remarks>
+    /// Asked of the facts the binder decides it by, as <see cref="SchemaTypesAt"/> is, so a host offering
+    /// calls offers none the compiler would accept and then refuse.
+    /// </remarks>
+    public bool MayCallAt(int offset, IrMethodSignature target)
+        => !IsProductionBehaviorAt(offset) || !IsATestSource(target.Declaration.Document);
+
     private bool IsProductionBehaviorAt(int offset)
         => _role is SourceRole.Production && SyntaxAt(offset)?.Enclosing<TestDeclaration>() is null;
+
+    private bool IsATestSource(SourceIdentity document)
+        => _result.SyntaxTrees.Any(tree => tree.Document == document && tree.Role is SourceRole.Test);
 
     /// <summary>
     /// What a bare identifier written at <paramref name="offset"/> could mean, or null when the

@@ -42,8 +42,8 @@ public sealed partial class Binder
     }
 
     /// <summary>
-    /// The presence facts a condition establishes, for the case where it is true and for the case
-    /// where it is false.
+    /// The facts a condition establishes, for the case where it is true and for the case where it is
+    /// false: a field's presence, and what <see cref="ListFacts"/> shows about a list and an index.
     /// </summary>
     /// <remarks>
     /// <c>and</c> proves both of its operands when true and neither when false; <c>or</c> is its
@@ -80,7 +80,7 @@ public sealed partial class Binder
             }
 
             default:
-                return (EmptyPresence, EmptyPresence);
+                return ListFacts(condition);
         }
     }
 
@@ -264,11 +264,11 @@ public sealed partial class Binder
             case MemberAccessExpression { Name.IsMissing: true } member:
                 return BindMemberAccess(member, scope, context);
 
-            case NameExpression bare when context.HasImplicitReceiver
+            case NameExpression bare when context.ImplicitReceiver is { } implicitReceiver
                     && scope.LookupLocal(bare.Name.Text) is null
                     && scope.LookupParameter(bare.Name.Text) is null:
-                receiver = new IrThis(new MessageType(context.Receiver), bare.Span);
-                field = MessageFields.Named(context.Receiver, bare.Name.Text);
+                receiver = new IrThis(new MessageType(implicitReceiver), bare.Span);
+                field = MessageFields.Named(implicitReceiver, bare.Name.Text);
                 name = bare.Name.Text;
                 fieldNameSpan = bare.Name.Span;
                 break;

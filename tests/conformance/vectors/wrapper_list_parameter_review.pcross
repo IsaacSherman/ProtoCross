@@ -1,0 +1,32 @@
+// Read-only list parameters support protobuf wrappers as well as ordinary messages.
+import proto "wrapper_list_parameter_review.proto";
+
+extend WrapperListParameterReview {
+    fn total(given: repeated google.protobuf.Int64Value) -> int64 {
+        var result: int64 = 0;
+        for number in given {
+            result += number.value;
+        }
+        return result;
+    }
+
+    fn last(given: repeated google.protobuf.StringValue) -> string {
+        var result = "";
+        for label in given {
+            result = label.value;
+        }
+        return result;
+    }
+}
+
+test WrapperListParameterReview.total "a list parameter of numeric wrappers can be iterated" {
+    receiver { }
+    arg given = [new google.protobuf.Int64Value { value: 5 }, new google.protobuf.Int64Value { value: 7 }];
+    expect return 12;
+}
+
+test WrapperListParameterReview.last "a list parameter of string wrappers can be iterated" {
+    receiver { }
+    arg given = [new google.protobuf.StringValue { value: "first" }, new google.protobuf.StringValue { value: "last" }];
+    expect return "last";
+}

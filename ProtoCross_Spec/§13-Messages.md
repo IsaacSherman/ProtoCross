@@ -117,10 +117,12 @@ Normative Requirements:
   `customer: new Customer { … }`, never `customer: { … }`. A value of another type is `PC0063`, a
   literal of another message included, and a literal given to a field that is not a message is
   `PC0064`.
-- A repeated field's value is a list, `[first, second]`, holding every element in order. A comma after
-  the last element is allowed. A list is only ever a repeated field's value, and lists do not nest.
-  A repeated field given anything but a list is `PC0063`, a whole repeated value such as
-  `items: other.items` included, and so is a list given to a singular field.
+- A repeated field's value is a list. One written in place, `[first, second]`, holds every element in
+  order, and each element is checked against the field, so one of another type is `PC0063`. Any other
+  list of the field's type may be given too -- `items: other.items`, a parameter, a local, a call's
+  result -- and the field stores a copy of it, messages and all
+  ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). A comma after the last element is allowed, and lists do not nest. A repeated field
+  given anything but a list of its type is `PC0063`, and so is a list given to a singular field.
 - Each field is written at most once, a repeated one included (`PC0061`): a repeated field's list is
   the one place its contents are read.
 - A map field's value is a list of entries, each written `{ key: k, value: v }`, as protobuf models
@@ -138,10 +140,10 @@ Normative Requirements:
   written last, as protobuf keeps whichever member was set last.
 - **Storing a message stores a copy.** A field or a local given a message that is not a literal holds
   a message of its own rather than one shared with wherever the value came from, so nothing done
-  through either can show through the other ([18](./§18-Mutability.md#18-mutability)). A local given a repeated value
-  holds copies of its elements in the same way. A literal is exempt because it is built where it is
-  stored and nothing else can hold it. A method's result is not: it may be a field of the method's
-  receiver, which is still the receiver's.
+  through either can show through the other ([18](./§18-Mutability.md#18-mutability)). A local or a field given a list
+  holds copies of its elements in the same way. A literal is exempt, a message's or a list's, because it
+  is built where it is stored and nothing else can hold it. A method's result is not: it may be a field
+  of the method's receiver, which is still the receiver's.
 - **A literal establishes no presence** ([13.1](#131-field-access)). What a message field is given is not something a
   guard has tested, so a message field read straight off a literal is `PC0078`, and a local holding
   a literal is guarded like any other local.

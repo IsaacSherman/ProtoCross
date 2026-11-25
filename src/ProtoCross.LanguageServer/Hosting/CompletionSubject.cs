@@ -112,6 +112,20 @@ internal sealed record SchemaSubject(
     /// </remarks>
     public bool PrecededByNew { get; init; }
 
+    /// <summary>
+    /// Where the word <c>repeated</c> begins, when it is the token before the name under the caret; null where it is
+    /// not.
+    /// </summary>
+    /// <remarks>
+    /// The fact <see cref="PrecededByNew"/> is, for a list's type: a type is what makes <c>repeated</c> begin one
+    /// (<see cref="ContextualKeywords.BeginsARepeatedType"/>), so before the element's first letter is typed the
+    /// parser reads <c>repeated</c> as a type of that name, and there is no element slot in the tree to find. Taken
+    /// from the tokens, where a comment is trivia, so a comment between the word and the caret does not hide it. Its
+    /// offset rather than a flag, because completion asks the tree about that word: whether it is a type there, and
+    /// one a list may be. Init-only, as <see cref="PrecededByNew"/> is.
+    /// </remarks>
+    public int? RepeatedBefore { get; init; }
+
     /// <summary>Whether the name under the caret is followed by <c>.append</c>, and so is what an append adds to.</summary>
     /// <remarks>
     /// <see cref="FollowedByDot"/> made precise for the one receiver it is not enough for. A repeated
@@ -120,6 +134,14 @@ internal sealed record SchemaSubject(
     /// being typed may not parse. Init-only, as <see cref="PrecededByNew"/> is.
     /// </remarks>
     public bool FollowedByAppend { get; init; }
+
+    /// <summary>Whether the name under the caret follows <c>_pCrossMath.</c>, and so names a math function (spec 10.5).</summary>
+    /// <remarks>
+    /// Read off the tokens, as <see cref="FollowedByAppend"/> is. The word is reserved and the binder holds no
+    /// receiver for it, so what may follow its dot is the table of functions and nothing a scope or a type answers.
+    /// Init-only, as <see cref="PrecededByNew"/> is.
+    /// </remarks>
+    public bool PrecededByMathQualifier { get; init; }
 
     /// <summary>Whether <paramref name="offset"/> is somewhere a schema name could be written.</summary>
     /// <remarks>
@@ -176,8 +198,13 @@ internal sealed record SchemaSubject(
             FollowedByCall: following is TokenKind.OpenParen)
         {
             PrecededByNew = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.New },
+            RepeatedBefore = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Repeated } repeated
+                ? repeated.Span.Start.Offset
+                : null,
             PrecededByFactory = preceding is { Kind: TokenKind.Identifier, Text: ContextualKeywords.Factory },
             FollowedByAppend = BeginsAnAppend(tokens, end),
+            PrecededByMathQualifier = preceding is { Kind: TokenKind.Dot } dot
+                && Preceding(tokens, dot.Span.Start.Offset) is { Kind: TokenKind.PCrossMath },
         };
 
         return true;

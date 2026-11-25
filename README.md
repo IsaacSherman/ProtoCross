@@ -210,14 +210,27 @@ Implemented:
   now a reserved word.
 - Message construction, `new InvoiceItem { quantity: 2, unit_price_cents: 300 }`, wherever an
   expression can stand, and a test's fixture is written the same way. A repeated field takes a list,
-  `items: [a, b]`, and the values are evaluated in the order written. A literal shows no field to be
-  present, so a message field read straight off one still needs a guard. The spec has the rules in
-  section 13.2.
+  `items: [a, b]` or any list of its type, and the values are evaluated in the order written. A
+  literal shows no field to be present, so a message field read straight off one still needs a guard.
+  The spec has the rules in section 13.2.
+- Lists. `var products: repeated double = [low * scale, high * scale];` holds a list in a local, and
+  `repeated T` is a parameter's, a result's or a refusal's type too. A list is written wherever a
+  value can be, takes its element type from what is expected of it or from its elements, and is
+  iterated with `for`. A stored list is a copy, messages and all, and a repeated field takes a whole
+  one, `values: products` in a literal or `values = products;`. A test expects a list element by
+  element. A list has `count()` and `is_empty()`. `items[i]` and `items[^j]` read an element from
+  the start or from the end, and compile only where a guard shows the index is in range:
+  `if i >= 0 and i < items.count() { return items[i]; }`. An element at such an index is written
+  as a field is, `items[i] = v;` or `boxes[i].grams = 3;`, though not replaced inside a loop over its
+  list. `items.try_get_index(i)` and
+  `items.try_get_backward_index(j)` read any index, with `on_refused` saying what an index out of
+  range gives. The spec has the rules in section 14.1.
 - Mutation. A `mut fn` may change its receiver, every other method is read-only, and no method may
   change a parameter. Any method may change its own locals. A singular field is assigned, through
   nested messages if need be, setting each unset one on the way, and `items.append(item);` adds an
-  element to a repeated value. Nothing clears a repeated value or removes its elements, though a map
-  has `remove` and `clear`, as above. A mutating call stands on its own rather
+  element to a repeated value. A repeated field is assigned a whole list, which it stores a copy of.
+  Nothing else clears a repeated value or removes its elements, though a map has `remove` and `clear`,
+  as above. A mutating call stands on its own rather
   than inside a larger expression, and nothing inside a `for` may change the field it traverses. The
   spec has the rules in section 18.
 - Copies. Storing a message stores a copy unless it is a literal, whether into a local, a field, a
@@ -230,6 +243,18 @@ Implemented:
   of static members, in the project's namespace or beside the message. A test targets one as
   `test Invoice.factory.create`, with no receiver, and may expect the message it builds as a literal,
   which is compared by the fields it sets. The spec has the rules in sections 16.3, 24 and 25.3.
+- Helpers. `helper fn clamp(level: double, low: double, high: double) -> double { ... }` written at the
+  top level of a source is a project's helper: it belongs to no message, and any method or test of the
+  project calls it by its bare name, `clamp(rate, 0.0, 1.0)`. Its body follows a factory's rules, and
+  it may refuse. Helpers need a `.pcproj`. C# generates them as static methods of `ProtoCrossHelpers`
+  in `<Project>.Helpers`, and C++ as free functions in `<project>::helpers`. A test targets one by its
+  name alone, `test clamp`. The spec has the rules in sections 16.4 and 24.
+- Math functions. `_pCrossMath.min(low, high)`, `_pCrossMath.sqrt(a * a + b * b)` and
+  `_pCrossMath.round(ratio)` call one of eight functions, `abs`, `min`, `max`, `sqrt`, `floor`, `ceil`,
+  `trunc` and `round`, each with one correct answer that both targets give to the bit. `min` and `max`
+  give a NaN for a NaN, `round` takes a tie away from zero, and an integer `abs` of the minimum follows
+  the overflow policy. A call that gives its argument back, such as `abs` of a `uint32`, generates
+  nothing. `_pCrossMath` is reserved. The spec has the rules in section 10.5.
 - Refusals. Any method may refuse, `fn create(options: InvoiceOptions) -> Invoice refuses
   InvoiceRefusal`, ending with `refuse value;` instead of its result, with a type of the author's
   choosing. Every call to one says what a refusal makes of it: `on_refused <fallback>`,
@@ -241,8 +266,8 @@ Implemented:
 - A compile-time policy file, `protocross.config.xml`, selecting wrapping, checked, or saturating
   integer overflow, what each enum's unnamed numbers become, and whether generated code may end the
   program at all
-- C# backend (extension methods, and a static class per factory) and C++ backend (header-only free
-  functions, and a struct per factory)
+- C# backend (extension methods, a static class per factory, and one for a project's helpers) and C++
+  backend (header-only free functions, a struct per factory, and a namespace for a project's helpers)
 - Author-written `test` declarations, generated into xUnit tests and a C++ test executable,
   with `--scaffold` emitting the `.csproj` and `CMakeLists.txt` that build and run them
 - A cross-language conformance suite that runs the same vectors in both backends
@@ -252,8 +277,9 @@ Implemented:
   [editors/vscode](editors/vscode/README.md): live diagnostics, completion, hover, go to definition,
   find all references, highlighting, signature help, the outline, and colouring by meaning
 
-Not implemented: `==` between two messages (a test compares an expected literal by the fields it
-sets instead), asking which member of a `oneof` is set, and the Python backend, which is planned
+Not implemented: `==` between two messages or two lists (a test compares an expected literal by the
+fields it sets, and an expected list element by element, a list of messages by a literal at each
+index, instead), asking which member of a `oneof` is set, and the Python backend, which is planned
 but not yet started. A `oneof`'s members
 are ordinary fields otherwise: each can be read, tested with `has` and assigned, and assigning one
 unsets the others. The compiler refuses what it does not implement, such as iterating a map, rather

@@ -62,6 +62,7 @@ public static class TokenKindExtensions
         [TokenKind.OnMissing] = "on_missing",
         [TokenKind.OnRefused] = "on_refused",
         [TokenKind.OnZero] = "on_zero",
+        [TokenKind.PCrossMath] = "_pCrossMath",
         [TokenKind.Identifier] = "identifier",
         [TokenKind.IntegerLiteral] = "integer literal",
         [TokenKind.FloatLiteral] = "float literal",

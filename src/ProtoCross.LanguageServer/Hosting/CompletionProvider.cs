@@ -361,6 +361,11 @@ public sealed class CompletionProvider
             return [];
         }
 
+        if (subject.PrecededByMathQualifier)
+        {
+            return MathFunctionsAfter(model, subject, asked.Document);
+        }
+
         // Settled once and handed to both arms, because each is one question about the caret and the
         // two arms would otherwise each ask it of a different thing.
         var presence = NamesAPresenceField(model, subject);
@@ -862,12 +867,12 @@ public sealed class CompletionProvider
     /// it is accepted.
     /// </para>
     /// <para>
-    /// <b>A target with no receiver is left alone.</b> Written without a dot, <c>test f</c> is a
+    /// <b>A target with no receiver is a helper's.</b> Written without a dot, <c>test f</c> is a
     /// method and no receiver -- the parser says so, and <see cref="TestTarget"/> explains why it
-    /// reads it that way -- and there is no single name that completes it, because what is missing is
-    /// a name <em>and</em> a dot. Offering a message there produces <c>test EnumCase</c>, which is
-    /// <c>PC0057</c>. Something could be offered that inserts both, and it would not be one of these:
-    /// every item here replaces one name with one name.
+    /// reads it that way -- and a target of one name is a project's helper (spec 25.3), so the
+    /// helpers are what complete it. A message is not offered there: it would produce
+    /// <c>test EnumCase</c>, which is <c>PC0057</c>, and completing it to a method's target would
+    /// insert a name <em>and</em> a dot, where every item here replaces one name with one name.
     /// </para>
     /// </remarks>
     private static IReadOnlyList<CompletionItem>? Targeted(
@@ -933,7 +938,10 @@ public sealed class CompletionProvider
         ]);
     }
 
-    /// <summary>The methods a test could target on the receiver its header already names.</summary>
+    /// <summary>
+    /// The methods a test could target on the receiver its header already names, or the project's helpers
+    /// where it names none.
+    /// </summary>
     /// <inheritdoc cref="Targeted" path="/remarks/para[2]"/>
     private static IReadOnlyList<CompletionItem> Methods(
         IrModule module,
@@ -942,7 +950,19 @@ public sealed class CompletionProvider
         QualifiedName written,
         OpenDocument document)
     {
-        if (target.Receiver.IsMissing || types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
+        if (target.Receiver.IsMissing)
+        {
+            return written.Writable([.. module.Helpers.Select(helper => Member(
+                helper.Name,
+                CompletionItemKind.Function,
+                helper.Signature.DisplayName,
+                null,
+                "0",
+                written.Subject,
+                document))]);
+        }
+
+        if (types.ResolveReceiver(target.Receiver.Text) is not { } receiver)
         {
             return [];
         }
@@ -1291,12 +1311,29 @@ public sealed class CompletionProvider
             && subject.PrecededByNew
             && !NamesAValue(model, subject, ContextualKeywords.New);
 
-        if (reference is null && !beginningALiteral)
+        // A list's element type not yet begun: 'repeated' with nothing after it is a type of that name to the
+        // parser (SchemaSubject.RepeatedBefore), and the caret after it is where the element's type goes, where a
+        // list's type may be written at all.
+        var beginningAListElement = reference is null
+            && subject.RepeatedBefore is { } word
+            && model.SyntaxAt(word) is { } named
+            && named.Enclosing<TypeReference>() is { IsRepeated: false, Name.Text: ContextualKeywords.Repeated } unfinished
+            && DeclaresAType(named, unfinished);
+
+        if (reference is null && !beginningALiteral && !beginningAListElement)
         {
             return null;
         }
 
-        var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference);
+        // A list's type written where no list can be, a literal's or a conversion's, names nothing an element could
+        // complete (spec 8.1).
+        if (reference is { IsRepeated: true } && !DeclaresAType(at, reference))
+        {
+            return [];
+        }
+
+        // 'void' is a result's type, and not a list's element (spec 8.1).
+        var returning = at.Method?.ReturnType is { } declared && ReferenceEquals(declared, reference) && !declared.IsRepeated;
 
         // A literal builds a message, so the type after 'new' is a message and nothing else: a scalar
         // or an enum offered there is a name the binder refuses the moment it is accepted.
@@ -1310,6 +1347,8 @@ public sealed class CompletionProvider
 
         subject = written.Subject;
 
+        // 'repeated' itself is not offered: accepted on its own it names no type yet, and every item offered
+        // here binds where it is accepted. A list's element is offered after it as any type is.
         return written.Writable(
         [
             // The spellings the scalar factory accepts, taken from the one keyword table rather than
@@ -1425,6 +1464,22 @@ public sealed class CompletionProvider
         NameExpression name => name.Name.Text,
         _ => string.Empty,
     };
+
+    /// <summary>
+    /// Whether <paramref name="reference"/> is a type a declaration names, which a list's may be: a parameter's, a
+    /// local's, a result's or a refusal's (spec 8.1).
+    /// </summary>
+    /// <remarks>
+    /// A literal's type and a conversion's are type references too, and neither may be a list: a literal builds a
+    /// message, and <c>as</c> converts to a scalar or an enum. Asked of the tree, so <c>new repeated |</c> and
+    /// <c>as repeated |</c> offer nothing an element could complete, and a local or a field named <c>repeated</c> in
+    /// an expression is no type at all.
+    /// </remarks>
+    private static bool DeclaresAType(SyntaxLocation at, TypeReference reference)
+        => ReferenceEquals(at.Enclosing<ParameterDeclaration>()?.Type, reference)
+            || ReferenceEquals(at.Enclosing<VariableDeclarationStatement>()?.DeclaredType, reference)
+            || ReferenceEquals(at.Method?.ReturnType, reference)
+            || ReferenceEquals(at.Method?.Refusal, reference);
 
     /// <summary>Whether the caret is on the <c>new</c> that begins a message literal.</summary>
     /// <remarks>
@@ -1670,9 +1725,7 @@ public sealed class CompletionProvider
         // front of '.'.
         // Inside a factory a bare call reaches the factory's methods and helpers, and nothing of the
         // message's own, which is called on a message the factory does not have (spec 16.3).
-        var methods = result.Module is not { } module ? []
-            : scope.InAFactory ? module.FactoryOf(scope.Receiver.Descriptor.FullName)
-            : module.MethodsOn(scope.Receiver.Descriptor.FullName);
+        var methods = BareCallsAt(model, scope, subject.Start, result.Module);
 
         if (subject.FollowedByCall)
         {
@@ -1682,7 +1735,7 @@ public sealed class CompletionProvider
                     // Without parentheses: there are already some, and adding a second pair is the
                     // same class of mistake as offering the name of a method that must be called.
                     method.Name,
-                    CompletionItemKind.Method,
+                    CallKindOf(method),
                     method.Signature.DisplayName,
                     null,
                     "0",
@@ -1719,7 +1772,7 @@ public sealed class CompletionProvider
                 ? []
                 : methods.Select(method => Member(
                     method.Name + "()",
-                    CompletionItemKind.Method,
+                    CallKindOf(method),
                     method.Signature.DisplayName,
                     null,
                     rank: "2",
@@ -1729,6 +1782,47 @@ public sealed class CompletionProvider
             .. writingAReceiver ? [] : Keywords(model, subject, document),
         ];
     }
+
+    /// <summary>
+    /// What a bare call at <paramref name="offset"/> may name: the methods the body's own message offers, and
+    /// the project's helpers (spec 16.3, 16.4), less any the code there may not call.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A name a method and a helper share is offered as neither, because a bare call of it is <c>PC0157</c>:
+    /// the binder refuses to choose between them, so either item would be accepted and then refused. A helper
+    /// has no message, and a test calls its message's methods on the receiver it builds, so in either the
+    /// helpers are all there is.
+    /// </para>
+    /// <para>
+    /// A method a production method may not call, because a test source declares it, is left out after
+    /// that, since it still meets a method of its name: such a call is <c>PC0157</c> before it is
+    /// <c>PC0088</c>.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<IrMethod> BareCallsAt(SemanticModel model, ScopeAtPosition scope, int offset, IrModule? module)
+    {
+        if (module is null)
+        {
+            return [];
+        }
+
+        var own = scope.InATest || scope.Receiver is not { } receiver ? []
+            : scope.InAFactory ? module.FactoryOf(receiver.Descriptor.FullName)
+            : module.MethodsOn(receiver.Descriptor.FullName);
+        var helpers = module.Helpers;
+
+        return
+        [
+            .. own.Where(method => helpers.All(helper => helper.Name != method.Name))
+                .Concat(helpers.Where(helper => own.All(method => method.Name != helper.Name)))
+                .Where(method => model.MayCallAt(offset, method.Signature)),
+        ];
+    }
+
+    /// <summary>The icon a callable item is drawn with: a helper's a function's, since it belongs to no message.</summary>
+    private static CompletionItemKind CallKindOf(IrMethod method)
+        => method.Signature.Kind is IrMethodKind.Standalone ? CompletionItemKind.Function : CompletionItemKind.Method;
 
     /// <summary>The keywords that could legally begin what is being written here.</summary>
     /// <remarks>
@@ -1876,7 +1970,33 @@ public sealed class CompletionProvider
         => arm.Span.Start.Offset < offset
             && (offset < arm.Span.End.Offset || (offset == arm.Span.End.Offset && !arm.Body.IsClosed));
 
-    private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false"];
+    private static readonly IReadOnlyList<string> ExpressionStarters = ["has", "not", "true", "false", MathFunctions.Qualifier];
+
+    /// <summary>The math functions, offered after <c>_pCrossMath.</c> with their signatures (spec 10.5).</summary>
+    /// <remarks>
+    /// Each gives a number, which has no member and is no field, so nothing is offered where a receiver goes or as
+    /// the operand of <c>has</c>, the floor a map's methods are held to in <see cref="Members"/>. A function is called,
+    /// so where no parenthesis follows, the item brings its own, as a map's method does.
+    /// </remarks>
+    private static IReadOnlyList<CompletionItem> MathFunctionsAfter(SemanticModel model, SchemaSubject subject, OpenDocument document)
+    {
+        if (subject.FollowedByDot || NamesAPresenceField(model, subject))
+        {
+            return [];
+        }
+
+        return
+        [
+            .. MathFunctions.All.Select(function => Member(
+                subject.FollowedByCall ? MathFunctions.NameOf(function) : MathFunctions.NameOf(function) + "()",
+                CompletionItemKind.Function,
+                MathFunctions.DisplayNameFor(function),
+                MathFunctions.SummaryOf(function),
+                rank: "1",
+                subject,
+                document)),
+        ];
+    }
 
     /// <summary>The type whose members may be written after the caret's dot, or null when there is none.</summary>
     /// <remarks>
@@ -1994,7 +2114,7 @@ public sealed class CompletionProvider
         }
 
         var inside = model.ScopeAt(subject.Start) is { InAFactory: true } scope
-            && scope.Receiver.Descriptor.FullName == reached.Message.FullName;
+            && scope.Receiver?.Descriptor.FullName == reached.Message.FullName;
 
         return presence || writingAReceiver
             ? []
@@ -2030,7 +2150,8 @@ public sealed class CompletionProvider
         // after 'x.'.
         var receiver = at.Path
             .LastOrDefault(node => node
-                is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend or IrMapQuery or IrMapUpdate) switch
+                is IrMissingMemberAccess or IrFieldAccess or IrFieldPresence or IrMethodCall or IrAppend or IrMapQuery or IrMapUpdate
+                    or IrListQuery or IrElementLookup) switch
             {
                 IrMissingMemberAccess awaiting => awaiting.Receiver,
                 IrFieldAccess access => access.Receiver,
@@ -2039,6 +2160,8 @@ public sealed class CompletionProvider
                 IrAppend append => append.Collection,
                 IrMapQuery query => query.Map,
                 IrMapUpdate update => update.Map,
+                IrListQuery query => query.List,
+                IrElementLookup lookup => lookup.List,
                 _ => null,
             };
 
@@ -2053,9 +2176,10 @@ public sealed class CompletionProvider
     /// <summary>
     /// Whether a value of <paramref name="type"/> may stand where <paramref name="links"/> follow it: a
     /// message in front of a member, which has fields and methods; a map in front of a key, whose values
-    /// are then asked about what follows; and, in front of a member the language gives a repetition or a
-    /// map, a value that has it -- a repeated value before <c>append</c> (spec 14.1), a map before one of
-    /// its methods (spec 14.2), or a message declaring a field or a method of that name.
+    /// are then asked about what follows, and a list in front of an index, whose elements are; and, in
+    /// front of a member the language gives a repetition or a map, a value that has it -- a repeated value
+    /// before one of its methods (spec 14.1), a map before one of its methods (spec 14.2), or a message
+    /// declaring a field or a method of that name.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -2097,7 +2221,10 @@ public sealed class CompletionProvider
         return (link.Kind, type) switch
         {
             (LinkKind.Index, MapType map) => Reaches(map.ValueType, links, index + 1, module),
-            (LinkKind.Member, RepeatedType) => link.Member == IrAppend.MethodName,
+            (LinkKind.Index, RepeatedType list) => Reaches(list.ElementType, links, index + 1, module),
+            (LinkKind.Member, RepeatedType) when link.Member is null => true,
+            (LinkKind.Member, RepeatedType list) => RepeatedMethods.Named(link.Member!) is { } method
+                && Reaches(RepeatedMethods.ResultOf(method, list), links, AfterACall(links, index + 1), module),
             (LinkKind.Member, MapType) when link.Member is null => true,
             (LinkKind.Member, MapType) => MapMethods.Named(link.Member!) is { } method
                 && Reaches(MapMethods.ResultOf(method), links, AfterACall(links, index + 1), module),
@@ -2184,18 +2311,22 @@ public sealed class CompletionProvider
                     : [],
             ],
 
-            // An append has no value, so it is offered only where it stands as a statement, which is
-            // never a receiver or the operand of 'has' (spec 14.1).
-            RepeatedType repeated when aStatement =>
+            // A list's methods (spec 14.1). An append has no value, so it is offered only where it stands as a
+            // statement, which is never a receiver or the operand of 'has'. A count is an int32 and is_empty a bool,
+            // neither of which has a member, and a try method's clause ends the chain it is in, so none of the others
+            // is offered where a receiver goes, or as the operand of 'has'.
+            RepeatedType repeated =>
             [
-                Member(
-                    subject.FollowedByCall ? IrAppend.MethodName : IrAppend.MethodName + "()",
-                    CompletionItemKind.Method,
-                    IrAppend.DisplayNameFor(repeated),
-                    null,
-                    rank: "1",
-                    subject,
-                    document),
+                .. RepeatedMethods.All
+                    .Where(method => RepeatedMethods.Changes(method) ? aStatement : !writingAReceiver && !presence)
+                    .Select(method => Member(
+                        subject.FollowedByCall ? RepeatedMethods.NameOf(method) : RepeatedMethods.NameOf(method) + "()",
+                        CompletionItemKind.Method,
+                        RepeatedMethods.DisplayNameFor(method, repeated),
+                        null,
+                        rank: "1",
+                        subject,
+                        document)),
             ],
 
             // A map's methods (spec 14.2). Each gives an int32, a bool or nothing, none of which has a

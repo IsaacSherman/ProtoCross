@@ -35,7 +35,7 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     public IReadOnlyList<IrMethod> MethodsOn(string receiverFullName)
         => [.. Methods.Where(method
             => method.Signature.HasReceiver
-                && string.Equals(method.Receiver.FullName, receiverFullName, StringComparison.Ordinal))];
+                && string.Equals(method.Receiver?.FullName, receiverFullName, StringComparison.Ordinal))];
 
     /// <summary>
     /// The methods and helpers of the factory that builds one message, in declaration order; empty when
@@ -44,8 +44,17 @@ public sealed record IrModule(IReadOnlyList<IrMethod> Methods, IReadOnlyList<IrT
     /// <remarks>Keyed as <see cref="MethodsOn"/> is, by the message's full name compared ordinally.</remarks>
     public IReadOnlyList<IrMethod> FactoryOf(string messageFullName)
         => [.. Methods.Where(method
-            => !method.Signature.HasReceiver
-                && string.Equals(method.Receiver.FullName, messageFullName, StringComparison.Ordinal))];
+            => method.Signature.Kind is IrMethodKind.Factory or IrMethodKind.Helper
+                && string.Equals(method.Receiver?.FullName, messageFullName, StringComparison.Ordinal))];
+
+    /// <summary>The top-level helpers the module declares, in declaration order (spec 16.4).</summary>
+    /// <remarks>
+    /// Apart from <see cref="MethodsOn"/> and <see cref="FactoryOf"/> because a helper belongs to no
+    /// message, and so is what a bare call reaches from anywhere in the project rather than from one
+    /// message's methods.
+    /// </remarks>
+    public IReadOnlyList<IrMethod> Helpers
+        => [.. Methods.Where(method => method.Signature.Kind is IrMethodKind.Standalone)];
 
     /// <summary>Every <c>factory</c> block the module declares, one per message (spec 16.3).</summary>
     /// <remarks>
@@ -228,8 +237,13 @@ public abstract record IrNode(SourceSpan Span)
 /// parameter, and asking it per parameter is what lets a missing-argument check still speak about
 /// the parameters that do have names.
 /// </param>
+/// <param name="Receiver">
+/// The message the method belongs to: the one an extend block's method is called on, or the one a
+/// factory's method builds. Null exactly for a top-level helper (<see cref="IrMethodKind.Standalone"/>),
+/// which belongs to no message (spec 16.4).
+/// </param>
 public sealed record IrMethodSignature(
-    MessageDescriptor Receiver,
+    MessageDescriptor? Receiver,
     DeclarationSite Declaration,
     PlType ReturnType,
     IReadOnlyList<IrParameter> Parameters)
@@ -263,6 +277,12 @@ public sealed record IrMethodSignature(
     /// message they belong to: they share its one set of member names (spec 16.1), and the backends
     /// declare them in a class named after it. What they lack is an instance to be called on, which is
     /// what this says, rather than a missing receiver.
+    /// </para>
+    /// <para>
+    /// A top-level helper belongs to no message, so its <see cref="Receiver"/> is null. One signature for
+    /// all four kinds, rather than a type of its own for a helper, because a call, a parameter, a refusal,
+    /// a body and a test each have one path through the binder and the backends, and a second signature
+    /// would bind and emit each of them twice.
     /// </para>
     /// <para>
     /// Init-only with a default of <see cref="IrMethodKind.Extend"/>, so every existing construction of
@@ -302,10 +322,11 @@ public sealed record IrMethodSignature(
     /// One spelling for every surface that names a method to someone reading a run rather than a source: a
     /// test's identity, and the line a call that ends the program writes. A factory's method is named
     /// through the factory, as code calls it. No method of the message can share its name (spec 16.1), so
-    /// the word distinguishes nothing; it says where the method is.
+    /// the word distinguishes nothing; it says where the method is. A top-level helper is named as it is
+    /// called and as its test targets it, by its name alone: a project has one set of them (spec 16.4).
     /// </remarks>
-    public string QualifiedName => HasReceiver
-        ? $"{Receiver.FullName}.{Name}"
+    public string QualifiedName => Receiver is null ? Name
+        : HasReceiver ? $"{Receiver.FullName}.{Name}"
         : $"{Receiver.FullName}.{ContextualKeywords.Factory}.{Name}";
 
     /// <summary>This method written out the way its declaration reads: <c>fn total(scale: int64) -&gt;
@@ -365,7 +386,7 @@ public sealed record IrMethodSignature(
     }
 
     private string Opening => IsMutating ? $"{ContextualKeywords.Mut} fn {Name}("
-        : Kind is IrMethodKind.Helper ? $"{ContextualKeywords.Helper} fn {Name}("
+        : Kind is IrMethodKind.Helper or IrMethodKind.Standalone ? $"{ContextualKeywords.Helper} fn {Name}("
         : $"fn {Name}(";
 
     private const string Separator = ", ";
@@ -385,6 +406,12 @@ public enum IrMethodKind
 
     /// <summary>A <c>helper fn</c> of a <c>factory</c> block, which only that factory may call.</summary>
     Helper,
+
+    /// <summary>
+    /// A <c>helper fn</c> written at the top level, which belongs to no message and which anything in its
+    /// project may call (spec 16.4).
+    /// </summary>
+    Standalone,
 }
 
 /// <summary>A <c>factory</c> block: the message it builds, and where it is written (spec 16.3).</summary>
@@ -449,7 +476,8 @@ public sealed record IrLocal(DeclarationSite Declaration, PlType Type)
 public sealed record IrMethod(IrMethodSignature Signature, IrBlock Body)
     : IrNode(Signature.Declaration.Extent)
 {
-    public MessageDescriptor Receiver => Signature.Receiver;
+    /// <inheritdoc cref="IrMethodSignature.Receiver"/>
+    public MessageDescriptor? Receiver => Signature.Receiver;
 
     public string Name => Signature.Name;
 
@@ -606,6 +634,29 @@ public sealed record IrElementAssignment(IrMapElement Target, IrExpression Value
 }
 
 /// <summary>
+/// A value stored at an index of a list the method may change, <c>counts[i] = 5;</c> (spec 14.1, 18), replacing the
+/// element there.
+/// </summary>
+/// <remarks>
+/// <para>
+/// A node of its own beside <see cref="IrElementAssignment"/>, a map's, for the reason that one stands apart from
+/// <see cref="IrFieldAssignment"/>: each target writes a list its own way, through an indexer in C# and through
+/// protobuf's <c>Mutable</c> in C++, and neither puts anything at an index the way a map's store puts a key.
+/// </para>
+/// <para>
+/// Ordered as any store is (spec 9.3): the list is reached, setting every unset message on the way, then the value is
+/// evaluated, and the element is replaced last. The index is a literal or a name, whose evaluation nothing can see.
+/// The value is stored as a field's is (<see cref="IrExpression.IsCopiedWhenStored"/>).
+/// </para>
+/// </remarks>
+public sealed record IrListElementAssignment(IrListElement Target, IrExpression Value, SourceSpan Span)
+    : IrStatement(Span)
+{
+    /// <inheritdoc cref="IrElementAssignment.ReadsItsTarget"/>
+    public bool ReadsItsTarget { get; init; }
+}
+
+/// <summary>
 /// A change made to a map the method may change through one of the methods the language gives a map:
 /// <c>prices.remove(sku);</c> (spec 14.2, 18).
 /// </summary>
@@ -723,19 +774,19 @@ public abstract record IrExpression(PlType Type, SourceSpan Span) : IrNode(Span)
     /// would show through both.
     /// </para>
     /// <para>
-    /// Only a literal is exempt, because a literal is built where it is stored and nothing else can
-    /// hold it. A method's result is not: the method may have returned a field of its receiver, which
-    /// is still the receiver's.
+    /// Only a literal is exempt, a message literal or a list, because a literal is built where it is
+    /// stored and nothing else can hold it. A method's result is not: the method may have returned a
+    /// field of its receiver, which is still the receiver's.
     /// </para>
     /// <para>
-    /// A repeated value is copied too. No field is ever given one, since a literal takes only a list
-    /// (spec 13.2), but a local can hold one (#13), and a C# <c>RepeatedField</c> is a reference whose
-    /// elements are the messages the field holds: a change made to an element through the local would
-    /// otherwise be a change to the field. C++ copies it, elements and all, as it copies a message.
-    /// A map is copied for the same reason, since a C# <c>MapField</c> is a reference too (#11).
+    /// A repeated value is copied too, into a local (#13) or a field (spec 14.1). A C#
+    /// <c>RepeatedField</c> is a reference whose elements are the messages the field holds: a change
+    /// made to an element through the local would otherwise be a change to the field. C++ copies it,
+    /// elements and all, as it copies a message. A map is copied for the same reason, since a C#
+    /// <c>MapField</c> is a reference too (#11).
     /// </para>
     /// </remarks>
-    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType or MapType && this is not IrMessageLiteral;
+    public bool IsCopiedWhenStored => Type is MessageType or RepeatedType or MapType && this is not (IrMessageLiteral or IrList);
 }
 
 /// <summary>The implicit receiver of the enclosing method.</summary>
@@ -768,8 +819,9 @@ public sealed record IrFieldPresence(
     SourceSpan Span) : IrExpression(ScalarType.BoolType, Span);
 
 /// <param name="Receiver">
-/// The message the method is called on, or null for a call to a factory's method, which is called on
-/// nothing (spec 16.3). Null exactly where <see cref="IrMethodSignature.HasReceiver"/> is false.
+/// The message the method is called on, or null for a call to a factory's method or a top-level helper,
+/// which is called on nothing (spec 16.3, 16.4). Null exactly where
+/// <see cref="IrMethodSignature.HasReceiver"/> is false.
 /// </param>
 /// <remarks>
 /// One record for both, rather than a second for a factory's calls, because everything that asks about
@@ -935,6 +987,53 @@ public sealed record IrUnary(
         => Operator is IrUnaryOperator.Negate && ResultType is ScalarType { IsInteger: true } scalar
             ? scalar
             : null;
+}
+
+/// <summary>A call to one of the math functions, <c>_pCrossMath.sqrt(x)</c> (spec 10.5).</summary>
+/// <param name="Function">Which function is called.</param>
+/// <param name="Arguments">What it is called on, in the order written: one, or two or more for <c>min</c> and <c>max</c>, each of <paramref name="ResultType"/>.</param>
+/// <param name="ResultType">The type of every argument, and of the result.</param>
+/// <param name="Behavior">
+/// What <c>abs</c> of a signed integer's minimum does, chosen by the project's overflow policy as unary <c>-</c>'s is
+/// (<see cref="OverflowingType"/>). Wrapping for every other call, where it governs nothing.
+/// </param>
+/// <param name="NameSpan">Where the function's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A call the compiler removes stays one of these, marked by <see cref="IsIdentity"/> rather than replaced by its
+/// argument. Hover still finds the function on its name, and the argument's names are still references, as they are
+/// in any other call; the backends write the argument alone.
+/// </para>
+/// <para>
+/// The arguments are evaluated left to right, each once, as a call's are (spec 9.3). <c>min</c> and <c>max</c> of
+/// more than two are one node with all their arguments, not a nest of pairs, so an argument is evaluated where it
+/// is written however a backend nests the calls it makes.
+/// </para>
+/// </remarks>
+public sealed record IrMathCall(
+    MathFunction Function,
+    IReadOnlyList<IrExpression> Arguments,
+    ScalarType ResultType,
+    ArithmeticBehavior Behavior,
+    SourceSpan NameSpan,
+    SourceSpan Span) : IrExpression(ResultType, Span)
+{
+    /// <summary>
+    /// Whether the call gives its argument back unchanged, and is written as the argument alone: <c>abs</c> of an
+    /// unsigned integer, or <c>floor</c>, <c>ceil</c>, <c>trunc</c> or <c>round</c> of an integer.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the node rather than recorded beside it, for <see cref="IrUnary.OverflowingType"/>'s reason: it follows
+    /// from the function and the type, and both backends and an editor ask it.
+    /// </remarks>
+    public bool IsIdentity => MathFunctions.IsIdentity(Function, ResultType);
+
+    /// <summary>
+    /// The integer type whose overflow <see cref="Behavior"/> governs here, or null where it governs nothing: an
+    /// <c>abs</c> of a signed integer, whose minimum has no magnitude of its type, as unary <c>-</c>'s has none.
+    /// </summary>
+    public ScalarType? OverflowingType
+        => Function is MathFunction.Abs && ResultType is { IsInteger: true, IsSigned: true } ? ResultType : null;
 }
 
 /// <summary>
@@ -1202,6 +1301,140 @@ public sealed record IrMapContains(IrExpression Key, IrExpression Map, SourceSpa
 public sealed record IrMapQuery(MapMethod Method, IrExpression Map, SourceSpan NameSpan, SourceSpan Span)
     : IrExpression(MapMethods.ResultOf(Method), Span);
 
+/// <summary>What a list's try method gives when there is no element at its index (spec 14.1).</summary>
+public enum OutOfRangeBehavior
+{
+    /// <summary>The fallback <c>on_refused</c> wrote, evaluated only where there is no element.</summary>
+    Fallback,
+
+    /// <summary><c>on_refused fail</c>: the program ends there, naming the list, the index and the count.</summary>
+    Fail,
+
+    /// <summary><c>on_refused refuse value</c>: the calling method ends with that refusal, as a clause's does (spec 16.3.1).</summary>
+    Refuse,
+
+    /// <summary>
+    /// No clause was written, which is <c>PC0138</c>. Kept as the element's type, so the expression around it reports
+    /// nothing further; no backend is handed one, because a compilation that reported it has failed.
+    /// </summary>
+    Unstated,
+}
+
+/// <summary>
+/// The element of a list at an index checked as the program runs, <c>items.try_get_index(i) on_refused 0</c> or
+/// <c>items.try_get_backward_index(1) on_refused fail</c> (spec 14.1).
+/// </summary>
+/// <param name="Method"><see cref="RepeatedMethod.TryGetIndex"/> or <see cref="RepeatedMethod.TryGetBackwardIndex"/>.</param>
+/// <param name="List">The list read, of a <see cref="RepeatedType"/>.</param>
+/// <param name="Index">The index, of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="Fallback">
+/// The value the clause wrote: what an index out of range gives where <paramref name="OnRefused"/> is
+/// <see cref="OutOfRangeBehavior.Fallback"/>, and the refusal where it is <see cref="OutOfRangeBehavior.Refuse"/>.
+/// Null otherwise, and evaluated only where there is no element.
+/// </param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>
+/// <para>
+/// A node of its own rather than a call, because no source declares the method, and the shape of
+/// <see cref="IrMapLookup"/>, because it answers the same question the same three ways: what is given where there is
+/// nothing to read. Where it refuses, it refuses with a value of the calling method's own, as a lookup's clause does,
+/// since the try method has no refusal of its own to pass on.
+/// </para>
+/// <para>
+/// The range is checked whatever the index's type: a negative index, a <c>uint64</c> past what a list can hold, a
+/// from-end <c>0</c>, and an index one past the count all find no element, and none of them overflows on the way.
+/// What it gives is a value, as a lookup's is: a message is copied where it is stored.
+/// </para>
+/// </remarks>
+public sealed record IrElementLookup(
+    RepeatedMethod Method,
+    IrExpression List,
+    IrExpression Index,
+    OutOfRangeBehavior OnRefused,
+    IrExpression? Fallback,
+    SourceSpan NameSpan,
+    SourceSpan Span) : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <summary>Whether the index counts from the end, as <c>try_get_backward_index</c>'s does.</summary>
+    public bool FromEnd => Method == RepeatedMethod.TryGetBackwardIndex;
+
+    /// <summary>
+    /// What <c>on_refused fail</c> names the list by: the field's protobuf name, or the list's type where no field
+    /// holds it, as <see cref="IrMapLookup.MapName"/> names a map.
+    /// </summary>
+    public string ListName => List is IrFieldAccess access ? access.Field.FullName : List.Type.DisplayName;
+}
+
+/// <summary>A value worked out from a list, <c>items.count()</c> or <c>items.is_empty()</c> (spec 14.1).</summary>
+/// <param name="Method"><see cref="RepeatedMethod.Count"/> or <see cref="RepeatedMethod.IsEmpty"/>.</param>
+/// <param name="List">The list asked about, of a <see cref="RepeatedType"/>.</param>
+/// <param name="NameSpan">Where the method's name was written, which names no symbol (spec 22.2).</param>
+/// <remarks>A node of its own beside <see cref="IrMapQuery"/>, for a list's own table of methods (<see cref="RepeatedMethods"/>).</remarks>
+public sealed record IrListQuery(RepeatedMethod Method, IrExpression List, SourceSpan NameSpan, SourceSpan Span)
+    : IrExpression(RepeatedMethods.ResultOf(Method, (RepeatedType)List.Type), Span);
+
+/// <summary>
+/// The element of a list at an index the compiler showed to be in range where it is written, <c>items[0]</c> or
+/// <c>items[^1]</c> (spec 14.1).
+/// </summary>
+/// <param name="List">The list read, of a <see cref="RepeatedType"/>: a local, a parameter or a field, which a fact can name.</param>
+/// <param name="Index">The index, a literal or a name of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="FromEnd">Whether the index counts from the end, <c>items[^j]</c>.</param>
+/// <remarks>
+/// <para>
+/// A read, and never a place, as <see cref="IrMapLookup"/> is a read beside <see cref="IrMapElement"/>: what it gives is
+/// a value, and a message is copied where it is stored. A chain of reads begun at one begins at a value of its own,
+/// so a loop over a field of it traverses a message nothing else changes (<see cref="Semantics.IrMutation.TemporaryOwnerOf"/>).
+/// </para>
+/// <para>
+/// A backend reads it with the target's plain indexer and checks nothing, because the binder checked it: a node it is
+/// handed always carries its <see cref="Proof"/>. The list and the index are each evaluated once, which a from-end
+/// index, written as the count less the index, needs a backend to see to.
+/// </para>
+/// </remarks>
+public sealed record IrElementRead(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span)
+    : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <summary>What showed the index to be in range, or null where nothing did, which the binder reported (<c>PC0152</c>).</summary>
+    public IrIndexProof? Proof { get; init; }
+}
+
+/// <summary>
+/// The element of a list at an index the compiler showed to be in range, as a place: what <c>counts[i] = 5;</c> stores
+/// to, and what <c>boxes[i].grams = 3;</c> writes through (spec 14.1, 18).
+/// </summary>
+/// <param name="List">The list, of a <see cref="RepeatedType"/>, reached as a place: a field of a message the method may change, or a local.</param>
+/// <param name="Index">The index, a literal or a name of any integer type: from the start, from zero, or from the end, from one.</param>
+/// <param name="FromEnd">Whether the index counts from the end, <c>items[^j]</c>.</param>
+/// <remarks>
+/// <para>
+/// Never a read, which is <see cref="IrElementRead"/>, as <see cref="IrMapElement"/> is never one. It stands where a
+/// place does: the target of an <see cref="IrListElementAssignment"/>, a link of a chain of places written through, or
+/// the receiver of a call to a <c>mut fn</c>.
+/// </para>
+/// <para>
+/// The element is always there, so reaching it sets nothing, unlike a map's element at a missing key: what showed the
+/// index in range is its <see cref="Proof"/>, which a backend relies on as it does a read's, checking nothing.
+/// </para>
+/// </remarks>
+public sealed record IrListElement(IrExpression List, IrExpression Index, bool FromEnd, SourceSpan Span)
+    : IrExpression(((RepeatedType)List.Type).ElementType, Span)
+{
+    /// <inheritdoc cref="IrElementRead.Proof"/>
+    public IrIndexProof? Proof { get; init; }
+}
+
+/// <summary>What showed an index to be in range where it is written: the facts it needed, each as the source would say it.</summary>
+/// <param name="Facts">
+/// Each fact the index needed, written as a condition that would show it: <c>items.count() &gt; 2</c>, <c>i &gt;= 0</c>,
+/// <c>i &lt; items.count()</c>. One established a stronger fact is still named by the one it needed.
+/// </param>
+/// <remarks>
+/// Kept on the node rather than only checked, so that a reader of the IR -- a test sweeping the corpus, an editor
+/// describing the read -- can see that every indexed read has one, and what it rests on (spec 22.2).
+/// </remarks>
+public sealed record IrIndexProof(IReadOnlyList<string> Facts);
+
 /// <summary>
 /// An element of a map as a place: what <c>prices[sku] = 5;</c> stores to, and what
 /// <c>orders[id].status = SHIPPED;</c> writes through (spec 14.2, 18).
@@ -1287,8 +1520,9 @@ public sealed record IrMessageLiteral(
 
 /// <summary>One field of a message literal, <c>name: value</c>.</summary>
 /// <param name="Value">
-/// For a repeated field, an <see cref="IrList"/> holding every element. For any other field, a value
-/// of the field's type.
+/// A value of the field's type. For a repeated field that is an <see cref="IrList"/> holding every element
+/// where a list is written in place, or any other expression of the field's repeated type, whose list the field
+/// stores a copy of (spec 13.2).
 /// </param>
 /// <remarks>
 /// It spans the whole field, name through value, so a position on the name is on the field and finds
@@ -1296,13 +1530,17 @@ public sealed record IrMessageLiteral(
 /// </remarks>
 public sealed record IrFieldInitializer(FieldDescriptor Field, IrExpression Value, SourceSpan Span) : IrNode(Span);
 
-/// <summary>The elements a repeated field is given, <c>[first, second]</c>, in order (spec 13.2).</summary>
+/// <summary>A list, <c>[first, second]</c>: its elements, in order (spec 14.1, 13.2).</summary>
 /// <remarks>
 /// <para>
-/// An expression, so that a field's value is one slot whatever the field is, but a value nowhere
-/// except as a repeated field's: the language has no list values, and the binder builds one only
-/// where a repeated field is given one. Its type is the field's, which is what lets a value of that
-/// type stand in the same slot once a field may be given a whole repeated value (spec 30).
+/// A value wherever a value is: a repeated field's contents in a message literal, a local's, an
+/// argument or a result. Its type is the list's, which a field's list takes from the field, and a list
+/// anywhere else from what is expected of it or from its elements.
+/// </para>
+/// <para>
+/// It is built where it is written, so storing it stores no copy of it
+/// (<see cref="IrExpression.IsCopiedWhenStored"/>). Each element that is a message is stored in it as
+/// a field's message is: a copy, unless it is a literal.
 /// </para>
 /// </remarks>
 public sealed record IrList(RepeatedType ListType, IReadOnlyList<IrExpression> Elements, SourceSpan Span)
@@ -1406,12 +1644,13 @@ public sealed record IrValuelessCall(IrMethodCall Call) : IrExpression(ErrorType
 /// and the binder builds as one. A test of a factory's method calls it on nothing, and holds the
 /// fixture its test does: the empty one standing where none was written, or one written anyway and
 /// refused. No backend builds it for such a test, since <see cref="IrMethodSignature.HasReceiver"/> on
-/// the target says there is nothing to call the method on.
+/// the target says there is nothing to call the method on. Null for a test of a top-level helper, which
+/// belongs to no message to build one as (spec 16.4).
 /// </param>
 public sealed record IrTest(
     IrMethodSignature Target,
     string Name,
-    IrMessageLiteral Receiver,
+    IrMessageLiteral? Receiver,
     IReadOnlyList<IrTestArgument> Arguments,
     IrTestExpectation Expectation,
     SourceSpan Span) : IrNode(Span)
@@ -1468,8 +1707,10 @@ public sealed record IrTestFailExpectation(SourceSpan Span) : IrTestExpectation(
 /// <summary><c>expect refuse value;</c>: met when the method refuses, with a refusal the inner expectation meets (spec 25.3).</summary>
 /// <param name="Expected">
 /// What the refusal is compared with, as an <c>expect return</c> of it would compare a result: an
-/// <see cref="IrTestReturnExpectation"/>, or an <see cref="IrTestFieldsExpectation"/> where the refusal
-/// is a message and the value a literal of one. It has this expectation's span, since it is the same text.
+/// <see cref="IrTestReturnExpectation"/>, an <see cref="IrTestFieldsExpectation"/> where the refusal
+/// is a message and the value a literal of one, or an <see cref="IrTestElementsExpectation"/> where it is
+/// a list of messages and the value a list of literals. It has this expectation's span, since it is the
+/// same text.
 /// </param>
 /// <remarks>
 /// Around an expectation rather than beside its kinds, because a refusal is compared exactly as a result
@@ -1498,3 +1739,17 @@ public sealed record IrTestRefusalExpectation(IrTestExpectation Expected, Source
 /// </para>
 /// </remarks>
 public sealed record IrTestFieldsExpectation(IrMessageLiteral Expected, SourceSpan Span) : IrTestExpectation(Span);
+
+/// <summary>
+/// <c>expect return [new T { ... }, ...];</c> on a method that returns a list of messages: met when the list returned
+/// has as many elements, and each meets the literal written at its index, as an
+/// <see cref="IrTestFieldsExpectation"/> is met (spec 25.3).
+/// </summary>
+/// <param name="Expected">The list written, each of whose elements is a literal of the list's message.</param>
+/// <remarks>
+/// A record of its own beside <see cref="IrTestFieldsExpectation"/>, for the reason that one stands beside
+/// <see cref="IrTestReturnExpectation"/>: nothing here is <c>==</c> on two lists, which the language refuses (spec 9.2),
+/// nor on two messages. The count is compared first, and then each element read by its index, which the count showed
+/// is there; <see cref="Semantics.IrExpectedFields.Of(IrTestElementsExpectation)"/> says which checks, in what order.
+/// </remarks>
+public sealed record IrTestElementsExpectation(IrList Expected, SourceSpan Span) : IrTestExpectation(Span);

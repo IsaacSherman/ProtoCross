@@ -82,7 +82,10 @@ public sealed record EnumPlType(EnumDescriptor Descriptor) : PlType
     public bool IsClosed => EnumOpenness.IsClosed(Descriptor);
 }
 
-/// <summary>A protobuf repeated field. Iterable with <c>for</c>, per spec 14.</summary>
+/// <summary>
+/// A list: a protobuf repeated field's value, or one a source declares as <c>repeated T</c>. Iterable
+/// with <c>for</c>, per spec 14.
+/// </summary>
 public sealed record RepeatedType(PlType ElementType) : PlType
 {
     public override string DisplayName => $"repeated {ElementType.DisplayName}";

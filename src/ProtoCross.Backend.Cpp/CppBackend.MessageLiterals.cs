@@ -93,6 +93,15 @@ public sealed partial class CppBackend
 
             var field = initializer.Field;
             var accessor = NameConventions.GetCppFieldName(field);
+
+            // A whole list, rather than one written in place: the field is given a copy of it, as an
+            // assignment gives one (spec 13.2).
+            if (field.IsRepeated && initializer.Value is not IrList)
+            {
+                writer.WriteLine($"*{access}mutable_{accessor}() = {StoredValue(initializer.Value, placement)};");
+                continue;
+            }
+
             var place = field.IsRepeated ? $"add_{accessor}()" : $"mutable_{accessor}()";
             IReadOnlyList<IrExpression> values = initializer.Value is IrList list ? list.Elements : [initializer.Value];
 
@@ -121,6 +130,65 @@ public sealed partial class CppBackend
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// A list written as a value (spec 14.1): a lambda that builds a <c>RepeatedField</c> or a
+    /// <c>RepeatedPtrField</c> of its own, called where the list is written, as a message literal is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Each element is added as an append adds one to a local (<see cref="EmitAppend"/>): <c>Add(value)</c>
+    /// for a number or an enum, and <c>*Add() = value</c> for an element held by pointer, in the order the
+    /// elements are written, which is the order a list evaluates them in (spec 9.3). A message literal is
+    /// built in place, through the pointer <c>Add()</c> returns, as a field's list builds one.
+    /// </para>
+    /// <para>
+    /// An empty list needs no statements. It is the container's value-initialized temporary.
+    /// </para>
+    /// </remarks>
+    private static string ListLiteral(IrList list, Placement placement)
+    {
+        var container = TypeName(list.ListType);
+        if (list.Elements.Count == 0)
+        {
+            return container + "()";
+        }
+
+        var names = NamesFor(list);
+        var name = names.Next("list");
+        var heldByPointer = IsHeldByPointer(list.ListType.ElementType);
+        var writer = new SourceWriter("  ");
+
+        writer.WriteLine("[&] {");
+        writer.Indent();
+        writer.WriteLine($"{container} {name};");
+
+        foreach (var element in list.Elements)
+        {
+            switch (element)
+            {
+                case IrMessageLiteral nested when !SetsAnything(nested):
+                    writer.WriteLine($"{name}.Add();");
+                    break;
+
+                case IrMessageLiteral nested:
+                    var pointer = names.Next("element");
+                    writer.WriteLine($"auto* {pointer} = {name}.Add();");
+                    EmitFields(writer, pointer + "->", nested, names, placement);
+                    break;
+
+                default:
+                    var value = StoredValue(element, placement);
+                    writer.WriteLine(heldByPointer ? $"*{name}.Add() = {value};" : $"{name}.Add({value});");
+                    break;
+            }
+        }
+
+        writer.WriteLine($"return {name};");
+        writer.Unindent();
+        writer.Write("}()");
+        return writer.ToString();
     }
 
     /// <summary>

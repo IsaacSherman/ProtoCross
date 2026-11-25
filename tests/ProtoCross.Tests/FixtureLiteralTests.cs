@@ -27,7 +27,7 @@ public class FixtureLiteralTests
         => Assert.True(result.Success, string.Join("\n", result.Diagnostics.Select(d => d.ToString())));
 
     private static IrMessageLiteral Receiver(CompilationResult result)
-        => Assert.Single(result.Module!.Tests).Receiver;
+        => Assert.Single(result.Module!.Tests).Receiver!;
 
     /// <summary>The elements of the list the fixture's only field was given.</summary>
     private static IReadOnlyList<IrExpression> OnlyList(CompilationResult result)

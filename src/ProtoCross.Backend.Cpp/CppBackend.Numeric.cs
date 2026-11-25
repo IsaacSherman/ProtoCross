@@ -326,7 +326,8 @@ public sealed partial class CppBackend
             UnnamedNumberBehavior.Keep => value,
             UnnamedNumberBehavior.Fallback => NamedOr(conversion, Deferred(FallbackOf(conversion, placement)), placement),
             UnnamedNumberBehavior.Fail =>
-                $"{RuntimeNamespace}::named_or_fail({value}, &{enumType}_IsValid, {FormatString(conversion.EnumType.DisplayName)})",
+                $"{RuntimeNamespace}::named_or_fail({value}, &{QualifiedEnumValidatorName(conversion.EnumType.Descriptor)}, "
+                + $"{FormatString(conversion.EnumType.DisplayName)})",
             UnnamedNumberBehavior.Refuse => placement.Held[conversion],
             _ => throw new ArgumentOutOfRangeException(
                 nameof(conversion), conversion.OnUnnamed, "Unhandled unnamed-number behavior."),
@@ -338,7 +339,7 @@ public sealed partial class CppBackend
     {
         var enumType = QualifiedEnumName(conversion.EnumType.Descriptor);
         return $"{RuntimeNamespace}::named_or(static_cast<{enumType}>({Expression(conversion.Operand, placement)}), "
-            + $"&{enumType}_IsValid, {fallback})";
+            + $"&{QualifiedEnumValidatorName(conversion.EnumType.Descriptor)}, {fallback})";
     }
 
     /// <summary>

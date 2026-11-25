@@ -56,7 +56,7 @@ public sealed partial class CSharpBackend
                 EmitFailTestDispatcher(writer, failTests, methodNames, sourceName, placement);
             }
 
-            if (module.Tests.Any(test => test.Expectation.Compared() is IrTestFieldsExpectation))
+            if (module.Tests.Any(test => IrExpectedFields.ChecksOf(test.Expectation.Compared()) is not null))
             {
                 writer.WriteLine();
                 EmitFieldExpectations(writer);
@@ -123,9 +123,9 @@ public sealed partial class CSharpBackend
             return;
         }
 
-        if (test.Target.HasReceiver)
+        if (test is { Target.HasReceiver: true, Receiver: { } fixture })
         {
-            EmitReceiverCreation(writer, test.Receiver, placement);
+            EmitReceiverCreation(writer, fixture, placement);
         }
 
         if (test.Target.CanRefuse)
@@ -142,8 +142,8 @@ public sealed partial class CSharpBackend
                     + $"{Expression(returnExpectation.Value, placement, "receiver")}, {Invocation(test, placement)});");
                 break;
 
-            case IrTestFieldsExpectation fields:
-                EmitFieldChecks(writer, test, fields, placement);
+            case var compared when IrExpectedFields.ChecksOf(compared) is { } checks:
+                EmitFieldChecks(writer, test, checks, placement);
                 break;
 
             default:
@@ -152,17 +152,16 @@ public sealed partial class CSharpBackend
     }
 
     /// <summary>
-    /// Emits what an expected message literal checks: the call, held in a local, and then each field the
-    /// literal sets, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
+    /// Emits what an expected message literal, or an expected list of them, checks: the call, held in a local, and
+    /// then each check, in the order <see cref="IrExpectedFields"/> gives (spec 25.3).
     /// </summary>
     /// <remarks>
     /// A field is checked by <c>ExpectSet</c> and <c>ExpectField</c> rather than by <c>Assert.Equal</c>,
     /// so a failure says which field it was: a test checking five fields that reported only two values
     /// would leave the reader to find which.
     /// </remarks>
-    private static void EmitFieldChecks(SourceWriter writer, IrTest test, IrTestFieldsExpectation fields, Placement placement)
+    private static void EmitFieldChecks(SourceWriter writer, IrTest test, IrExpectedChecks expected, Placement placement)
     {
-        var expected = IrExpectedFields.Of(fields);
         writer.WriteLine($"var {Escape(expected.Result.Name)} = {Invocation(test, placement)};");
         EmitChecks(writer, test, expected, placement);
     }
@@ -289,9 +288,9 @@ public sealed partial class CSharpBackend
                 writer.Indent();
 
                 var tested = PlacementFor(test, placement);
-                if (test.Target.HasReceiver)
+                if (test is { Target.HasReceiver: true, Receiver: { } fixture })
                 {
-                    EmitReceiverCreation(writer, test.Receiver, tested);
+                    EmitReceiverCreation(writer, fixture, tested);
                 }
 
                 // The call is expected not to return, so its result is deliberately unused. A refusal is a return.
@@ -372,8 +371,8 @@ public sealed partial class CSharpBackend
                 writer.WriteLine($"global::Xunit.Assert.Equal({Expression(value.Value, placement, "receiver")}, {actual});");
                 break;
 
-            case IrTestFieldsExpectation fields:
-                EmitChecks(writer, test, IrExpectedFields.Of(fields), placement);
+            case var compared when IrExpectedFields.ChecksOf(compared) is { } checks:
+                EmitChecks(writer, test, checks, placement);
                 break;
 
             default:
@@ -421,10 +420,14 @@ public sealed partial class CSharpBackend
 
     private static string UniqueTestMethodName(IrTest test, HashSet<string> usedNames)
     {
-        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create'.
-        var target = test.Target.HasReceiver
-            ? $"{test.Target.Receiver.Name}_{test.Target.Name}"
-            : $"{test.Target.Receiver.Name}_{ContextualKeywords.Factory}_{test.Target.Name}";
+        // A factory's method is named as the test targets it, so its test reads 'Invoice.factory.create',
+        // and a helper's by its name alone.
+        var target = test.Target.Receiver switch
+        {
+            null => test.Target.Name,
+            { } receiver when test.Target.HasReceiver => $"{receiver.Name}_{test.Target.Name}",
+            { } message => $"{message.Name}_{ContextualKeywords.Factory}_{test.Target.Name}",
+        };
         var baseName = ToIdentifier($"{target}_{test.Name}");
         var candidate = baseName;
         var suffix = 2;

@@ -31,7 +31,6 @@ public class BinderResilienceTests(ITestOutputHelper logger)
 {
     /// <summary>A hang guard for one bounded batch, not a throughput target for an entire file.</summary>
     private static readonly TimeSpan BindBudget = TimeSpan.FromSeconds(60);
-    private const int DeletionBatchSize = 128;
 
     private static IrModule Bind(string text)
     {
@@ -90,9 +89,12 @@ public class BinderResilienceTests(ITestOutputHelper logger)
             .Distinct()
             .ToList();
 
-        await WithinBudget(
-            $"token-boundary truncations of {Path.GetFileName(path)}",
-            stop => MutationSweep.For(0, boundaries.Count, stop, index => Assert.NotNull(Bind(source[..boundaries[index]]))));
+        foreach (var (first, end) in MutationSweep.Batches(0, boundaries.Count))
+        {
+            await WithinBudget(
+                $"token-boundary truncations of {Path.GetFileName(path)}, boundaries {first} through {end - 1}",
+                stop => MutationSweep.For(first, end, stop, index => Assert.NotNull(Bind(source[..boundaries[index]]))));
+        }
     }
 
     /// <summary>
@@ -106,13 +108,9 @@ public class BinderResilienceTests(ITestOutputHelper logger)
         var sw = Stopwatch.StartNew();
         var source = File.ReadAllText(path);
 
-        // Every deletion still runs. Batching keeps a larger corpus from exhausting a deadline
-        // merely by making progress, while a stuck bind still fails within one batch's budget.
         logger.WriteLine($"Read file: {path}");
-        for (var start = 0; start < source.Length; start += DeletionBatchSize)
+        foreach (var (first, end) in MutationSweep.Batches(0, source.Length))
         {
-            var first = start;
-            var end = Math.Min(first + DeletionBatchSize, source.Length);
             await WithinBudget(
                 $"single-character deletions of {Path.GetFileName(path)}, offsets {first} through {end - 1}",
                 stop => MutationSweep.For(first, end, stop, index => Assert.NotNull(Bind(source.Remove(index, 1)))));

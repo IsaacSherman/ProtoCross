@@ -55,9 +55,35 @@ internal static class EditorFixture
     /// Opens <paramref name="text"/> as a document in a directory of its own, beside a copy of the
     /// fixture schemas, so that <c>import proto</c> resolves the way it does in a real workspace.
     /// </summary>
-    public static (DocumentStore Documents, DocumentUri Uri) Open(string text)
+    public static (DocumentStore Documents, DocumentUri Uri) Open(string text) => OpenIn(DirectoryWithSchemas(), text);
+
+    /// <summary>
+    /// Opens <paramref name="text"/> as one source of the project <paramref name="project"/>, which compiles
+    /// every source in its directory, with <paramref name="others"/> written beside it and left closed.
+    /// </summary>
+    /// <remarks>
+    /// For what only a project may declare, a helper (spec 16.4), and for reaching into a source that is not
+    /// open. Every file is stamped an hour ago, as <c>ProjectCompilationTests</c> stamps its own, so a stamp
+    /// of one is trusted rather than read again.
+    /// </remarks>
+    public static (DocumentStore Documents, DocumentUri Uri) OpenInProject(
+        string text, string project, params (string Name, string Text)[] others)
     {
-        var uri = DocumentUri.FromPath(Path.Combine(DirectoryWithSchemas(), "source.pcross"));
+        var directory = DirectoryWithSchemas();
+        var files = TestPaths.WriteSources(
+            directory,
+            [($"{project}.pcproj", "<ProtoCrossProject><Sources Include=\"*.pcross\" /></ProtoCrossProject>"), ("source.pcross", text), .. others]);
+        foreach (var path in files)
+        {
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddHours(-1));
+        }
+
+        return OpenIn(directory, text);
+    }
+
+    private static (DocumentStore Documents, DocumentUri Uri) OpenIn(string directory, string text)
+    {
+        var uri = DocumentUri.FromPath(Path.Combine(directory, "source.pcross"));
         var documents = new DocumentStore();
 
         documents.Open(uri, "protocross", 1, text);

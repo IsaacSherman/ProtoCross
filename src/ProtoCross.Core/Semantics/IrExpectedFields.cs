@@ -1,4 +1,5 @@
 using Google.Protobuf.Reflection;
+using ProtoCross.Diagnostics;
 using ProtoCross.Ir;
 using ProtoCross.Symbols;
 using ProtoCross.Syntax;
@@ -25,10 +26,12 @@ namespace ProtoCross.Semantics;
 /// not compared at all: only a literal says which of its fields matter.
 /// </para>
 /// <para>
-/// A repeated field and a map are not compared. The language has no length or index to compare them
-/// through (spec 14.1, 14.2), and the binder refuses either in an expected literal rather than letting
-/// one pass unchecked. <see cref="CanCompare"/> is the rule it applies, so the two cannot disagree
-/// about which fields reach here.
+/// A repeated field given a list written out is compared as an expected list of messages is
+/// (<see cref="Of(IrTestElementsExpectation)"/>): its count, and then each element, read by its index, which the
+/// count showed is there, against the element written there. A map is not compared: the language has no way to
+/// list one's keys (spec 14.2), and the binder refuses one in an expected literal rather than letting it pass
+/// unchecked. <see cref="CanCompare"/> is the rule it applies, so the two cannot disagree about which fields
+/// reach here.
 /// </para>
 /// </remarks>
 public static class IrExpectedFields
@@ -54,30 +57,76 @@ public static class IrExpectedFields
         ArgumentNullException.ThrowIfNull(expectation);
 
         var literal = expectation.Expected;
-        var result = new IrLocal(
-            new DeclarationSite(
-                SymbolKind.Local,
-                SourceIdentity.Unsaved(),
-                new SyntaxName(ResultName, literal.Span),
-                literal.Span),
-            literal.MessageType);
+        var result = ResultHolding(literal.MessageType, literal.Span);
 
         var checks = new List<IrFieldCheck>();
         Add(checks, literal, new IrLocalReference(result, literal.Span), string.Empty);
         return new IrExpectedChecks(result, checks);
     }
 
+    /// <summary>The checks <paramref name="expectation"/> makes of the list a method returned, in the order they are made.</summary>
+    /// <remarks>
+    /// The count first, as <c>count()</c>, so that a list of another length fails saying so, and then each element,
+    /// whose literal's fields are checked as one expected alone would be, named by its index: <c>[1].grams</c>.
+    /// </remarks>
+    public static IrExpectedChecks Of(IrTestElementsExpectation expectation)
+    {
+        ArgumentNullException.ThrowIfNull(expectation);
+
+        var list = expectation.Expected;
+        var result = ResultHolding(list.ListType, list.Span);
+        var checks = new List<IrFieldCheck>();
+        AddList(checks, list, new IrLocalReference(result, list.Span), string.Empty);
+        return new IrExpectedChecks(result, checks);
+    }
+
+    /// <summary>
+    /// The checks <paramref name="compared"/> makes, an expected literal's or an expected list of them, or null for an
+    /// expectation compared whole, under <c>==</c>.
+    /// </summary>
+    /// <remarks>The one question each backend asks of a test's comparison, so neither keeps a list of which expectations check fields.</remarks>
+    public static IrExpectedChecks? ChecksOf(IrTestExpectation compared)
+    {
+        ArgumentNullException.ThrowIfNull(compared);
+
+        return compared switch
+        {
+            IrTestFieldsExpectation fields => Of(fields),
+            IrTestElementsExpectation elements => Of(elements),
+            _ => null,
+        };
+    }
+
+    /// <summary>The local a backend holds a method's result in, of <paramref name="type"/>, which every check reads.</summary>
+    private static IrLocal ResultHolding(PlType type, SourceSpan span)
+        => new(new DeclarationSite(SymbolKind.Local, SourceIdentity.Unsaved(), new SyntaxName(ResultName, span), span), type);
+
     /// <summary>Whether an expected literal setting <paramref name="field"/> to <paramref name="value"/> can be checked.</summary>
     /// <remarks>
     /// A message given anything but a literal cannot be, because there is nothing to say which of its
-    /// fields matter and no equality to compare it whole (spec 13.3).
+    /// fields matter and no equality to compare it whole (spec 13.3). A repeated field can be where it is
+    /// given a list written out, each of whose elements can be: what each element is compared with is
+    /// what is written at its index. A map cannot be.
     /// </remarks>
     public static bool CanCompare(FieldDescriptor field, IrExpression value)
     {
         ArgumentNullException.ThrowIfNull(field);
         ArgumentNullException.ThrowIfNull(value);
 
-        return !field.IsRepeated && !field.IsMap && (value.Type is not MessageType || value is IrMessageLiteral);
+        return field switch
+        {
+            { IsMap: true } => false,
+            { IsRepeated: true } => value is IrList list && list.Elements.All(CanCompareElement),
+            _ => CanCompareElement(value),
+        };
+    }
+
+    /// <summary>Whether a value is one a check can compare with: anything but a message, or a literal of one.</summary>
+    public static bool CanCompareElement(IrExpression value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        return value.Type is not MessageType || value is IrMessageLiteral;
     }
 
     private static void Add(List<IrFieldCheck> checks, IrMessageLiteral literal, IrExpression actual, string prefix)
@@ -97,15 +146,59 @@ public static class IrExpectedFields
             }
 
             var read = new IrFieldAccess(actual, field, TypeFactory.FromField(field), initializer.Span);
-            if (initializer.Value is IrMessageLiteral nested)
+            switch (initializer.Value)
             {
-                Add(checks, nested, read, path + ".");
-                continue;
-            }
+                case IrMessageLiteral nested:
+                    Add(checks, nested, read, path + ".");
+                    break;
 
-            checks.Add(new IrValueCheck(path, initializer.Value, read));
+                case IrList list when field.IsRepeated:
+                    AddList(checks, list, read, path);
+                    break;
+
+                default:
+                    checks.Add(new IrValueCheck(path, initializer.Value, read));
+                    break;
+            }
         }
     }
+
+    /// <summary>
+    /// The checks an expected list makes of the list <paramref name="actual"/> reads: its count, then each element at
+    /// its index, a literal's fields checked in turn and anything else compared whole.
+    /// </summary>
+    /// <remarks>
+    /// Each element is read by its index, as a method reads one, with a proof that names the count checked before it:
+    /// a backend reads it with the target's own indexer, which the count check, failing the test first, keeps in range.
+    /// </remarks>
+    private static void AddList(List<IrFieldCheck> checks, IrList expected, IrExpression actual, string path)
+    {
+        var count = expected.Elements.Count;
+        var counted = new IrListQuery(RepeatedMethod.Count, actual, expected.Span, expected.Span);
+        checks.Add(new IrValueCheck(Dotted(path, "count()"), new IrLiteral((long)count, ScalarType.Int32Type, expected.Span), counted));
+
+        for (var index = 0; index < count; index++)
+        {
+            var element = expected.Elements[index];
+            var at = $"{path}[{index}]";
+            var read = new IrElementRead(actual, new IrLiteral((long)index, ScalarType.Int32Type, element.Span), FromEnd: false, element.Span)
+            {
+                Proof = new IrIndexProof([$"{Dotted(path, "count()")} > {index}"]),
+            };
+
+            if (element is IrMessageLiteral literal)
+            {
+                Add(checks, literal, read, at + ".");
+            }
+            else
+            {
+                checks.Add(new IrValueCheck(at, element, read));
+            }
+        }
+    }
+
+    /// <summary><paramref name="member"/> after <paramref name="path"/>, or alone where the path is the result itself.</summary>
+    private static string Dotted(string path, string member) => path.Length == 0 ? member : $"{path}.{member}";
 }
 
 /// <summary>What an expected message literal checks, and the local each check reads from.</summary>

@@ -1,0 +1,48 @@
+// Conformance vectors for abs under the saturating overflow policy (spec 10.5).
+//
+// An integer's abs follows the project's overflow policy, as unary '-' does: the minimum has no magnitude of its
+// type, and under this policy it clamps to the maximum. Every other value is unaffected by the policy.
+
+import proto "saturating_math.proto";
+
+extend SaturatingMathCase {
+    fn abs_i32() -> int32 {
+        return _pCrossMath.abs(i32);
+    }
+
+    fn abs_i64() -> int64 {
+        return _pCrossMath.abs(i64);
+    }
+}
+
+test SaturatingMathCase.abs_i32 "abs of a negative int32 that fits returns its magnitude" {
+    receiver {
+        i32: -7,
+    }
+
+    expect return 7;
+}
+
+test SaturatingMathCase.abs_i32 "abs of the int32 minimum clamps to the maximum" {
+    receiver {
+        i32: -2147483648,
+    }
+
+    expect return 2147483647;
+}
+
+test SaturatingMathCase.abs_i64 "abs of a negative int64 that fits returns its magnitude" {
+    receiver {
+        i64: -9223372036854775807,
+    }
+
+    expect return 9223372036854775807;
+}
+
+test SaturatingMathCase.abs_i64 "abs of the int64 minimum clamps to the maximum" {
+    receiver {
+        i64: -9223372036854775808,
+    }
+
+    expect return 9223372036854775807;
+}

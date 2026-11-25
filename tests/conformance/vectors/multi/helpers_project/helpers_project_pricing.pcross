@@ -1,0 +1,78 @@
+// Conformance vectors for a project's helpers: the first of two sources, which declares the helpers the
+// second calls and calls the factory the second declares. See helpers_project_quotes.pcross.
+//
+// A helper belongs to no message. In a project it is declared in the project's helpers namespace,
+// HelpersProject.Helpers in C# and helpers_project::helpers in C++, and not beside any message
+// (spec 24). So a call from the other source names that namespace, and in C++ includes this source's
+// header.
+
+import proto "helpers_project.proto";
+
+// The lowest and the highest product of two ranges' ends, as a list.
+helper fn find_bounds(left_upper: double, left_lower: double, right_upper: double, right_lower: double) -> repeated double {
+    var products: repeated double = [
+        left_upper * right_upper,
+        left_upper * right_lower,
+        left_lower * right_upper,
+        left_lower * right_lower,
+    ];
+    var lowest = products[0];
+    var highest = products[0];
+    for product in products {
+        if product < lowest {
+            lowest = product;
+        }
+        if product > highest {
+            highest = product;
+        }
+    }
+
+    return [lowest, highest];
+}
+
+// What a seat costs, or a refusal where there are none.
+helper fn price_per_seat(seats: int64) -> int64 refuses HelpedRefusal {
+    if seats <= 0 {
+        refuse new HelpedRefusal { reason: "no seats" };
+    }
+    if seats > 4 {
+        return 900;
+    }
+
+    return 1000;
+}
+
+// A helper that calls the factory the other source declares, passing its refusal on.
+helper fn quote_for(code: string, seats: int64) -> HelpedQuote refuses HelpedRefusal {
+    return HelpedQuote.factory.for_seats(code, seats) on_refused refuse;
+}
+
+test price_or_zero "a helper of the other source, falling back from a refusal" {
+    arg seats = 0;
+    expect return 0;
+}
+
+test price_or_zero "a helper of the other source, where nothing is refused" {
+    arg seats = 5;
+    expect return 900;
+}
+
+test HelpedSpan.bounds "an extend method of the other source calls a helper" {
+    receiver {
+        left_upper: 2.0,
+        left_lower: -1.0,
+        right_upper: 3.0,
+        right_lower: 1.0,
+    }
+
+    expect return [-3.0, 6.0];
+}
+
+test HelpedQuote.checked_price_per_seat "a helper's refusal ends the program under fail" {
+    receiver {
+        code: "Q0",
+        seats: 0,
+    }
+
+    expect fail;
+}

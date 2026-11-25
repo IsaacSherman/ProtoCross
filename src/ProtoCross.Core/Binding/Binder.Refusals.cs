@@ -125,15 +125,23 @@ public sealed partial class Binder
     /// </remarks>
     private IrExpression AnswerRefusal(IrExpression bound, OnRefusedExpression? handled, Scope scope, MethodContext context)
     {
+        if (bound is IrElementLookup { OnRefused: OutOfRangeBehavior.Unstated } lookup)
+        {
+            return AnswerOutOfRange(lookup, handled, scope, context);
+        }
+
         if (bound is not IrMethodCall { Target.CanRefuse: true } call)
         {
             if (handled is not null && bound.Type is not ErrorType)
             {
                 _diagnostics.Report(
                     DiagnosticCodes.UnnecessaryOnRefusedClause,
-                    bound is IrMethodCall plain
-                        ? $"'{plain.Target.Name}' cannot refuse, so this clause cannot run."
-                        : "This call cannot refuse, so this clause cannot run.",
+                    bound switch
+                    {
+                        IrMethodCall plain => $"'{plain.Target.Name}' cannot refuse, so this clause cannot run.",
+                        IrMathCall math => $"'{MathFunctions.NameOf(math.Function)}' cannot refuse, so this clause cannot run.",
+                        _ => "This call cannot refuse, so this clause cannot run.",
+                    },
                     handled.Clause.Span,
                     "Delete the clause. Only a call to a method that declares 'refuses' needs one (spec 16.3).");
             }
@@ -160,6 +168,14 @@ public sealed partial class Binder
             return new IrRefusableCall(call, RefusalBehavior.Refuse, null, handled.Span);
         }
 
+        if (clause.Refusal is { } replacement)
+        {
+            return new IrRefusableCall(call, RefusalBehavior.Unstated, null, handled.Span)
+            {
+                Refused = [ReportReplacedRefusal(call, replacement, scope, context)],
+            };
+        }
+
         if (clause.Fallback is not { } written)
         {
             ReportIfTerminationIsForbidden("'on_refused fail'", clause.Span, WaysToAnswer(call, context));
@@ -167,6 +183,35 @@ public sealed partial class Binder
         }
 
         return new IrRefusableCall(call, RefusalBehavior.Fallback, BindRefusalFallback(call, written, scope, context), handled.Span);
+    }
+
+    /// <summary>
+    /// Reports <c>on_refused refuse value</c> after a call to a method a source declares (<c>PC0151</c>), and gives the
+    /// value bound, which the call keeps as a part it refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The value form refuses with a value of the caller's own, which a list's try method needs, since it refuses with
+    /// none (spec 14.1). A method a source declares refuses with a value, which is passed on as it is: replacing it
+    /// would be translating one refusal into another, which is not decided for 1.0 (spec 30). The help offers what a
+    /// call can write instead.
+    /// </para>
+    /// <para>
+    /// The value is kept rather than dropped so that an editor's request inside it, a hover on a count or a completion
+    /// after a dot, finds what it asks about (<see cref="IrNode.Refused"/>).
+    /// </para>
+    /// </remarks>
+    private IrExpression ReportReplacedRefusal(IrMethodCall call, Expression replacement, Scope scope, MethodContext context)
+    {
+        var value = BindRefused(replacement, scope, context);
+        _diagnostics.Report(
+            DiagnosticCodes.RefusalCannotBeReplaced,
+            $"'{call.Target.Name}' refuses with a '{call.Target.Refusal!.DisplayName}' of its own, which is passed on as it "
+            + "is rather than replaced.",
+            replacement.Span,
+            $"{Written(WaysToAnswer(call, context))}. A refusal with a value of the caller's own follows only a list's try "
+            + "method, which has none to pass on (spec 16.3.1).");
+        return value;
     }
 
     /// <summary>The ways a call to <paramref name="call"/>'s method may answer a refusal from where it is, as help to write one.</summary>

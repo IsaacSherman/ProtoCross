@@ -50,6 +50,7 @@ public static class IrCopy
                 OnZero = OrNull(division.OnZero),
             },
             IrUnary unary => unary with { Operand = Of(unary.Operand) },
+            IrMathCall call => call with { Arguments = [.. call.Arguments.Select(Of)] },
             IrConversion conversion => conversion with { Operand = Of(conversion.Operand) },
             IrEnumToNumber number => number with { Operand = Of(number.Operand) },
             IrNumberToEnum conversion => conversion with
@@ -78,7 +79,16 @@ public static class IrCopy
             },
             IrMapContains contains => contains with { Key = Of(contains.Key), Map = Of(contains.Map) },
             IrMapQuery query => query with { Map = Of(query.Map) },
+            IrListQuery query => query with { List = Of(query.List) },
+            IrElementLookup lookup => lookup with
+            {
+                List = Of(lookup.List),
+                Index = Of(lookup.Index),
+                Fallback = OrNull(lookup.Fallback),
+            },
+            IrElementRead read => read with { List = Of(read.List), Index = Of(read.Index) },
             IrMapElement element => element with { Map = Of(element.Map), Key = Of(element.Key) },
+            IrListElement element => element with { List = Of(element.List), Index = Of(element.Index) },
             IrMissingMemberAccess awaiting => awaiting with { Receiver = Of(awaiting.Receiver) },
             IrUncallableInvocation call => call with
             {

@@ -79,21 +79,29 @@ public sealed partial class CSharpBackend
 
         /// <summary><paramref name="value"/> as a local stores it.</summary>
         public string ForLocal(IrExpression value)
-            => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Expression(value, Placement);
+            => CopiesIntoLocals ? StoredValue(value, Placement, ReceiverName) : Held(value, Placement);
 
         /// <summary>
         /// What <paramref name="loop"/> traverses: the collection as written, or, in a method that
         /// changes a message, a field of a copy of the call's result it is read from.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// A call's result is a reference in C#, and may be part of the receiver the loop's body
         /// changes, where C++ keeps the result in a local of its own (spec 24.2). A loop over it would
         /// see the changes in C# and not in C++, so it is held as a local is, by a copy of its own. So
-        /// is what a lookup gives, which is the message the map holds. A literal is held by nothing
+        /// is what a lookup gives, which is the message the map holds, and a list's element, read by
+        /// index or by a try method, which is the message the list holds. A literal is held by nothing
         /// else, and is traversed as it is.
+        /// </para>
+        /// <para>
+        /// A list a call returns is traversed as it is: it is the caller's own already, a copy wherever the
+        /// method returned a list it did not own (<see cref="Returned"/>).
+        /// </para>
         /// </remarks>
         public string Collection(IrForEach loop)
-            => CopiesIntoLocals && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup) and var owner
+            => CopiesIntoLocals
+                && IrMutation.TemporaryOwnerOf(loop.Collection) is (IrMethodCall or IrRefusableCall or IrMapLookup or IrElementLookup or IrElementRead) and var owner
                 ? ReadOff(loop.Collection, owner, Expression(owner, Placement) + ".Clone()")
                 : Expression(loop.Collection, Placement);
     }
@@ -249,6 +257,22 @@ public sealed partial class CSharpBackend
 
         public string NamespaceOf(MessageDescriptor receiver) => NameConventions.GetCSharpBehaviorNamespace(receiver, Project);
 
+        /// <summary>
+        /// The namespace a method is declared in: its message's behavior's, or the project's helpers' for a
+        /// top-level helper (spec 24.1).
+        /// </summary>
+        public string NamespaceOf(IrMethodSignature method)
+            => method.Receiver is { } receiver ? NamespaceOf(receiver) : HelpersNamespace;
+
+        /// <summary>The namespace a project's helpers are declared in (spec 24.1).</summary>
+        /// <exception cref="InvalidOperationException">
+        /// The sources are no project's. The binder refuses a helper outside one (<c>PC0156</c>), and a module
+        /// with an error is never emitted, so a helper here is a defect in whatever built the module.
+        /// </exception>
+        private string HelpersNamespace => Project is { } project
+            ? NameConventions.GetCSharpHelpersNamespace(project)
+            : throw new InvalidOperationException("A helper is declared only in a project's sources (PC0156).");
+
         public string ClassOf(MessageDescriptor receiver)
             => Project is null ? ExtensionClassName(receiver) : ProjectClassName;
 
@@ -259,27 +283,28 @@ public sealed partial class CSharpBackend
         /// </remarks>
         public string FactoryClassOf(MessageDescriptor message) => NameConventions.GetFactoryClassName(message);
 
-        /// <summary>The class a method is declared in: its receiver's extension class, or its message's factory.</summary>
-        public string ClassOf(IrMethodSignature method)
-            => method.HasReceiver ? ClassOf(method.Receiver) : FactoryClassOf(method.Receiver);
+        /// <summary>
+        /// The class a method is declared in: its receiver's extension class, its message's factory, or the
+        /// project's helpers' class.
+        /// </summary>
+        public string ClassOf(IrMethodSignature method) => method.Receiver switch
+        {
+            null => NameConventions.CSharpHelpersClassName,
+            { } receiver when method.HasReceiver => ClassOf(receiver),
+            { } message => FactoryClassOf(message),
+        };
 
         /// <summary>
         /// The name a method is declared and called by: its name PascalCased, with an underscore
         /// appended when that is the name of the class it is declared in.
         /// </summary>
         /// <remarks>
-        /// C# refuses a member named after its enclosing type (CS0542), and a method name is ordinary
-        /// ProtoCross however its target spells it: <c>proto_cross_extensions</c> is a method like any
-        /// other, and C++ declares it as it stands. The escape is protoc's own for a property named
-        /// after its message, <c>Probe_</c>, and it cannot meet another method's name, because a
-        /// PascalCased name never ends in an underscore. It applies wherever the class is: beside a
-        /// message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets the class too.
+        /// A method name is ordinary ProtoCross however its target spells it: <c>proto_cross_extensions</c>
+        /// is a method like any other, and C++ declares it as it stands. The escape applies wherever the
+        /// class is: beside a message, <c>timestamp_proto_cross_extensions</c> on <c>Timestamp</c> meets
+        /// the class too. <see cref="NameConventions.GetCSharpMethodName"/> says why it is this escape.
         /// </remarks>
-        public string MethodNameOf(IrMethodSignature method)
-        {
-            var name = NameConventions.ToPascalCase(method.Name);
-            return name == ClassOf(method) ? name + "_" : name;
-        }
+        public string MethodNameOf(IrMethodSignature method) => NameConventions.GetCSharpMethodName(method.Name, ClassOf(method));
 
         /// <summary>
         /// What decides which of one file's parts of a class a receiver's methods are written in: one
@@ -292,22 +317,33 @@ public sealed partial class CSharpBackend
         public string PartOf(MessageDescriptor receiver)
             => Project is null ? receiver.FullName : ProjectClassName;
 
-        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(receiver, ClassOf(receiver));
+        public string QualifiedClassOf(MessageDescriptor receiver) => Qualified(NamespaceOf(receiver), ClassOf(receiver));
 
         /// <summary>The class a method is declared in, qualified from <c>global::</c>.</summary>
-        public string QualifiedClassOf(IrMethodSignature method) => Qualified(method.Receiver, ClassOf(method));
+        public string QualifiedClassOf(IrMethodSignature method) => Qualified(NamespaceOf(method), ClassOf(method));
 
-        private string Qualified(MessageDescriptor receiver, string className)
-        {
-            var ns = NamespaceOf(receiver);
-            return string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
-        }
+        private static string Qualified(string ns, string className)
+            => string.IsNullOrEmpty(ns) ? $"global::{className}" : $"global::{ns}.{className}";
     }
 
     /// <summary>A named enum value, fully qualified, as protoc's C# generator names it (spec 12).</summary>
     private static string EnumValue(EnumValueDescriptor value)
         => "global::" + NameConventions.GetCSharpTypeName(value.EnumDescriptor)
             + "." + NameConventions.GetCSharpValueName(value);
+
+    /// <summary>The type a parameter of <paramref name="type"/> is declared with.</summary>
+    /// <remarks>
+    /// A list is an <c>IReadOnlyList</c>, so that a consumer can pass a <c>List</c>, an array or a message's
+    /// field without copying it, and a method could never change it anyway: nothing changes a parameter
+    /// (spec 16.2, 24.1). Every other type is declared as it is anywhere else.
+    /// </remarks>
+    private static string ParameterTypeName(PlType type) => type is RepeatedType repeated
+        ? $"global::System.Collections.Generic.IReadOnlyList<{HeldTypeName(repeated.ElementType)}>"
+        : TypeName(type);
+
+    /// <summary>Whether C# holds <paramref name="value"/> as an <c>IReadOnlyList</c>, which has no <c>Clone</c>: a list parameter.</summary>
+    private static bool IsHeldAsAReadOnlyList(IrExpression value)
+        => value is IrParameterReference { Type: RepeatedType };
 
     private static string TypeName(PlType type) => type switch
     {

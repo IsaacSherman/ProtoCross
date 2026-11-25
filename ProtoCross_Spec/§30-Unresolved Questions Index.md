@@ -70,12 +70,10 @@ Decided: neither is reserved, and a later syntax that uses one makes it contextu
 
 Decided: semicolons are mandatory for declarations/statements listed in 7.1.
 
-#### 30.7.2 Top-level functions
+#### 30.7.2 ~~Top-level functions~~
 
-**Post-1.0.** Should top-level helper functions be allowed in a later version?
-
-Asked in [7.1](./§7-Grammar%20and%20Syntax.md#71-implemented-grammar), and
-[30.9.5](#3095-math-intrinsics) and [30.16.1](#30161-helper-functions) refer to it.
+Decided: a project's helpers, `helper fn` at the top level of a source, which any method or test of
+the project calls by its bare name ([16.4](./§16-Methods.md#164-helpers)).
 
 #### 30.7.3 An exact grammar
 
@@ -170,11 +168,12 @@ policy governing any of them ([10.1](./§10-Numeric%20Semantics.md#101-integer-o
 
 Decided: the C-family order, C#'s and C++'s ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)).
 
-#### 30.9.5 Math intrinsics
+#### 30.9.5 ~~Math intrinsics~~
 
-Math intrinsics such as `abs`, `min` and `max`. **Post-1.0.** Until then each is written with a
-comparison ([9.1](./§9-Expressions%20and%20Operators.md#91-expression-categories)). How an intrinsic
-is named and found belongs with top-level functions ([30.7.2](#3072-top-level-functions)).
+Decided: `abs`, `min`, `max`, `sqrt`, `floor`, `ceil`, `trunc` and `round`, called through the
+reserved word `_pCrossMath`, so none is found by a bare name and none can meet a helper
+([10.5](./§10-Numeric%20Semantics.md#105-math-functions)). The functions left for later are
+[30.10.13](#301013-further-math-functions).
 
 #### 30.9.6 ~~Operand order~~
 
@@ -263,6 +262,24 @@ colliding with the language's.
 Asked in [10.4](./§10-Numeric%20Semantics.md#104-compile-time-policy). Third-party backends are
 [30.22.2](#30222-third-party-backends).
 
+#### 30.10.13 Further math functions
+
+**Post-1.0.** Which math functions follow the eight
+[10.5](./§10-Numeric%20Semantics.md#105-math-functions) gives, and how each is made to give one answer
+in every target:
+
+- `pow`, `hypot`, `exp`, `log`, `log10` and `log2`, and the trigonometric functions. None has a result
+  that is the same in every target: C# and C++ each call their platform's math library, and those
+  differ in the last bit between targets and platforms, which conformance compares. They come back
+  when a shared, correctly rounded implementation exists in every runtime.
+- An integer `pow`, which needs an overflow rule of its own.
+- `clamp`, `sign` and `round_even`, a tie going to the even neighbour. Each is exact, and waits only on
+  its shape: what `clamp` does with bounds given the wrong way round, and what `sign` gives a NaN or a
+  zero.
+- `min` and `max` over a list, which need an answer for an empty one.
+
+Asked in [10.5](./§10-Numeric%20Semantics.md#105-math-functions), which decides [30.9.5](#3095-math-intrinsics).
+
 ### 30.11 Strings
 
 #### 30.11.1 String indexing
@@ -345,10 +362,10 @@ backends.
 
 #### 30.14.1 ~~Repeated field mutation rules for current implementation~~
 
-Decided: an element changes through the name a `for` binds; a repeated field cannot be assigned,
-cleared or have an element removed; an element is appended with `place.append(value);`, to a field
-or to a local holding a repeated value; and nothing inside a `for` may change the field it traverses,
-an append to it included
+Decided: an element changes through the name a `for` binds; a repeated field may be assigned a whole
+list, which it stores a copy of (since #218), and cannot be cleared or have an element removed; an
+element is appended with `place.append(value);`, to a field or to a local holding a repeated value;
+and nothing inside a `for` may change the list it traverses, an append to it included
 ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations),
 [18](./§18-Mutability.md#18-mutability)).
 
@@ -359,11 +376,14 @@ Decided: maps are read and changed by key, and never iterated
 
 #### 30.14.3 ~~Collection helpers~~
 
-Decided: none; basics only ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+Decided: none; basics only, and no `first()` or `last()` ([30.14.7](#30147-first-and-last),
+[14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 
 #### 30.14.4 ~~Bounds-checked indexing~~
 
-Decided: yes, if indexing is ever added. An index out of range is answered explicitly, as a missing key is
+Decided: no index is left to the target (#221). `items[i]` and `items[^j]` compile only where the facts at
+the read show the index in range, and nothing is checked as the program runs; a try method,
+`items.try_get_index(i)`, checks it as the program runs and is answered with `on_refused`
 ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
 
 #### 30.14.5 A map built from repeated entries
@@ -371,6 +391,45 @@ Decided: yes, if indexing is ever added. An index out of range is answered expli
 **Post-1.0.** A repeated field of entries made into a map, the last of a key winning, may be added later.
 
 Asked in [14.2](./§14-Repeated%20Fields%20and%20Collections.md#142-maps).
+
+#### 30.14.6 List equality
+
+**Post-1.0.** Should `==` compare two lists, element by element? It is refused for now, as it is for two
+messages ([9.2](./§9-Expressions%20and%20Operators.md#92-operators)). A test may still expect a list, which it compares element by element
+([25.3](./§25-Testing%20and%20Conformance%20Vectors.md#253-author-written-protocross-unit-tests)), and a list of messages would wait on what makes two messages equal
+([30.13.3](#30133-message-equality)).
+
+#### 30.14.7 ~~First and last~~
+
+Decided: neither (#221). `items[0]` and `items[^1]` are the first and the last element, read where the
+count shows them, and `items.try_get_index(0)` and `items.try_get_backward_index(1)` where it may not. A
+method of its own for each would be a second spelling of one read, and would need an answer of its own for
+an empty list ([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)).
+
+#### 30.14.8 Induction over an index
+
+**Post-1.0.** Should a fact about an index be carried through a loop that changes the index in a way that
+keeps it? Every change ends every fact about what it changes
+([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)), and a loop's body is
+read with only the facts no pass can end, so in
+
+```protocross
+var i: int32 = 0;
+while i < items.count() {
+    total += items[i];
+    i += 1;
+}
+```
+
+nothing shows `i >= 0`: not the literal it starts at, which a declaration shows nothing about, and not
+`i += 1`, which keeps it but ends it as any assignment does. Such a loop is written with an unsigned
+index, `var i: uint32 = 0; while i < items.count() as uint32 { … }`, or tests `i >= 0` in its condition.
+Carrying the fact means showing it holds after the body wherever it held before, which is induction, and
+each change the body may make would need a rule for what it keeps.
+
+Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
+
+Asked in [14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations).
 
 ### 30.15 Control Flow
 
@@ -385,9 +444,10 @@ loop, and no switch is checked for exhaustiveness ([15.3](./§15-Control%20Flow.
 
 #### 30.16.1 ~~Helper functions~~
 
-Decided: a factory's `helper fn`, which only that factory may call, is the only helper, and there are
-no access modifiers ([16.3](./§16-Methods.md#163-factories)). Whether top-level functions belong in
-the language is post-1.0 ([30.7.2](#3072-top-level-functions)).
+Decided: `helper fn` in a factory is that factory's, which only it may call
+([16.3](./§16-Methods.md#163-factories)), and at the top level of a source is a project's, which any
+of its methods or tests may call ([16.4](./§16-Methods.md#164-helpers)). Where a helper is written
+says who may call it, and there are no access modifiers.
 
 #### 30.16.2 ~~Where a factory lives, and what it generates~~
 
@@ -400,6 +460,18 @@ supported in 1.0.
 #### 30.16.3 ~~Method overloading~~
 
 Decided: not supported ([16.1](./§16-Methods.md#161-method-attachment)).
+
+#### 30.16.4 Replacing a method's refusal
+
+**Post-1.0.** Should `on_refused refuse value` be accepted after a call to a method a source declares,
+refusing with `value` in place of the refusal the call gave, so a caller could translate a callee's
+refusal into one of its own type? It is `PC0151` for now, and a refusal is passed on only as it is. A
+list's try method takes a value there already, because it has no refusal of its own to pass on
+([14.1](./§14-Repeated%20Fields%20and%20Collections.md#141-supported-operations)). Translating one would
+discard what the callee said, unless the value could read it, and no value holds a refusal
+([16.3.1](./§16-Methods.md#1631-refusals)).
+
+Asked in [16.3.1](./§16-Methods.md#1631-refusals).
 
 ### 30.17 Virtual and Override Semantics
 

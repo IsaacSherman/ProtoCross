@@ -16,8 +16,14 @@ to each group's actual home; central files hold dispatch and shared state rather
 | Operators, casts, numeric behavior | [Language](Language.md) | `Binder.BindBinary`, `Binder.BindCast`, `IrBinary`, `IrConversion` |
 | Enum values, openness, unknown numbers | [Language](Language.md) | `Binder` in `Binder.Enums.cs`, `EnumOpenness` |
 | Message construction, maps, mutation, presence | [Language](Language.md) | `Binder` in `Binder.MessageLiterals.cs`, `Binder.Maps.cs`, `Binder.Mutation.cs` |
+| Lists: `repeated T`, a list written as a value, a repeated field given a whole list | [Language](Language.md) | `TypeReference.RepeatedWord`, `Binder.BindListValue`, `Binder.ResolveTypeReference`, `IrList`, `ProtoCrossCollections` |
+| A list's methods: `count()`, `is_empty()`, `try_get_index`, `try_get_backward_index` | [Language](Language.md) | `RepeatedMethods`, `Binder.BindListMethodValue`, `Binder.AnswerOutOfRange`, `IrListQuery`, `IrElementLookup` |
+| A list's element read by an index the compiler shows in range: `items[i]`, `items[^j]` | [Language](Language.md) | `Binder.BindElementRead`, `Binder.Prove`, `Binder.ListFacts`, `Binder.EstablishedBy`, `IrElementRead`, `IrIndexProof` |
+| A list's element written at such an index: `items[i] = v;`, `items[i].f = v;`, a `mut fn` on one | [Language](Language.md) | `Binder.BindListElement`, `Binder.BindListElementStore`, `Binder.ListPlaceOf`, `Binder.FactsEndedThroughAListElement`, `IrListElement`, `IrListElementAssignment` |
 | Control flow, switches, method calls, language tests | [Language](Language.md) | `Binder.BindExpression`, `Binder.BindTest`, `Parser.ParseBlock` |
 | Factories, helpers, calls through `Message.factory` | [Language](Language.md) | `Binder` in `Binder.Factories.cs`, `Parser.ParseFactoryDeclaration`, `IrMethodKind` |
+| Math functions: `_pCrossMath.min(a, b)`, `abs`, `sqrt`, `floor`, `round`, … | [Language](Language.md) | `MathFunctions`, `Binder` in `Binder.Math.cs`, `IrMathCall`, `MathQualifierExpression` |
+| A project's helpers: top-level `helper fn`, bare calls to one, `test name` | [Language](Language.md) | `Binder` in `Binder.Helpers.cs`, `IrMethodKind.Standalone`, `IrModule.Helpers`, `NameConventions.GetCSharpHelpersNamespace` |
 | Refusals: `refuses`, `refuse`, `on_refused`, `on_zero refuse`, `expect refuse` | [Language](Language.md) | `Binder` in `Binder.Refusals.cs`, `IrRefusableCall`, `IrMethodSignature.Refusal`, `IrRefusals` |
 | Forbidding termination: `Failure/Termination` | [Language](Language.md) | `ProjectConfig.Termination`, `Binder` in `Binder.Termination.cs` |
 | Node shapes, behavior annotations, copies, flow | [IR](IR.md) | `IrExpression`, `IrCopy.Of`, `IrFlow.NeverFallsThrough`, `IrMutation` |

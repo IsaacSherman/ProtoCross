@@ -1,0 +1,549 @@
+// Conformance vectors for lists as values (spec 14.1): written in a method, held in a local, passed as a
+// parameter, returned, and iterated, for each kind of element protobuf holds differently.
+//
+// C++ keeps numbers and enums in a RepeatedField and strings, bytes and messages by pointer in a
+// RepeatedPtrField, and builds a list in a lambda called where it is written. C# builds one with a
+// collection initializer, and takes a list parameter as an IReadOnlyList, which it copies into a
+// RepeatedField of its own where a local holds it. These vectors pin that the two agree: on the order
+// elements are evaluated and kept in, on the type a list takes from its elements, and on a list that is
+// stored being a copy, messages and all.
+
+import proto "local_lists.proto";
+
+extend Basket {
+    // ---- written in a method
+
+    fn products() -> repeated double {
+        var products: repeated double = [
+            ratio * 2.0,
+            ratio,
+            1,
+            0.5,
+        ];
+        return products;
+    }
+
+    fn smallest_product() -> double {
+        var products = products();
+        var smallest = ratio;
+        for product in products {
+            if product < smallest {
+                smallest = product;
+            }
+        }
+
+        return smallest;
+    }
+
+    fn bounds() -> repeated double {
+        var lowest = ratio;
+        var highest = ratio;
+        for product in products() {
+            if product < lowest {
+                lowest = product;
+            }
+            if product > highest {
+                highest = product;
+            }
+        }
+
+        return [lowest, highest];
+    }
+
+    // A literal takes the type of the typed element beside it, so this is a list of int32.
+    fn counted_from_base() -> repeated int32 {
+        return [1, base, 3];
+    }
+
+    // Literals alone take their natural type, and double where any is a floating-point literal.
+    fn literal_total() -> double {
+        var values = [1, 2.5, 3];
+        var total = 0.0;
+        for value in values {
+            total += value;
+        }
+
+        return total;
+    }
+
+    fn labelled() -> repeated string {
+        return ["first", name, "last"];
+    }
+
+    fn shaded() -> repeated Shade {
+        return [Shade.SHADE_DARK, Shade.SHADE_LIGHT, Shade.SHADE_DARK];
+    }
+
+    fn parcel_grams() -> int64 {
+        var parcels = [new Parcel { grams: 2 }, new Parcel { grams: 3, tag: "x" }, new Parcel {}];
+        var grams: int64 = 0;
+        for parcel in parcels {
+            grams = grams * 10 + parcel.grams;
+        }
+
+        return grams;
+    }
+
+    fn nothing() -> repeated double {
+        var empty: repeated double = [];
+        return empty;
+    }
+
+    fn nothing_counted() -> int64 {
+        var empty: repeated Parcel = [];
+        var count: int64 = 0;
+        for parcel in empty {
+            count += 1;
+        }
+
+        return count;
+    }
+
+    // The elements are evaluated in the order they are written. Each is a lookup of an empty map of its own,
+    // which ends the program and names its map, and the conformance tests read which name was printed.
+    fn first_element_first() -> repeated int32 {
+        return [order_first[1] on_missing fail, order_second[1] on_missing fail];
+    }
+
+    // ---- held in a local, and appended to
+
+    fn appended() -> repeated double {
+        var values: repeated double = [1.0];
+        values.append(ratio);
+        values.append(3.0);
+        return values;
+    }
+
+    // A local given a field holds a copy of it, so an append to the local leaves the field alone.
+    fn weights_after_appending_a_copy() -> repeated double {
+        var copy = weights;
+        copy.append(9.0);
+        return weights;
+    }
+
+    // A message in a local list is a copy of the one in the field.
+    fn parcels_after_changing_a_copy() -> int64 {
+        var copy = parcels;
+        for parcel in copy {
+            parcel.grams = 0;
+        }
+
+        var grams: int64 = 0;
+        for parcel in parcels {
+            grams += parcel.grams;
+        }
+
+        return grams;
+    }
+
+    fn reassigned() -> repeated double {
+        var values = [1.0, 2.0];
+        values = [ratio];
+        values.append(4.0);
+        return values;
+    }
+
+    // ---- passed as a parameter
+
+    fn total(values: repeated double) -> double {
+        var total = 0.0;
+        for value in values {
+            total += value;
+        }
+
+        return total;
+    }
+
+    fn totals() -> double {
+        return total(weights) + total([1.0, 2.0]) + total(products()) + total([]);
+    }
+
+    fn last_label(labels: repeated string) -> string {
+        var last = "none";
+        for label in labels {
+            last = label;
+        }
+
+        return last;
+    }
+
+    fn darks(shades: repeated Shade) -> int64 {
+        var count: int64 = 0;
+        for shade in shades {
+            if shade == Shade.SHADE_DARK {
+                count += 1;
+            }
+        }
+
+        return count;
+    }
+
+    fn stamp_count(stamps: repeated bytes) -> int64 {
+        var count: int64 = 0;
+        for stamp in stamps {
+            count += 1;
+        }
+
+        return count;
+    }
+
+    fn own_stamps() -> int64 {
+        return stamp_count(stamps);
+    }
+
+    // A parameter is held as a copy where a local takes it, messages and all, so changing the local's
+    // messages leaves the caller's alone.
+    fn grams_kept(given: repeated Parcel) -> int64 {
+        var mine = given;
+        for parcel in mine {
+            parcel.grams = 0;
+        }
+        mine.append(new Parcel { grams: 100 });
+
+        var grams: int64 = 0;
+        for parcel in given {
+            grams += parcel.grams;
+        }
+
+        return grams;
+    }
+
+    fn grams_kept_of_own() -> int64 {
+        return grams_kept(parcels);
+    }
+
+    // ---- returned
+
+    fn parcels_back(given: repeated Parcel) -> repeated Parcel {
+        var mine = given;
+        mine.append(new Parcel { grams: 7 });
+        return mine;
+    }
+
+    fn returned_grams() -> int64 {
+        var grams: int64 = 0;
+        for parcel in parcels_back(parcels) {
+            grams += parcel.grams;
+        }
+
+        return grams;
+    }
+
+    fn own_weights() -> repeated double {
+        return weights;
+    }
+
+    fn own_labels(given: repeated string) -> repeated string {
+        return given;
+    }
+
+    // ---- returned by a method that may refuse
+
+    fn kept_weights(given: repeated double) -> repeated double refuses string {
+        var kept: repeated double = [];
+        for weight in given {
+            if weight < 0.0 {
+                refuse "negative";
+            }
+            kept.append(weight);
+        }
+
+        return kept;
+    }
+
+    fn kept_or_given(given: repeated double) -> repeated double {
+        return kept_weights(given) on_refused given;
+    }
+
+    fn kept_or_none() -> repeated double {
+        return kept_weights(weights) on_refused [];
+    }
+
+    // ---- a repeated field given a whole list
+
+    fn literal_from_a_list(given: repeated double) -> double {
+        var made = new Basket { weights: given, ratio: 1.0 };
+        return total(made.weights);
+    }
+
+    // The literal's field holds a copy: changing the local's messages afterwards leaves it alone.
+    fn literal_holds_a_copy() -> int64 {
+        var mine = [new Parcel { grams: 5 }, new Parcel { grams: 6 }];
+        var made = new Basket { parcels: mine };
+        for parcel in mine {
+            parcel.grams = 0;
+        }
+
+        var grams: int64 = 0;
+        for parcel in made.parcels {
+            grams += parcel.grams;
+        }
+
+        return grams;
+    }
+
+    fn literal_from_a_call() -> repeated string {
+        var made = new Basket { labels: labelled() };
+        return made.labels;
+    }
+
+    mut fn assigned(given: repeated double) -> repeated double {
+        weights = given;
+        return weights;
+    }
+
+    mut fn assigned_a_literal() -> repeated double {
+        weights = [ratio, 2.0];
+        return weights;
+    }
+
+    // The copy is taken before the field is emptied, so a field given itself keeps what it held.
+    mut fn assigned_itself() -> repeated double {
+        weights = weights;
+        return weights;
+    }
+
+    mut fn assigned_from_another(other: Basket) -> repeated string {
+        labels = other.labels;
+        return labels;
+    }
+
+    // The field holds a copy: changing the local's messages afterwards leaves it alone.
+    mut fn assigned_a_copy() -> int64 {
+        var mine = [new Parcel { grams: 5 }];
+        parcels = mine;
+        for parcel in mine {
+            parcel.grams = 0;
+        }
+
+        var grams: int64 = 0;
+        for parcel in parcels {
+            grams += parcel.grams;
+        }
+
+        return grams;
+    }
+
+    // Assigning through an unset message sets it, as any write through one does.
+    mut fn assigned_through_the_spare(given: repeated double) -> bool {
+        spare.weights = given;
+        return has spare;
+    }
+
+    mut fn spare_weights_assigned(given: repeated double) -> repeated double {
+        spare.weights = given;
+        if has spare {
+            return spare.weights;
+        }
+
+        return [];
+    }
+}
+
+test Basket.products "a list is built in the order written, a literal taking double" {
+    receiver { ratio: 1.5 }
+    expect return [3.0, 1.5, 1.0, 0.5];
+}
+
+test Basket.smallest_product "a local list is iterated" {
+    receiver { ratio: 4.0 }
+    expect return 0.5;
+}
+
+test Basket.bounds "a returned list literal holds the bounds" {
+    receiver { ratio: 0.25 }
+    expect return [0.25, 1.0];
+}
+
+test Basket.counted_from_base "a literal takes the type of the element beside it" {
+    receiver { base: 2 }
+    expect return [1, 2, 3];
+}
+
+test Basket.literal_total "a list of literals with a floating-point one is of doubles" {
+    receiver { }
+    expect return 6.5;
+}
+
+test Basket.labelled "strings are kept in order" {
+    receiver { name: "middle" }
+    expect return ["first", "middle", "last"];
+}
+
+test Basket.shaded "enums are kept in order" {
+    receiver { }
+    expect return [Shade.SHADE_DARK, Shade.SHADE_LIGHT, Shade.SHADE_DARK];
+}
+
+test Basket.parcel_grams "messages are built in place, in order" {
+    receiver { }
+    expect return 230;
+}
+
+test Basket.nothing "an empty list takes the type written for it" {
+    receiver { weights: [1.0] }
+    expect return [];
+}
+
+test Basket.nothing_counted "an empty list of messages has nothing to iterate" {
+    receiver { }
+    expect return 0;
+}
+
+test Basket.first_element_first "elements are evaluated in the order written" {
+    receiver { }
+    expect fail;
+}
+
+test Basket.appended "a local list is appended to" {
+    receiver { ratio: 2.0 }
+    expect return [1.0, 2.0, 3.0];
+}
+
+test Basket.weights_after_appending_a_copy "appending to a copy leaves the field alone" {
+    receiver { weights: [1.0, 2.0] }
+    expect return [1.0, 2.0];
+}
+
+test Basket.parcels_after_changing_a_copy "a list's messages are copies of the field's" {
+    receiver { parcels: [new Parcel { grams: 5 }, new Parcel { grams: 6 }] }
+    expect return 11;
+}
+
+test Basket.reassigned "a local list is given a new list" {
+    receiver { ratio: 3.0 }
+    expect return [3.0, 4.0];
+}
+
+test Basket.total "a list is passed as an argument" {
+    receiver { }
+    arg values = [1.0, 2.0, 4.5];
+    expect return 7.5;
+}
+
+test Basket.totals "a field, a literal, a call's result and an empty list are passed" {
+    receiver { weights: [10.0], ratio: 1.0 }
+    expect return 17.5;
+}
+
+test Basket.last_label "a list of strings is passed" {
+    receiver { }
+    arg labels = ["a", "b"];
+    expect return "b";
+}
+
+test Basket.darks "a list of enums is passed" {
+    receiver { }
+    arg shades = [Shade.SHADE_DARK, Shade.SHADE_LIGHT, Shade.SHADE_DARK];
+    expect return 2;
+}
+
+test Basket.own_stamps "a list of bytes is passed" {
+    receiver { stamps: [] }
+    expect return 0;
+}
+
+test Basket.grams_kept "a parameter's messages are copied into a local" {
+    receiver { }
+    arg given = [new Parcel { grams: 1 }, new Parcel { grams: 2 }];
+    expect return 3;
+}
+
+test Basket.grams_kept_of_own "a field passed as a parameter is copied into a local" {
+    receiver { parcels: [new Parcel { grams: 4 }] }
+    expect return 4;
+}
+
+test Basket.returned_grams "a list built from a parameter is returned" {
+    receiver { parcels: [new Parcel { grams: 1 }] }
+    expect return 8;
+}
+
+test Basket.own_weights "a field is returned" {
+    receiver { weights: [2.0, 1.0] }
+    expect return [2.0, 1.0];
+}
+
+test Basket.kept_weights "a method that may refuse gives a list" {
+    receiver { }
+    arg given = [1.0, 2.0];
+    expect return [1.0, 2.0];
+}
+
+test Basket.kept_weights "a method that gives a list may refuse" {
+    receiver { }
+    arg given = [1.0, -2.0];
+    expect refuse "negative";
+}
+
+test Basket.kept_or_given "a list parameter is a refusal's fallback" {
+    receiver { }
+    arg given = [1.0, -2.0];
+    expect return [1.0, -2.0];
+}
+
+test Basket.kept_or_none "an empty list is a refusal's fallback" {
+    receiver { weights: [-1.0] }
+    expect return [];
+}
+
+test Basket.literal_from_a_list "a message literal's repeated field is given a list parameter" {
+    receiver { }
+    arg given = [1.5, 2.5];
+    expect return 4.0;
+}
+
+test Basket.literal_holds_a_copy "a message literal's repeated field holds a copy of the list" {
+    receiver { }
+    expect return 11;
+}
+
+test Basket.literal_from_a_call "a message literal's repeated field is given a call's result" {
+    receiver { name: "m" }
+    expect return ["first", "m", "last"];
+}
+
+test Basket.assigned "a repeated field is assigned a list parameter" {
+    receiver { weights: [9.0, 9.0, 9.0] }
+    arg given = [1.0, 2.0];
+    expect return [1.0, 2.0];
+}
+
+test Basket.assigned_a_literal "a repeated field is assigned a list literal" {
+    receiver { weights: [9.0], ratio: 3.0 }
+    expect return [3.0, 2.0];
+}
+
+test Basket.assigned_itself "a repeated field assigned itself keeps what it held" {
+    receiver { weights: [1.0, 2.0] }
+    expect return [1.0, 2.0];
+}
+
+test Basket.assigned_from_another "a repeated field is assigned another message's" {
+    receiver { labels: ["old"] }
+    arg other = new Basket { labels: ["a", "b"] };
+    expect return ["a", "b"];
+}
+
+test Basket.assigned_a_copy "an assigned repeated field holds a copy of the list" {
+    receiver { }
+    expect return 5;
+}
+
+test Basket.assigned_through_the_spare "assigning through an unset message sets it" {
+    receiver { }
+    arg given = [1.0];
+    expect return true;
+}
+
+test Basket.spare_weights_assigned "a list assigned through an unset message is kept" {
+    receiver { }
+    arg given = [1.0, 2.0];
+    expect return [1.0, 2.0];
+}
+
+test Basket.own_labels "a parameter is returned" {
+    receiver { }
+    arg given = ["x", "y"];
+    expect return ["x", "y"];
+}

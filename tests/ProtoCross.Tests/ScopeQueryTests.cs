@@ -219,7 +219,7 @@ public class ScopeQueryTests
         var scope = ScopeAt(Offset("return running;"));
         var count = Assert.Single(scope.Names, name => name.Name == "count");
 
-        Assert.Equal("protocross.tests.Outer", scope.Receiver.DisplayName);
+        Assert.Equal("protocross.tests.Outer", scope.Receiver?.DisplayName);
         Assert.Equal(SymbolKind.Field, count.Symbol.Kind);
         Assert.Equal("int64", count.Type.DisplayName);
         Assert.Null(count.Declaration);
@@ -310,7 +310,7 @@ public class ScopeQueryTests
         var scope = ScopeAt(Offset("count: 7"));
 
         Assert.Empty(scope.Names);
-        Assert.Equal("protocross.tests.Outer", scope.Receiver.DisplayName);
+        Assert.Equal("protocross.tests.Outer", scope.Receiver?.DisplayName);
     }
 
     [Fact]

@@ -48,10 +48,12 @@ public static class CppRuntime
         writer.WriteLine("#ifndef PROTOCROSS_RUNTIME_H_");
         writer.WriteLine("#define PROTOCROSS_RUNTIME_H_");
         writer.WriteLine();
+        writer.WriteLine("#include <cmath>");
         writer.WriteLine("#include <cstdint>");
         writer.WriteLine("#include <cstdio>");
         writer.WriteLine("#include <cstdlib>");
         writer.WriteLine("#include <limits>");
+        writer.WriteLine("#include <type_traits>");
         writer.WriteLine();
         writer.WriteLine("// Requires C++20: the conversion from an unsigned type back to the corresponding");
         writer.WriteLine("// signed type is defined as two's complement (P0907R4). Earlier standards leave that");
@@ -77,6 +79,7 @@ public static class CppRuntime
                     EmitBinaryHelper(writer, behavior, "sub", "-", "subtraction", signed, unsigned, suffix);
                     EmitBinaryHelper(writer, behavior, "mul", "*", "multiplication", signed, unsigned, suffix);
                     EmitNegateHelper(writer, behavior, signed, unsigned, suffix);
+                    EmitAbsHelper(writer, behavior, signed, suffix);
                     EmitDivideHelper(writer, behavior, signed, unsigned, suffix);
                     EmitModuloHelper(writer, behavior, signed, suffix);
                     EmitDivideOrHelper(writer, behavior, signed, suffix);
@@ -110,6 +113,18 @@ public static class CppRuntime
             writer.WriteLine();
 
             EmitRefusalHelper(writer);
+
+            writer.WriteLine();
+            writer.WriteLine("// --- lists (14.1) ---");
+            writer.WriteLine();
+
+            EmitElementHelpers(writer);
+
+            writer.WriteLine();
+            writer.WriteLine("// --- math functions (10.5) ---");
+            writer.WriteLine();
+
+            EmitMathHelpers(writer);
         }
 
         writer.WriteLine();
@@ -456,6 +471,74 @@ public static class CppRuntime
         writer.WriteLine();
     }
 
+    /// <summary>Emits <c>abs</c> of a signed type under one policy: a negative value negated, under that policy (spec 10.5).</summary>
+    /// <remarks>
+    /// Through the negation helper, so the minimum's magnitude is what negating the minimum gives, and the value is
+    /// read once. None is emitted for an unsigned type, whose <c>abs</c> is the value itself and is never called.
+    /// </remarks>
+    private static void EmitAbsHelper(SourceWriter writer, ArithmeticBehavior behavior, string signed, string suffix)
+    {
+        if (!IsSigned(suffix))
+        {
+            return;
+        }
+
+        var stem = Stem(behavior);
+
+        writer.WriteLine($"// Magnitude, {Describe(behavior)}.");
+        using (writer.Block($"inline {signed} {stem}_abs_{suffix}({signed} a)"))
+        {
+            writer.WriteLine($"return a < 0 ? {stem}_neg_{suffix}(a) : a;");
+        }
+
+        writer.WriteLine();
+    }
+
+    /// <summary>Emits <c>math_min</c> and <c>math_max</c>, the least and the greatest of two values (spec 10.5).</summary>
+    /// <remarks>
+    /// <para>
+    /// As IEEE 754-2019 <c>minimum</c> and <c>maximum</c> give them, and as .NET's <c>Math.Min</c> and
+    /// <c>Math.Max</c> do, step for step: a NaN where either is one, the first where both are, and <c>-0.0</c> below
+    /// <c>+0.0</c>. <c>std::min</c> and <c>std::max</c> give a NaN or not by where it stands, and <c>fmin</c> and
+    /// <c>fmax</c> ignore one and order no zero by its sign, so none of them would do.
+    /// </para>
+    /// <para>
+    /// One template for every type. An integer has no NaN and no signed zero, so the floating-point steps are left
+    /// out for it at compile time.
+    /// </para>
+    /// </remarks>
+    private static void EmitMathHelpers(SourceWriter writer)
+    {
+        EmitMathExtreme(writer, "math_min", "The lesser of two values", "a < b", "a");
+        writer.WriteLine();
+        EmitMathExtreme(writer, "math_max", "The greater of two values", "b < a", "b");
+    }
+
+    private static void EmitMathExtreme(SourceWriter writer, string name, string what, string firstWins, string signed)
+    {
+        writer.WriteLine($"// {what}: a NaN if either is one, and -0.0 below +0.0.");
+        writer.WriteLine("template <typename T>");
+        using (writer.Block($"inline T {name}(T a, T b)"))
+        {
+            using (writer.Block("if constexpr (::std::is_floating_point_v<T>)"))
+            {
+                using (writer.Block("if (a == b)"))
+                {
+                    writer.WriteLine($"return ::std::signbit({signed}) ? a : b;");
+                }
+
+                writer.WriteLine();
+                using (writer.Block("if (::std::isnan(a))"))
+                {
+                    writer.WriteLine("return a;");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine($"return {firstWins} ? a : b;");
+        }
+    }
+
     /// <summary>
     /// Emits the termination helper behind the checked overflow policy.
     /// </summary>
@@ -765,6 +848,129 @@ public static class CppRuntime
         }
 
         writer.WriteLine();
+    }
+
+    /// <summary>
+    /// Emits what a list's elements are read with (spec 14.1): a try method's element at an index from either end,
+    /// and an element a proven index reads from the end.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An index of any integer type is compared with the count in its own signedness, widened, so nothing on the way
+    /// overflows: a negative index, a <c>uint64</c> past what a list holds, a from-end 0 and an index one past the
+    /// count all find no element. From the end, 1 is the last element and the count the first.
+    /// </para>
+    /// <para>
+    /// The element is returned by value, as a map's lookup returns its value (<see cref="EmitMapHelpers"/>): what a
+    /// try method gives is a value, and a fallback is a temporary a reference would outlive. The failure names the
+    /// list, the index, with a <c>^</c> where it counts from the end, and the count, as the C# runtime's does, word for
+    /// word. A clause that refuses reads through <c>element_or</c> too, with a fallback that marks the element missing,
+    /// as a map's lookup does.
+    /// </para>
+    /// <para>
+    /// <c>from_end</c> checks nothing, because the compiler showed the index in range where it is written, and gives
+    /// what <c>Get</c> gives, as a forward read does; <c>mutable_from_end</c> gives what <c>Mutable</c> gives, for a
+    /// store. Each is a function so that the list, which the count is taken from, is evaluated once.
+    /// </para>
+    /// </remarks>
+    private static void EmitElementHelpers(SourceWriter writer)
+    {
+        writer.WriteLine("// Where the element at index is held, from the start or from the end, or -1 where there is none.");
+        writer.WriteLine("template <typename Index>");
+        using (writer.Block("inline int element_position(int count, Index index, bool from_end)"))
+        {
+            using (writer.Block("if constexpr (::std::numeric_limits<Index>::is_signed)"))
+            {
+                writer.WriteLine("const long long at = static_cast<long long>(index);");
+                using (writer.Block("if (from_end)"))
+                {
+                    writer.WriteLine("return at >= 1 && at <= count ? count - static_cast<int>(at) : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return at >= 0 && at < count ? static_cast<int>(at) : -1;");
+            }
+
+            using (writer.Block("else"))
+            {
+                writer.WriteLine("const unsigned long long at = static_cast<unsigned long long>(index);");
+                writer.WriteLine("const unsigned long long held = static_cast<unsigned long long>(count);");
+                using (writer.Block("if (from_end)"))
+                {
+                    writer.WriteLine("return at >= 1 && at <= held ? count - static_cast<int>(at) : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return at < held ? static_cast<int>(at) : -1;");
+            }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// Reached from a try method's 'on_refused fail'.");
+        writer.WriteLine("template <typename Index>");
+        using (writer.Block("[[noreturn]] inline void fail_no_element(const char* list_name, Index index, bool from_end, int count)"))
+        {
+            writer.WriteLine("::std::fputs(\"ProtoCross: \", stderr);");
+            writer.WriteLine("::std::fputs(list_name, stderr);");
+            writer.WriteLine("::std::fputs(from_end ? \" has no element at ^\" : \" has no element at \", stderr);");
+            using (writer.Block("if constexpr (::std::numeric_limits<Index>::is_signed)"))
+            {
+                writer.WriteLine("::std::fprintf(stderr, \"%lld\", static_cast<long long>(index));");
+            }
+
+            using (writer.Block("else"))
+            {
+                writer.WriteLine("::std::fprintf(stderr, \"%llu\", static_cast<unsigned long long>(index));");
+            }
+
+            writer.WriteLine("::std::fprintf(stderr, \"; it holds %d\\n\", count);");
+            writer.WriteLine("::std::fflush(stderr);");
+            writer.WriteLine($"::std::_Exit({FailExitCode});");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename List, typename Index, typename Fallback>");
+        using (writer.Block("inline typename List::value_type element_or(const List& list, Index index, bool from_end, Fallback fallback)"))
+        {
+            writer.WriteLine("const int at = element_position(list.size(), index, from_end);");
+            using (writer.Block("if (at >= 0)"))
+            {
+                writer.WriteLine("return list.Get(at);");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return fallback();");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("template <typename List, typename Index>");
+        using (writer.Block("inline typename List::value_type element_or_fail(const List& list, Index index, bool from_end, const char* list_name)"))
+        {
+            writer.WriteLine("const int at = element_position(list.size(), index, from_end);");
+            using (writer.Block("if (at < 0)"))
+            {
+                writer.WriteLine("fail_no_element(list_name, index, from_end, list.size());");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("return list.Get(at);");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// The element 'index' from the end, 1 the last, which the compiler showed the list holds.");
+        writer.WriteLine("template <typename List>");
+        using (writer.Block("inline decltype(auto) from_end(const List& list, int index)"))
+        {
+            writer.WriteLine("return list.Get(list.size() - index);");
+        }
+
+        writer.WriteLine();
+        writer.WriteLine("// The element 'index' from the end, as a pointer it is changed through, which the compiler showed the list holds.");
+        writer.WriteLine("template <typename List>");
+        using (writer.Block("inline auto* mutable_from_end(List& list, int index)"))
+        {
+            writer.WriteLine("return list.Mutable(list.size() - index);");
+        }
     }
 
     /// <summary>The map operations whose ProtoCross semantics protobuf's <c>Map</c> does not already provide (spec 14.2).</summary>

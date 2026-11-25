@@ -197,7 +197,7 @@ public class MethodSignatureTests
             }
             """);
 
-        var receivers = module.Methods.Select(method => method.Receiver.FullName).Distinct().ToList();
+        var receivers = module.Methods.Select(method => method.Receiver!.FullName).Distinct().ToList();
 
         Assert.Equal(2, receivers.Count);
 
@@ -206,12 +206,12 @@ public class MethodSignatureTests
             var declared = module.MethodsOn(receiver);
 
             Assert.NotEmpty(declared);
-            Assert.All(declared, method => Assert.Equal(receiver, method.Receiver.FullName));
+            Assert.All(declared, method => Assert.Equal(receiver, method.Receiver?.FullName));
         }
 
         foreach (var method in module.Methods)
         {
-            Assert.Contains(method, module.MethodsOn(method.Receiver.FullName));
+            Assert.Contains(method, module.MethodsOn(method.Receiver!.FullName));
         }
     }
 

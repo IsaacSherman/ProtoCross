@@ -42,6 +42,9 @@ public static class ContextualKeywords
     /// <summary>The word that says what a factory's method may refuse with, after its return type (spec 16.3).</summary>
     public const string Refuses = "refuses";
 
+    /// <summary>The word that begins a list's type, <c>repeated double</c> (spec 8.1).</summary>
+    public const string Repeated = "repeated";
+
     /// <summary>
     /// Whether <paramref name="token"/> is a <c>new</c> that begins a message literal: one with a type
     /// name straight after it, which is what no expression can otherwise contain.
@@ -136,7 +139,32 @@ public static class ContextualKeywords
     /// </para>
     /// </remarks>
     public static bool BeginsARefusal(Token token, Token next)
-        => token is { Kind: TokenKind.Identifier, Text: Refuses } && (next.Kind == TokenKind.Identifier || NamesABuiltInType(next.Kind));
+        => token is { Kind: TokenKind.Identifier, Text: Refuses } && BeginsAType(next);
+
+    /// <summary>
+    /// Whether <paramref name="token"/> is a <c>repeated</c> that begins a list's type: one with a type
+    /// straight after it, a name or one of the scalar keywords.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rule <see cref="BeginsARefusal"/> gives <c>refuses</c>, for its reason: a name is followed by
+    /// a type keyword nowhere else, and by another name only after the other words here. So a field, a
+    /// local or a message named <c>repeated</c> keeps its name wherever one can be written. Protobuf
+    /// itself reads the word as a field's label only where a field is declared, and lets a message take
+    /// it as a name.
+    /// </para>
+    /// <para>
+    /// Where the two tokens misread it is where a name follows a type: a message named <c>repeated</c>
+    /// converted to with <c>as</c> and an <c>on_unknown</c> after it, or returned by a method that
+    /// refuses, <c>-&gt; repeated refuses Refusal</c>. Both read as a list's type, as
+    /// <c>-&gt; refuses refuses Refusal</c> does for <c>refuses</c>.
+    /// </para>
+    /// </remarks>
+    public static bool BeginsARepeatedType(Token token, Token next)
+        => token is { Kind: TokenKind.Identifier, Text: Repeated } && BeginsAType(next);
+
+    /// <summary>Whether <paramref name="token"/> can begin a type reference: a name, or one of the type keywords.</summary>
+    private static bool BeginsAType(Token token) => token.Kind == TokenKind.Identifier || NamesABuiltInType(token.Kind);
 
     /// <summary>Whether <paramref name="kind"/> is a keyword a type reference may be: a scalar, or <c>void</c> (spec 8.1).</summary>
     public static bool NamesABuiltInType(TokenKind kind)
@@ -154,5 +182,6 @@ public static class ContextualKeywords
             || BeginsAnOnUnknownClause(token, next)
             || BeginsAFactory(token, next)
             || MarksAHelper(token, next)
-            || BeginsARefusal(token, next);
+            || BeginsARefusal(token, next)
+            || BeginsARepeatedType(token, next);
 }

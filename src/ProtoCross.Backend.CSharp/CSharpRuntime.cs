@@ -109,9 +109,161 @@ public static class CSharpRuntime
             EmitWrappers(writer);
             writer.WriteLine();
             EmitRefusals(writer);
+            writer.WriteLine();
+            EmitCollections(writer);
         }
 
         return writer.ToString();
+    }
+
+    /// <summary>The class <see cref="EmitCollections"/> declares, as generated code names it.</summary>
+    public const string CollectionsTypeName = "global::ProtoCross.Runtime.ProtoCrossCollections";
+
+    /// <summary>
+    /// Emits the copy of a list a method was given, which a local or a field stores, and the store of a whole list
+    /// into a repeated field (spec 14.1, 18).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A list parameter is an <c>IReadOnlyList</c>, so that a caller can pass a <c>List</c>, an array or a
+    /// message's field without copying it (spec 24.1). That has no <c>Clone</c>, which every other list the
+    /// generated code holds is copied with, so its copy is built here: a <c>RepeatedField</c> of its own,
+    /// each message in it cloned, as <c>RepeatedField.Clone</c> clones them. A <c>RepeatedField</c> passed as
+    /// the parameter is cloned as it is anywhere else.
+    /// </para>
+    /// <para>
+    /// protoc declares a repeated field's property with no setter, so assigning one empties and fills it. The
+    /// call reaches the field before it evaluates the copy, which C# evaluates arguments in the order of, so the
+    /// field is reached first and set last, as any field is (spec 9.3).
+    /// </para>
+    /// </remarks>
+    private static void EmitCollections(SourceWriter writer)
+    {
+        const string list = "global::Google.Protobuf.Collections.RepeatedField<T>";
+
+        writer.WriteLine("/// <summary>What generated code does with a list it was given rather than holds.</summary>");
+        using (writer.Block("internal static class ProtoCrossCollections"))
+        {
+            writer.WriteLine("/// <summary>A list of its own holding what <paramref name=\"source\"/> holds, each message a copy.</summary>");
+            using (writer.Block($"public static {list} CopyOf<T>(global::System.Collections.Generic.IReadOnlyList<T> source)"))
+            {
+                using (writer.Block($"if (source is {list} repeated)"))
+                {
+                    writer.WriteLine("return repeated.Clone();");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine($"var copy = new {list}();");
+                using (writer.Block("foreach (var element in source)"))
+                {
+                    writer.WriteLine("copy.Add(element is global::Google.Protobuf.IDeepCloneable<T> message ? message.Clone() : element);");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return copy;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>");
+            writer.WriteLine("/// Gives a repeated field what <paramref name=\"copy\"/> holds, in place of what it held. Its property has");
+            writer.WriteLine("/// no setter, so it is emptied and filled. The copy is taken before this is called, so a field given");
+            writer.WriteLine("/// itself is given what it held.");
+            writer.WriteLine("/// </summary>");
+            using (writer.Block($"public static void Replace<T>({list} field, {list} copy)"))
+            {
+                writer.WriteLine("field.Clear();");
+                writer.WriteLine("field.Add(copy);");
+            }
+
+            EmitElementHelpers(writer);
+        }
+    }
+
+    /// <summary>
+    /// Emits what a list's try methods read with (spec 14.1): the element at an index, or null where there is none,
+    /// in the three shapes <see cref="EmitMaps"/>' lookups take, and the element or the end of the program.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An index of any integer type reaches one overload or the other: <c>long</c> for every type but <c>ulong</c>,
+    /// which C# converts to it, and <c>ulong</c> for that one, so a <c>uint64</c> past what a list holds finds no
+    /// element rather than wrapping to a negative one, and <c>on_refused fail</c> prints it as it was written. The
+    /// range is checked against the count without any arithmetic that could overflow.
+    /// </para>
+    /// <para>
+    /// From the end, 1 is the last element and the count the first; 0 and anything past the count find none. The
+    /// failure names the list, the index, with a <c>^</c> where it counts from the end, and the count, as the C++
+    /// runtime's does, word for word.
+    /// </para>
+    /// </remarks>
+    private static void EmitElementHelpers(SourceWriter writer)
+    {
+        const string readOnly = "global::System.Collections.Generic.IReadOnlyList";
+
+        foreach (var index in new[] { "long", "ulong" })
+        {
+            var forward = index == "long" ? "index >= 0 && index < (long)count" : "index < (ulong)count";
+            var backward = index == "long" ? "index >= 1 && index <= (long)count" : "index >= 1 && index <= (ulong)count";
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Where the element at <paramref name=\"index\"/> is held, from the start or from the end, or -1 where there is none.</summary>");
+            using (writer.Block($"private static int Position(int count, {index} index, bool fromEnd)"))
+            {
+                using (writer.Block("if (fromEnd)"))
+                {
+                    writer.WriteLine($"return {backward} ? count - (int)index : -1;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine($"return {forward} ? (int)index : -1;");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a value type.</summary>");
+            writer.WriteLine($"public static T? ElementValue<T>({readOnly}<T> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : struct"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a nullable value: a wrapper's.</summary>");
+            writer.WriteLine($"public static T? ElementNullable<T>({readOnly}<T?> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : struct"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or null where there is none, for an element C# holds as a reference.</summary>");
+            writer.WriteLine($"public static T? ElementReference<T>({readOnly}<T> list, {index} index, bool fromEnd)");
+            using (writer.Block("    where T : class"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                writer.WriteLine("return at < 0 ? null : list[at];");
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>The element at the index, or termination where there is none. Reached from a try method's 'on_refused fail'.</summary>");
+            using (writer.Block($"public static T ElementOrFail<T>({readOnly}<T> list, {index} index, bool fromEnd, string listName)"))
+            {
+                writer.WriteLine("var at = Position(list.Count, index, fromEnd);");
+                using (writer.Block("if (at < 0)"))
+                {
+                    writer.WriteLine(
+                        $"global::System.Console.Error.WriteLine(\"{FailMarker}\" + listName + \" has no element at \" + (fromEnd ? \"^\" : \"\") "
+                        + "+ index.ToString(global::System.Globalization.CultureInfo.InvariantCulture) + \"; it holds \" "
+                        + "+ list.Count.ToString(global::System.Globalization.CultureInfo.InvariantCulture));");
+                    writer.WriteLine("global::System.Console.Error.Flush();");
+                    writer.WriteLine($"global::System.Environment.Exit({FailExitCode});");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("return list[at];");
+            }
+        }
     }
 
     /// <summary>The class <see cref="EmitMaps"/> declares, as generated code names it.</summary>
@@ -136,6 +288,12 @@ public static class CSharpRuntime
     /// the field's membership or order (spec 18), and the loop stays a <c>foreach</c>, so a body that
     /// always returns or breaks leaves no step unreachable.
     /// </para>
+    /// <para>
+    /// A list parameter is an <c>IReadOnlyList</c> (spec 24.1), which nothing may change, so a loop over one
+    /// binds a <c>ReadOnlyElement</c>, read where it is, through an overload C# chooses only for a list that
+    /// is not a <c>RepeatedField</c>. Copying the parameter into a <c>RepeatedField</c> to bind an
+    /// <c>Element</c> would cost a copy of the list for every loop over it, for a setter nothing may call.
+    /// </para>
     /// </remarks>
     private static void EmitWrappers(SourceWriter writer)
     {
@@ -154,6 +312,34 @@ public static class CSharpRuntime
                 {
                     writer.WriteLine("yield return new Element<T>(list, index);");
                 }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>Each element of a list the code was given and may not change, as a place it is read from.</summary>");
+            using (writer.Block("public static global::System.Collections.Generic.IEnumerable<ReadOnlyElement<T>> Elements<T>(global::System.Collections.Generic.IReadOnlyList<T> list)"))
+            {
+                using (writer.Block("for (var index = 0; index < list.Count; index++)"))
+                {
+                    writer.WriteLine("yield return new ReadOnlyElement<T>(list, index);");
+                }
+            }
+
+            writer.WriteLine();
+            writer.WriteLine("/// <summary>One element of a list the code may not change, read where it is.</summary>");
+            using (writer.Block("public sealed class ReadOnlyElement<T>"))
+            {
+                writer.WriteLine("private readonly global::System.Collections.Generic.IReadOnlyList<T> _list;");
+                writer.WriteLine("private readonly int _index;");
+                writer.WriteLine();
+                using (writer.Block("public ReadOnlyElement(global::System.Collections.Generic.IReadOnlyList<T> list, int index)"))
+                {
+                    writer.WriteLine("_list = list;");
+                    writer.WriteLine("_index = index;");
+                }
+
+                writer.WriteLine();
+                writer.WriteLine("/// <summary>The element's value, as the list holds it now.</summary>");
+                writer.WriteLine("public T Value => _list[_index];");
             }
 
             writer.WriteLine();
@@ -526,7 +712,9 @@ public static class CSharpRuntime
     /// </para>
     /// <para>
     /// Negation is not emitted for the unsigned types: negating an unsigned value is PC0052, so no
-    /// call site can exist.
+    /// call site can exist. Nor is <c>Abs</c>, which is the value itself there and is never called
+    /// (spec 10.5). <c>Abs</c> is the negation of a negative value under the same policy, so the
+    /// minimum's magnitude is what negating the minimum gives, and the value is read once.
     /// </para>
     /// </remarks>
     private static void EmitOverflowingOperations(
@@ -585,6 +773,13 @@ public static class CSharpRuntime
                 default:
                     throw new ArgumentOutOfRangeException(nameof(behavior), behavior, "Unhandled behavior.");
             }
+        }
+
+        writer.WriteLine();
+        writer.WriteLine($"/// <summary>Magnitude (spec 10.5), {Describe(behavior)}: a negative value is negated.</summary>");
+        using (writer.Block($"public static {type} {stem}Abs({type} value)"))
+        {
+            writer.WriteLine($"return value < 0 ? {stem}Negate(value) : value;");
         }
     }
 

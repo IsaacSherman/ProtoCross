@@ -13,7 +13,7 @@ namespace ProtoCross.Semantics;
 /// </para>
 /// <para>
 /// A <em>place</em> is what a change can be made to: the receiver, a local, a parameter or a loop
-/// binding, or a chain of field accesses and map elements from one of those. Whether a place may be changed is the
+/// binding, or a chain of field accesses and elements of maps and lists from one of those. Whether a place may be changed is the
 /// binder's question, and it has answered it before any of these are asked.
 /// </para>
 /// </remarks>
@@ -21,8 +21,8 @@ public static class IrMutation
 {
     /// <summary>
     /// The place <paramref name="node"/> changes: the field an assignment writes, what an append adds
-    /// to, the element a store writes or the map a map's method changes, or the receiver of a call to a
-    /// <c>mut fn</c>. Null for anything that changes no message.
+    /// to, the element of a map or a list a store writes or the map a map's method changes, or the
+    /// receiver of a call to a <c>mut fn</c>. Null for anything that changes no message.
     /// </summary>
     /// <remarks>
     /// An assignment to a local is not here. It gives the name another value and changes no message,
@@ -37,6 +37,7 @@ public static class IrMutation
             IrFieldAssignment assignment => assignment.Target,
             IrAppend append => append.Collection,
             IrElementAssignment assignment => assignment.Target,
+            IrListElementAssignment assignment => assignment.Target,
             IrMapUpdate update => update.Map,
             IrMethodCall { Target.IsMutating: true } call => call.Receiver,
             _ => null,
@@ -63,12 +64,13 @@ public static class IrMutation
     };
 
     /// <summary>
-    /// What a chain of field accesses and map elements begins at, or <paramref name="place"/> itself
-    /// when it is not one.
+    /// What a chain of field accesses and elements of maps and lists begins at, or <paramref name="place"/>
+    /// itself when it is not one.
     /// </summary>
     /// <remarks>
     /// A lookup ends the chain rather than continuing it. What it gives is a value, the map's or the
-    /// fallback, and nothing done to it reaches the map (spec 14.2).
+    /// fallback, and nothing done to it reaches the map (spec 14.2). So does a list's element read, as
+    /// opposed to one written: it is a value too (spec 14.1).
     /// </remarks>
     public static IrExpression RootOf(IrExpression place)
     {
@@ -86,6 +88,10 @@ public static class IrMutation
                     place = element.Map;
                     break;
 
+                case IrListElement element:
+                    place = element.List;
+                    break;
+
                 default:
                     return place;
             }
@@ -94,14 +100,17 @@ public static class IrMutation
 
     /// <summary>
     /// The temporary message a chain of field reads begins at, when it begins at one: a literal, a
-    /// call's result, whether or not its method may refuse, or what a lookup gives.
+    /// call's result, whether or not its method may refuse, what a lookup gives, or a list's element read
+    /// by index or by a try method.
     /// </summary>
     /// <remarks>
     /// A loop over a field of one has to keep the message for as long as it runs, and keeps a message
     /// of its own. C++ keeps it in a local, since an accessor's reference into a temporary outlives
     /// the temporary. C# keeps a copy in a method that changes a message, since a call's result may be
     /// part of the receiver the loop changes (spec 24), and a lookup gives the message the map holds,
-    /// which the loop may change through the map.
+    /// which the loop may change through the map. An element read from a list is a value as a lookup's
+    /// is (spec 14.1), and C++ reads a try method's into a copy of its own, a temporary, which an accessor
+    /// into it would outlive.
     /// </remarks>
     public static IrExpression? TemporaryOwnerOf(IrExpression collection)
     {
@@ -109,6 +118,7 @@ public static class IrMutation
 
         var root = RootOf(collection);
         return collection is IrFieldAccess && root is IrMessageLiteral or IrMethodCall or IrRefusableCall or IrMapLookup
+                or IrElementLookup or IrElementRead
             ? root
             : null;
     }
@@ -119,7 +129,8 @@ public static class IrMutation
     /// </summary>
     /// <remarks>
     /// A store to an element puts nothing there until it stores, which both targets do last. Reaching a
-    /// field of an element, or an element of a map inside one, puts the message there first.
+    /// field of an element, or an element of a map inside one, puts the message there first. A list's
+    /// element is always there, and puts nothing, but a map may be reached through one.
     /// </remarks>
     public static bool ReachesThroughAnElement(IrExpression place)
     {
@@ -136,11 +147,12 @@ public static class IrMutation
         return false;
     }
 
-    /// <summary>The link a place is reached through: a field's message, or an element's map; null at the root.</summary>
+    /// <summary>The link a place is reached through: a field's message, or an element's map or list; null at the root.</summary>
     private static IrExpression? Above(IrExpression place) => place switch
     {
         IrFieldAccess field => field.Receiver,
         IrMapElement element => element.Map,
+        IrListElement element => element.List,
         _ => null,
     };
 
@@ -219,6 +231,22 @@ public static class IrMutation
         ArgumentNullException.ThrowIfNull(argument);
 
         return call.Target.IsMutating && argument.IsCopiedWhenStored && !IsPlace(argument);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="value"/> is a list's element read by its index, or something read from one:
+    /// <c>items[0]</c>, <c>items[^1].customer</c>.
+    /// </summary>
+    /// <remarks>
+    /// Such a value is read where the list holds it, as the target's indexer reads it, though it is not a place the
+    /// language writes (spec 14.1). A backend that hands a reference to one where the list could change under it
+    /// copies it first (<see cref="IsPassedAsACopy"/>).
+    /// </remarks>
+    public static bool IsReadFromAListsElement(IrExpression value)
+    {
+        ArgumentNullException.ThrowIfNull(value);
+
+        return RootOf(value) is IrElementRead;
     }
 
     private static bool IsBinding(IrExpression root, IrForEach loop)

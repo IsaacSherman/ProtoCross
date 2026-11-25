@@ -134,6 +134,82 @@ public partial class NameMappingTests
     }
 
     /// <summary>
+    /// The names <see cref="NameConventions.GetCppEnumCompanionNames"/> gives an enum, with its class and its
+    /// values, are every name the protoc header declares at namespace scope under the enum's names, and no
+    /// others: for
+    /// an open enum and a closed one, each top-level, nested and nested twice, a class escaped, a largest
+    /// value of <c>int.MaxValue</c>, a file built for the lite runtime, and an editions enum of each kind.
+    /// </summary>
+    /// <remarks>
+    /// Read off the header rather than listed here, so a name protoc adds or drops fails it. A name at
+    /// namespace scope is on a line protoc does not indent, or is an enumerator; one in a message's class
+    /// is indented.
+    /// </remarks>
+    [Fact]
+    public void EveryNameProtocDeclaresBesideAnEnumIsACompanionOrAValue()
+    {
+        var (files, directory) = GenerateWithPinnedProtoc(
+            [
+                ("companions_open.proto", """
+                    syntax = "proto3";
+                    package companions.open;
+                    enum Kind { READY = 0; DONE = 5; }
+                    enum Swap { SWAP_A = 0; }
+                    enum Huge { HUGE_ZERO = 0; HUGE_MAX = 2147483647; }
+                    message Outer {
+                      enum Level { LOW = 0; HIGH = 2; }
+                      message Inner { enum Deep { DEEP_A = 0; } }
+                    }
+                    message New { enum Kind { NEW_KIND_A = 0; } }
+                    """),
+                ("companions_closed.proto", """
+                    syntax = "proto2";
+                    package companions.closed;
+                    enum Shade { DARK = 1; LIGHT = 3; }
+                    enum Big { BIG_LOW = -2147483648; BIG_HIGH = 2147483647; }
+                    message Box { enum Size { SMALL = 1; } }
+                    """),
+                ("companions_lite.proto", """
+                    syntax = "proto3";
+                    package companions.lite;
+                    option optimize_for = LITE_RUNTIME;
+                    enum Tone { TONE_A = 0; }
+                    message Holder { enum Mode { MODE_A = 0; } }
+                    """),
+                ("companions_editions.proto", """
+                    edition = "2023";
+                    package companions.editions;
+                    enum Ajar { AJAR_A = 0; }
+                    enum Shut { option features.enum_type = CLOSED; SHUT_A = 1; }
+                    """),
+            ],
+            "cpp_out");
+
+        var checkedEnums = 0;
+        foreach (var schema in files)
+        {
+            var header = File.ReadAllText(Path.Combine(directory, NameConventions.GetCppProtoHeader(schema))).ReplaceLineEndings("\n");
+            var atNamespaceScope = string.Join(
+                "\n", header.Split('\n').Where(line => Regex.IsMatch(line, @"^([^\s#/]|  \w+ =)")));
+
+            foreach (var enumType in AllEnums(schema))
+            {
+                var type = NameConventions.GetCppTypeName(enumType);
+                var limits = (enumType.ContainingType is null ? string.Empty : type + "_") + enumType.Name;
+                var declared = Regex.Matches(atNamespaceScope, $@"\b(?:{Regex.Escape(type)}|{Regex.Escape(limits)})_\w*")
+                    .Select(match => match.Value)
+                    .Except(enumType.Values.Select(NameConventions.GetCppValueName).Append(type))
+                    .Order(StringComparer.Ordinal);
+
+                Assert.Equal(NameConventions.GetCppEnumCompanionNames(enumType).Order(StringComparer.Ordinal), declared);
+                checkedEnums++;
+            }
+        }
+
+        Assert.Equal(13, checkedEnums);
+    }
+
+    /// <summary>
     /// The namespace <see cref="NameConventions.GetCppNamespace"/> gives is the one the protoc header
     /// opens, one component at a time: a keyword and a macro escaped, and a generated member's name,
     /// which a class would have escaped, left alone.

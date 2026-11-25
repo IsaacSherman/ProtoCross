@@ -17,6 +17,17 @@ public sealed record CompilationUnit(
     /// every source was before #83.
     /// </remarks>
     public IReadOnlyList<FactoryDeclaration> Factories { get; init; } = [];
+
+    /// <summary>
+    /// The <c>helper fn</c> declarations written at the top level, in the order they are written: the
+    /// project's helpers, which belong to no message (spec 16.4).
+    /// </summary>
+    /// <remarks>
+    /// A method declaration like any other, because a helper is written exactly as a factory's is, and
+    /// where it is written is what makes it one or the other. Init-only for the reason
+    /// <see cref="Factories"/> gives, so every existing construction of a unit declares none.
+    /// </remarks>
+    public IReadOnlyList<MethodDeclaration> Helpers { get; init; } = [];
 }
 
 /// <summary>An <c>import proto "path.proto";</c> declaration (spec 5.2).</summary>
@@ -69,7 +80,10 @@ public sealed record MethodDeclaration(
     /// </remarks>
     public bool IsMutating { get; init; }
 
-    /// <summary>Whether the declaration begins <c>helper fn</c>, so only its factory may call it (spec 16.3).</summary>
+    /// <summary>
+    /// Whether the declaration begins <c>helper fn</c>: in a factory, a member only that factory may call
+    /// (spec 16.3), and at the top level, one of the project's helpers (spec 16.4).
+    /// </summary>
     /// <remarks>Init-only beside the positional members for the reason <see cref="IsMutating"/> gives.</remarks>
     public bool IsHelper { get; init; }
 
@@ -87,7 +101,22 @@ public sealed record ParameterDeclaration(SyntaxName Name, TypeReference Type, S
 /// A syntactic type reference. Names are resolved later against protobuf descriptors, since
 /// spec 8.1 defines the ProtoCross type universe as exactly the protobuf type universe.
 /// </summary>
-public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNode(Span);
+public sealed record TypeReference(SyntaxName Name, SourceSpan Span) : SyntaxNode(Span)
+{
+    /// <summary>
+    /// The <c>repeated</c> of <c>repeated double</c>, where the reference names a list of what
+    /// <see cref="Name"/> names, or null where it names that type itself (spec 8.1).
+    /// </summary>
+    /// <remarks>
+    /// A span beside the element's name rather than a reference to an element type, because lists do
+    /// not nest: <c>repeated repeated double</c> is refused as it is parsed, so the element is always
+    /// a name. Init-only, so the references that name a type itself are built as they always were.
+    /// </remarks>
+    public SourceSpan? RepeatedWord { get; init; }
+
+    /// <summary>Whether the reference names a list, <c>repeated T</c>.</summary>
+    public bool IsRepeated => RepeatedWord is not null;
+}
 
 /// <summary>
 /// The <c>Invoice.total_cents</c> of a test declaration: which message, and which of its methods.
@@ -130,6 +159,15 @@ public sealed record TestTarget(SyntaxName Receiver, SyntaxName Method, SourceSp
     /// <para>Init-only, so every existing construction of a target stays valid and names an extend method.</para>
     /// </remarks>
     public SyntaxName? Factory { get; init; }
+
+    /// <summary>
+    /// Whether the target is one name, <c>test clamp</c>, which names a top-level helper (spec 25.3).
+    /// </summary>
+    /// <remarks>
+    /// A helper belongs to no message, so its test has no receiver to declare, and the parser is what asks
+    /// for one. Whether a helper has the name is the binder's to say.
+    /// </remarks>
+    public bool IsOneName => Receiver.IsMissing && !Method.IsMissing;
 }
 
 /// <param name="Receiver">
@@ -383,6 +421,21 @@ public sealed record NameExpression(SyntaxName Name, SourceSpan Span) : Expressi
 /// </remarks>
 public sealed record MemberAccessExpression(Expression Receiver, SyntaxName Name, SourceSpan Span) : Expression(Span);
 
+/// <summary>The word <c>_pCrossMath</c>, which qualifies a call to one of the math functions (spec 10.5).</summary>
+/// <remarks>
+/// <para>
+/// A node of its own rather than a name, because it is a reserved word and names nothing a scope could hold. The
+/// parser reads it wherever a value may begin and leaves the dot and the call after it to the postfix rules every
+/// other receiver goes through, so <c>_pCrossMath.</c> with its name still being typed is the member access with a
+/// missing name that completion already asks about after any other dot.
+/// </para>
+/// <para>
+/// Only a call through it means anything. The binder reads <c>_pCrossMath.name(…)</c> as a math call, and refuses
+/// the word anywhere else, alone or with a name it does not call.
+/// </para>
+/// </remarks>
+public sealed record MathQualifierExpression(SourceSpan Span) : Expression(Span);
+
 public sealed record InvocationExpression(
     Expression Callee,
     IReadOnlyList<Expression> Arguments,
@@ -413,7 +466,18 @@ public sealed record OnRefusedClause(Expression? Fallback, SourceSpan Span) : Sy
     /// <remarks>Init-only, so a clause built without it is a fallback or <c>fail</c>, as one with only a fallback says.</remarks>
     public bool PassesItOn { get; init; }
 
-    public bool IsFail => Fallback is null && !PassesItOn;
+    /// <summary>
+    /// The value written after <c>refuse</c>, <c>on_refused refuse value</c>, which refuses with a value of the calling
+    /// method's own, or null where the clause has none (spec 16.3.1).
+    /// </summary>
+    /// <remarks>
+    /// A list's try methods refuse with no type of their own, so nothing could be passed on from one, and the
+    /// caller names what it refuses with instead, as <c>on_missing refuse value</c> does. Init-only, as
+    /// <see cref="PassesItOn"/> is; a clause with a refusal does not pass one on.
+    /// </remarks>
+    public Expression? Refusal { get; init; }
+
+    public bool IsFail => Fallback is null && !PassesItOn && Refusal is null;
 }
 
 public enum BinaryOperatorKind
@@ -578,7 +642,18 @@ public sealed record IndexExpression(
     Expression Collection,
     Expression Key,
     SourceSpan Span,
-    OnMissingClause? OnMissing = null) : Expression(Span);
+    OnMissingClause? OnMissing = null) : Expression(Span)
+{
+    /// <summary>
+    /// The <c>^</c> of <c>items[^1]</c>, where the index counts from the end of a list, or null where it counts from
+    /// the start or looks up a map's key (spec 14.1).
+    /// </summary>
+    /// <remarks>Init-only beside the positional members, so every index built before it counts from the start.</remarks>
+    public SourceSpan? FromEndMarker { get; init; }
+
+    /// <summary>Whether the index counts from the end of the list, <c>items[^1]</c>.</summary>
+    public bool IsFromEnd => FromEndMarker is not null;
+}
 
 /// <summary>
 /// The <c>on_missing</c> clause of a map lookup: a value to use when the key is missing, <c>fail</c>,
@@ -607,9 +682,8 @@ public sealed record OnMissingClause(Expression? Fallback, SourceSpan Span) : Sy
 /// entries of a map (spec 13.2, 14.2).
 /// </summary>
 /// <remarks>
-/// A value only where a map field is given one, as a <see cref="ListExpression"/> is only where a
-/// repeated field is. It is braces without the <c>new T</c> a message literal begins with, because the
-/// entry's type is the field's and has no name an author could write.
+/// A value only where a map field is given one. It is braces without the <c>new T</c> a message literal
+/// begins with, because the entry's type is the field's and has no name an author could write.
 /// </remarks>
 public sealed record MapEntryExpression(IReadOnlyList<FieldInitializer> Fields, SourceSpan Span) : Expression(Span);
 
@@ -666,11 +740,11 @@ public sealed record MessageLiteralExpression(
     IReadOnlyList<FieldInitializer> Fields,
     SourceSpan Span) : Expression(Span);
 
-/// <summary>The values of a repeated field, in order: <c>items: [first, second]</c> (spec 13.2).</summary>
+/// <summary>A list, in order: <c>[first, second]</c> (spec 14.1, 13.2).</summary>
 /// <remarks>
-/// A value only where a field is given one. There are no list values in the language, so a list is
-/// the whole of a repeated field's contents rather than something that could be stored or passed.
-/// Lists do not nest, because no protobuf field holds a list of lists.
+/// A value wherever a value is: a repeated field's contents, a local's, an argument or a result. Lists
+/// do not nest, because no protobuf field holds a list of lists, so a list of them is refused where it
+/// is bound.
 /// </remarks>
 public sealed record ListExpression(IReadOnlyList<Expression> Elements, SourceSpan Span) : Expression(Span);
 

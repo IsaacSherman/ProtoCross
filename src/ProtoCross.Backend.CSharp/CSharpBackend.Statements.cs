@@ -1,6 +1,7 @@
 using ProtoCross.Backend;
 using ProtoCross.Ir;
 using ProtoCross.Semantics;
+using ProtoCross.Types;
 
 namespace ProtoCross.Backend.CSharp;
 
@@ -70,11 +71,11 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrReturn returned when body.Outs is { } outs:
-                EmitBuilt(writer, returned.Value, outs, placement);
+                EmitBuilt(writer, returned.Value, outs, placement, body.CopiesIntoLocals);
                 break;
 
             case IrRefuse refused:
-                EmitRefused(writer, refused.Value, body.Outs!, placement);
+                EmitRefused(writer, refused.Value, body.Outs!, placement, body.CopiesIntoLocals);
                 break;
 
             case IrExpressionStatement { Expression: IrRefusableCall refusable }:
@@ -93,6 +94,13 @@ public sealed partial class CSharpBackend
 
             case IrFieldAssignment assignment when StoresThroughAReach(assignment):
                 EmitStoreThroughAReach(writer, assignment, body);
+                break;
+
+            // A repeated field's property has no setter, so a whole list is put in it in place of what it held.
+            case IrFieldAssignment { Target.Type: RepeatedType } assignment:
+                writer.WriteLine(
+                    $"{CSharpRuntime.CollectionsTypeName}.Replace({WritableField(assignment.Target, placement)}, "
+                    + $"{StoredValue(assignment.Value, placement, ReceiverName)});");
                 break;
 
             case IrFieldAssignment assignment:
@@ -114,6 +122,10 @@ public sealed partial class CSharpBackend
                 EmitElementAssignment(writer, assignment, body);
                 break;
 
+            case IrListElementAssignment assignment:
+                EmitListElementAssignment(writer, assignment, body);
+                break;
+
             case IrMapUpdate update:
                 EmitMapUpdate(writer, update, placement);
                 break;
@@ -123,7 +135,7 @@ public sealed partial class CSharpBackend
                 break;
 
             case IrReturn returnStatement:
-                writer.WriteLine($"return {Expression(returnStatement.Value!, placement)};");
+                writer.WriteLine($"return {Returned(returnStatement.Value!, placement, body.CopiesIntoLocals)};");
                 break;
 
             case IrForEach forEach:

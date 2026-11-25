@@ -211,18 +211,38 @@ public class MessageLiteralTests
     }
 
     /// <summary>
-    /// A repeated field takes its elements in a list. A whole repeated value is refused for now, and
-    /// the message says that is what it is, because the list the help writes is not the only thing
-    /// the author could have meant (spec 13.2).
+    /// A repeated field may be given a whole list of its type, which it stores a copy of, as well as a list
+    /// written in place (spec 13.2): another message's field, a parameter, a local or a call's result.
+    /// </summary>
+    [Theory]
+    [InlineData("    fn f(other: Outer) -> int64 { return new Outer { nested_values: other.nested_values }.count; }")]
+    [InlineData("    fn f(given: repeated Nested) -> int64 { return new Outer { nested_values: given }.count; }")]
+    [InlineData("    fn f() -> int64 {\n        var kept = [Nested.NESTED_SOME];\n        return new Outer { nested_values: kept }.count;\n    }")]
+    public void ARepeatedFieldIsGivenAWholeList(string methods)
+        => AssertOk(Compile(Source(methods)));
+
+    /// <summary>
+    /// A whole list of another element type is the field's mismatch, which names both list types, because
+    /// no conversion is applied to a list's elements any more than to a value.
     /// </summary>
     [Fact]
-    public void ARepeatedFieldIsNotGivenAWholeRepeatedValueYet()
+    public void ARepeatedFieldIsNotGivenAListOfAnotherType()
     {
         var refused = TheOnly(Compile(Source(
-            "    fn f(other: Outer) -> int64 { return new Outer { nested_values: other.nested_values }.count; }")));
+            "    fn f(given: repeated int64) -> int64 { return new Outer { nested_values: given }.count; }")));
 
         Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
-        Assert.Contains("not a whole repeated value", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("not 'repeated int64'", refused.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>A single value is still not a list, and the help writes the one-element list it could have been.</summary>
+    [Fact]
+    public void ARepeatedFieldIsNotGivenOneValue()
+    {
+        var refused = TheOnly(Compile(Source(
+            "    fn f() -> int64 { return new Outer { nested_values: Nested.NESTED_SOME }.count; }")));
+
+        Assert.Equal(DiagnosticCodes.LiteralFieldTypeMismatch.Code, refused.Code);
         Assert.True(
             refused.Help?.Contains("nested_values: [", StringComparison.Ordinal) == true,
             $"the help must show the list to write, but says: {refused.Help}");
