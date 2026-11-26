@@ -43,10 +43,13 @@ derivable from the other:
 | `Outer.Inner.Deep.DEEP_NONE` | `Outer.Types.Inner.Types.Deep.None` | `Outer_Inner_Deep_DEEP_NONE` |
 
 - **C#** strips the enum's own name from the front of the value, ignoring case and underscores, and
-  PascalCases what is left. A value that does not carry the prefix keeps its whole name, and one
-  where stripping would leave a leading digit gains an underscore. Backends must reproduce this
-  exactly rather than approximate it: a near-miss names an identifier that does not exist, which
-  fails in the consumer's build rather than in this compiler.
+  PascalCases what is left: the underscores are dropped, and each letter or digit is capitalized at
+  the start, after an underscore or after a digit, keeps its case after a lowercase letter, and is
+  lowercased after a capital. So `LEVEL_HIGH` is `LevelHigh`, but `TicketFactory` keeps its humps,
+  `fooBAR` is `FooBar` and `a1b` is `A1B`. A value that does not carry the prefix keeps its whole
+  name, and one where stripping would leave a leading digit gains an underscore. Backends must
+  reproduce this exactly rather than approximate it: a near-miss names an identifier that does not
+  exist, which fails in the consumer's build rather than in this compiler.
 - **C++** keeps the declared spelling but places values at namespace scope, prefixing a nested
   enum's values with the flattened enum type name and leaving a top-level enum's values bare.
   protoc also emits a `static constexpr` member on the containing class, but the namespace-scope

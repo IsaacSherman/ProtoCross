@@ -1,0 +1,110 @@
+// Conformance vectors for enum values whose C# member protoc spells from a name that is not
+// SHOUTY_CASE (spec 12).
+//
+// protoc's C# generator does not leave a value's name as it is: it strips the enum's name from the
+// front and PascalCases what is left, casing each letter or digit by the character before it. For a
+// name that really is shouty, such as LEVEL_HIGH, almost any PascalCase rule gets that right. For
+// TicketFactory, fooBAR or a1b only protoc's rule does, and a backend that capitalizes each run and
+// lower-cases the rest names Ticketfactory, a member that does not exist, so the C# build fails.
+//
+// So each method names one value and returns its number. The member has to exist for the C# to
+// build, and has to be the right one for the number to come back.
+
+import proto "enum_value_names.proto";
+
+extend EnumValueNameCase {
+    fn ticket_factory_number() -> int32 {
+        return Kind.TicketFactory as int32;
+    }
+
+    fn http2_ok_number() -> int32 {
+        return Kind.HTTP2_OK as int32;
+    }
+
+    fn a1b_number() -> int32 {
+        return Kind.a1b as int32;
+    }
+
+    fn foo_bar_number() -> int32 {
+        return Kind.fooBAR as int32;
+    }
+
+    fn x_y_number() -> int32 {
+        return Kind.X_y as int32;
+    }
+
+    fn http2ok_later_number() -> int32 {
+        return Kind.HTTP2OK_LATER as int32;
+    }
+
+    fn lower_tail_number() -> int32 {
+        return Kind.KIND_lowerTail as int32;
+    }
+
+    fn abc_def_number() -> int32 {
+        return Kind.ABC_dEF as int32;
+    }
+
+    // The field, so that a fixture names a value as well as a method.
+    fn kind_number() -> int32 {
+        return kind as int32;
+    }
+
+    // A value as the result, so that an expectation names one too.
+    fn hump_kept() -> Kind {
+        return Kind.TicketFactory;
+    }
+}
+
+test EnumValueNameCase.ticket_factory_number "a value already in PascalCase keeps its humps" {
+    receiver {}
+    expect return 1;
+}
+
+test EnumValueNameCase.http2_ok_number "a digit before a separator stays a digit" {
+    receiver {}
+    expect return 2;
+}
+
+test EnumValueNameCase.a1b_number "a letter after a digit is raised" {
+    receiver {}
+    expect return 3;
+}
+
+test EnumValueNameCase.foo_bar_number "a letter is kept after a lowercase letter and lowered after an uppercase one" {
+    receiver {}
+    expect return 4;
+}
+
+test EnumValueNameCase.x_y_number "a letter after a separator is raised" {
+    receiver {}
+    expect return 5;
+}
+
+test EnumValueNameCase.http2ok_later_number "a letter after a digit is raised with no separator between" {
+    receiver {}
+    expect return 6;
+}
+
+test EnumValueNameCase.lower_tail_number "what is left after the enum's prefix keeps its hump" {
+    receiver {}
+    expect return 7;
+}
+
+test EnumValueNameCase.abc_def_number "a letter is cased by the character the input had before it" {
+    receiver {}
+    expect return 8;
+}
+
+test EnumValueNameCase.kind_number "a fixture sets a field to a value that is not SHOUTY_CASE" {
+    receiver {
+        kind: Kind.fooBAR,
+    }
+
+    expect return 4;
+}
+
+test EnumValueNameCase.hump_kept "an expectation names a value that is not SHOUTY_CASE" {
+    receiver {}
+    expect return Kind.TicketFactory;
+}

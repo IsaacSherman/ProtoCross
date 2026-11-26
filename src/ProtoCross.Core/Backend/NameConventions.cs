@@ -765,31 +765,62 @@ public static partial class NameConventions
     }
 
     /// <summary>
-    /// Converts a <c>SHOUTY_CASE</c> name to <c>PascalCase</c>: the first alphanumeric of each run
-    /// is upper-cased, the rest lower-cased, and the separators dropped. A port of the same helper
-    /// in protoc's C# generator, and distinct from <see cref="ToPascalCase"/>, which preserves the
-    /// case of characters it does not capitalize and so would turn <c>LEVEL_HIGH</c> into
-    /// <c>LEVELHIGH</c>.
+    /// Converts a <c>SHOUTY_CASE</c> name to <c>PascalCase</c> the way protoc's C# generator names an
+    /// enum value: separators are dropped, and each letter or digit is cased by the character before
+    /// it. A port of the same helper in the generator's <c>csharp_helpers.cc</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A character at the start, after a separator or after a digit is upper-cased, one after a
+    /// lowercase letter keeps its case, and one after an uppercase letter is lower-cased. So
+    /// <c>LEVEL_HIGH</c> is <c>LevelHigh</c>, and a name that is not shouty keeps the humps it has:
+    /// <c>TicketFactory</c> stays <c>TicketFactory</c>, <c>fooBAR</c> is <c>FooBar</c> and <c>a1b</c>
+    /// is <c>A1B</c>.
+    /// </para>
+    /// <para>
+    /// The case follows the previous character of the input, a skipped separator included, rather than
+    /// the position in a run. A rule that capitalizes the first character of each run and lower-cases
+    /// the rest agrees with protoc on every name that really is shouty and on almost nothing else: it
+    /// turned <c>TicketFactory</c> into <c>Ticketfactory</c>, a member protoc never declares, and the
+    /// consumer's build failed on it. The rule and its table are the same in the sources of protoc 31.1
+    /// and 33.4.
+    /// </para>
+    /// <para>
+    /// It is distinct from <see cref="ToPascalCase"/>, which preserves the case of characters it does
+    /// not capitalize and so would turn <c>LEVEL_HIGH</c> into <c>LEVELHIGH</c>.
+    /// </para>
+    /// </remarks>
     private static string ShoutyToPascalCase(string input)
     {
         var builder = new StringBuilder(input.Length);
-        var inRun = false;
 
-        foreach (var c in input)
+        // protoc starts from an underscore, so the first character is cased as one after a separator.
+        var previous = '_';
+
+        foreach (var current in input)
         {
-            if (!char.IsAsciiLetterOrDigit(c))
+            if (char.IsAsciiLetterOrDigit(current))
             {
-                inRun = false;
-                continue;
+                builder.Append(CaseAfter(previous, current));
             }
 
-            builder.Append(inRun ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c));
-            inRun = true;
+            previous = current;
         }
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// <paramref name="current"/> cased as protoc's <c>ShoutyToPascalCase</c> cases it after
+    /// <paramref name="previous"/>: kept after a lowercase letter, lowered after an uppercase one, and
+    /// raised after anything else.
+    /// </summary>
+    private static char CaseAfter(char previous, char current) => previous switch
+    {
+        >= 'a' and <= 'z' => current,
+        >= 'A' and <= 'Z' => char.ToLowerInvariant(current),
+        _ => char.ToUpperInvariant(current),
+    };
 
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> the way protoc's C# generator does: a
