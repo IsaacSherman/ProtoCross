@@ -10,8 +10,8 @@ package protocross.conformance;
 // after a digit, kept after a lowercase letter, and lowered after an uppercase one. C++ keeps every
 // value's .proto spelling, so only the C# side can get these wrong.
 message EnumValueNameCase {
-  enum Kind {
-    KIND_UNSPECIFIED = 0;
+  enum Spelling {
+    SPELLING_UNSPECIFIED = 0;
 
     // Already PascalCase, so the humps stay: TicketFactory.
     TicketFactory = 1;
@@ -32,7 +32,7 @@ message EnumValueNameCase {
     HTTP2OK_LATER = 6;
 
     // What is left after the prefix starts lowercase and keeps its hump: LowerTail.
-    KIND_lowerTail = 7;
+    SPELLING_lowerTail = 7;
 
     // Cased by the character the input had before it, not the one written: AbcDEf, where E follows
     // the d that was raised.
@@ -52,5 +52,5 @@ message EnumValueNameCase {
     Foo_Bar = 1;
   }
 
-  Kind kind = 1;
+  Spelling spelling = 1;
 }
