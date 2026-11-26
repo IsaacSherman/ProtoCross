@@ -47,9 +47,12 @@ derivable from the other:
   the start, after an underscore or after a digit, keeps its case after a lowercase letter, and is
   lowercased after a capital. So `LEVEL_HIGH` is `LevelHigh`, but `TicketFactory` keeps its humps,
   `fooBAR` is `FooBar` and `a1b` is `A1B`. A value that does not carry the prefix keeps its whole
-  name, and one where stripping would leave a leading digit gains an underscore. Backends must
-  reproduce this exactly rather than approximate it: a near-miss names an identifier that does not
-  exist, which fails in the consumer's build rather than in this compiler.
+  name, and one where stripping would leave a leading digit gains an underscore. A value that comes
+  out spelled like one declared before it takes underscores until its name is free, so `FOO_BAR`
+  then `FooBar` are `FooBar` and `FooBar_`. Backends must reproduce this exactly rather than
+  approximate it: a near-miss names an identifier that does not exist, which fails in the
+  consumer's build rather than in this compiler, or names another value's member, which does not
+  fail at all.
 - **C++** keeps the declared spelling but places values at namespace scope, prefixing a nested
   enum's values with the flattened enum type name and leaving a top-level enum's values bare.
   protoc also emits a `static constexpr` member on the containing class, but the namespace-scope

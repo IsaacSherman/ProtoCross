@@ -7,6 +7,10 @@
 // TicketFactory, fooBAR or a1b only protoc's rule does, and a backend that capitalizes each run and
 // lower-cases the rest names Ticketfactory, a member that does not exist, so the C# build fails.
 //
+// Getting the case right lets two values come out spelled alike, as FOO_BAR and FooBar both do, and
+// then protoc gives each later one underscores until its name is free. A backend that does not names
+// the earlier value's member, which builds and holds another number.
+//
 // So each method names one value and returns its number. The member has to exist for the C# to
 // build, and has to be the right one for the number to come back.
 
@@ -53,6 +57,17 @@ extend EnumValueNameCase {
     // A value as the result, so that an expectation names one too.
     fn hump_kept() -> Kind {
         return Kind.TicketFactory;
+    }
+
+    // Spelled like FOO_BAR, which is declared first and keeps the name.
+    fn second_twin_number() -> int32 {
+        return Twin.FooBar as int32;
+    }
+
+    // Spelled like both, so it takes a second underscore. Stopping at one would name FooBar_, and
+    // return that value's number, 2.
+    fn third_twin_number() -> int32 {
+        return Twin.Foo_Bar as int32;
     }
 }
 
@@ -107,4 +122,14 @@ test EnumValueNameCase.kind_number "a fixture sets a field to a value that is no
 test EnumValueNameCase.hump_kept "an expectation names a value that is not SHOUTY_CASE" {
     receiver {}
     expect return Kind.TicketFactory;
+}
+
+test EnumValueNameCase.second_twin_number "a value spelled like an earlier one takes an underscore" {
+    receiver {}
+    expect return 2;
+}
+
+test EnumValueNameCase.third_twin_number "a value spelled like two earlier ones takes an underscore for each" {
+    receiver {}
+    expect return 1;
 }

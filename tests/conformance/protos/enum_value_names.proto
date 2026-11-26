@@ -39,5 +39,18 @@ message EnumValueNameCase {
     ABC_dEF = 8;
   }
 
+  // Values the C# generator spells alike, so each one after the first takes underscores until its
+  // name is free: FooBar, FooBar_, FooBar__. protoc's own uniqueness check lowercases after the first
+  // letter of each word, sees FooBar and Foobar, and lets the first two through. The third needs to
+  // be an alias, since that check sees it as FOO_BAR again.
+  enum Twin {
+    option allow_alias = true;
+
+    TWIN_UNSPECIFIED = 0;
+    FOO_BAR = 1;
+    FooBar = 2;
+    Foo_Bar = 1;
+  }
+
   Kind kind = 1;
 }

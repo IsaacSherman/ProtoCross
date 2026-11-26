@@ -532,17 +532,60 @@ public static partial class NameConventions
     /// becomes <c>Ok</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Reproduced rather than approximated. The rule has edge cases -- a value that does not carry
     /// the prefix keeps its whole name, and stripping that would leave a leading digit gets an
     /// underscore -- and getting one wrong emits a name that does not exist, which is a compile
     /// error in the consumer's build rather than anything this compiler would notice.
+    /// </para>
+    /// <para>
+    /// Two values can come out spelled alike, and then the later one takes underscores until its
+    /// name is free, as protoc's <c>csharp_enum.cc</c> names the members it declares: <c>FOO_BAR</c>
+    /// and then <c>FooBar</c> are <c>FooBar</c> and <c>FooBar_</c>. protoc accepts the pair because the
+    /// uniqueness check in its descriptor builder lowercases every letter after the first of each
+    /// word, so it sees <c>FooBar</c> and <c>Foobar</c>. A spelling that missed this would not fail to
+    /// compile: it would name the earlier value's member, a value with another number.
+    /// </para>
     /// </remarks>
     public static string GetCSharpValueName(EnumValueDescriptor value)
+    {
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        var name = string.Empty;
+
+        // protoc names the values in declaration order, so only the ones before this value can take
+        // its name first.
+        foreach (var declared in value.EnumDescriptor.Values.Take(value.Index + 1))
+        {
+            name = Claim(taken, PascalCaseValueName(declared));
+        }
+
+        return name;
+    }
+
+    /// <summary>
+    /// The C# name of an enum value on its own, before it is told apart from the values declared
+    /// before it. A port of <c>GetEnumValueName</c> in protoc's <c>csharp_helpers.cc</c>.
+    /// </summary>
+    private static string PascalCaseValueName(EnumValueDescriptor value)
     {
         var name = ShoutyToPascalCase(TryRemovePrefix(value.EnumDescriptor.Name, value.Name));
 
         // 'LEVEL_2' under 'Level' strips to '2', which is not an identifier.
         return name.Length > 0 && char.IsAsciiDigit(name[0]) ? "_" + name : name;
+    }
+
+    /// <summary>
+    /// Adds underscores to <paramref name="name"/> until <paramref name="taken"/> does not hold it, and
+    /// records the result as taken.
+    /// </summary>
+    private static string Claim(HashSet<string> taken, string name)
+    {
+        while (!taken.Add(name))
+        {
+            name += "_";
+        }
+
+        return name;
     }
 
     /// <summary>
