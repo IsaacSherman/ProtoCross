@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package protocross.conformance;
+
+// enum_value_names.pcross -- enum values whose C# member protoc spells from a name that is not
+// SHOUTY_CASE (spec 12).
+//
+// protoc's C# generator strips the enum's name from the front of a value and PascalCases the rest,
+// casing each letter or digit by the character before it: raised at the start, after a separator or
+// after a digit, kept after a lowercase letter, and lowered after an uppercase one. C++ keeps every
+// value's .proto spelling, so only the C# side can get these wrong.
+message EnumValueNameCase {
+  enum Spelling {
+    SPELLING_UNSPECIFIED = 0;
+
+    // Already PascalCase, so the humps stay: TicketFactory.
+    TicketFactory = 1;
+
+    // A digit before a separator: Http2Ok.
+    HTTP2_OK = 2;
+
+    // A letter after a digit is raised: A1B.
+    a1b = 3;
+
+    // Kept after a lowercase letter, lowered after an uppercase one: FooBar.
+    fooBAR = 4;
+
+    // Raised after a separator: XY.
+    X_y = 5;
+
+    // Raised after a digit with no separator between: Http2OkLater.
+    HTTP2OK_LATER = 6;
+
+    // What is left after the prefix starts lowercase and keeps its hump: LowerTail.
+    SPELLING_lowerTail = 7;
+
+    // Cased by the character the input had before it, not the one written: AbcDEf, where E follows
+    // the d that was raised.
+    ABC_dEF = 8;
+  }
+
+  // Values the C# generator spells alike, so each one after the first takes underscores until its
+  // name is free: FooBar, FooBar_, FooBar__. protoc's own uniqueness check lowercases after the first
+  // letter of each word, sees FooBar and Foobar, and lets the first two through. The third needs to
+  // be an alias, since that check sees it as FOO_BAR again.
+  enum Twin {
+    option allow_alias = true;
+
+    TWIN_UNSPECIFIED = 0;
+    FOO_BAR = 1;
+    FooBar = 2;
+    Foo_Bar = 1;
+  }
+
+  Spelling spelling = 1;
+}
