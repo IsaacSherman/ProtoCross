@@ -164,9 +164,12 @@ internal static class TestCommand
     /// <para>
     /// Noted rather than judged, because such a test is no test of this program, so it is not among the
     /// declared tests the verdict judges. A tool that fails on its account still fails the run, as a
-    /// failed tool does whatever failed it. It is most likely in a generated test file an earlier build
-    /// left in the test directory: the compiler writes into a directory and never removes from it, and
-    /// the test project builds everything there.
+    /// failed tool does whatever failed it. The test project compiles only the files this build wrote
+    /// (spec 25.3), so such a test comes from a file something else adds to it: an MSBuild file at or
+    /// above the project, such as a <c>Directory.Build.props</c>, which the project deliberately does not
+    /// shut out.
+    /// It used to be most often a test file an earlier build left in the test directory, which the test
+    /// project no longer compiles (#234).
     /// </para>
     /// <para>
     /// Information rather than a warning, and on standard output rather than standard error, because
@@ -182,7 +185,7 @@ internal static class TestCommand
         {
             Console.WriteLine(
                 $"info: {backend} ran '{name}', which no source in this build declares; "
-                    + $"a test file an earlier build left in {Shown(directory)} may hold it");
+                    + $"a file this build did not write, such as one a Directory.Build.props at or above {Shown(directory)} adds, may hold it");
         }
     }
 

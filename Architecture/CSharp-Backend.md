@@ -20,7 +20,7 @@
 | Wrapper fields (`Int64Value` and the rest) | [Wrappers]: `WrappedScalar`, `IsHeldAsItsValue`, which a list's element is however it is read, `HeldValue`, `IsAValueAlready`, `MessageOf`, `FieldValue`, `HeldPlace`, `StoresThroughAReach`, `EmitStoreThroughAReach`, `EmitChangeThroughACopy`; [Statements]: `Traversed` binds each element of a repeated wrapper as a place, through `ProtoCrossWrappers` in [Runtime]. protoc's C# holds a wrapper field as its value, and the language as a message. | [wrapper emission]; [wrapper review]; [conformance] |
 | Runtime support | [Runtime]: `CSharpRuntime.Source`, `Stem`, `EmitDivision`, `EmitMaps`, `EmitEnums`, `EmitWrappers`, `EmitRefusals`, `EmitCollections`, `EmitFloatToInteger`, `EmitFail`; IR behavior selects helpers, and a fallback follows a helper that gives null after `??`, so it is evaluated only where needed. | [Backend tests]; [conformance] |
 | Schema type and property names | [Names]: `NameConventions.GetCSharpNamespace`, `GetCSharpTypeName`, `GetCSharpPropertyName`, `GetCSharpValueName`; [Context]: `TypeName`, `EnumValue`, `Escape`. | [namespaces]; [properties] |
-| Generated tests and projects | [Tests]: `EmitTests`, `EmitTest`, `EmitRefusingTest`, `EmitRefusalExpectations`, `EmitFailTestDispatcher`, `EmitTestProject`, `UniqueTestMethodName`; [Test runtime]: `CSharpTestRuntime.Source`; [Project]: `CSharpTestProject.Build` writes `ProtoCrossTests.csproj`, or the project `ScaffoldOptions.Settings` names, for the framework they name (`FileNameFor`). | [Backend tests]; [scaffolds]; [scaffold execution] |
+| Generated tests and projects | [Tests]: `EmitTests`, `EmitTest`, `EmitRefusingTest`, `EmitRefusalExpectations`, `EmitFailTestDispatcher`, `EmitTestProject`, `UniqueTestMethodName`; [Test runtime]: `CSharpTestRuntime.Source`; [Project]: `CSharpTestProject.Build` writes `ProtoCrossTests.csproj`, or the project `ScaffoldOptions.Settings` names, for the framework they name (`FileNameFor`), compiling each behavior file `ScaffoldOptions.BehaviorFileNames` names and each test file, with the SDK's default items off, so nothing else beside them is compiled, such as protoc's own C# or an earlier build's tests (`EmitTests`, `EmitBehavior`). | [Backend tests]; [scaffolds]; [scaffold behavior files]; [scaffold execution]; [protoc output beside the behavior] |
 
 [Emitter]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.cs
 [Statements]: ../src/ProtoCross.Backend.CSharp/CSharpBackend.Statements.cs
@@ -59,4 +59,6 @@
 [namespaces]: ../tests/ProtoCross.Tests/NameMappingTests.CSharpNamespaces.cs
 [properties]: ../tests/ProtoCross.Tests/NameMappingTests.CSharpProperties.cs
 [scaffolds]: ../tests/ProtoCross.Tests/ScaffoldTests.cs
+[scaffold behavior files]: ../tests/ProtoCross.Tests/ScaffoldTests.BehaviorFiles.cs
 [scaffold execution]: ../tests/ProtoCross.Tests/ScaffoldExecutionTests.cs
+[protoc output beside the behavior]: ../tests/ProtoCross.Tests/CliTests.ProtocOutput.cs

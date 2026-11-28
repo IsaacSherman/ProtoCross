@@ -20,7 +20,7 @@
 | Operands left to right | [Ordering]: `InOrder` holds, in the order written, the operands of a call, operator, division, lookup, change or test that may each end the program, as `IrEvaluationOrder.IsObservable` says, in locals of a lambda; `&&` and `\|\|` are never held. [Maps]: `EmitKeyBeforeValue`, `EmitMapEntries` hold a store's key before its value. | [operand order emission]; [conformance] |
 | Runtime support | [Runtime]: `CppRuntime.Source`, `Stem`, `EmitFloatToIntegerHelper`, `EmitEnumHelpers`, `EmitMapHelpers`, `EmitRefusalHelper`, `EmitFailHelper`. | [Backend tests]; [conformance] |
 | Schema includes and type names | [Schemas]: `SchemasNamedBeyond`, `SchemasNamedBy`, `ProtoHeadersOf`; [Names]: `NameConventions.GetCppProtoHeader`, `GetCppTypeName`, `GetCppFieldName`, `GetCppValueName`; [Context]: `TypeName`, `QualifiedTypeName`, `QualifiedEnumName`, `Escape`. | [schema includes]; [type names]; [field names] |
-| Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitCppRefusingCall`, `EmitCppComparison`, `EmitListHelpers`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`, naming the project and prefixing every target as `ScaffoldOptions.Settings` says (`Prefixed`). | [Backend tests]; [scaffolds]; [scaffold execution]; [syntax smoke] |
+| Tests and projects | [Tests]: `EmitTests`, `HeadersTestedBy`, `EmitCppTest`, `EmitCppRefusingCall`, `EmitCppComparison`, `EmitListHelpers`, `EmitExpectFailHelpers`, `EmitTestProject`, `UniqueTestFunctionName`; [Project]: `CppTestProject.Build` writes `CMakeLists.txt` for `<stem>.tests.cc`, naming the project and prefixing every target as `ScaffoldOptions.Settings` says (`Prefixed`), and copies each behavior file `ScaffoldOptions.BehaviorFileNames` names below the binary directory for the drivers to include, so a `.pb.h` kept beside the behavior is never found (`EmitBehaviorCopy`). | [Backend tests]; [scaffolds]; [scaffold behavior files]; [scaffold execution]; [protoc output beside the behavior]; [syntax smoke] |
 
 [Emitter]: ../src/ProtoCross.Backend.Cpp/CppBackend.cs
 [Statements]: ../src/ProtoCross.Backend.Cpp/CppBackend.Statements.cs
@@ -59,5 +59,7 @@
 [type names]: ../tests/ProtoCross.Tests/NameMappingTests.CppTypes.cs
 [field names]: ../tests/ProtoCross.Tests/NameMappingTests.CppFields.cs
 [scaffolds]: ../tests/ProtoCross.Tests/ScaffoldTests.cs
+[scaffold behavior files]: ../tests/ProtoCross.Tests/ScaffoldTests.BehaviorFiles.cs
 [scaffold execution]: ../tests/ProtoCross.Tests/ScaffoldExecutionTests.cs
+[protoc output beside the behavior]: ../tests/ProtoCross.Tests/CliTests.ProtocOutput.cs
 [syntax smoke]: ../tests/ProtoCross.Tests/CppSyntaxSmokeTests.MultiFile.cs

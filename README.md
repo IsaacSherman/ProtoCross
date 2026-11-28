@@ -472,6 +472,11 @@ The C# generated ProtoCross behavior and tests must compile in a project that al
 C# protobuf output. The C++ generated ProtoCross behavior and tests must compile with the C++
 protobuf output, protobuf headers, and protobuf libraries.
 
+The test projects `--scaffold` writes generate their own message classes, and build only the files
+the compiler wrote. So protoc's output can be kept beside the behavior, in `generated/csharp/` or
+`generated/cpp/`, and takes no part in `protocross test`. Nor does a file an earlier build left in
+either folder.
+
 ### Calling the generated behavior
 
 A project declares its behavior in a namespace of its own, named after the project, whichever

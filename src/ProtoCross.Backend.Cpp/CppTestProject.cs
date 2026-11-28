@@ -32,6 +32,12 @@ public static class CppTestProject
     /// <summary>The CMake target the generated protobuf message classes are compiled into, before any prefix.</summary>
     private const string SchemaTarget = "protocross_protos";
 
+    /// <summary>
+    /// Where the behavior is copied to and included from, whenever <see cref="ScaffoldOptions.BehaviorFileNames"/>
+    /// names its files.
+    /// </summary>
+    private const string BehaviorCopy = "${CMAKE_CURRENT_BINARY_DIR}/protocross_behavior";
+
     public static string Build(ScaffoldOptions options)
     {
         var builder = new StringBuilder();
@@ -84,6 +90,11 @@ public static class CppTestProject
             EmitSchemaTarget(builder, options);
         }
 
+        if (options.BehaviorFileNames is { } behaviorFiles)
+        {
+            EmitBehaviorCopy(builder, options, behaviorFiles);
+        }
+
         // Only the C++ sources: a test backend may emit support files alongside its drivers, and
         // an executable per support file would neither compile nor mean anything.
         foreach (var driver in options.TestSourceFileNames.Where(IsCppSource))
@@ -134,16 +145,63 @@ public static class CppTestProject
         builder.AppendLine();
     }
 
+    /// <summary>
+    /// Copies each behavior file the build wrote below the binary directory, for the drivers to include
+    /// from there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A behavior header includes protoc's output as <c>"x.pb.h"</c>, which is right where it ships: a
+    /// consumer's build keeps protoc's own output beside it. But a compiler looks for a quoted include
+    /// beside the header that names it before it looks along the include path. So a driver that
+    /// included the behavior where it was written compiled against whatever <c>.pb.h</c> is kept
+    /// there, while linking the <c>.pb.cc</c> generated here. One from another protoc stopped the
+    /// build with protobuf's own version check. One from an older schema built against the old
+    /// layout, and its tests could pass (#234). Nothing beside the copy is protoc's, so the include
+    /// finds the header generated here.
+    /// </para>
+    /// <para>
+    /// No flag every compiler takes turns that first look off (GCC's <c>-I-</c> did, and MSVC has none),
+    /// and the behavior header is the production output, so neither can change: copying is what is
+    /// left. <c>configure_file</c> copies a file again whenever it changes, so a build by hand after
+    /// the compiler has run sees the new behavior.
+    /// </para>
+    /// </remarks>
+    private static void EmitBehaviorCopy(StringBuilder builder, ScaffoldOptions options, IReadOnlyList<string> behaviorFiles)
+    {
+        builder.AppendLine("# The behavior this build wrote, copied below the binary directory and included from");
+        builder.AppendLine("# there. A quoted #include is looked for beside the header that names it first, so");
+        builder.AppendLine("# included where it was written, the behavior would find any protoc output kept beside");
+        builder.AppendLine("# it, however old, before the .pb.h files generated here.");
+
+        foreach (var file in behaviorFiles.Select(file => Escape(Normalize(file))))
+        {
+            builder.AppendLine("configure_file(");
+            builder.AppendLine($"    {Quoted(AnchoredBehaviorDirectory(options.BehaviorDirectory) + "/" + file)}");
+            builder.AppendLine($"    {Quoted(BehaviorCopy + "/" + file)}");
+            builder.AppendLine("    COPYONLY)");
+        }
+
+        builder.AppendLine();
+    }
+
     private static void EmitDriver(StringBuilder builder, ScaffoldOptions options, string driver)
     {
         var target = Prefixed(TargetName(driver), options.Settings);
         var schemaTarget = Prefixed(SchemaTarget, options.Settings);
         var hasSchemaTarget = options.ProtoFiles.Count > 0;
+        var copied = options.BehaviorFileNames is not null;
 
         builder.AppendLine($"add_executable({target} {Quote(Normalize(driver))})");
         builder.AppendLine();
 
-        if (hasSchemaTarget)
+        if (hasSchemaTarget && copied)
+        {
+            builder.AppendLine("# Three include roots, all load-bearing: this directory for the driver, the copy of");
+            builder.AppendLine("# the behavior because the driver includes its ProtoCross header unqualified, and the");
+            builder.AppendLine($"# binary directory, which {schemaTarget} supplies for the generated .pb.h files.");
+        }
+        else if (hasSchemaTarget)
         {
             builder.AppendLine("# Three include roots, all load-bearing: this directory for the driver, the behavior");
             builder.AppendLine("# directory because the driver includes its ProtoCross header unqualified, and the");
@@ -151,7 +209,9 @@ public static class CppTestProject
         }
         else
         {
-            builder.AppendLine("# Two include roots: this directory for the driver, and the behavior directory");
+            builder.AppendLine(copied
+                ? "# Two include roots: this directory for the driver, and the copy of the behavior"
+                : "# Two include roots: this directory for the driver, and the behavior directory");
             builder.AppendLine("# because the driver includes its ProtoCross header unqualified. Nothing is");
             builder.AppendLine("# generated here, so there is no binary directory to add; the well-known type");
             builder.AppendLine("# headers arrive with protobuf::libprotobuf.");
@@ -159,7 +219,7 @@ public static class CppTestProject
 
         builder.AppendLine($"target_include_directories({target} PRIVATE");
         builder.AppendLine("    \"${CMAKE_CURRENT_SOURCE_DIR}\"");
-        builder.AppendLine($"    {Quote(BehaviorInclude(options.BehaviorDirectory))}");
+        builder.AppendLine($"    {Quoted(copied ? BehaviorCopy : AnchoredBehaviorDirectory(options.BehaviorDirectory))}");
         builder.AppendLine(")");
         builder.AppendLine();
         builder.AppendLine(
@@ -183,16 +243,17 @@ public static class CppTestProject
     }
 
     /// <summary>
-    /// The behavior directory as an include root. A relative path is anchored to the source
-    /// directory rather than left bare, because a bare relative include directory is resolved
-    /// against the build directory by some generators.
+    /// The behavior directory, as an include root or a file's directory, written as CMake reads it
+    /// inside quotes. A relative path is anchored to the source directory rather than left bare,
+    /// because a bare relative include directory is resolved against the build directory by some
+    /// generators.
     /// </summary>
-    private static string BehaviorInclude(string behaviorDirectory)
+    private static string AnchoredBehaviorDirectory(string behaviorDirectory)
     {
         var normalized = Normalize(behaviorDirectory);
         return normalized.Length == 0 || normalized == "."
             ? "${CMAKE_CURRENT_SOURCE_DIR}"
-            : "${CMAKE_CURRENT_SOURCE_DIR}/" + normalized.TrimEnd('/');
+            : "${CMAKE_CURRENT_SOURCE_DIR}/" + Escape(normalized.TrimEnd('/'));
     }
 
     /// <summary>
@@ -246,9 +307,27 @@ public static class CppTestProject
     }
 
     /// <summary>
-    /// Quotes a CMake argument. Backslashes and quotes are the only characters that need escaping
-    /// inside a quoted argument, and paths are normalized to forward slashes before they get here.
+    /// Quotes literal text, such as a path, as one CMake argument.
     /// </summary>
-    private static string Quote(string value)
-        => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    private static string Quote(string literal) => Quoted(Escape(literal));
+
+    /// <summary>
+    /// Quotes text already written as CMake reads it inside quotes: a path below a directory a variable
+    /// names, with its literal part escaped.
+    /// </summary>
+    private static string Quoted(string text) => "\"" + text + "\"";
+
+    /// <summary>
+    /// Literal text as CMake reads it inside a quoted argument.
+    /// </summary>
+    /// <remarks>
+    /// A backslash or a quote would bend or end the argument, and a dollar sign can begin a variable
+    /// reference (<c>${…}</c>, <c>$ENV{…}</c> or <c>$CACHE{…}</c>), which CMake replaces with its value.
+    /// Escaping only the first two, a behavior file named <c>pricing${x}.pc.h</c> was copied from
+    /// <c>pricing.pc.h</c>, which does not exist. A backslash before any of the three stands for the
+    /// character itself. A semicolon is left alone: inside quotes it does not divide the argument, and
+    /// <c>\;</c> would stay two characters.
+    /// </remarks>
+    private static string Escape(string literal)
+        => literal.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("$", "\\$");
 }
