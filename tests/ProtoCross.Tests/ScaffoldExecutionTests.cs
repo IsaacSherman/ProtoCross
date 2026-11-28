@@ -214,7 +214,8 @@ internal sealed record ScaffoldLayout(
 
         var diagnostics = new DiagnosticBag();
 
-        Write(behaviorDirectory, SourceEmission.Emit(result, backend, diagnostics));
+        var behaviorFiles = SourceEmission.Emit(result, backend, diagnostics);
+        Write(behaviorDirectory, behaviorFiles);
 
         var testFiles = SourceEmission.EmitTests(result, backend, diagnostics);
         Write(testDirectory, testFiles);
@@ -227,6 +228,7 @@ internal sealed record ScaffoldLayout(
             testFiles.Select(file => file.RelativePath).ToList()) with
         {
             Settings = settings ?? ScaffoldSettings.Default,
+            BehaviorFileNames = [.. behaviorFiles.Select(file => file.RelativePath)],
         };
 
         Write(testDirectory, backend.EmitTestProject(scaffold, diagnostics));

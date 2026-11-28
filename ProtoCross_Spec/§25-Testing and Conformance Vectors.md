@@ -216,6 +216,27 @@ protoc \
 `--test-out`. Each test backend writes under `<test-out>/<target>/`. What each project is named and
 targets is [25.3.2](#2532-test-projects)'s.
 
+**Decided: a test project builds the files the build wrote, by name, against the message classes
+its own build generates, and nothing else in either output.** The behavior output is the
+consumer's folder as well as the compiler's. Their own build compiles the message classes from
+protoc's own output, and keeping that beside the behavior is the obvious layout. A test project
+generates the message classes itself, from the schemas the compilation read, so it takes in none
+of it:
+
+- The C# project names each `.cs` file the build wrote, behavior and tests, and turns off the
+  SDK's default items. Compiling every `.cs` file below the behavior directory would compile
+  protoc's C# for a schema beside the class Grpc.Tools generates from it, and define every member
+  twice.
+- The C++ project copies each behavior file the build wrote below its binary directory, and its
+  drivers include the copy. A behavior header includes `"x.pb.h"`, and a compiler looks for a
+  quoted include beside the header that names it before it looks along the include path. So the
+  behavior, included where it was written, would be compiled against any `.pb.h` kept there, from
+  another protoc or an older schema, and linked with the `.pb.cc` the test build generated. The
+  behavior header keeps that include, because it is the production output, and beside protoc's
+  output is where it ships. The project builds a driver only for each test file the build wrote.
+- A file an earlier build left in either output, such as one from a source since renamed or
+  dropped, takes no part either. Its tests would call behavior this build no longer writes.
+
 Implemented backend behavior:
 
 - C# generates ordinary test source and can scaffold a `.csproj`.
@@ -450,9 +471,11 @@ Normative Requirements:
   otherwise exit 0 as if it had passed.
 - **A test a backend ran that no source declares is noted as information,** on standard output,
   and never as a warning. It is not one of the declared tests, so it is not judged as one. A tool
-  that fails on its account still fails the run, as any failed tool does. It is most likely in a
-  test file an earlier build left in `--test-out`, which the compiler writes into and never removes
-  from.
+  that fails on its account still fails the run, as any failed tool does. A test project builds
+  only the files the build wrote ([25.3](#253-author-written-protocross-unit-tests)), so such a test
+  is in a file something else adds to it, such as a `Directory.Build.props` at or above the C#
+  project, which MSBuild imports. A test file an earlier build left in `--test-out`, which the
+  compiler writes into and never removes from, takes no part.
 - **Exit codes:**
   - 0 when every declared test passed in every backend tested;
   - 1 for a compile error, as `build` returns, or for a test that failed or did not run;
@@ -469,7 +492,7 @@ Rationale:
 - **A time is written with its unit,** because `45` is minutes to one reader and seconds to the next.
 - **Information, not a warning,** for a test no source declares, and on standard output, because a
   warning can fail a build that treats warnings as errors, and some pipelines fail a step for
-  writing to standard error. A file an earlier build left behind is no fault in the program.
+  writing to standard error. A test something else adds to the project is no fault in the program.
 
 Implementation Note:
 

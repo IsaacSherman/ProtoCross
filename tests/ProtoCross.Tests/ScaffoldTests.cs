@@ -156,16 +156,6 @@ public partial class ScaffoldTests
         Assert.Equal("all", (string?)tools.Attribute("PrivateAssets"));
     }
 
-    /// <summary>The generated tests call into the behavior, so the project has to compile it.</summary>
-    [Fact]
-    public void TheEmittedCSharpProjectCompilesTheBehaviorDirectory()
-    {
-        var project = XDocument.Parse(CSharpTestProject.Build(Options()));
-
-        var compile = Assert.Single(project.Descendants("Compile"));
-        Assert.Equal("../../csharp/**/*.cs", (string?)compile.Attribute("Include"));
-    }
-
     /// <summary>
     /// Emitted paths use forward slashes whatever platform the compiler ran on, so a project
     /// generated on Windows is not broken everywhere else.

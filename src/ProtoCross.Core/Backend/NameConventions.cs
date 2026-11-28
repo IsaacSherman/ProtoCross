@@ -532,17 +532,60 @@ public static partial class NameConventions
     /// becomes <c>Ok</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Reproduced rather than approximated. The rule has edge cases -- a value that does not carry
     /// the prefix keeps its whole name, and stripping that would leave a leading digit gets an
     /// underscore -- and getting one wrong emits a name that does not exist, which is a compile
     /// error in the consumer's build rather than anything this compiler would notice.
+    /// </para>
+    /// <para>
+    /// Two values can come out spelled alike, and then the later one takes underscores until its
+    /// name is free, as protoc's <c>csharp_enum.cc</c> names the members it declares: <c>FOO_BAR</c>
+    /// and then <c>FooBar</c> are <c>FooBar</c> and <c>FooBar_</c>. protoc accepts the pair because the
+    /// uniqueness check in its descriptor builder lowercases every letter after the first of each
+    /// word, so it sees <c>FooBar</c> and <c>Foobar</c>. A spelling that missed this would not fail to
+    /// compile: it would name the earlier value's member, a value with another number.
+    /// </para>
     /// </remarks>
     public static string GetCSharpValueName(EnumValueDescriptor value)
+    {
+        var taken = new HashSet<string>(StringComparer.Ordinal);
+        var name = string.Empty;
+
+        // protoc names the values in declaration order, so only the ones before this value can take
+        // its name first.
+        foreach (var declared in value.EnumDescriptor.Values.Take(value.Index + 1))
+        {
+            name = Claim(taken, PascalCaseValueName(declared));
+        }
+
+        return name;
+    }
+
+    /// <summary>
+    /// The C# name of an enum value on its own, before it is told apart from the values declared
+    /// before it. A port of <c>GetEnumValueName</c> in protoc's <c>csharp_helpers.cc</c>.
+    /// </summary>
+    private static string PascalCaseValueName(EnumValueDescriptor value)
     {
         var name = ShoutyToPascalCase(TryRemovePrefix(value.EnumDescriptor.Name, value.Name));
 
         // 'LEVEL_2' under 'Level' strips to '2', which is not an identifier.
         return name.Length > 0 && char.IsAsciiDigit(name[0]) ? "_" + name : name;
+    }
+
+    /// <summary>
+    /// Adds underscores to <paramref name="name"/> until <paramref name="taken"/> does not hold it, and
+    /// records the result as taken.
+    /// </summary>
+    private static string Claim(HashSet<string> taken, string name)
+    {
+        while (!taken.Add(name))
+        {
+            name += "_";
+        }
+
+        return name;
     }
 
     /// <summary>
@@ -765,31 +808,62 @@ public static partial class NameConventions
     }
 
     /// <summary>
-    /// Converts a <c>SHOUTY_CASE</c> name to <c>PascalCase</c>: the first alphanumeric of each run
-    /// is upper-cased, the rest lower-cased, and the separators dropped. A port of the same helper
-    /// in protoc's C# generator, and distinct from <see cref="ToPascalCase"/>, which preserves the
-    /// case of characters it does not capitalize and so would turn <c>LEVEL_HIGH</c> into
-    /// <c>LEVELHIGH</c>.
+    /// Converts a <c>SHOUTY_CASE</c> name to <c>PascalCase</c> the way protoc's C# generator names an
+    /// enum value: separators are dropped, and each letter or digit is cased by the character before
+    /// it. A port of the same helper in the generator's <c>csharp_helpers.cc</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A character at the start, after a separator or after a digit is upper-cased, one after a
+    /// lowercase letter keeps its case, and one after an uppercase letter is lower-cased. So
+    /// <c>LEVEL_HIGH</c> is <c>LevelHigh</c>, and a name that is not shouty keeps the humps it has:
+    /// <c>TicketFactory</c> stays <c>TicketFactory</c>, <c>fooBAR</c> is <c>FooBar</c> and <c>a1b</c>
+    /// is <c>A1B</c>.
+    /// </para>
+    /// <para>
+    /// The case follows the previous character of the input, a skipped separator included, rather than
+    /// the position in a run. A rule that capitalizes the first character of each run and lower-cases
+    /// the rest agrees with protoc on every name that really is shouty and on almost nothing else: it
+    /// turned <c>TicketFactory</c> into <c>Ticketfactory</c>, a member protoc never declares, and the
+    /// consumer's build failed on it. The rule and its table are the same in the sources of protoc 31.1
+    /// and 33.4.
+    /// </para>
+    /// <para>
+    /// It is distinct from <see cref="ToPascalCase"/>, which preserves the case of characters it does
+    /// not capitalize and so would turn <c>LEVEL_HIGH</c> into <c>LEVELHIGH</c>.
+    /// </para>
+    /// </remarks>
     private static string ShoutyToPascalCase(string input)
     {
         var builder = new StringBuilder(input.Length);
-        var inRun = false;
 
-        foreach (var c in input)
+        // protoc starts from an underscore, so the first character is cased as one after a separator.
+        var previous = '_';
+
+        foreach (var current in input)
         {
-            if (!char.IsAsciiLetterOrDigit(c))
+            if (char.IsAsciiLetterOrDigit(current))
             {
-                inRun = false;
-                continue;
+                builder.Append(CaseAfter(previous, current));
             }
 
-            builder.Append(inRun ? char.ToLowerInvariant(c) : char.ToUpperInvariant(c));
-            inRun = true;
+            previous = current;
         }
 
         return builder.ToString();
     }
+
+    /// <summary>
+    /// <paramref name="current"/> cased as protoc's <c>ShoutyToPascalCase</c> cases it after
+    /// <paramref name="previous"/>: kept after a lowercase letter, lowered after an uppercase one, and
+    /// raised after anything else.
+    /// </summary>
+    private static char CaseAfter(char previous, char current) => previous switch
+    {
+        >= 'a' and <= 'z' => current,
+        >= 'A' and <= 'Z' => char.ToLowerInvariant(current),
+        _ => char.ToUpperInvariant(current),
+    };
 
     /// <summary>
     /// Converts a <c>snake_case</c> name to <c>PascalCase</c> the way protoc's C# generator does: a

@@ -82,6 +82,17 @@ public static class CSharpTestProject
         builder.AppendLine("      management on (NU1008). This project is self-contained, so opt it back out.");
         builder.AppendLine("    -->");
         builder.AppendLine("    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>");
+
+        if (options.BehaviorFileNames is not null)
+        {
+            builder.AppendLine("    <!--");
+            builder.AppendLine("      Only the files the compiler wrote this time are compiled, each named below. A test");
+            builder.AppendLine("      file an earlier build left here, from a source since renamed or dropped, would call");
+            builder.AppendLine("      behavior that is no longer built.");
+            builder.AppendLine("    -->");
+            builder.AppendLine("    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>");
+        }
+
         builder.AppendLine("  </PropertyGroup>");
         builder.AppendLine();
         builder.AppendLine("  <ItemGroup>");
@@ -100,17 +111,8 @@ public static class CSharpTestProject
 
         builder.AppendLine("  </ItemGroup>");
         builder.AppendLine();
-        builder.AppendLine("  <!--");
-        // No '--' anywhere in an emitted comment: XML forbids it, so naming the compiler flag
-        // literally here would produce a project MSBuild refuses to load (MSB4025).
-        builder.AppendLine("    The behavior emitted into the compiler's output directory. The generated tests");
-        builder.AppendLine("    call into it, so it is compiled here rather than referenced as a separate project.");
-        builder.AppendLine("  -->");
-        builder.AppendLine("  <ItemGroup>");
-        builder.AppendLine(
-            $"    <Compile Include=\"{Escape(Join(options.BehaviorDirectory, "**/*.cs"))}\" />");
-        builder.AppendLine("  </ItemGroup>");
-        builder.AppendLine();
+        EmitTests(builder, options);
+        EmitBehavior(builder, options);
         // A source that extends only well-known types has nothing to generate: those ship
         // precompiled in Google.Protobuf and are filtered out of the schema list. An empty item
         // group builds fine, but a comment promising a protoc run above one would be a lie.
@@ -140,6 +142,86 @@ public static class CSharpTestProject
     }
 
     /// <summary>
+    /// The item group that compiles the generated tests, where the build named its files; nothing where
+    /// it did not, since the SDK's default items then compile every <c>.cs</c> file beside the project.
+    /// </summary>
+    /// <remarks>
+    /// Named because the behavior is (see <see cref="EmitBehavior"/>). A test file an earlier build left
+    /// beside the project, from a source since renamed or dropped, calls behavior this build no longer
+    /// writes, so compiling it once the behavior is named stopped the build on a member that does not
+    /// exist. It used to build, against the stale behavior the glob also took in, and run as a test no
+    /// source declares.
+    /// </remarks>
+    private static void EmitTests(StringBuilder builder, ScaffoldOptions options)
+    {
+        if (options.BehaviorFileNames is null)
+        {
+            return;
+        }
+
+        builder.AppendLine("  <!--");
+        builder.AppendLine("    The generated tests, beside this project.");
+        builder.AppendLine("  -->");
+        builder.AppendLine("  <ItemGroup>");
+
+        foreach (var test in options.TestSourceFileNames.Where(IsCSharpSource))
+        {
+            builder.AppendLine($"    <Compile Include=\"{Escape(EscapeItemSpec(Normalize(test)))}\" />");
+        }
+
+        builder.AppendLine("  </ItemGroup>");
+        builder.AppendLine();
+    }
+
+    /// <summary>The item group that compiles the behavior the generated tests call into.</summary>
+    /// <remarks>
+    /// <para>
+    /// Each file the build wrote is named, rather than every <c>.cs</c> file below the behavior
+    /// directory. That directory is also where a consumer keeps protoc's own C# output for their own
+    /// build, and this project generates the message classes itself, through Grpc.Tools. A glob took
+    /// both in and stopped the build on every member of every message, defined twice, with nothing
+    /// in the errors to say why (#234). A behavior file an earlier build left there, from a source
+    /// since renamed, is left out for the same reason.
+    /// </para>
+    /// <para>
+    /// A caller that does not say which files the behavior is still gets the glob, and the SDK's
+    /// default items for the tests, which is what this project compiled before the names were known.
+    /// </para>
+    /// </remarks>
+    private static void EmitBehavior(StringBuilder builder, ScaffoldOptions options)
+    {
+        builder.AppendLine("  <!--");
+        // No '--' anywhere in an emitted comment: XML forbids it, so naming the compiler flag
+        // literally here would produce a project MSBuild refuses to load (MSB4025).
+        builder.AppendLine("    The behavior emitted into the compiler's output directory. The generated tests");
+        builder.AppendLine("    call into it, so it is compiled here rather than referenced as a separate project.");
+
+        if (options.BehaviorFileNames is not null)
+        {
+            builder.AppendLine("    Each file is named, so that nothing else kept there, such as protoc's own C#");
+            builder.AppendLine("    output, is compiled with it.");
+        }
+
+        builder.AppendLine("  -->");
+        builder.AppendLine("  <ItemGroup>");
+
+        IEnumerable<string> includes = options.BehaviorFileNames is { } names
+            ? names.Where(IsCSharpSource).Select(name => EscapeItemSpec(Join(options.BehaviorDirectory, name)))
+            : [Join(options.BehaviorDirectory, "**/*.cs")];
+
+        foreach (var include in includes)
+        {
+            builder.AppendLine($"    <Compile Include=\"{Escape(include)}\" />");
+        }
+
+        builder.AppendLine("  </ItemGroup>");
+        builder.AppendLine();
+    }
+
+    private static bool IsCSharpSource(string fileName)
+        => fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
     /// MSBuild accepts either separator on Windows and only this one elsewhere, so emitted paths use
     /// it regardless of the platform the compiler happened to run on.
     /// </summary>
@@ -149,9 +231,28 @@ public static class CSharpTestProject
     {
         var normalized = Normalize(directory);
         return normalized.Length == 0 || normalized == "."
-            ? relative
-            : normalized.TrimEnd('/') + "/" + relative;
+            ? Normalize(relative)
+            : normalized.TrimEnd('/') + "/" + Normalize(relative);
     }
+
+    /// <summary>
+    /// Escapes the characters MSBuild reads as syntax in an item's path, so a file is one item whatever
+    /// its name holds.
+    /// </summary>
+    /// <remarks>
+    /// Only for a path that names one file. A file name may hold a <c>;</c>, which would otherwise
+    /// make it two items, or a <c>*</c>, which would make it a pattern. A glob is written to be read
+    /// as one, so it is left as it is. The percent sign goes first, since it is what the others
+    /// become.
+    /// </remarks>
+    private static string EscapeItemSpec(string path) => path
+        .Replace("%", "%25")
+        .Replace(";", "%3B")
+        .Replace("$", "%24")
+        .Replace("@", "%40")
+        .Replace("'", "%27")
+        .Replace("*", "%2A")
+        .Replace("?", "%3F");
 
     /// <summary>Escapes the five XML predefined entities, so a path with an ampersand still parses.</summary>
     private static string Escape(string value) => value

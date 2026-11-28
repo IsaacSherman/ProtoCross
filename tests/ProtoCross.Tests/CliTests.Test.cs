@@ -111,12 +111,43 @@ public partial class CliTests
     }
 
     /// <summary>
-    /// A test file an earlier build left in the test directory still runs, because the C# project builds
-    /// everything there. No source in this build declares its test, so the run notes it as information,
-    /// never as a warning, which could fail a build that treats warnings as errors, and passes.
+    /// A test the C# project ran that no source in this build declares is noted as information, never as
+    /// a warning, which could fail a build that treats warnings as errors, and the run passes. The project
+    /// compiles only the files this build wrote, so the test here comes from a <c>Directory.Build.props</c>
+    /// above it, which MSBuild imports into every project below it.
     /// </summary>
     [Fact]
     public void ATestNoSourceDeclaresIsNotedAsInformation()
+    {
+        var directory = TestPaths.CreateTempDirectory();
+        TestPaths.WriteSources(
+            directory,
+            ("pricing.pcross", Pricing),
+            ("discounts.pcross", Discounts),
+            ("Directory.Build.props", """
+                <Project>
+                  <ItemGroup>
+                    <Compile Include="$(MSBuildThisFileDirectory)Undeclared.cs" />
+                  </ItemGroup>
+                </Project>
+                """),
+            ("Undeclared.cs", "public class Undeclared { [Xunit.Fact] public void Runs() { } }"));
+
+        var run = Run(directory, "test", "pricing.pcross", "discounts.pcross", "-o", "out", "-t", "csharp");
+
+        Assert.True(run.ExitCode == 0, run.Output);
+        Assert.Contains("csharp: 1 passed", run.Output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^info: csharp ran '[^']*Undeclared\.Runs', which no source in this build declares", run.Output);
+        Assert.DoesNotContain("warning:", run.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A test file an earlier build left in the test directory, from a source this build does not compile,
+    /// takes no part in the run, and neither does the behavior it calls: the C# project compiles only the
+    /// files this build wrote (#234). Nothing is noted, because nothing ran that this build did not declare.
+    /// </summary>
+    [Fact]
+    public void ATestFileAnEarlierBuildLeftTakesNoPart()
     {
         var directory = TestPaths.CreateTempDirectory();
         TestPaths.WriteSources(directory, ("pricing.pcross", Pricing), ("discounts.pcross", Discounts), ("doubling.pcross", Doubling));
@@ -129,10 +160,8 @@ public partial class CliTests
 
         Assert.True(run.ExitCode == 0, run.Output);
         Assert.Contains("csharp: 1 passed", run.Output, StringComparison.Ordinal);
-        Assert.Matches(
-            @"(?m)^info: csharp ran '[^']*InvoiceItem\.doubled_price: twice the unit price', which no source in this build declares",
-            run.Output);
-        Assert.DoesNotContain("warning:", run.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("doubled_price", run.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain("info:", run.Output, StringComparison.Ordinal);
     }
 
     /// <summary>

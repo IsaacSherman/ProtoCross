@@ -148,7 +148,8 @@ internal static class BuildCommand
             // Each source into files named after it, with the policy it ran under in every header, so a
             // reader can tell what produced the code in front of them without re-running the compiler.
             var outputDirectory = Path.Combine(options.OutputDirectory, backend.Name);
-            groups.Add(new(outputDirectory, OutputRole.Program, SourceEmission.Emit(result, backend, diagnostics)));
+            var behaviorFiles = SourceEmission.Emit(result, backend, diagnostics);
+            groups.Add(new(outputDirectory, OutputRole.Program, behaviorFiles));
 
             if (options.TestOutputDirectory is null || backend is not ITestBackend testBackend)
             {
@@ -169,6 +170,7 @@ internal static class BuildCommand
                     testFiles.Select(file => file.RelativePath).ToList()) with
                 {
                     Settings = ScaffoldSettingsFor(project, options),
+                    BehaviorFileNames = [.. behaviorFiles.Select(file => file.RelativePath)],
                 };
 
                 groups.Add(new(testOutputDirectory, OutputRole.TestProject, scaffold.EmitTestProject(scaffoldOptions, diagnostics)));

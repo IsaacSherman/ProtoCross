@@ -115,6 +115,30 @@ public sealed record ScaffoldOptions(
     public ScaffoldSettings Settings { get; init; } = ScaffoldSettings.Default;
 
     /// <summary>
+    /// The files the build wrote into <see cref="BehaviorDirectory"/>, each relative to it, as
+    /// <see cref="SourceEmission.Emit"/> generated them; or null where the caller did not say.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A test project builds these and <see cref="TestSourceFileNames"/>, and nothing else in either
+    /// directory (spec 25.3). The behavior output is the consumer's folder as much as the compiler's.
+    /// A consumer's own build compiles the message classes from protoc's output, and keeping that
+    /// output beside the behavior is the obvious layout. A test project generates its own message
+    /// classes, so taking in everything there compiled each C# message class twice, and let a C++
+    /// behavior header include a stale <c>.pb.h</c> instead of the one its own build generated
+    /// (#234). With the behavior named, a test file an earlier build left beside the tests would call
+    /// behavior that is no longer built, so the tests are named too.
+    /// </para>
+    /// <para>
+    /// Null writes the projects written before the names were known: C# compiles every <c>.cs</c>
+    /// file below the behavior directory and beside the project, and C++ includes the behavior from
+    /// where it was written. A caller that never states the names keeps getting those, rather than
+    /// projects built from a guess.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<string>? BehaviorFileNames { get; init; }
+
+    /// <summary>
     /// Builds the options for one backend, resolving every path relative to the directory the build
     /// file will sit in.
     /// </summary>
